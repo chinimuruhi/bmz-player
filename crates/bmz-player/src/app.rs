@@ -86,9 +86,9 @@ use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
     DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig,
     HispeedModeConfig, HsFixConfig, InputActionConfig, JudgeAlgorithmConfig, LaneConfig,
-    LaneEffectConfig, LaneViewConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
-    ScratchDirectionConfig, SelectInputModeConfig, SkinOffsetConfig, TargetOptionConfig,
-    default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
+    LaneEffectConfig, LaneViewConfig, PlayDefaultsConfig, ProfileConfig, ProfileInputConfig,
+    RandomOptionConfig, ScratchDirectionConfig, SelectInputModeConfig, SkinOffsetConfig,
+    TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
     replay_slot_rule_indices,
 };
 use crate::config::save::{save_app_config, save_profile_config};
@@ -5052,25 +5052,47 @@ impl WinitApp {
     }
 
     fn sync_select_play_options_from_profile(&mut self) {
-        let play = &self.boot.profile_config.play;
-        self.gauge_option = if play.gauge == GaugeTypeConfig::AutoShift {
-            GaugeTypeConfig::ExHard
-        } else {
-            play.gauge
-        };
-        self.gauge_auto_shift_option = if play.gauge == GaugeTypeConfig::AutoShift {
-            GaugeAutoShiftConfig::BestClear
-        } else {
-            play.gauge_auto_shift
-        };
-        self.bottom_shiftable_gauge_option = play.bottom_shiftable_gauge;
-        self.arrange_option = arrange_option_from_profile(play.random);
-        self.arrange_option_2p = arrange_option_from_profile(play.random2);
-        self.double_option = double_option_from_profile(play.double_option);
-        self.hs_fix_option = hs_fix_option_from_profile(play.hs_fix);
-        self.target_option = target_option_from_profile(play.target);
-        self.assist_option =
-            if play.auto_play { AssistOption::Autoplay } else { AssistOption::Normal };
+        let options = select_play_options_from_profile(&self.boot.profile_config.play);
+        self.set_select_play_options(options);
+    }
+
+    fn sync_changed_select_play_options_from_profile(&mut self, before: &PlayDefaultsConfig) {
+        let current = self.current_select_play_options();
+        let next = merge_changed_select_play_options_from_profile(
+            current,
+            before,
+            &self.boot.profile_config.play,
+        );
+        if next != current {
+            self.set_select_play_options(next);
+            tracing::info!("applied profile play settings to select options");
+        }
+    }
+
+    fn current_select_play_options(&self) -> CurrentPlayOptions {
+        CurrentPlayOptions {
+            arrange: self.arrange_option,
+            arrange_2p: self.arrange_option_2p,
+            target: self.target_option,
+            gauge: self.gauge_option,
+            gauge_auto_shift: self.gauge_auto_shift_option,
+            bottom_shiftable_gauge: self.bottom_shiftable_gauge_option,
+            double_option: self.double_option,
+            hs_fix: self.hs_fix_option,
+            assist: self.assist_option,
+        }
+    }
+
+    fn set_select_play_options(&mut self, options: CurrentPlayOptions) {
+        self.arrange_option = options.arrange;
+        self.arrange_option_2p = options.arrange_2p;
+        self.target_option = options.target;
+        self.gauge_option = options.gauge;
+        self.gauge_auto_shift_option = options.gauge_auto_shift;
+        self.bottom_shiftable_gauge_option = options.bottom_shiftable_gauge;
+        self.double_option = options.double_option;
+        self.hs_fix_option = options.hs_fix;
+        self.assist_option = options.assist;
     }
 
     fn route_settings_control(&mut self, control: &str) -> bool {
@@ -14039,6 +14061,7 @@ impl WinitApp {
         let Some(mut egui) = self.egui.take() else {
             return;
         };
+        let play_profile_before_egui = self.boot.profile_config.play.clone();
         let lane_profile_before_egui = self.boot.profile_config.lane.clone();
         let output = egui.run(
             &window,
@@ -14072,6 +14095,7 @@ impl WinitApp {
             self.reload_select_items();
         }
         self.renderer.set_egui_frame(output.frame);
+        self.sync_changed_select_play_options_from_profile(&play_profile_before_egui);
         if profile_lane_settings_changed(&lane_profile_before_egui, &self.boot.profile_config.lane)
         {
             self.sync_active_play_lane_settings_from_profile(&lane_profile_before_egui);
@@ -14258,9 +14282,11 @@ impl WinitApp {
 
     fn reset_profile_config_from_disk(&mut self) {
         let locale_before = self.boot.profile_config.ui.locale();
+        let play_before = self.boot.profile_config.play.clone();
         match load_profile_config(&self.boot.profile_paths.profile_toml) {
             Ok(profile) => {
                 self.boot.profile_config = profile;
+                self.sync_changed_select_play_options_from_profile(&play_before);
                 let locale_after = self.boot.profile_config.ui.locale();
                 if locale_after != locale_before {
                     self.renderer.set_default_font_coverage(locale_after.font_coverage());
@@ -15001,22 +15027,13 @@ impl WinitApp {
 
     fn save_current_play_options(&mut self, hispeed: Option<f32>, reason: &'static str) {
         let lane_state = self.active_lane_state();
+        let options = self.current_select_play_options();
         self.sync_profile_visual_offset_from_active_play();
         apply_current_play_options_to_profile(
             &mut self.boot.profile_config,
             hispeed,
             lane_state,
-            CurrentPlayOptions {
-                arrange: self.arrange_option,
-                arrange_2p: self.arrange_option_2p,
-                target: self.target_option,
-                gauge: self.gauge_option,
-                gauge_auto_shift: self.gauge_auto_shift_option,
-                bottom_shiftable_gauge: self.bottom_shiftable_gauge_option,
-                double_option: self.double_option,
-                hs_fix: self.hs_fix_option,
-                assist: self.assist_option,
-            },
+            options,
             now_unix_seconds(),
         );
         if let Err(error) =
@@ -19448,7 +19465,7 @@ fn active_lane_state_for_session(session: &bmz_gameplay::session::GameSession) -
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CurrentPlayOptions {
     arrange: ArrangeOption,
     arrange_2p: ArrangeOption,
@@ -19459,6 +19476,59 @@ struct CurrentPlayOptions {
     double_option: DoubleOption,
     hs_fix: HsFixOption,
     assist: AssistOption,
+}
+
+fn select_play_options_from_profile(play: &PlayDefaultsConfig) -> CurrentPlayOptions {
+    let (gauge, gauge_auto_shift) = if play.gauge == GaugeTypeConfig::AutoShift {
+        (GaugeTypeConfig::ExHard, GaugeAutoShiftConfig::BestClear)
+    } else {
+        (play.gauge, play.gauge_auto_shift)
+    };
+    CurrentPlayOptions {
+        arrange: arrange_option_from_profile(play.random),
+        arrange_2p: arrange_option_from_profile(play.random2),
+        target: target_option_from_profile(play.target),
+        gauge,
+        gauge_auto_shift,
+        bottom_shiftable_gauge: play.bottom_shiftable_gauge,
+        double_option: double_option_from_profile(play.double_option),
+        hs_fix: hs_fix_option_from_profile(play.hs_fix),
+        assist: if play.auto_play { AssistOption::Autoplay } else { AssistOption::Normal },
+    }
+}
+
+fn merge_changed_select_play_options_from_profile(
+    mut current: CurrentPlayOptions,
+    before: &PlayDefaultsConfig,
+    after: &PlayDefaultsConfig,
+) -> CurrentPlayOptions {
+    let profile = select_play_options_from_profile(after);
+    if before.random != after.random {
+        current.arrange = profile.arrange;
+    }
+    if before.random2 != after.random2 {
+        current.arrange_2p = profile.arrange_2p;
+    }
+    if before.target != after.target {
+        current.target = profile.target;
+    }
+    if before.gauge != after.gauge || before.gauge_auto_shift != after.gauge_auto_shift {
+        current.gauge = profile.gauge;
+        current.gauge_auto_shift = profile.gauge_auto_shift;
+    }
+    if before.bottom_shiftable_gauge != after.bottom_shiftable_gauge {
+        current.bottom_shiftable_gauge = profile.bottom_shiftable_gauge;
+    }
+    if before.double_option != after.double_option {
+        current.double_option = profile.double_option;
+    }
+    if before.hs_fix != after.hs_fix {
+        current.hs_fix = profile.hs_fix;
+    }
+    if before.auto_play != after.auto_play {
+        current.assist = profile.assist;
+    }
+    current
 }
 
 fn apply_current_play_options_to_profile(
@@ -27383,6 +27453,75 @@ mod tests {
         assert!(profile.play.auto_play);
         assert!(matches!(profile.play.assist, AssistOptionConfig::None));
         assert_eq!(profile.updated_at, 42);
+    }
+
+    #[test]
+    fn profile_play_option_changes_disable_random_and_autoplay_without_rollback() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 1);
+        profile.play.random = RandomOptionConfig::Random;
+        profile.play.random2 = RandomOptionConfig::Mirror;
+        profile.play.auto_play = true;
+        let before = profile.play.clone();
+        let current = select_play_options_from_profile(&before);
+
+        profile.play.random = RandomOptionConfig::Off;
+        profile.play.random2 = RandomOptionConfig::Off;
+        profile.play.auto_play = false;
+        let synced =
+            merge_changed_select_play_options_from_profile(current, &before, &profile.play);
+
+        assert_eq!(synced.arrange, ArrangeOption::Normal);
+        assert_eq!(synced.arrange_2p, ArrangeOption::Normal);
+        assert_eq!(synced.assist, AssistOption::Normal);
+
+        apply_current_play_options_to_profile(&mut profile, None, None, synced, 42);
+        assert_eq!(profile.play.random, RandomOptionConfig::Off);
+        assert_eq!(profile.play.random2, RandomOptionConfig::Off);
+        assert!(!profile.play.auto_play);
+    }
+
+    #[test]
+    fn profile_random_change_preserves_cli_autoplay_runtime_option() {
+        let profile = ProfileConfig::new_default("default", "Default", 1);
+        let before = profile.play.clone();
+        let mut current = select_play_options_from_profile(&before);
+        current.assist = AssistOption::Autoplay;
+
+        let mut after = before.clone();
+        after.random = RandomOptionConfig::Mirror;
+        let synced = merge_changed_select_play_options_from_profile(current, &before, &after);
+
+        assert_eq!(synced.arrange, ArrangeOption::Mirror);
+        assert_eq!(synced.assist, AssistOption::Autoplay);
+    }
+
+    #[test]
+    fn profile_play_option_changes_sync_all_select_runtime_options() {
+        let profile = ProfileConfig::new_default("default", "Default", 1);
+        let before = profile.play.clone();
+        let current = select_play_options_from_profile(&before);
+        let mut after = before.clone();
+        after.gauge = GaugeTypeConfig::AutoShift;
+        after.gauge_auto_shift = GaugeAutoShiftConfig::Continue;
+        after.bottom_shiftable_gauge = BottomShiftableGaugeConfig::Normal;
+        after.random = RandomOptionConfig::SRandom;
+        after.random2 = RandomOptionConfig::RRandom;
+        after.double_option = DoubleOptionConfig::Flip;
+        after.hs_fix = HsFixConfig::MainBpm;
+        after.target = TargetOptionConfig::RankAaa;
+        after.auto_play = true;
+
+        let synced = merge_changed_select_play_options_from_profile(current, &before, &after);
+
+        assert_eq!(synced.gauge, GaugeTypeConfig::ExHard);
+        assert_eq!(synced.gauge_auto_shift, GaugeAutoShiftConfig::BestClear);
+        assert_eq!(synced.bottom_shiftable_gauge, BottomShiftableGaugeConfig::Normal);
+        assert_eq!(synced.arrange, ArrangeOption::SRandom);
+        assert_eq!(synced.arrange_2p, ArrangeOption::RRandom);
+        assert_eq!(synced.double_option, DoubleOption::Flip);
+        assert_eq!(synced.hs_fix, HsFixOption::MainBpm);
+        assert_eq!(synced.target, TargetOption::RankAaa);
+        assert_eq!(synced.assist, AssistOption::Autoplay);
     }
 
     #[test]
