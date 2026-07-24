@@ -1203,7 +1203,7 @@ fn build_random_trainer_panel(
                         .sense(egui::Sense::click_and_drag());
                         if is_partial_random {
                             button = button.stroke(egui::Stroke::new(
-                                3.0,
+                                3.0_f32,
                                 egui::Color32::from_rgb(220, 80, 150),
                             ));
                         }
