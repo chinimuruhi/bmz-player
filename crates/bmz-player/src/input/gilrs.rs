@@ -28,6 +28,10 @@ impl GilrsBackend {
         Ok(Self { gilrs, analog: AnalogGamepadProcessor::new(sensitivity, scratch_threshold) })
     }
 
+    pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
+        self.analog.set_config(sensitivity, scratch_threshold);
+    }
+
     pub fn poll(&mut self) -> GilrsPollOutput {
         let mut output = GilrsPollOutput::default();
         self.analog.check_timeouts(Instant::now(), &mut output.buttons);

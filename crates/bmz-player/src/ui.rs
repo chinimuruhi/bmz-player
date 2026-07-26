@@ -31,9 +31,8 @@ use crate::config::profile_config::{
     HISPEED_STEP_MAX, HISPEED_STEP_MIN, HispeedModeConfig, HsFixConfig, IrConfig,
     IrCredentialStoreConfig, IrProviderConfig, IrProviderRoleConfig, IrSendPolicyConfig,
     JudgeAlgorithmConfig, LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX,
-    RandomOptionConfig, ReplaySlotRule, ScratchInputMode, SkinConfig, SkinHistoryEntryConfig,
-    SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
-    normalize_hispeed_step,
+    RandomOptionConfig, ReplaySlotRule, SkinConfig, SkinHistoryEntryConfig, SkinOffsetConfig,
+    TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
 };
 use crate::i18n::{AppLocale, FluentArgs, Localizer};
 use crate::ln_policy::LnPolicySetting;
@@ -4458,20 +4457,6 @@ fn build_profile_settings_panel(
             egui::CollapsingHeader::new(tr!(text, "profile-input-title"))
                 .id_salt("profile_input")
                 .show(ui, |ui| {
-                    egui::ComboBox::new("profile_scratch_mode", tr!(text, "profile-input-scratch"))
-                        .selected_text(scratch_input_mode_label(profile.input.scratch_mode))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut profile.input.scratch_mode,
-                                ScratchInputMode::Normal,
-                                scratch_input_mode_label(ScratchInputMode::Normal),
-                            );
-                            ui.selectable_value(
-                                &mut profile.input.scratch_mode,
-                                ScratchInputMode::AnyDirection,
-                                scratch_input_mode_label(ScratchInputMode::AnyDirection),
-                            );
-                        });
                     ui.add(
                         egui::Slider::new(&mut profile.input.analog_scratch_sensitivity, 0.1..=5.0)
                             .text(tr!(text, "profile-input-analog-sensitivity")),
@@ -5276,13 +5261,6 @@ fn hispeed_mode_label(value: HispeedModeConfig) -> &'static str {
     match value {
         HispeedModeConfig::Normal => "NORMAL",
         HispeedModeConfig::Floating => "FLOATING",
-    }
-}
-
-fn scratch_input_mode_label(value: ScratchInputMode) -> &'static str {
-    match value {
-        ScratchInputMode::Normal => "NORMAL",
-        ScratchInputMode::AnyDirection => "ANY DIRECTION",
     }
 }
 

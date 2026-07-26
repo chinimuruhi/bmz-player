@@ -14,6 +14,11 @@
 `GameInput (Windowsのみ)`から選べます。既定値と自動選択はgilrsを優先し、Windowsで
 gilrsを初期化できない場合はGameInputへfallbackします。backend変更は次回起動時、1P / 2Pの
 コントローラ割り当て変更は次回プレイ開始時から反映されます。
+ゲーム内設定またはF1メニューのプロファイル設定で変更したアナログ感度とアナログ停止閾値は、
+稼働中のゲームパッドbackendへ即時反映されます。
+旧 `Scratch Input Mode` 設定は使用しません。スクラッチ方向はキー設定の
+`Scratch Up` / `Scratch Down` 割り当てで指定し、既存profileの `scratch_mode` は読込時に
+無視され、次回保存時に削除されます。
 
 F1メニューの「Random Trainer」では、7K・1Pの通常`RANDOM`で使うレーン順を
 ドラッグ＆ドロップまたは正規・鏡・左右シフトで固定できます。設定はアプリ実行中だけ保持され、

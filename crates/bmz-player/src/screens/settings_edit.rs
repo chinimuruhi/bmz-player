@@ -9,7 +9,7 @@ use crate::config::profile_config::{
     DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig,
     HispeedModeConfig, HsFixConfig, InputActionConfig, JudgeAlgorithmConfig, LaneConfig,
     LaneEffectConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig, ReplaySlotRule,
-    ScratchDirectionConfig, ScratchInputMode, SelectInputModeConfig, TargetOptionConfig,
+    ScratchDirectionConfig, SelectInputModeConfig, TargetOptionConfig,
 };
 use crate::config::settings_registry::{
     SettingsEntryId, adjust_settings_value, eight_key_hispeed_lane, format_settings_value,
@@ -247,7 +247,6 @@ enum SettingsBaseline {
     HispeedMode(HispeedModeConfig),
     HispeedDirection(HispeedDirectionConfig),
     SelectInputMode(SelectInputModeConfig),
-    ScratchInputMode(ScratchInputMode),
     ReplaySlotRule(ReplaySlotRule),
 }
 
@@ -337,9 +336,6 @@ impl SettingsEditSession {
             }
             SettingsEntryId::SelectRandomSelect => {
                 SettingsBaseline::Bool(profile.select.random_select)
-            }
-            SettingsEntryId::ScratchInputMode => {
-                SettingsBaseline::ScratchInputMode(profile.input.scratch_mode)
             }
             SettingsEntryId::AnalogScratchSensitivity => {
                 SettingsBaseline::F32(profile.input.analog_scratch_sensitivity)
@@ -513,9 +509,6 @@ impl SettingsEditSession {
             (SettingsEntryId::SelectRandomSelect, SettingsBaseline::Bool(value)) => {
                 profile.select.random_select = *value;
             }
-            (SettingsEntryId::ScratchInputMode, SettingsBaseline::ScratchInputMode(value)) => {
-                profile.input.scratch_mode = *value;
-            }
             (SettingsEntryId::AnalogScratchSensitivity, SettingsBaseline::F32(value)) => {
                 profile.input.analog_scratch_sensitivity = *value;
             }
@@ -666,12 +659,6 @@ mod tests {
     #[test]
     fn edit_session_restore_reverts_input_and_replay_settings() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
-        let scratch_session =
-            SettingsEditSession::capture(&profile, SettingsEntryId::ScratchInputMode);
-        profile.input.scratch_mode = ScratchInputMode::AnyDirection;
-        scratch_session.restore(&mut profile);
-        assert_eq!(profile.input.scratch_mode, ScratchInputMode::Normal);
-
         let controller_bounce_session =
             SettingsEditSession::capture(&profile, SettingsEntryId::ControllerReleaseBounceMs);
         profile.input.controller_release_bounce_ms = 12;

@@ -199,6 +199,10 @@ impl GameInputBackend {
         })
     }
 
+    pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
+        self.analog.set_config(sensitivity, scratch_threshold);
+    }
+
     pub fn poll(&mut self) -> GamepadPollOutput {
         debug_assert_eq!(self.owner_thread, std::thread::current().id());
         let mut output = GamepadPollOutput::default();

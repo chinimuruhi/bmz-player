@@ -360,7 +360,6 @@ profile-display-lift-enabled = 啟用 LIFT
 profile-display-auto-adjust-hispeed = 軌道遮罩更改時按目前 BPM 自動調整 HS
 profile-display-green-number = 目標綠數字
 profile-input-title = 輸入
-profile-input-scratch = 轉盤
 profile-input-analog-sensitivity = 模擬輸入靈敏度
 profile-input-analog-stop-threshold = 模擬輸入停止臨界值
 profile-input-keyboard-release-bounce-ms = 鍵盤放開回彈過濾（毫秒）

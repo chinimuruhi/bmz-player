@@ -362,7 +362,6 @@ profile-display-lift-enabled = Enable LIFT
 profile-display-auto-adjust-hispeed = Adjust HS to the current BPM when lane cover changes
 profile-display-green-number = Target green number
 profile-input-title = Input
-profile-input-scratch = Scratch
 profile-input-analog-sensitivity = Analog sensitivity
 profile-input-analog-stop-threshold = Analog stop threshold
 profile-input-keyboard-release-bounce-ms = Keyboard release bounce filter (ms)

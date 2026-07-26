@@ -4,8 +4,8 @@ use super::profile_config::{
     DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX, HISPEED_STEP_MIN,
     HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, JudgeAlgorithmConfig, LaneConfig,
     LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX, RandomOptionConfig, ReplaySlotRule,
-    ScratchInputMode, SelectInputModeConfig, TargetOptionConfig, default_hispeed_step_fhs,
-    default_hispeed_step_nhs, normalize_hispeed_step,
+    SelectInputModeConfig, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
+    normalize_hispeed_step,
 };
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
@@ -54,7 +54,6 @@ pub enum SettingsEntryId {
     Hidden,
     TargetGreenNumber,
     SelectInputMode,
-    ScratchInputMode,
     AnalogScratchSensitivity,
     AnalogScratchThreshold,
     AnalogTicksPerScroll,
@@ -128,7 +127,6 @@ impl SettingsEntryId {
 
     pub const INPUT_ENTRIES: &'static [Self] = &[
         Self::SelectInputMode,
-        Self::ScratchInputMode,
         Self::AnalogScratchSensitivity,
         Self::AnalogScratchThreshold,
         Self::AnalogTicksPerScroll,
@@ -197,7 +195,6 @@ impl SettingsEntryId {
             Self::Hidden => "HIDDEN",
             Self::TargetGreenNumber => "GREEN NO.",
             Self::SelectInputMode => "SELECT INPUT",
-            Self::ScratchInputMode => "SCRATCH",
             Self::AnalogScratchSensitivity => "ANALOG SENS",
             Self::AnalogScratchThreshold => "ANALOG STOP",
             Self::AnalogTicksPerScroll => "ANALOG SCROLL",
@@ -289,7 +286,6 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::SelectInputMode => {
             profile.input.select_input_mode.display_label().to_string()
         }
-        SettingsEntryId::ScratchInputMode => format_scratch_input_mode(profile.input.scratch_mode),
         SettingsEntryId::AnalogScratchSensitivity => {
             format!("{:.1}", profile.input.analog_scratch_sensitivity)
         }
@@ -491,11 +487,6 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         SettingsEntryId::SelectInputMode => {
             cycle_enum(delta, profile.input.select_input_mode, cycle_select_input_mode)
                 .map(|next| profile.input.select_input_mode = next)
-                .is_some()
-        }
-        SettingsEntryId::ScratchInputMode => {
-            cycle_enum(delta, profile.input.scratch_mode, cycle_scratch_input_mode)
-                .map(|next| profile.input.scratch_mode = next)
                 .is_some()
         }
         SettingsEntryId::AnalogScratchSensitivity => {
@@ -805,13 +796,6 @@ fn format_hispeed_mode(value: HispeedModeConfig) -> String {
     }
 }
 
-fn format_scratch_input_mode(value: ScratchInputMode) -> String {
-    match value {
-        ScratchInputMode::Normal => "NORMAL".to_string(),
-        ScratchInputMode::AnyDirection => "ANY DIRECTION".to_string(),
-    }
-}
-
 fn format_replay_slot_rule(value: ReplaySlotRule) -> String {
     match value {
         ReplaySlotRule::Disabled => "DISABLED".to_string(),
@@ -981,12 +965,6 @@ fn cycle_bga_expand(current: BgaExpandConfig, forward: bool) -> BgaExpandConfig 
 
 fn cycle_hispeed_mode(current: HispeedModeConfig, forward: bool) -> HispeedModeConfig {
     const VALUES: [HispeedModeConfig; 2] = [HispeedModeConfig::Normal, HispeedModeConfig::Floating];
-    cycle_in_slice(&VALUES, current, forward)
-}
-
-fn cycle_scratch_input_mode(current: ScratchInputMode, forward: bool) -> ScratchInputMode {
-    const VALUES: [ScratchInputMode; 2] =
-        [ScratchInputMode::Normal, ScratchInputMode::AnyDirection];
     cycle_in_slice(&VALUES, current, forward)
 }
 
@@ -1213,13 +1191,6 @@ mod tests {
         assert_eq!(
             profile.input.select_input_mode,
             crate::config::profile_config::SelectInputModeConfig::Key9
-        );
-
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::ScratchInputMode), "NORMAL");
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::ScratchInputMode, 1));
-        assert_eq!(
-            profile.input.scratch_mode,
-            crate::config::profile_config::ScratchInputMode::AnyDirection
         );
 
         assert!(profile.replay.auto_save);

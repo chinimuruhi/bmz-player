@@ -175,6 +175,16 @@ pub enum GamepadBackend {
 }
 
 impl GamepadBackend {
+    pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
+        match self {
+            Self::Gilrs(backend) => backend.set_analog_config(sensitivity, scratch_threshold),
+            #[cfg(windows)]
+            Self::GameInput(backend) => {
+                backend.set_analog_config(sensitivity, scratch_threshold);
+            }
+        }
+    }
+
     pub fn poll(&mut self) -> GamepadPollOutput {
         match self {
             Self::Gilrs(backend) => backend.poll(),
@@ -238,6 +248,11 @@ impl AnalogGamepadProcessor {
             tick_max_size: BASE_TICK_MAX_SIZE / sensitivity.max(0.01),
             scratch_threshold: clamp_analog_scratch_threshold(scratch_threshold),
         }
+    }
+
+    pub fn set_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
+        self.tick_max_size = BASE_TICK_MAX_SIZE / sensitivity.max(0.01);
+        self.scratch_threshold = clamp_analog_scratch_threshold(scratch_threshold);
     }
 
     pub fn process_axis(
@@ -584,6 +599,18 @@ mod tests {
         assert_eq!(button_events(&events), vec![("Axis1+".to_string(), false)]);
         state.apply_movement(-2, "Axis1", device_id, event_timestamp(32), 100, &mut events);
         assert_eq!(button_events(&events).last(), Some(&("Axis1-".to_string(), true)));
+    }
+
+    #[test]
+    fn analog_config_updates_without_resetting_axis_state() {
+        let mut processor = AnalogGamepadProcessor::new(1.0, 100);
+        processor.axis_prev.insert((DeviceId(16), 1), 0.5);
+
+        processor.set_config(2.0, 250);
+
+        assert_eq!(processor.tick_max_size, BASE_TICK_MAX_SIZE / 2.0);
+        assert_eq!(processor.scratch_threshold, 250);
+        assert_eq!(processor.axis_prev.get(&(DeviceId(16), 1)), Some(&0.5));
     }
 
     #[test]

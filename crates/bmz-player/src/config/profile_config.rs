@@ -443,6 +443,8 @@ pub struct PlayModeInputConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileInputConfig {
+    /// 旧 profile の読込互換用。入力動作には使用せず、保存時は出力しない。
+    #[serde(default, skip_serializing)]
     pub scratch_mode: ScratchInputMode,
     #[serde(default)]
     pub select_input_mode: SelectInputModeConfig,
@@ -552,9 +554,10 @@ pub enum InputActionConfig {
     SelectSameFolder,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub enum ScratchInputMode {
+    #[default]
     Normal,
     AnyDirection,
 }
@@ -1867,6 +1870,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(input.start_key.as_deref(), Some("E"));
+        assert_eq!(input.scratch_mode, ScratchInputMode::Normal);
         assert_eq!(input.legacy_bindings[0].lane, Some(LaneConfig::Key1));
         assert_eq!(input.analog_scratch_timeout_ms, 500);
         assert_eq!(input.analog_scratch_threshold, default_analog_scratch_threshold());
@@ -1881,6 +1885,7 @@ mod tests {
         let toml = toml::to_string(&profile.input).unwrap();
 
         assert!(!toml.contains("start_key"));
+        assert!(!toml.contains("scratch_mode"));
         assert!(!toml.contains("analog_scratch_timeout_ms"));
         assert!(toml.contains("analog_scratch_threshold = 100"));
         assert!(toml.contains("keyboard_release_bounce_ms = 0"));

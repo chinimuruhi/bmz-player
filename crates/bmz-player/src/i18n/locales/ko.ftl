@@ -359,7 +359,6 @@ profile-display-lift-enabled = LIFT 사용
 profile-display-auto-adjust-hispeed = 레인 커버 변경 시 현재 BPM에 맞춰 HS 자동 조정
 profile-display-green-number = 목표 그린 넘버
 profile-input-title = 입력
-profile-input-scratch = 스크래치
 profile-input-analog-sensitivity = 아날로그 감도
 profile-input-analog-stop-threshold = 아날로그 정지 임계값
 profile-input-keyboard-release-bounce-ms = 키보드 릴리스 바운스 제거 (ms)

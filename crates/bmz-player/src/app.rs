@@ -5039,8 +5039,39 @@ impl WinitApp {
             self.select_keys = SelectKeyBindings::from_profile(&self.boot.profile_config.input);
             self.sync_select_holds_from_pressed_controls();
         }
+        if matches!(
+            entry_id,
+            SettingsEntryId::AnalogScratchSensitivity | SettingsEntryId::AnalogScratchThreshold
+        ) {
+            self.apply_gamepad_analog_config();
+        }
         if SettingsEntryId::VOLUME_ENTRIES.contains(&entry_id) {
             self.sync_realtime_profile_settings();
+        }
+    }
+
+    fn sync_changed_gamepad_analog_config_from_profile(&mut self, before: &ProfileInputConfig) {
+        let after = &self.boot.profile_config.input;
+        if before.analog_scratch_sensitivity == after.analog_scratch_sensitivity
+            && before.analog_scratch_threshold == after.analog_scratch_threshold
+        {
+            return;
+        }
+        self.apply_gamepad_analog_config();
+    }
+
+    fn apply_gamepad_analog_config(&mut self) {
+        let input = &self.boot.profile_config.input;
+        if let Some(gamepad) = &mut self.gamepad {
+            gamepad.set_analog_config(
+                input.analog_scratch_sensitivity,
+                input.analog_scratch_threshold,
+            );
+            tracing::info!(
+                sensitivity = input.analog_scratch_sensitivity,
+                threshold = input.analog_scratch_threshold,
+                "applied analog scratch settings"
+            );
         }
     }
 
@@ -14063,6 +14094,7 @@ impl WinitApp {
         };
         let play_profile_before_egui = self.boot.profile_config.play.clone();
         let lane_profile_before_egui = self.boot.profile_config.lane.clone();
+        let input_profile_before_egui = self.boot.profile_config.input.clone();
         let output = egui.run(
             &window,
             EguiRunContext {
@@ -14096,6 +14128,7 @@ impl WinitApp {
         }
         self.renderer.set_egui_frame(output.frame);
         self.sync_changed_select_play_options_from_profile(&play_profile_before_egui);
+        self.sync_changed_gamepad_analog_config_from_profile(&input_profile_before_egui);
         if profile_lane_settings_changed(&lane_profile_before_egui, &self.boot.profile_config.lane)
         {
             self.sync_active_play_lane_settings_from_profile(&lane_profile_before_egui);
@@ -14167,7 +14200,7 @@ impl WinitApp {
             }
         }
         if output.reset_skin_config {
-            self.reset_profile_config_from_disk();
+            self.reset_skin_config_from_disk();
         } else if output.skin_reload_request.any() {
             if output.skin_reload_request.offsets {
                 self.apply_profile_skin_offsets_to_active_play();
@@ -14280,19 +14313,10 @@ impl WinitApp {
         defs
     }
 
-    fn reset_profile_config_from_disk(&mut self) {
-        let locale_before = self.boot.profile_config.ui.locale();
-        let play_before = self.boot.profile_config.play.clone();
+    fn reset_skin_config_from_disk(&mut self) {
         match load_profile_config(&self.boot.profile_paths.profile_toml) {
             Ok(profile) => {
-                self.boot.profile_config = profile;
-                self.sync_changed_select_play_options_from_profile(&play_before);
-                let locale_after = self.boot.profile_config.ui.locale();
-                if locale_after != locale_before {
-                    self.renderer.set_default_font_coverage(locale_after.font_coverage());
-                    self.search_message = None;
-                    self.reload_select_items();
-                }
+                replace_skin_config_from_loaded_profile(&mut self.boot.profile_config, profile);
                 self.apply_profile_skin_offsets_to_active_play();
                 self.reload_skins(SkinReloadRequest {
                     select: true,
@@ -14309,13 +14333,13 @@ impl WinitApp {
                     play14: true,
                     offsets: true,
                 });
-                tracing::info!("profile config reset from profile.toml");
+                tracing::info!("skin config reset from profile.toml");
             }
             Err(error) => {
                 tracing::error!(
                     path = %self.boot.profile_paths.profile_toml.display(),
                     %error,
-                    "failed to reset profile config from profile.toml"
+                    "failed to reset skin config from profile.toml"
                 );
             }
         }
@@ -19495,6 +19519,14 @@ fn select_play_options_from_profile(play: &PlayDefaultsConfig) -> CurrentPlayOpt
         hs_fix: hs_fix_option_from_profile(play.hs_fix),
         assist: if play.auto_play { AssistOption::Autoplay } else { AssistOption::Normal },
     }
+}
+
+/// `profile.toml` の保存済みスキン設定だけを現在のprofileへ戻す。
+///
+/// スキンUIのリセットで、同じファイルに保存されているプレイ・入力・UI設定まで
+/// 巻き戻さないため、`ProfileConfig` 全体は差し替えない。
+fn replace_skin_config_from_loaded_profile(current: &mut ProfileConfig, loaded: ProfileConfig) {
+    current.skin = loaded.skin;
 }
 
 fn merge_changed_select_play_options_from_profile(
@@ -27522,6 +27554,30 @@ mod tests {
         assert_eq!(synced.hs_fix, HsFixOption::MainBpm);
         assert_eq!(synced.target, TargetOption::RankAaa);
         assert_eq!(synced.assist, AssistOption::Autoplay);
+    }
+
+    #[test]
+    fn loaded_skin_reset_preserves_non_skin_profile_settings() {
+        let mut current = ProfileConfig::new_default("default", "Current", 1);
+        current.play.random = RandomOptionConfig::SRandom;
+        current.input.analog_scratch_sensitivity = 2.5;
+        current.ui.show_fps = true;
+        current.skin.select = "current/select.json".to_string();
+
+        let mut loaded = ProfileConfig::new_default("default", "Disk", 2);
+        loaded.play.random = RandomOptionConfig::Mirror;
+        loaded.input.analog_scratch_sensitivity = 0.5;
+        loaded.ui.show_fps = false;
+        loaded.skin.select = "disk/select.json".to_string();
+
+        replace_skin_config_from_loaded_profile(&mut current, loaded);
+
+        assert_eq!(current.display_name, "Current");
+        assert_eq!(current.updated_at, 1);
+        assert_eq!(current.play.random, RandomOptionConfig::SRandom);
+        assert_eq!(current.input.analog_scratch_sensitivity, 2.5);
+        assert!(current.ui.show_fps);
+        assert_eq!(current.skin.select, "disk/select.json");
     }
 
     #[test]

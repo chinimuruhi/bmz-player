@@ -565,13 +565,14 @@ mod tests {
     }
 
     #[test]
-    fn settings_input_lists_scratch_entries() {
+    fn settings_input_lists_supported_entries() {
         let items = load_settings_items(CONFIG_INPUT_PATH);
         assert_eq!(items.len(), SettingsEntryId::INPUT_ENTRIES.len() + 1);
         assert!(matches!(items.first(), Some(SelectItem::SettingsBack)));
         assert!(items.iter().any(|item| matches!(
             item,
-            SelectItem::Config(row) if row.entry_id == SettingsEntryId::ScratchInputMode
+            SelectItem::Config(row)
+                if row.entry_id == SettingsEntryId::AnalogScratchSensitivity
         )));
         assert!(items.iter().any(|item| matches!(
             item,

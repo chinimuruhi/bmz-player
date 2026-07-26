@@ -359,7 +359,6 @@ profile-display-lift-enabled = LIFTを有効にする
 profile-display-auto-adjust-hispeed = レーンカバー変更時に現在BPMへHSを自動調整
 profile-display-green-number = 緑数字ターゲット
 profile-input-title = 入力
-profile-input-scratch = スクラッチ
 profile-input-analog-sensitivity = アナログ感度
 profile-input-analog-stop-threshold = アナログ停止閾値
 profile-input-keyboard-release-bounce-ms = キーボード リリース後バウンス除去 (ms)
