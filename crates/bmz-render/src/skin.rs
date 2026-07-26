@@ -4943,14 +4943,12 @@ impl SkinDocumentRenderExt for SkinDocument {
             ..SkinTextState::default()
         };
         let destinations = destination_entries(&songlist.text, enabled_options);
-        let Some(destination) = destinations
-            .get(select_row_bar_text_index(row))
-            .or_else(|| {
-                select_row_bar_text_fallback_index(row).and_then(|index| destinations.get(index))
-            })
-            .or_else(|| destinations.first())
-            .copied()
-        else {
+        let Some(destination) = select_row_slot_with_fallbacks(
+            &destinations,
+            select_row_bar_text_index(row),
+            select_row_bar_text_fallback_indices(row),
+        )
+        .copied() else {
             return items;
         };
         {
@@ -4978,14 +4976,11 @@ impl SkinDocumentRenderExt for SkinDocument {
     ) -> Option<SkinRenderItem> {
         let imageset = self.imageset.iter().find(|set| set.id == destination.id)?;
         let image_index = select_row_bar_image_index(row);
-        let image_id = imageset
-            .images
-            .get(image_index)
-            .or_else(|| {
-                select_row_bar_image_fallback_index(row)
-                    .and_then(|index| imageset.images.get(index))
-            })
-            .or_else(|| imageset.images.first())?;
+        let image_id = select_row_slot_with_fallbacks(
+            &imageset.images,
+            image_index,
+            select_row_bar_image_fallback_indices(row),
+        )?;
         let image = self.image.iter().find(|image| image.id == *image_id)?;
         let source = resolve_document_source(sources, &image.src)?;
         let elapsed =
@@ -11934,14 +11929,14 @@ fn select_row_bar_image_index(row: &SelectRowSnapshot) -> usize {
     }
 }
 
-fn select_row_bar_image_fallback_index(row: &SelectRowSnapshot) -> Option<usize> {
+fn select_row_bar_image_fallback_indices(row: &SelectRowSnapshot) -> &'static [usize] {
     match row.kind {
-        SelectRowKind::SearchFolder => Some(1),
+        SelectRowKind::SearchFolder => &[1],
         SelectRowKind::SettingsRoot
         | SelectRowKind::SettingsBack
-        | SelectRowKind::SettingsClose => Some(6),
-        SelectRowKind::SettingsFolder => Some(1),
-        _ => None,
+        | SelectRowKind::SettingsClose => &[6, 1],
+        SelectRowKind::SettingsFolder => &[1],
+        _ => &[],
     }
 }
 
@@ -11963,15 +11958,26 @@ fn select_row_bar_text_index(row: &SelectRowSnapshot) -> usize {
     }
 }
 
-fn select_row_bar_text_fallback_index(row: &SelectRowSnapshot) -> Option<usize> {
+fn select_row_bar_text_fallback_indices(row: &SelectRowSnapshot) -> &'static [usize] {
     match row.kind {
-        SelectRowKind::SearchFolder => Some(4),
+        SelectRowKind::SearchFolder => &[4],
         SelectRowKind::SettingsRoot
         | SelectRowKind::SettingsBack
-        | SelectRowKind::SettingsClose => Some(10),
-        SelectRowKind::SettingsFolder => Some(4),
-        _ => None,
+        | SelectRowKind::SettingsClose => &[10, 4],
+        SelectRowKind::SettingsFolder => &[4],
+        _ => &[],
     }
+}
+
+fn select_row_slot_with_fallbacks<'a, T>(
+    slots: &'a [T],
+    primary_index: usize,
+    fallback_indices: &[usize],
+) -> Option<&'a T> {
+    slots
+        .get(primary_index)
+        .or_else(|| fallback_indices.iter().find_map(|&index| slots.get(index)))
+        .or_else(|| slots.first())
 }
 
 fn select_row_clear_index(row: &SelectRowSnapshot) -> usize {
@@ -14910,19 +14916,35 @@ mod tests {
 
         assert_eq!(select_row_bar_image_index(&search), 6);
         assert_eq!(select_row_bar_text_index(&search), 10);
-        assert_eq!(select_row_bar_image_fallback_index(&search), Some(1));
-        assert_eq!(select_row_bar_text_fallback_index(&search), Some(4));
-        for (row, image, text, fallback_image, fallback_text) in [
-            (&settings_root, 7, 11, 6, 10),
-            (&settings_folder, 7, 11, 1, 4),
-            (&settings_back, 8, 12, 6, 10),
-            (&settings_close, 9, 13, 6, 10),
-        ] {
+        assert_eq!(select_row_bar_image_fallback_indices(&search), &[1]);
+        assert_eq!(select_row_bar_text_fallback_indices(&search), &[4]);
+        let cases: [(&SelectRowSnapshot, usize, usize, &[usize], &[usize]); 4] = [
+            (&settings_root, 7, 11, &[6, 1], &[10, 4]),
+            (&settings_folder, 7, 11, &[1], &[4]),
+            (&settings_back, 8, 12, &[6, 1], &[10, 4]),
+            (&settings_close, 9, 13, &[6, 1], &[10, 4]),
+        ];
+        for (row, image, text, fallback_images, fallback_texts) in cases {
             assert_eq!(select_row_bar_image_index(row), image);
             assert_eq!(select_row_bar_text_index(row), text);
-            assert_eq!(select_row_bar_image_fallback_index(row), Some(fallback_image));
-            assert_eq!(select_row_bar_text_fallback_index(row), Some(fallback_text));
+            assert_eq!(select_row_bar_image_fallback_indices(row), fallback_images);
+            assert_eq!(select_row_bar_text_fallback_indices(row), fallback_texts);
         }
+    }
+
+    #[test]
+    fn select_row_slot_fallbacks_reach_legacy_folder_before_first_slot() {
+        let dedicated_slots: Vec<_> = (0..10).collect();
+        assert_eq!(select_row_slot_with_fallbacks(&dedicated_slots, 8, &[6, 1]).copied(), Some(8));
+
+        let search_slots: Vec<_> = (0..7).collect();
+        assert_eq!(select_row_slot_with_fallbacks(&search_slots, 8, &[6, 1]).copied(), Some(6));
+
+        let folder_slots: Vec<_> = (0..2).collect();
+        assert_eq!(select_row_slot_with_fallbacks(&folder_slots, 8, &[6, 1]).copied(), Some(1));
+
+        assert_eq!(select_row_slot_with_fallbacks(&[0], 8, &[6, 1]).copied(), Some(0));
+        assert_eq!(select_row_slot_with_fallbacks::<usize>(&[], 8, &[6, 1]), None);
     }
 
     #[test]
