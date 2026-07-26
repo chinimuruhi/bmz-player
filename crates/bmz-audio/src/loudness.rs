@@ -5,11 +5,8 @@ use bmz_core::time::TimeUs;
 
 use crate::sample::{DecodedSample, SampleBank};
 
-/// Analysis / DB に保存する `normalization_gain` の基準 loudness。
-/// 既存キャッシュ互換のため変更しない。
-const ANALYSIS_TARGET_LUFS: f32 = -12.0;
 /// プレイ再生に適用する正規化の目標 loudness。
-/// 解析値は変えず、適用時だけこの目標へ再計算する。
+/// DBには loudness だけを保存し、適用時にこの目標へ変換する。
 pub const PLAY_TARGET_LUFS: f32 = -6.0;
 /// 選曲プレビューに適用する正規化の目標 loudness。
 /// プレイ再生と同じ目標値を使う。
@@ -22,7 +19,6 @@ const ANALYSIS_CHUNK_FRAMES: usize = 2048;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChartLoudnessAnalysis {
     pub loudness_lufs: f32,
-    pub normalization_gain: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -119,8 +115,7 @@ pub fn analyze_chart_loudness(
     if !loudness_lufs.is_finite() {
         return None;
     }
-    let normalization_gain = normalization_gain_for_loudness(loudness_lufs);
-    Some(ChartLoudnessAnalysis { loudness_lufs, normalization_gain })
+    Some(ChartLoudnessAnalysis { loudness_lufs })
 }
 
 /// Decode 済みの選曲プレビューを解析し、loudness と sample peak の両方を満たす
@@ -157,13 +152,8 @@ pub fn analyze_preview_loudness(sample: &DecodedSample) -> Option<PreviewLoudnes
     Some(PreviewLoudnessAnalysis { loudness_lufs, peak_abs, normalization_gain })
 }
 
-/// Analysis / DB 用: `ANALYSIS_TARGET_LUFS` (-12) 基準の下げのみゲイン。
-pub fn normalization_gain_for_loudness(loudness_lufs: f32) -> f32 {
-    normalization_gain_for_target(loudness_lufs, ANALYSIS_TARGET_LUFS)
-}
-
 /// プレイ適用用: `PLAY_TARGET_LUFS` (-6) 基準の下げのみゲイン。
-/// DB の `loudness_lufs` から再計算し、保存済み `normalization_gain` は使わない。
+/// DB の `loudness_lufs` から毎回導出する。
 pub fn play_normalization_gain_for_loudness(loudness_lufs: f32) -> f32 {
     normalization_gain_for_target(loudness_lufs, PLAY_TARGET_LUFS)
 }
@@ -258,13 +248,6 @@ mod tests {
     use crate::sample::{DecodedSample, SampleBank};
 
     #[test]
-    fn normalization_gain_reduces_loud_charts() {
-        let gain = normalization_gain_for_loudness(-6.0);
-        assert!(gain < 1.0);
-        assert!((gain - 10.0f32.powf(-6.0 / 20.0)).abs() < 0.001);
-    }
-
-    #[test]
     fn play_normalization_gain_uses_minus_six_target() {
         let at_target = play_normalization_gain_for_loudness(PLAY_TARGET_LUFS);
         assert!((at_target - 1.0).abs() < 0.001);
@@ -276,9 +259,7 @@ mod tests {
         assert!((louder - 10.0f32.powf(-6.0 / 20.0)).abs() < 0.001);
         assert!(louder < 1.0);
 
-        let analysis_gain = normalization_gain_for_loudness(-6.0);
         let play_gain = play_normalization_gain_for_loudness(-6.0);
-        assert!(analysis_gain < play_gain);
         assert!((play_gain - 1.0).abs() < 0.001);
     }
 
@@ -373,8 +354,9 @@ mod tests {
 
         let result = analyze_chart_loudness(&chart, &samples, 48_000).unwrap();
         assert!(result.loudness_lufs.is_finite());
-        assert!(result.normalization_gain > 0.0);
-        assert!(result.normalization_gain <= 1.0);
+        let gain = play_normalization_gain_for_loudness(result.loudness_lufs);
+        assert!(gain > 0.0);
+        assert!(gain <= 1.0);
     }
 
     fn chart() -> PlayableChart {

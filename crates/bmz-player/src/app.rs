@@ -1848,7 +1848,7 @@ struct PlayMediaCache {
     chart_id: i64,
     /// Present for SameArrange reuse of the exact chart Arc.
     chart: Option<std::sync::Arc<PlayableChart>>,
-    normalization_gain: f32,
+    chart_normalization_gain: f32,
     applied_arrange: Option<crate::screens::play_session::AppliedArrange>,
     score_key: Option<crate::storage::score_db::ScoreKey>,
     bga_frames: BgaFrameCatalog,
@@ -4888,8 +4888,10 @@ impl WinitApp {
             return;
         };
         let entry_id = session.entry_id;
+        let score_context_before = SelectScoreContext::from_profile(&self.boot.profile_config);
         session.restore(&mut self.boot.profile_config);
         self.sync_select_settings_from_profile_if_needed(entry_id);
+        self.sync_changed_select_score_context(score_context_before);
         self.play_system_sound(crate::system_sound::SoundType::FolderClose);
         tracing::info!(?entry_id, "settings edit cancelled");
     }
@@ -4909,8 +4911,11 @@ impl WinitApp {
             }
             Err(error) => {
                 tracing::error!(%error, ?entry_id, "failed to save settings");
+                let score_context_before =
+                    SelectScoreContext::from_profile(&self.boot.profile_config);
                 session.restore(&mut self.boot.profile_config);
                 self.sync_select_settings_from_profile_if_needed(entry_id);
+                self.sync_changed_select_score_context(score_context_before);
             }
         }
     }
@@ -5027,8 +5032,10 @@ impl WinitApp {
         };
         let entry_id = session.entry_id;
         let delta = direction * crate::config::settings_registry::settings_adjust_step(entry_id);
+        let score_context_before = SelectScoreContext::from_profile(&self.boot.profile_config);
         if adjust_settings_draft(&mut self.boot.profile_config, session, delta) {
             self.sync_select_settings_from_profile_if_needed(entry_id);
+            self.sync_changed_select_score_context(score_context_before);
             self.play_system_sound(crate::system_sound::SoundType::OptionChange);
         }
     }
@@ -5098,6 +5105,24 @@ impl WinitApp {
             self.set_select_play_options(next);
             tracing::info!("applied profile play settings to select options");
         }
+    }
+
+    fn sync_changed_select_score_context(&mut self, before: SelectScoreContext) {
+        let after = SelectScoreContext::from_profile(&self.boot.profile_config);
+        if before == after {
+            return;
+        }
+
+        self.sync_select_folder_summary_score_context();
+        self.reload_select_items();
+        self.invalidate_play_preload();
+        // Result画面からのリトライ用cacheも古いscore key / LN変換済みchartを持つ。
+        self.play_media_cache = None;
+        tracing::info!(
+            rule_mode = after.rule_mode.as_str(),
+            ln_mode = after.ln_mode_policy.display_label(),
+            "applied profile score context to select"
+        );
     }
 
     fn current_select_play_options(&self) -> CurrentPlayOptions {
@@ -7107,13 +7132,13 @@ impl WinitApp {
     }
 
     fn cycle_select_ln_mode(&mut self, arg: i32) {
+        let score_context_before = SelectScoreContext::from_profile(&self.boot.profile_config);
         self.boot.profile_config.play.ln_mode_policy = if arg >= 0 {
             self.boot.profile_config.play.ln_mode_policy.next()
         } else {
             self.boot.profile_config.play.ln_mode_policy.previous()
         };
-        self.reload_select_items();
-        self.invalidate_play_preload();
+        self.sync_changed_select_score_context(score_context_before);
         tracing::info!(
             ln_mode = self.boot.profile_config.play.ln_mode_policy.display_label(),
             "select LN mode policy changed"
@@ -9263,7 +9288,6 @@ impl WinitApp {
         let app_config = self.play_session_app_config();
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
-        let normalize_chart_volume = self.boot.profile_config.audio_mix.normalize_chart_volume;
         let input = SharedInputBackend::default();
         let preload_input = input.clone();
         let audio_progress = Arc::new(AtomicU32::new(0));
@@ -9288,7 +9312,6 @@ impl WinitApp {
                             &library_db,
                             chart_id,
                             session_options.clone(),
-                            normalize_chart_volume,
                             |arrange| {
                                 let _ = worker_applied_arrange.set(arrange.clone());
                             },
@@ -10816,7 +10839,7 @@ impl WinitApp {
         Some(PlayMediaCache {
             chart_id,
             chart,
-            normalization_gain: active.running.session.audio_mix.normalization_gain,
+            chart_normalization_gain: active.running.session.audio_mix.chart_normalization_gain,
             applied_arrange,
             score_key,
             bga_frames: active.running.bga_frames.clone(),
@@ -10834,7 +10857,7 @@ impl WinitApp {
         self.play_media_cache = Some(PlayMediaCache {
             chart_id,
             chart: Some(Arc::clone(&running.session.chart)),
-            normalization_gain: running.session.audio_mix.normalization_gain,
+            chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
             applied_arrange: Some(running.applied_arrange.clone()),
             score_key: Some(running.score_key),
             bga_frames: running.bga_frames.clone(),
@@ -10897,7 +10920,6 @@ impl WinitApp {
         let app_config = self.play_session_app_config();
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
-        let normalize_chart_volume = self.boot.profile_config.audio_mix.normalize_chart_volume;
         let input = SharedInputBackend::default();
         let preload_input = input.clone();
         let audio_progress = Arc::new(AtomicU32::new(0));
@@ -10922,7 +10944,6 @@ impl WinitApp {
                             &library_db,
                             chart_id,
                             session_options.clone(),
-                            normalize_chart_volume,
                             |arrange| {
                                 let _ = worker_applied_arrange.set(arrange.clone());
                             },
@@ -10970,7 +10991,7 @@ impl WinitApp {
         let applied_arrange =
             cache.applied_arrange.clone().expect("SameArrange cache includes applied arrange");
         let score_key = cache.score_key.expect("SameArrange cache includes score key");
-        let normalization_gain = cache.normalization_gain;
+        let chart_normalization_gain = cache.chart_normalization_gain;
 
         self.play_preload_generation = self.play_preload_generation.wrapping_add(1);
         let generation = self.play_preload_generation;
@@ -10997,7 +11018,7 @@ impl WinitApp {
                     preload_play_session_reloading_audio_with_progress(
                         chart,
                         sample_rate,
-                        normalization_gain,
+                        chart_normalization_gain,
                         applied_arrange,
                         score_key,
                         |loaded, total| {
@@ -14128,6 +14149,9 @@ impl WinitApp {
         }
         self.renderer.set_egui_frame(output.frame);
         self.sync_changed_select_play_options_from_profile(&play_profile_before_egui);
+        self.sync_changed_select_score_context(SelectScoreContext::from_play(
+            &play_profile_before_egui,
+        ));
         self.sync_changed_gamepad_analog_config_from_profile(&input_profile_before_egui);
         if profile_lane_settings_changed(&lane_profile_before_egui, &self.boot.profile_config.lane)
         {
@@ -14263,14 +14287,11 @@ impl WinitApp {
     fn sync_active_play_realtime_profile_settings(&mut self) {
         if let Some(active_play) = &mut self.active_play {
             let session = &mut active_play.running.session;
-            let normalization_gain = if self.boot.profile_config.audio_mix.normalize_chart_volume {
-                session.audio_mix.normalization_gain
-            } else {
-                1.0
-            };
-            session.audio_mix =
-                crate::config::play::audio_mix_from_profile(&self.boot.profile_config);
-            session.audio_mix.normalization_gain = normalization_gain;
+            let chart_normalization_gain = session.audio_mix.chart_normalization_gain;
+            session.audio_mix = crate::config::play::audio_mix_from_profile_with_chart_gain(
+                &self.boot.profile_config,
+                chart_normalization_gain,
+            );
             session.offsets =
                 crate::config::play::play_offsets_from_profile(&self.boot.profile_config);
             session.input_offset_auto_adjust_enabled =
@@ -19500,6 +19521,22 @@ struct CurrentPlayOptions {
     double_option: DoubleOption,
     hs_fix: HsFixOption,
     assist: AssistOption,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SelectScoreContext {
+    rule_mode: RuleMode,
+    ln_mode_policy: LnPolicySetting,
+}
+
+impl SelectScoreContext {
+    fn from_profile(profile: &ProfileConfig) -> Self {
+        Self::from_play(&profile.play)
+    }
+
+    fn from_play(play: &PlayDefaultsConfig) -> Self {
+        Self { rule_mode: play.rule_mode, ln_mode_policy: play.ln_mode_policy }
+    }
 }
 
 fn select_play_options_from_profile(play: &PlayDefaultsConfig) -> CurrentPlayOptions {
@@ -27554,6 +27591,24 @@ mod tests {
         assert_eq!(synced.hs_fix, HsFixOption::MainBpm);
         assert_eq!(synced.target, TargetOption::RankAaa);
         assert_eq!(synced.assist, AssistOption::Autoplay);
+    }
+
+    #[test]
+    fn select_score_context_changes_only_for_rule_or_ln_mode() {
+        let profile = ProfileConfig::new_default("default", "Default", 1);
+        let before = SelectScoreContext::from_profile(&profile);
+
+        let mut random_changed = profile.clone();
+        random_changed.play.random = RandomOptionConfig::Mirror;
+        assert_eq!(before, SelectScoreContext::from_profile(&random_changed));
+
+        let mut rule_changed = profile.clone();
+        rule_changed.play.rule_mode = RuleMode::Dx;
+        assert_ne!(before, SelectScoreContext::from_profile(&rule_changed));
+
+        let mut ln_changed = profile;
+        ln_changed.play.ln_mode_policy = LnPolicySetting::ForceCn;
+        assert_ne!(before, SelectScoreContext::from_profile(&ln_changed));
     }
 
     #[test]

@@ -545,6 +545,10 @@ mod tests {
             item,
             SelectItem::Config(row) if row.entry_id == SettingsEntryId::LnModePolicy
         )));
+        assert!(!items.iter().any(|item| matches!(
+            item,
+            SelectItem::Config(row) if row.entry_id == SettingsEntryId::Assist
+        )));
     }
 
     #[test]

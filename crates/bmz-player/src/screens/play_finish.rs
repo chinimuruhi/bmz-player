@@ -1098,7 +1098,8 @@ mod tests {
             input_offset_auto_adjust: None,
             audio_mix: PlayAudioMix {
                 master_volume: 1.0,
-                normalization_gain: 1.0,
+                chart_normalization_gain: 1.0,
+                normalize_chart_volume: true,
                 key_volume: 1.0,
                 bgm_volume: 1.0,
             },

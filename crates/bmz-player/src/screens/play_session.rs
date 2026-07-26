@@ -171,7 +171,7 @@ pub struct PreloadedPlaySession {
     pub chart: Arc<PlayableChart>,
     pub audio: AudioEngine,
     pub sample_report: Vec<LoadedSampleReport>,
-    pub normalization_gain: f32,
+    pub chart_normalization_gain: f32,
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
 }
@@ -939,7 +939,6 @@ pub fn load_prepared_play_session_for_chart_with_input_backend(
         library_db,
         chart_id,
         PlaySessionOptions { rule_mode: profile.play.rule_mode, ..options.clone() },
-        profile.audio_mix.normalize_chart_volume,
     )?;
     Ok(build_prepared_play_session_from_preloaded(preloaded, profile, options, input_backend))
 }
@@ -948,29 +947,20 @@ pub fn preload_play_session_for_chart(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
-    normalize_chart_volume: bool,
 ) -> Result<PreloadedPlaySession> {
-    preload_play_session_for_chart_with_progress(
-        library_db,
-        chart_id,
-        options,
-        normalize_chart_volume,
-        |_, _| {},
-    )
+    preload_play_session_for_chart_with_progress(library_db, chart_id, options, |_, _| {})
 }
 
 pub fn preload_play_session_for_chart_with_progress(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
-    normalize_chart_volume: bool,
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
     preload_play_session_for_chart_with_callbacks(
         library_db,
         chart_id,
         options,
-        normalize_chart_volume,
         |_| {},
         on_progress,
     )
@@ -983,7 +973,6 @@ pub fn preload_play_session_for_chart_with_callbacks(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
-    normalize_chart_volume: bool,
     on_arrange: impl FnOnce(&AppliedArrange),
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
@@ -997,19 +986,14 @@ pub fn preload_play_session_for_chart_with_callbacks(
         &mut loader,
         on_progress,
     );
-    let normalization_gain = load_or_compute_normalization_gain(
-        library_db,
-        chart_id,
-        normalize_chart_volume,
-        &chart,
-        &audio,
-    )?;
+    let chart_normalization_gain =
+        load_or_compute_chart_normalization_gain(library_db, chart_id, &chart, &audio)?;
 
     Ok(PreloadedPlaySession {
         chart,
         audio,
         sample_report,
-        normalization_gain,
+        chart_normalization_gain,
         applied_arrange: imported.applied_arrange,
         score_key: imported.score_key,
     })
@@ -1024,7 +1008,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
 pub fn preload_play_session_reloading_audio_with_progress(
     chart: Arc<PlayableChart>,
     sample_rate: u32,
-    normalization_gain: f32,
+    chart_normalization_gain: f32,
     applied_arrange: AppliedArrange,
     score_key: ScoreKey,
     on_progress: impl FnMut(usize, usize),
@@ -1036,7 +1020,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
         chart,
         audio,
         sample_report,
-        normalization_gain,
+        chart_normalization_gain,
         applied_arrange,
         score_key,
     }
@@ -1174,7 +1158,7 @@ pub fn build_practice_prepared_from_preloaded(
     let practice_mode = options.practice_mode;
     let mut session =
         build_game_session_with_input_backend(Arc::new(chart), profile, options, input_backend);
-    session.audio_mix.normalization_gain = preloaded.normalization_gain;
+    session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
     apply_practice_start_gauge(&mut session.gauge, property.start_gauge);
     PreparedPlaySession {
         session,
@@ -1201,7 +1185,7 @@ pub fn build_prepared_play_session_from_preloaded(
     let session =
         build_game_session_with_input_backend(preloaded.chart, profile, options, input_backend);
     let mut session = session;
-    session.audio_mix.normalization_gain = preloaded.normalization_gain;
+    session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
     PreparedPlaySession {
         session,
         audio: preloaded.audio,
@@ -1214,18 +1198,13 @@ pub fn build_prepared_play_session_from_preloaded(
     }
 }
 
-fn load_or_compute_normalization_gain(
+fn load_or_compute_chart_normalization_gain(
     library_db: &LibraryDatabase,
     chart_id: i64,
-    normalize_chart_volume: bool,
     chart: &PlayableChart,
     audio: &AudioEngine,
 ) -> Result<f32> {
-    if !normalize_chart_volume {
-        return Ok(1.0);
-    }
     if let Some(analysis) = library_db.chart_normalization_analysis_by_chart_id(chart_id)? {
-        // DB の normalization_gain は -12 LUFS 基準の互換値。再生は loudness から -6 相当へ再計算する。
         return Ok(play_normalization_gain_for_loudness(analysis.loudness_lufs));
     }
 
@@ -1234,17 +1213,13 @@ fn load_or_compute_normalization_gain(
         tracing::warn!(chart_id, "failed to analyze chart loudness; using unity gain");
         return Ok(1.0);
     };
-    let stored = ChartNormalizationAnalysis {
-        loudness_lufs: analysis.loudness_lufs,
-        normalization_gain: analysis.normalization_gain,
-    };
+    let stored = ChartNormalizationAnalysis { loudness_lufs: analysis.loudness_lufs };
     library_db.write_chart_normalization_analysis(chart_id, stored)?;
     let play_gain = play_normalization_gain_for_loudness(stored.loudness_lufs);
     tracing::info!(
         chart_id,
         loudness_lufs = stored.loudness_lufs,
-        normalization_gain = stored.normalization_gain,
-        play_normalization_gain = play_gain,
+        chart_normalization_gain = play_gain,
         "stored chart volume normalization analysis"
     );
     Ok(play_gain)
@@ -3799,7 +3774,6 @@ mod tests {
                 arrange_seed: Some(42),
                 ..Default::default()
             },
-            false,
             |arrange| {
                 *reported_arrange.borrow_mut() = Some(arrange.clone());
             },
@@ -3848,7 +3822,7 @@ mod tests {
         );
 
         assert!(Arc::ptr_eq(&preloaded.chart, &chart));
-        assert_eq!(preloaded.normalization_gain, 0.75);
+        assert_eq!(preloaded.chart_normalization_gain, 0.75);
         assert_eq!(preloaded.score_key, score_key);
         assert!(
             preloaded

@@ -19,6 +19,12 @@ gilrsを初期化できない場合はGameInputへfallbackします。backend変
 旧 `Scratch Input Mode` 設定は使用しません。スクラッチ方向はキー設定の
 `Scratch Up` / `Scratch Down` 割り当てで指定し、既存profileの `scratch_mode` は読込時に
 無視され、次回保存時に削除されます。
+`AUTO SCRATCH` / `LEGACY NOTE` を選ぶ旧ASSIST設定は、仕様を確定して実装するまで
+F1メニューとゲーム内設定の両方で非表示にします。既存profileの保存値は保持します。
+`RULE MODE` / `LN MODE` を変更すると、選曲一覧のスコア・リプレイ・フォルダ集計を
+新しいスコア文脈で即時再読込し、変更前のプリロードとリトライ用cacheは破棄します。
+譜面・プレビュー音量正規化は実行中にも切り替えられ、OFFにしても解析済みゲインを保持するため、
+再度ONにすると同じゲインを即時適用します。
 
 F1メニューの「Random Trainer」では、7K・1Pの通常`RANDOM`で使うレーン順を
 ドラッグ＆ドロップまたは正規・鏡・左右シフトで固定できます。設定はアプリ実行中だけ保持され、

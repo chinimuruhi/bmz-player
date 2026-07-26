@@ -42,9 +42,17 @@ pub fn input_bounce_config_from_profile(input: &ProfileInputConfig) -> InputBoun
 }
 
 pub fn audio_mix_from_profile(profile: &ProfileConfig) -> PlayAudioMix {
+    audio_mix_from_profile_with_chart_gain(profile, 1.0)
+}
+
+pub fn audio_mix_from_profile_with_chart_gain(
+    profile: &ProfileConfig,
+    chart_normalization_gain: f32,
+) -> PlayAudioMix {
     PlayAudioMix {
         master_volume: volume_unit_to_f32(profile.audio_mix.master_volume),
-        normalization_gain: 1.0,
+        chart_normalization_gain,
+        normalize_chart_volume: profile.audio_mix.normalize_chart_volume,
         key_volume: volume_unit_to_f32(profile.audio_mix.key_volume),
         bgm_volume: volume_unit_to_f32(profile.audio_mix.bgm_volume),
     }
@@ -207,9 +215,23 @@ mod tests {
         let mix = audio_mix_from_profile(&profile);
 
         assert!((mix.master_volume - 0.8).abs() < 1e-6);
-        assert!((mix.normalization_gain - 1.0).abs() < 1e-6);
+        assert!((mix.chart_normalization_gain - 1.0).abs() < 1e-6);
+        assert!(mix.normalize_chart_volume);
         assert!((mix.key_volume - 0.7).abs() < 1e-6);
         assert!((mix.bgm_volume - 0.6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn profile_audio_mix_toggle_preserves_chart_gain() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 1);
+        let enabled = audio_mix_from_profile_with_chart_gain(&profile, 0.25);
+        assert_eq!(enabled.chart_normalization_gain, 0.25);
+        assert_eq!(enabled.effective_normalization_gain(), 0.25);
+
+        profile.audio_mix.normalize_chart_volume = false;
+        let disabled = audio_mix_from_profile_with_chart_gain(&profile, 0.25);
+        assert_eq!(disabled.chart_normalization_gain, 0.25);
+        assert_eq!(disabled.effective_normalization_gain(), 1.0);
     }
 
     #[test]

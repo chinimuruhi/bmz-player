@@ -624,6 +624,11 @@ pub const LIBRARY_MIGRATIONS: &[Migration] = &[
         // one-time backfill on the next startup.
         statements: &["ALTER TABLE charts ADD COLUMN has_document INTEGER;"],
     },
+    Migration {
+        version: 28,
+        // 正規化ゲインは loudness_lufs と再生目標から導出できるため保存しない。
+        statements: &["ALTER TABLE chart_analysis DROP COLUMN normalization_gain;"],
+    },
 ];
 
 pub const SCORE_MIGRATIONS: &[Migration] = &[
@@ -1806,7 +1811,7 @@ mod tests {
         run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
 
         let mut stmt = conn.prepare("PRAGMA table_info(charts)").unwrap();
         let columns = stmt
@@ -1820,6 +1825,48 @@ mod tests {
             assert!(columns.iter().any(|candidate| candidate == column));
         }
         assert!(columns.iter().any(|candidate| candidate == "has_document"));
+
+        let analysis_columns = conn
+            .prepare("PRAGMA table_info(chart_analysis)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert!(analysis_columns.iter().any(|column| column == "loudness_lufs"));
+        assert!(!analysis_columns.iter().any(|column| column == "normalization_gain"));
+    }
+
+    #[test]
+    fn library_migration_keeps_loudness_while_removing_derived_gain() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chart_analysis (
+                loudness_lufs REAL,
+                normalization_gain REAL,
+                loudness_analysis_version INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO chart_analysis (
+                loudness_lufs, normalization_gain, loudness_analysis_version
+            ) VALUES (-10.5, 0.75, 1);
+            PRAGMA user_version = 27;",
+        )
+        .unwrap();
+
+        run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+
+        let loudness: f32 = conn
+            .query_row("SELECT loudness_lufs FROM chart_analysis", [], |row| row.get(0))
+            .unwrap();
+        let columns = conn
+            .prepare("PRAGMA table_info(chart_analysis)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(loudness, -10.5);
+        assert!(!columns.iter().any(|column| column == "normalization_gain"));
     }
 
     #[test]
@@ -1938,6 +1985,11 @@ mod tests {
              CREATE TABLE difficulty_tables (
                 source_url TEXT NOT NULL
              );
+             CREATE TABLE chart_analysis (
+                loudness_lufs REAL,
+                normalization_gain REAL,
+                loudness_analysis_version INTEGER NOT NULL DEFAULT 0
+             );
              INSERT INTO charts (headers_json) VALUES ('{\"002D9\":\"note data\"}');
              PRAGMA user_version = 21;",
         )
@@ -1949,7 +2001,7 @@ mod tests {
             conn.query_row("SELECT headers_json FROM charts", [], |row| row.get(0)).unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(headers_json, "{}");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
     }
 
     #[test]
@@ -1974,6 +2026,11 @@ mod tests {
              CREATE TABLE difficulty_tables (
                 source_url TEXT NOT NULL
              );
+             CREATE TABLE chart_analysis (
+                loudness_lufs REAL,
+                normalization_gain REAL,
+                loudness_analysis_version INTEGER NOT NULL DEFAULT 0
+             );
              INSERT INTO charts (id, sha256, md5) VALUES
                 (10, 'preferred-sha', 'other-md5'),
                 (20, 'other-sha', 'fallback-md5');
@@ -1997,7 +2054,7 @@ mod tests {
             .unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(chart_ids, vec![Some(10), Some(20), None, Some(99)]);
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
     }
 
     #[test]

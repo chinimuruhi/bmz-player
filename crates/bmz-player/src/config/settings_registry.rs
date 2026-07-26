@@ -93,6 +93,7 @@ impl SettingsEntryId {
         Self::JudgeAlgorithm,
     ];
 
+    // `Assist` は設定値を保持したまま、仕様確定までUIからのみ除外する。
     pub const PLAY_ENTRIES: &'static [Self] = &[
         Self::Gauge,
         Self::RuleMode,
@@ -106,7 +107,6 @@ impl SettingsEntryId {
         Self::Target,
         Self::GradeDiffDisplay,
         Self::LaneEffect,
-        Self::Assist,
         Self::BgaMode,
         Self::BgaExpand,
         Self::AutoPlay,

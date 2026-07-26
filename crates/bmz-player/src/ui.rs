@@ -26,13 +26,13 @@ use crate::config::app_config::{
 };
 use crate::config::play::{TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN};
 use crate::config::profile_config::{
-    AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
-    DoubleOptionConfig, FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig,
-    HISPEED_STEP_MAX, HISPEED_STEP_MIN, HispeedModeConfig, HsFixConfig, IrConfig,
-    IrCredentialStoreConfig, IrProviderConfig, IrProviderRoleConfig, IrSendPolicyConfig,
-    JudgeAlgorithmConfig, LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX,
-    RandomOptionConfig, ReplaySlotRule, SkinConfig, SkinHistoryEntryConfig, SkinOffsetConfig,
-    TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
+    BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig, DoubleOptionConfig,
+    FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX,
+    HISPEED_STEP_MIN, HispeedModeConfig, HsFixConfig, IrConfig, IrCredentialStoreConfig,
+    IrProviderConfig, IrProviderRoleConfig, IrSendPolicyConfig, JudgeAlgorithmConfig,
+    LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX, RandomOptionConfig, ReplaySlotRule,
+    SkinConfig, SkinHistoryEntryConfig, SkinOffsetConfig, TargetOptionConfig,
+    default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
 };
 use crate::i18n::{AppLocale, FluentArgs, Localizer};
 use crate::ln_policy::LnPolicySetting;
@@ -4327,17 +4327,6 @@ fn build_profile_settings_panel(
                             ui.selectable_value(&mut profile.play.lane_effect, value, label);
                         }
                     });
-                    egui::ComboBox::new("profile_assist", tr!(text, "profile-play-assist"))
-                        .selected_text(assist_label(profile.play.assist))
-                        .show_ui(ui, |ui| {
-                            for (value, label) in [
-                                (AssistOptionConfig::None, "NONE"),
-                                (AssistOptionConfig::AutoScratch, "AUTO SCRATCH"),
-                                (AssistOptionConfig::LegacyNote, "LEGACY NOTE"),
-                            ] {
-                                ui.selectable_value(&mut profile.play.assist, value, label);
-                            }
-                        });
                     egui::ComboBox::from_label("BGA")
                         .selected_text(bga_mode_label(profile.play.bga))
                         .show_ui(ui, |ui| {
@@ -5230,14 +5219,6 @@ fn lane_effect_label(value: LaneEffectConfig) -> &'static str {
         LaneEffectConfig::Hidden => "HIDDEN",
         LaneEffectConfig::Sudden => "SUDDEN",
         LaneEffectConfig::HiddenSudden => "HIDDEN+SUDDEN",
-    }
-}
-
-fn assist_label(value: AssistOptionConfig) -> &'static str {
-    match value {
-        AssistOptionConfig::None => "NONE",
-        AssistOptionConfig::AutoScratch => "AUTO SCRATCH",
-        AssistOptionConfig::LegacyNote => "LEGACY NOTE",
     }
 }
 

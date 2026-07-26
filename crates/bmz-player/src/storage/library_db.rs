@@ -112,7 +112,6 @@ pub struct ChartAnalysisSummary {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChartNormalizationAnalysis {
     pub loudness_lufs: f32,
-    pub normalization_gain: f32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -649,27 +648,19 @@ impl LibraryDatabase {
     ) -> Result<Option<ChartNormalizationAnalysis>> {
         self.conn
             .query_row(
-                "SELECT loudness_lufs, normalization_gain
+                "SELECT loudness_lufs
                  FROM chart_analysis
                  WHERE chart_id = ?1
                     AND loudness_analysis_version = ?2
-                    AND loudness_lufs IS NOT NULL
-                    AND normalization_gain IS NOT NULL",
+                    AND loudness_lufs IS NOT NULL",
                 params![chart_id, CHART_LOUDNESS_ANALYSIS_VERSION],
                 |row| {
                     let loudness_lufs: f32 = row.get(0)?;
-                    let normalization_gain: f32 = row.get(1)?;
-                    Ok(ChartNormalizationAnalysis { loudness_lufs, normalization_gain })
+                    Ok(ChartNormalizationAnalysis { loudness_lufs })
                 },
             )
             .optional()
-            .map(|value| {
-                value.filter(|analysis| {
-                    analysis.loudness_lufs.is_finite()
-                        && analysis.normalization_gain.is_finite()
-                        && analysis.normalization_gain > 0.0
-                })
-            })
+            .map(|value| value.filter(|analysis| analysis.loudness_lufs.is_finite()))
             .map_err(Into::into)
     }
 
@@ -682,16 +673,10 @@ impl LibraryDatabase {
             .prepare_cached(
                 "UPDATE chart_analysis
              SET loudness_lufs = ?2,
-                 normalization_gain = ?3,
-                 loudness_analysis_version = ?4
+                 loudness_analysis_version = ?3
              WHERE chart_id = ?1",
             )?
-            .execute(params![
-                chart_id,
-                analysis.loudness_lufs,
-                analysis.normalization_gain,
-                CHART_LOUDNESS_ANALYSIS_VERSION,
-            ])?;
+            .execute(params![chart_id, analysis.loudness_lufs, CHART_LOUDNESS_ANALYSIS_VERSION,])?;
         Ok(())
     }
 
@@ -1440,7 +1425,6 @@ fn write_chart_analysis(conn: &Connection, chart_id: i64, chart: &PlayableChart)
             speed_changes_json = excluded.speed_changes_json,
             lane_notes_json = excluded.lane_notes_json,
             loudness_lufs = NULL,
-            normalization_gain = NULL,
             loudness_analysis_version = 0,
             analysis_version = excluded.analysis_version",
     )?
@@ -2505,12 +2489,11 @@ mod tests {
 
         db.write_chart_normalization_analysis(
             chart_id,
-            ChartNormalizationAnalysis { loudness_lufs: -10.5, normalization_gain: 0.75 },
+            ChartNormalizationAnalysis { loudness_lufs: -10.5 },
         )
         .unwrap();
         let stored = db.chart_normalization_analysis_by_chart_id(chart_id).unwrap().unwrap();
         assert_eq!(stored.loudness_lufs, -10.5);
-        assert_eq!(stored.normalization_gain, 0.75);
 
         db.upsert_chart_import(&record_for_chart("/songs/normalization.bms", &chart)).unwrap();
         assert!(db.chart_normalization_analysis_by_chart_id(chart_id).unwrap().is_none());

@@ -73,9 +73,23 @@ pub struct InputOffsetAutoAdjustState {
 #[derive(Debug, Clone, Copy)]
 pub struct PlayAudioMix {
     pub master_volume: f32,
-    pub normalization_gain: f32,
+    /// 譜面の loudness 解析から導出した正規化ゲイン。
+    ///
+    /// 正規化のON/OFFでは上書きせず、`effective_normalization_gain`で適用値を決める。
+    pub chart_normalization_gain: f32,
+    pub normalize_chart_volume: bool,
     pub key_volume: f32,
     pub bgm_volume: f32,
+}
+
+impl PlayAudioMix {
+    pub fn effective_normalization_gain(self) -> f32 {
+        if self.normalize_chart_volume && self.chart_normalization_gain.is_finite() {
+            self.chart_normalization_gain.clamp(0.0, 1.0)
+        } else {
+            1.0
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -419,7 +433,7 @@ pub fn schedule_keysounds(session: &mut GameSession, audio: &mut dyn AudioSchedu
             start_frame: session.audio_clock.time_to_output_frame(event.time),
             sound_id,
             volume: (session.audio_mix.master_volume
-                * session.audio_mix.normalization_gain
+                * session.audio_mix.effective_normalization_gain()
                 * session.audio_mix.key_volume
                 * chart_volume)
                 .clamp(0.0, 1.0),
@@ -876,7 +890,7 @@ pub fn update_hcn_lane_timers(session: &mut GameSession, audio_now: TimeUs) {
                         ),
                     );
                     (session.audio_mix.master_volume
-                        * session.audio_mix.normalization_gain
+                        * session.audio_mix.effective_normalization_gain()
                         * session.audio_mix.key_volume
                         * chart_volume)
                         .clamp(0.0, 1.0)
@@ -982,7 +996,7 @@ pub fn advance_session_frame(
             &session.audio_clock,
             times.audio_schedule_until,
             session.audio_mix.master_volume
-                * session.audio_mix.normalization_gain
+                * session.audio_mix.effective_normalization_gain()
                 * session.audio_mix.bgm_volume,
             audio,
         );
@@ -1092,11 +1106,30 @@ mod tests {
     }
 
     #[test]
+    fn audio_mix_toggle_preserves_chart_normalization_gain() {
+        let mut mix = PlayAudioMix {
+            master_volume: 1.0,
+            chart_normalization_gain: 0.25,
+            normalize_chart_volume: true,
+            key_volume: 1.0,
+            bgm_volume: 1.0,
+        };
+
+        assert_eq!(mix.effective_normalization_gain(), 0.25);
+        mix.normalize_chart_volume = false;
+        assert_eq!(mix.effective_normalization_gain(), 1.0);
+        assert_eq!(mix.chart_normalization_gain, 0.25);
+        mix.normalize_chart_volume = true;
+        assert_eq!(mix.effective_normalization_gain(), 0.25);
+    }
+
+    #[test]
     fn advance_session_frame_schedules_autoplay_keysounds() {
         let mut session = session_with_autoplay(chart_with_keysound());
         session.audio_mix.master_volume = 0.5;
         session.audio_mix.key_volume = 0.25;
-        session.audio_mix.normalization_gain = 0.5;
+        session.audio_mix.chart_normalization_gain = 0.5;
+        session.audio_mix.normalize_chart_volume = true;
         let mut audio = TestAudio::default();
 
         let frame = advance_session_frame(&mut session, &mut audio);
@@ -1753,7 +1786,8 @@ mod tests {
         let mut session = session_with_autoplay(chart_with_bgm());
         session.audio_mix.master_volume = 0.5;
         session.audio_mix.bgm_volume = 0.75;
-        session.audio_mix.normalization_gain = 0.5;
+        session.audio_mix.chart_normalization_gain = 0.5;
+        session.audio_mix.normalize_chart_volume = true;
         let mut audio = TestAudio::default();
 
         advance_session_frame(&mut session, &mut audio);
@@ -2380,7 +2414,8 @@ mod tests {
             input_offset_auto_adjust: None,
             audio_mix: PlayAudioMix {
                 master_volume: 1.0,
-                normalization_gain: 1.0,
+                chart_normalization_gain: 1.0,
+                normalize_chart_volume: true,
                 key_volume: 1.0,
                 bgm_volume: 1.0,
             },
