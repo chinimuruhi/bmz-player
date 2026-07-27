@@ -110,13 +110,15 @@ destination に `act` / `click` を置くと、text や panel も image / images
 イベント対象になる。`clickable: false` は destination 自身と同名 image / imageset の
 クリックを明示的に無効化する。
 
+中央・右揃えtextの destination `x` は描画上の基準点だが、イベント領域の `x` は
+常に左端として扱う。操作可能な中央揃えtextは、描画用textと透明panelのdestinationを
+分け、panel側へ元のセル矩形と `act` / `click` を指定する。
+
 ```json
 {
   "panel": [{
-    "id": "arrange-bg",
-    "color": "101820C0",
-    "borderColor": "80C0FFFF",
-    "borderWidth": 1
+    "id": "arrange-hit",
+    "color": "00000000"
   }],
   "text": [{
     "id": "bmz_select_arrange",
@@ -127,11 +129,11 @@ destination に `act` / `click` を置くと、text や panel も image / images
   }],
   "destination": [
     {
-      "id": "arrange-bg",
-      "dst": [{ "x": 10, "y": 10, "w": 166, "h": 19 }]
+      "id": "bmz_select_arrange",
+      "dst": [{ "x": 93, "y": 10, "w": 166, "h": 19 }]
     },
     {
-      "id": "bmz_select_arrange",
+      "id": "arrange-hit",
       "act": 42,
       "click": 2,
       "dst": [{ "x": 10, "y": 10, "w": 166, "h": 19 }]

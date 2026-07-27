@@ -3833,10 +3833,17 @@ mod tests {
                 "m_select should render the dynamic option label {label}"
             );
         }
-        let hit = context
-            .select_click_hit(&snapshot, 545.0 / 1920.0, 0.98)
-            .expect("m_select arrange label should remain clickable");
-        assert_eq!(hit.target, bmz_render::skin::SkinClickTarget::Event { event_id: 42, click: 2 });
+        for x in [503.0, 586.0] {
+            let hit = context
+                .select_click_hit(&snapshot, x / 1920.0, 0.98)
+                .expect("m_select arrange cell should remain clickable across its full width");
+            assert_eq!(
+                hit.target,
+                bmz_render::skin::SkinClickTarget::Event { event_id: 42, click: 2 }
+            );
+            assert!((hit.rect.x - 462.0 / 1920.0).abs() < f32::EPSILON);
+            assert!((hit.rect.width - 166.0 / 1920.0).abs() < f32::EPSILON);
+        }
     }
 
     #[test]
@@ -4002,12 +4009,12 @@ mod tests {
                 "Luxe Flat should retain operating-time ref {ref_id}"
             );
         }
-        for (id, act, center_x) in [
-            ("bmz_select_arrange", 42, 138),
-            ("bmz_select_gauge", 40, 302),
-            ("bmz_select_double_option", 54, 446),
-            ("bmz_select_hs_fix", 55, 613),
-            ("bmz_select_arrange_2p", 43, 790),
+        for (id, center_x) in [
+            ("bmz_select_arrange", 138),
+            ("bmz_select_gauge", 302),
+            ("bmz_select_double_option", 446),
+            ("bmz_select_hs_fix", 613),
+            ("bmz_select_arrange_2p", 790),
         ] {
             assert!(
                 decoded.document.text.iter().any(|text| text.id == id),
@@ -4017,14 +4024,56 @@ mod tests {
                 entry,
                 DestinationListEntry::Single(destination)
                     if destination.id == id
-                        && destination.act == Some(act)
+                        && destination.act.is_none()
                         && matches!(
                             destination.dst.first(),
                             Some(bmz_render::skin::SkinDstEntry::Frame(frame))
                                 if frame.x == Some(center_x)
-                        )
+                )
             )));
         }
+        assert!(
+            decoded
+                .document
+                .panel
+                .iter()
+                .any(|panel| panel.id == "bmz_select_option_hit" && panel.color == "00000000")
+        );
+        for (act, left_x, width) in
+            [(42, 69, 138), (40, 254, 96), (54, 381, 129), (55, 550, 126), (43, 721, 138)]
+        {
+            assert!(decoded.document.destination.iter().any(|entry| matches!(
+                entry,
+                DestinationListEntry::Single(destination)
+                    if destination.id == "bmz_select_option_hit"
+                        && destination.act == Some(act)
+                        && matches!(
+                            destination.dst.first(),
+                            Some(bmz_render::skin::SkinDstEntry::Frame(frame))
+                                if frame.x == Some(left_x) && frame.w == Some(width)
+                )
+            )));
+        }
+        let document_textures =
+            decoded.sources.iter().map(|source| bmz_render::skin::SkinDocumentTexture {
+                source_id: source.source_id.clone(),
+                texture: source.texture,
+                source_size: bmz_render::skin::SkinImageSize {
+                    width: source.size.width,
+                    height: source.size.height,
+                },
+            });
+        let context = bmz_render::skin::SkinContext::from_manifest_and_document(
+            bmz_render::skin::default_skin_manifest(),
+            decoded.document,
+            document_textures,
+        );
+        let hit = context
+            .select_click_hit(&bmz_render::scene::SelectSnapshot::default(), 100.0 / 1920.0, 0.98)
+            .expect("Luxe Flat arrange cell should be clickable from its left half");
+        assert_eq!(hit.target, bmz_render::skin::SkinClickTarget::Event { event_id: 42, click: 0 });
+        assert!((hit.rect.x - 69.0 / 1920.0).abs() < f32::EPSILON);
+        assert!((hit.rect.width - 138.0 / 1920.0).abs() < f32::EPSILON);
     }
 
     #[test]

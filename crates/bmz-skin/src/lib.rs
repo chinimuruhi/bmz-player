@@ -3571,12 +3571,12 @@ mod tests {
                 "m-select should retain operating-time ref {ref_id}"
             );
         }
-        for (id, act, center_x) in [
-            ("bmz_select_arrange", 42, 545),
-            ("bmz_select_gauge", 40, 711),
-            ("bmz_select_double_option", 54, 877),
-            ("bmz_select_hs_fix", 55, 1043),
-            ("bmz_select_arrange_2p", 43, 1209),
+        for (id, center_x) in [
+            ("bmz_select_arrange", 545),
+            ("bmz_select_gauge", 711),
+            ("bmz_select_double_option", 877),
+            ("bmz_select_hs_fix", 1043),
+            ("bmz_select_arrange_2p", 1209),
         ] {
             assert!(
                 loaded.document.text.iter().any(|text| text.id == id
@@ -3588,12 +3588,32 @@ mod tests {
                 entry,
                 bmz_skin_document::DestinationListEntry::Single(destination)
                     if destination.id == id
+                        && destination.act.is_none()
+                        && matches!(
+                            destination.dst.first(),
+                            Some(bmz_skin_document::SkinDstEntry::Frame(frame))
+                                if frame.x == Some(center_x)
+                )
+            )));
+        }
+        assert!(
+            loaded
+                .document
+                .panel
+                .iter()
+                .any(|panel| panel.id == "bmz_select_option_hit" && panel.color == "00000000")
+        );
+        for (act, left_x) in [(42, 462), (40, 628), (54, 794), (55, 960), (43, 1126)] {
+            assert!(loaded.document.destination.iter().any(|entry| matches!(
+                entry,
+                bmz_skin_document::DestinationListEntry::Single(destination)
+                    if destination.id == "bmz_select_option_hit"
                         && destination.act == Some(act)
                         && destination.click == 2
                         && matches!(
                             destination.dst.first(),
                             Some(bmz_skin_document::SkinDstEntry::Frame(frame))
-                                if frame.x == Some(center_x)
+                                if frame.x == Some(left_x) && frame.w == Some(166)
                         )
             )));
         }
