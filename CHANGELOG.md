@@ -1,5 +1,59 @@
 # CHANGELOG
 
+## v0.1.11
+
+### 改善
+
+- IR の機能を拡張しました。
+  - IR のスコア履歴をローカルの `score.db` へ取り込む機能を追加しました。
+
+- 多言語 UI と文字描画を追加しました。
+  - デスクトップ UI と IR Web を日本語、英語、韓国語、中国語（簡体・繁体）など6言語に対応しました。
+
+- スキン互換性をさらに改善しました。
+  - MILLIONDOLLAR Result skin に対応しました。
+  - LR2 play CSV の signed number、libGDX `.cim` source、未推論 draw callback、observe timer、Result metadata / rotation を扱えるようにしました。
+  - Result の target、ゲージ率、stagefile、IR 設定、スコアを Lua skin のロード時・描画時へ正しく渡すようにしました。
+  - skin 解像度に応じた描画、dynamic option panel、専用 Select settings row、拡張 random label、各 scene の offset を追加しました。
+
+- スキンの BMZ 拡張を追加しました。
+  - key mode / Scratch 有無 / single・double play を ref・option `1903..1915` で参照できるようにしました。
+  - E1〜E4 と UI の方向キーを option `1920..1927`、直近の press edge を timer `19000..19007` として skin の draw / runtimeEvent から利用できるようにしました。`triggerAction` による runtime flag 切り替えにも対応します。
+  - プロファイル単位の日次統計（プレイ数、clear 数、判定数、EX score、rate、rank、更新回数、直近曲名）を ref `1930..1959` で、コースの stage 数・EX score・gauge・BP・rate を `19100..19149` で公開しました。日次表示だけをリセットする event も追加しました。
+  - Select の設定入口・カテゴリ・戻る・閉じる行を専用 row kind / ref `1960..1963` で表現し、`bmz_select_*` の動的 option text、画像不要の単色 `panel`、panel / text の click target を利用できるようにしました。
+  - RANDOM の実配置を play / select skin の ref `450..469` から参照できるようにしました。
+
+- ランダム練習とプレイ操作を拡張しました。
+  - 7K random trainer と制約付き random trainer、antique random のレーンプレビュー、プレイ中 / 選曲中の random lane ref を追加しました。
+  - random pattern を READY 前から表示し、レーン値に応じた色付け、profile option、skin 表示を連動させました。
+  - 全 key mode の scratch HS 操作、key mode 別の play HS binding、select utility action、live play speed 設定に対応しました。
+  - random seed を beatoraja 互換のものに変更しました。
+
+- 未所持譜面の自動ダウンロード機能を追加しました。
+  - IPFS / HTTP での譜面ダウンロード機能を追加しました。
+
+- 音声、入力、描画性能を改善しました。
+  - analog scratch の release timing と bounce filter を調整し、DX 9key / charge note 判定、beatoraja 互換 random seed、scratch rotation を修正しました。
+  - chart video の frame buffering を制限し、stagefile / backbmp をプレイ開始前に preload するようにしました。
+  - play snapshot の chart scan、folder lamp、song document flag、frame pacing、render latency、load spike を削減しました。
+  - option / course result sound と declarative skin audio の再生に対応し、PCM の不完全 packet を安全に破棄するようにしました。
+
+- 難易度表と設定画面を改善しました。
+  - 難易度表名を設定画面に表示するようにしました。
+  - 設定変更を profile、input、skin、score、audio の各状態へ同期し、legacy settings row と bundled option の hitbox を維持しました。
+  - フルスクリーン表示、unlimited FPS、デバッグパネルの tracing log 表示を追加しました。
+
+### 修正
+
+- 設定編集中の右クリックの動作をフォルダクローズから設定キャンセルに変更しました。
+- CJK / LR2 skin のフォント・数値表示、skin offset、設定行の衝突、スキンと入力設定の同期を修正しました。
+- BGA / stagefile の preload、音声 packet、アナログ scratch の release / bounce、リザルト表示の互換性問題を修正しました。
+
+### テスト・開発環境
+
+- IR score import / pagination、6言語の UI・IR Web、CJK font、LR2 / Lua / libGDX skin、random trainer、audio / input、BGA preload の回帰テストを追加・更新しました。
+- `README.md`、`docs/controls.md`、`docs/i18n.md`、`docs/ir.md`、`docs/ln.md`、`docs/rule.md`、`docs/skin.md` を更新しました。
+
 ## v0.1.10
 
 ### 改善
