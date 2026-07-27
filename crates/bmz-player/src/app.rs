@@ -68,7 +68,8 @@ use crate::bootstrap::{self, BootstrappedApp};
 use crate::chart_preview::SelectChartPreview;
 use crate::cli::{
     AUTOPLAY_ON_START_ARG, AppOptions, BOOT_RESULT_SAMPLE_ARG, SMOKE_EXIT_AFTER_FRAMES_ARG,
-    SMOKE_EXIT_AFTER_RESULT_FRAMES_ARG, SMOKE_EXIT_ON_RESULT_ARG, SMOKE_SCREENSHOT_ARG,
+    SMOKE_EXIT_AFTER_PLAY_FRAMES_ARG, SMOKE_EXIT_AFTER_RESULT_FRAMES_ARG, SMOKE_EXIT_ON_RESULT_ARG,
+    SMOKE_SCREENSHOT_ARG,
 };
 use crate::config::app_config::{
     AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind, ObsConfig, PathEntry,
@@ -646,12 +647,14 @@ struct WinitApp {
     play_analog_scroll_buffer: i32,
     play_analog_last_tick_at: Option<Instant>,
     smoke_exit_after_frames: Option<u32>,
+    smoke_exit_after_play_frames: Option<u32>,
     smoke_exit_after_result_frames: Option<u32>,
     smoke_exit_on_result: bool,
     smoke_screenshot_path: Option<PathBuf>,
     /// 左上へ出す一時メッセージ。
     left_overlay_toast: Option<LeftOverlayToast>,
     rendered_frames: u32,
+    rendered_play_frames: u32,
     rendered_result_frames: u32,
     app_started_at: Instant,
     select_scene_started_at: Instant,
@@ -905,6 +908,44 @@ struct SceneFrameProfiler {
     rect_instances: u128,
     image_instances: u128,
     text_instances: u128,
+    total_redraw_us: u128,
+    input_us: u128,
+    background_us: u128,
+    transition_us: u128,
+    egui_us: u128,
+    advance_active_play_us: u128,
+    post_scene_us: u128,
+    total_redraw_samples_us: Vec<u64>,
+}
+
+const FRAME_PROFILE_SAMPLE_CAPACITY: usize = 120;
+
+#[derive(Debug, Clone, Copy)]
+struct PlayLoopFrameTimings {
+    total_redraw_us: u64,
+    input_us: u64,
+    background_us: u64,
+    transition_us: u64,
+    egui_us: u64,
+    advance_active_play_us: u64,
+    post_scene_us: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SceneFrameProfileSample {
+    kind: FrameProfileKind,
+    video_us: u128,
+    video_profile: SkinVideoFrameProfile,
+    snapshot_us: u128,
+    render_us: u128,
+    render_timings: Option<RenderFrameTimings>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FrameDurationPercentiles {
+    p95_us: u64,
+    p99_us: u64,
+    max_us: u64,
 }
 
 impl SceneFrameProfiler {
@@ -918,6 +959,7 @@ impl SceneFrameProfiler {
         snapshot_us: u128,
         render_us: u128,
         timings: Option<RenderFrameTimings>,
+        play_loop: Option<PlayLoopFrameTimings>,
     ) {
         self.frames += 1;
         self.video_us += video_us;
@@ -949,6 +991,18 @@ impl SceneFrameProfiler {
             self.rect_instances += timings.rect_instances as u128;
             self.image_instances += timings.image_instances as u128;
             self.text_instances += timings.text_instances as u128;
+        }
+        if let Some(timings) = play_loop {
+            self.total_redraw_us += u128::from(timings.total_redraw_us);
+            self.input_us += u128::from(timings.input_us);
+            self.background_us += u128::from(timings.background_us);
+            self.transition_us += u128::from(timings.transition_us);
+            self.egui_us += u128::from(timings.egui_us);
+            self.advance_active_play_us += u128::from(timings.advance_active_play_us);
+            self.post_scene_us += u128::from(timings.post_scene_us);
+            if self.total_redraw_samples_us.len() < FRAME_PROFILE_SAMPLE_CAPACITY {
+                self.total_redraw_samples_us.push(timings.total_redraw_us);
+            }
         }
         if self.frames >= Self::LOG_EVERY_FRAMES {
             self.log_and_reset(profile);
@@ -987,6 +1041,14 @@ impl SceneFrameProfiler {
         let encode_ms = fmt_profile_ms(self.encode_us, frames);
         let queue_ms = fmt_profile_ms(self.queue_us, frames);
         let present_ms = fmt_profile_ms(self.present_us, frames);
+        let total_redraw_ms = fmt_profile_ms(self.total_redraw_us, frames);
+        let input_ms = fmt_profile_ms(self.input_us, frames);
+        let background_ms = fmt_profile_ms(self.background_us, frames);
+        let transition_ms = fmt_profile_ms(self.transition_us, frames);
+        let egui_ms = fmt_profile_ms(self.egui_us, frames);
+        let advance_active_play_ms = fmt_profile_ms(self.advance_active_play_us, frames);
+        let post_scene_ms = fmt_profile_ms(self.post_scene_us, frames);
+        let total_redraw_percentiles = frame_duration_percentiles(&self.total_redraw_samples_us);
         match profile {
             FrameProfileKind::Select => {
                 tracing::debug!(
@@ -1049,6 +1111,19 @@ impl SceneFrameProfiler {
                     encode_ms,
                     queue_ms,
                     present_ms,
+                    total_redraw_ms,
+                    total_redraw_p95_ms = total_redraw_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p95_us)),
+                    total_redraw_p99_ms = total_redraw_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p99_us)),
+                    total_redraw_max_ms = total_redraw_percentiles
+                        .map(|value| fmt_profile_us_ms(value.max_us)),
+                    input_ms,
+                    background_ms,
+                    transition_ms,
+                    egui_ms,
+                    advance_active_play_ms,
+                    post_scene_ms,
                     commands,
                     steps,
                     rect_steps,
@@ -1110,6 +1185,21 @@ enum FrameProfileKind {
 
 fn fmt_profile_ms(total_us: u128, frames: u128) -> String {
     format!("{:.3}", total_us as f64 / frames as f64 / 1000.0)
+}
+
+fn fmt_profile_us_ms(us: u64) -> String {
+    format!("{:.3}", us as f64 / 1000.0)
+}
+
+fn frame_duration_percentiles(samples: &[u64]) -> Option<FrameDurationPercentiles> {
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let len = sorted.len();
+    (len > 0).then(|| FrameDurationPercentiles {
+        p95_us: sorted[(len * 95).div_ceil(100).saturating_sub(1)],
+        p99_us: sorted[(len * 99).div_ceil(100).saturating_sub(1)],
+        max_us: *sorted.last().expect("non-empty sample list"),
+    })
 }
 
 type PlaySkinSignature = (
@@ -3125,11 +3215,13 @@ impl WinitApp {
             play_analog_scroll_buffer: 0,
             play_analog_last_tick_at: None,
             smoke_exit_after_frames: options.smoke_exit_after_frames,
+            smoke_exit_after_play_frames: options.smoke_exit_after_play_frames,
             smoke_exit_after_result_frames: options.smoke_exit_after_result_frames,
             smoke_exit_on_result: options.smoke_exit_on_result,
             smoke_screenshot_path: options.smoke_screenshot_path.as_ref().map(PathBuf::from),
             left_overlay_toast: None,
             rendered_frames: 0,
+            rendered_play_frames: 0,
             rendered_result_frames: 0,
             app_started_at: now,
             select_scene_started_at: now,
@@ -13915,6 +14007,25 @@ impl WinitApp {
             AppSceneKind::Play => "Play",
             AppSceneKind::Result => "Result",
         };
+        let practice_overlay = self
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        let use_idle_egui_frame = scene_kind == AppSceneKind::Play
+            && self.play_ending.is_none()
+            && self.egui.as_ref().is_some_and(|egui| {
+                !egui.needs_full_frame(scene, practice_overlay, self.update_prompt.is_some())
+            });
+        if use_idle_egui_frame {
+            let Some(mut egui) = self.egui.take() else {
+                return;
+            };
+            let frame =
+                egui.run_idle_frame(&window, self.boot.profile_config.ui.locale().font_coverage());
+            self.egui = Some(egui);
+            self.renderer.set_egui_frame(frame);
+            return;
+        }
         let size = window.inner_size();
         let presentation = self.renderer.surface_presentation_status();
         let info = DebugInfo {
@@ -14793,7 +14904,7 @@ impl WinitApp {
         }
     }
 
-    fn render_current_scene(&mut self) {
+    fn render_current_scene(&mut self) -> Option<SceneFrameProfileSample> {
         let select_view = matches!(self.view_state(), AppViewState::Select);
         let play_view = matches!(self.view_state(), AppViewState::Play);
         let result_view = matches!(self.view_state(), AppViewState::Result);
@@ -14877,36 +14988,6 @@ impl WinitApp {
                 self.pending_skin_render_probe = Some(probe);
             }
         }
-        if profiling_select {
-            self.select_frame_profiler.record(
-                FrameProfileKind::Select,
-                video_us,
-                video_profile,
-                snapshot_us,
-                render_us,
-                frame_timings,
-            );
-        }
-        if profiling_play {
-            self.play_frame_profiler.record(
-                FrameProfileKind::Play,
-                video_us,
-                video_profile,
-                snapshot_us,
-                render_us,
-                frame_timings,
-            );
-        }
-        if profiling_result {
-            self.result_frame_profiler.record(
-                FrameProfileKind::Result,
-                video_us,
-                video_profile,
-                snapshot_us,
-                render_us,
-                frame_timings,
-            );
-        }
         match render_status {
             Ok(RenderSurfaceStatus::Rendered)
             | Ok(RenderSurfaceStatus::SkippedNoSurface)
@@ -14920,6 +15001,36 @@ impl WinitApp {
             Err(error) => {
                 tracing::error!(%error, "failed to present render scene");
             }
+        }
+        if profiling_select {
+            Some(SceneFrameProfileSample {
+                kind: FrameProfileKind::Select,
+                video_us,
+                video_profile,
+                snapshot_us,
+                render_us,
+                render_timings: frame_timings,
+            })
+        } else if profiling_play {
+            Some(SceneFrameProfileSample {
+                kind: FrameProfileKind::Play,
+                video_us,
+                video_profile,
+                snapshot_us,
+                render_us,
+                render_timings: frame_timings,
+            })
+        } else if profiling_result {
+            Some(SceneFrameProfileSample {
+                kind: FrameProfileKind::Result,
+                video_us,
+                video_profile,
+                snapshot_us,
+                render_us,
+                render_timings: frame_timings,
+            })
+        } else {
+            None
         }
     }
 
@@ -14981,6 +15092,25 @@ impl WinitApp {
                 );
                 self.save_configs_for_exit(None, "game exit");
                 self.flush_pending_screenshots("smoke result frame exit");
+                event_loop.exit();
+                return;
+            }
+        }
+
+        if let Some(exit_after_play_frames) = self.smoke_exit_after_play_frames
+            && self.current_scene_kind() == AppSceneKind::Play
+        {
+            let (frames, should_exit) =
+                count_smoke_play_frame(self.rendered_play_frames, exit_after_play_frames);
+            self.rendered_play_frames = frames;
+            if should_exit {
+                self.smoke_exit_after_play_frames = None;
+                tracing::info!(
+                    frames = self.rendered_play_frames,
+                    "smoke play frame count reached; leaving event loop"
+                );
+                self.save_configs_for_exit(self.active_hispeed(), "smoke play frame exit");
+                self.flush_pending_screenshots("smoke play frame exit");
                 event_loop.exit();
                 return;
             }
@@ -17418,10 +17548,12 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 if !self.first_frame_startup_completed {
                     self.ensure_audio_output();
                 }
+                let advance_active_play_start = Instant::now();
                 self.advance_active_play();
+                let advance_active_play_us = instant_elapsed_us_u64(advance_active_play_start);
                 self.log_input_diagnostics();
                 let scene_start = Instant::now();
-                self.render_current_scene();
+                let scene_profile = self.render_current_scene();
                 let scene_us = instant_elapsed_us_u64(scene_start);
                 let post_scene_start = Instant::now();
                 if !self.first_frame_startup_completed {
@@ -17444,6 +17576,47 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.log_audio_diagnostics();
                 let post_scene_us = instant_elapsed_us_u64(post_scene_start);
                 let total_us = instant_elapsed_us_u64(redraw_started_at);
+                if let Some(sample) = scene_profile {
+                    let play_loop =
+                        (sample.kind == FrameProfileKind::Play).then_some(PlayLoopFrameTimings {
+                            total_redraw_us: total_us,
+                            input_us,
+                            background_us,
+                            transition_us,
+                            egui_us,
+                            advance_active_play_us,
+                            post_scene_us,
+                        });
+                    match sample.kind {
+                        FrameProfileKind::Select => self.select_frame_profiler.record(
+                            sample.kind,
+                            sample.video_us,
+                            sample.video_profile,
+                            sample.snapshot_us,
+                            sample.render_us,
+                            sample.render_timings,
+                            play_loop,
+                        ),
+                        FrameProfileKind::Play => self.play_frame_profiler.record(
+                            sample.kind,
+                            sample.video_us,
+                            sample.video_profile,
+                            sample.snapshot_us,
+                            sample.render_us,
+                            sample.render_timings,
+                            play_loop,
+                        ),
+                        FrameProfileKind::Result => self.result_frame_profiler.record(
+                            sample.kind,
+                            sample.video_us,
+                            sample.video_profile,
+                            sample.snapshot_us,
+                            sample.render_us,
+                            sample.render_timings,
+                            play_loop,
+                        ),
+                    }
+                }
                 let pending_skin_after = self.has_pending_skin_reload();
                 if skin_drain_stats.received_count > 0
                     || render_probe_before
@@ -17745,6 +17918,13 @@ fn log_startup_options(options: &AppOptions) {
     }
     if let Some(frames) = options.smoke_exit_after_frames {
         tracing::info!(arg = SMOKE_EXIT_AFTER_FRAMES_ARG, frames, "smoke auto-exit enabled");
+    }
+    if let Some(frames) = options.smoke_exit_after_play_frames {
+        tracing::info!(
+            arg = SMOKE_EXIT_AFTER_PLAY_FRAMES_ARG,
+            frames,
+            "smoke play-frame auto-exit enabled"
+        );
     }
     if let Some(frames) = options.smoke_exit_after_result_frames {
         tracing::info!(
@@ -21200,6 +21380,11 @@ fn duration_us_u64(duration: Duration) -> u64 {
     duration.as_micros().min(u64::MAX as u128) as u64
 }
 
+fn count_smoke_play_frame(rendered_frames: u32, exit_after_frames: u32) -> (u32, bool) {
+    let frames = rendered_frames.saturating_add(1);
+    (frames, frames >= exit_after_frames)
+}
+
 fn note_display_duration_ms_for_hispeed(
     session: &bmz_gameplay::session::GameSession,
     hispeed: f32,
@@ -22816,6 +23001,24 @@ mod tests {
             panic!("expected select snapshot");
         };
         assert_eq!(snapshot.operating_time_ms, 90_061_234);
+    }
+
+    #[test]
+    fn frame_duration_percentiles_use_nearest_rank() {
+        let samples = [1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000, 9_000, 10_000];
+
+        assert_eq!(
+            frame_duration_percentiles(&samples),
+            Some(FrameDurationPercentiles { p95_us: 10_000, p99_us: 10_000, max_us: 10_000 })
+        );
+        assert_eq!(frame_duration_percentiles(&[]), None);
+    }
+
+    #[test]
+    fn smoke_play_frame_counter_only_exits_at_the_requested_count() {
+        assert_eq!(count_smoke_play_frame(0, 3), (1, false));
+        assert_eq!(count_smoke_play_frame(2, 3), (3, true));
+        assert_eq!(count_smoke_play_frame(u32::MAX, 1), (u32::MAX, true));
     }
 
     #[test]

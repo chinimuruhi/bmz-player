@@ -806,6 +806,50 @@ impl EguiLayer {
         self.visible || practice_overlay || self.update_dialog_active
     }
 
+    /// 設定 metadata や profile 差分検出を含む完全な egui frame が必要かを返す。
+    ///
+    /// Play 中に F1 menu 等が閉じている場合は、winit/egui の入力状態と texture
+    /// delta だけを進める idle frame へ切り替えられる。
+    pub fn needs_full_frame(
+        &self,
+        scene: &str,
+        practice_overlay: bool,
+        has_update_dialog: bool,
+    ) -> bool {
+        egui_frame_needs_full_state(
+            self.visible,
+            practice_overlay,
+            has_update_dialog,
+            scene,
+            self.show_settings,
+        )
+    }
+
+    /// UI が非表示のフレームを最小構成で進める。
+    ///
+    /// `take_egui_input` と `textures_delta` の消費は継続し、F1 で再表示したときに
+    /// 入力状態や managed texture が不整合にならないようにする。
+    pub fn run_idle_frame(
+        &mut self,
+        window: &Window,
+        font_coverage: bmz_render::FontCoverage,
+    ) -> EguiFrame {
+        if font_coverage != self.font_coverage {
+            install_cjk_fonts(&self.ctx, font_coverage);
+            self.font_coverage = font_coverage;
+        }
+        self.update_dialog_active = false;
+        let raw_input = self.state.take_egui_input(window);
+        let full_output = self.ctx.run_ui(raw_input, |_| {});
+        self.state.handle_platform_output(window, full_output.platform_output);
+        let primitives = self.ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+        EguiFrame {
+            primitives,
+            textures_delta: full_output.textures_delta,
+            pixels_per_point: full_output.pixels_per_point,
+        }
+    }
+
     /// 1 フレーム分の UI を構築し、描画データと要求されたアクションを返す。
     pub fn run(&mut self, window: &Window, context: EguiRunContext<'_, '_>) -> EguiOutput {
         let EguiRunContext {
@@ -1015,6 +1059,16 @@ impl EguiLayer {
             practice_leave,
         }
     }
+}
+
+fn egui_frame_needs_full_state(
+    visible: bool,
+    practice_overlay: bool,
+    has_update_dialog: bool,
+    scene: &str,
+    show_settings: bool,
+) -> bool {
+    visible || practice_overlay || (has_update_dialog && (scene == "Select" || show_settings))
 }
 
 /// egui のデフォルトフォントは CJK グリフを含まないため、locale の地域別字形を
@@ -6590,6 +6644,16 @@ mod tests {
         assert!(scene_restricts_settings("Decide"));
         assert!(scene_restricts_settings("Play"));
         assert!(!scene_restricts_settings("Result"));
+    }
+
+    #[test]
+    fn hidden_play_egui_uses_idle_frame_until_an_overlay_needs_full_state() {
+        assert!(!egui_frame_needs_full_state(false, false, false, "Play", false));
+        assert!(egui_frame_needs_full_state(true, false, false, "Play", false));
+        assert!(egui_frame_needs_full_state(false, true, false, "Play", false));
+        assert!(egui_frame_needs_full_state(false, false, true, "Select", false));
+        assert!(egui_frame_needs_full_state(false, false, true, "Play", true));
+        assert!(!egui_frame_needs_full_state(false, false, true, "Play", false));
     }
 
     #[test]

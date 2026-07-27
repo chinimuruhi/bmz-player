@@ -178,6 +178,7 @@ cargo clippy
 cargo run -p bmz-player
 cargo run -p bmz-player -- --boot-play-sample
 cargo run -p bmz-player -- --boot-play-sample --smoke-exit-after-frames 3
+cargo run -p bmz-player --release -- --boot-play-sample --autoplay-on-start --smoke-exit-after-play-frames 360
 cargo run -p bmz-player -- --boot-play-sample --autoplay-on-start --smoke-exit-on-result
 cargo run -p bmz-player -- --boot-play-sample --boot-replay 1 --smoke-exit-on-result
 cargo run -p bmz-player -- table list
@@ -198,6 +199,7 @@ cargo run -p bmz-player -- songs list
 その他:
 
 - `--smoke-exit-after-frames <N>` / `--smoke-exit-after-frames=<N>`
+- `--smoke-exit-after-play-frames <N>` / `--smoke-exit-after-play-frames=<N>` — Play scene の描画フレームだけを数える性能計測用
 - `--smoke-exit-on-result`
 - `--renderer <backend>` (`vulkan`, `metal`, `dx12`, `gl`, `auto`)
 - `-h` / `--help`

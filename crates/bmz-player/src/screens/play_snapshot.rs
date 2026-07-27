@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 use bmz_chart::model::LongNoteMode;
@@ -43,6 +44,11 @@ pub struct PlayRenderSnapshotCache {
     end_of_note_time: TimeUs,
     scroll_integral: ScrollIntegralCache,
     speed_segments: Arc<[(f64, f64)]>,
+    /// `long_notes` は start tick 順であることを前提にしている。各位置までの
+    /// end time 最大値を保持し、画面より前に完全に抜けた LN 群を二分探索で飛ばす。
+    /// start tick の上限と組み合わせることで、simple scroll 中の LN 走査を
+    /// 可視候補だけに絞る。
+    long_note_prefix_max_end_times: Arc<[i64]>,
     bga_events: BgaEventCache,
 }
 
@@ -81,6 +87,18 @@ impl PlayRenderSnapshotCache {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         );
+        let mut max_end_time = i64::MIN;
+        let long_note_prefix_max_end_times = Arc::from(
+            chart
+                .long_notes
+                .iter()
+                .map(|long| {
+                    max_end_time = max_end_time.max(long.end_time.0);
+                    max_end_time
+                })
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
         let bga_events = BgaEventCache::from_chart(chart);
         Self {
             judge_graph_density,
@@ -91,6 +109,7 @@ impl PlayRenderSnapshotCache {
             end_of_note_time,
             scroll_integral,
             speed_segments,
+            long_note_prefix_max_end_times,
             bga_events,
         }
     }
@@ -774,16 +793,21 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             }
         }
 
-        for bar in visible_bar_lines(&session.chart.bar_lines, simple_tick_upper_bound) {
+        for bar in visible_bar_lines(
+            &session.chart.bar_lines,
+            scroll_time,
+            simple_tick_upper_bound.map(|upper| (cursor_tick, upper)),
+        ) {
             if let Some(y) = scroll.note_y(bar.time, cursor_tick) {
                 snapshot.bar_lines.push(VisibleBarLine { time: bar.time, y });
             }
         }
 
-        for event in &session.chart.timing_events {
-            if simple_tick_upper_bound.is_some_and(|upper| event.tick.0 as f64 > upper) {
-                break;
-            }
+        for event in visible_timing_events(
+            &session.chart.timing_events,
+            scroll_time,
+            simple_tick_upper_bound.map(|upper| (cursor_tick, upper)),
+        ) {
             let Some(y) = scroll.note_y(event.time, cursor_tick) else {
                 continue;
             };
@@ -795,23 +819,25 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         }
 
         let end_second = (session.chart.end_time.0.max(0) / 1_000_000).min(21_600);
-        for second in 1..=end_second {
+        let seconds = visible_time_line_seconds(
+            &session.timing_map,
+            end_second,
+            scroll_time,
+            simple_tick_upper_bound,
+        );
+        for second in seconds {
             let time = TimeUs(second.saturating_mul(1_000_000));
-            let tick = session.timing_map.time_to_tick_f64(scroll_render_time(time));
-            if simple_tick_upper_bound.is_some_and(|upper| tick > upper) {
-                break;
-            }
             if let Some(y) = scroll.note_y(time, cursor_tick) {
                 snapshot.time_lines.push(VisibleBarLine { time, y });
             }
         }
 
-        for (pair_index, long) in session.chart.long_notes.iter().enumerate() {
-            if let Some(upper_tick) = simple_tick_upper_bound
-                && (long.start_tick.0 as f64) > upper_tick
-            {
-                break;
-            }
+        for (pair_index, long) in visible_long_notes(
+            &session.chart.long_notes,
+            &cache.long_note_prefix_max_end_times,
+            scroll_time,
+            simple_tick_upper_bound.map(|upper| (cursor_tick, upper)),
+        ) {
             let head = scroll.note_progress(long.start_time, cursor_tick);
             let tail = scroll.note_progress(long.end_time, cursor_tick);
             // 終端が判定ラインを過ぎた、または始端が画面上端より奥なら非表示。
@@ -1230,12 +1256,92 @@ fn visible_lane_notes(
     &notes[start.min(end)..end]
 }
 
-fn visible_bar_lines(bar_lines: &[BarLine], upper_tick: Option<f64>) -> &[BarLine] {
-    let Some(upper_tick) = upper_tick else {
+/// Simple scroll では tick と画面上の順序が一致するため、二分探索で可視範囲へ
+/// 絞れる。SCROLL/SPEED 使用時は負値・補間で単調性を仮定できないので、既存どおり
+/// 全候補を返して表示互換を優先する。
+fn visible_bar_lines(
+    bar_lines: &[BarLine],
+    lower_time: TimeUs,
+    tick_range: Option<(f64, f64)>,
+) -> &[BarLine] {
+    let Some((lower_tick, upper_tick)) = tick_range else {
         return bar_lines;
     };
+    // STOP 中の開始点と、互換テスト/不正規化チャートの time/tick 不整合を安全に残す。
+    let start_by_time = bar_lines.partition_point(|bar| bar.time < lower_time);
+    let start_by_tick = bar_lines.partition_point(|bar| (bar.tick.0 as f64) < lower_tick);
+    let start = start_by_time.min(start_by_tick);
     let end = bar_lines.partition_point(|bar| (bar.tick.0 as f64) <= upper_tick);
-    &bar_lines[..end]
+    &bar_lines[start.min(end)..end]
+}
+
+fn visible_timing_events(
+    events: &[bmz_chart::model::TimingEvent],
+    lower_time: TimeUs,
+    tick_range: Option<(f64, f64)>,
+) -> &[bmz_chart::model::TimingEvent] {
+    let Some((lower_tick, upper_tick)) = tick_range else {
+        return events;
+    };
+    let start_by_time = events.partition_point(|event| event.time < lower_time);
+    let start_by_tick = events.partition_point(|event| (event.tick.0 as f64) < lower_tick);
+    let start = start_by_time.min(start_by_tick);
+    let end = events.partition_point(|event| (event.tick.0 as f64) <= upper_tick);
+    &events[start.min(end)..end]
+}
+
+fn visible_long_notes<'a>(
+    long_notes: &'a [bmz_chart::model::LongNotePair],
+    prefix_max_end_times: &[i64],
+    lower_time: TimeUs,
+    tick_range: Option<(f64, f64)>,
+) -> impl Iterator<Item = (usize, &'a bmz_chart::model::LongNotePair)> + 'a {
+    let range = tick_range.map_or(0..long_notes.len(), |(_, upper_tick)| {
+        debug_assert_eq!(long_notes.len(), prefix_max_end_times.len());
+        // prefix max は単調なので、この位置より前の LN はすべて終端が判定線より前。
+        let start = prefix_max_end_times.partition_point(|&end_time| end_time < lower_time.0);
+        // 既存実装も start tick 順を前提に break していたので、その順序を保つ。
+        let end = long_notes.partition_point(|long| (long.start_tick.0 as f64) <= upper_tick);
+        start.min(end)..end
+    });
+    long_notes[range.clone()]
+        .iter()
+        .enumerate()
+        .map(move |(offset, long)| (range.start + offset, long))
+}
+
+/// `1..=end_second` のうち、単純スクロール画面に入り得る秒線を返す。
+/// tick は時間に対して単調非減少なので、STOP があっても二分探索できる。
+fn visible_time_line_seconds(
+    timing_map: &TimingMap,
+    end_second: i64,
+    render_now: TimeUs,
+    simple_tick_upper_bound: Option<f64>,
+) -> Range<i64> {
+    if end_second < 1 {
+        return 1..1;
+    }
+    let Some(upper_tick) = simple_tick_upper_bound else {
+        // SCROLL/SPEED は負値を含み得るため、過去の秒線が再度画面に入る。
+        // この経路は単調性を仮定せず、従来どおり全候補を評価する。
+        return 1..end_second.saturating_add(1);
+    };
+    let start = ((render_now.0.max(0).saturating_add(999_999)) / 1_000_000).clamp(1, end_second);
+    let end = {
+        let mut low = start;
+        let mut high = end_second.saturating_add(1);
+        while low < high {
+            let middle = low + (high - low) / 2;
+            let time = TimeUs(middle.saturating_mul(1_000_000));
+            if timing_map.time_to_tick_f64(scroll_render_time(time)) <= upper_tick {
+                low = middle.saturating_add(1);
+            } else {
+                high = middle;
+            }
+        }
+        low.saturating_sub(1)
+    };
+    start..end.saturating_add(1)
 }
 
 /// `segments` を階段関数として `from..to` の区間積分を返す。factor は次のイベントまで
@@ -1614,6 +1720,114 @@ mod tests {
             ),
             0.25,
         ));
+    }
+
+    #[test]
+    fn simple_scroll_ranges_skip_past_chart_objects() {
+        let bars = vec![
+            BarLine { measure: 0, tick: ChartTick(0), time: TimeUs(0) },
+            BarLine { measure: 1, tick: ChartTick(960), time: TimeUs(500_000) },
+            BarLine { measure: 2, tick: ChartTick(1_920), time: TimeUs(1_000_000) },
+            BarLine { measure: 3, tick: ChartTick(2_880), time: TimeUs(1_500_000) },
+            BarLine { measure: 4, tick: ChartTick(3_840), time: TimeUs(2_000_000) },
+        ];
+        let visible = visible_bar_lines(&bars, TimeUs(1_000_000), Some((1_920.0, 2_880.0)));
+        assert_eq!(visible.iter().map(|bar| bar.tick.0).collect::<Vec<_>>(), vec![1_920, 2_880]);
+
+        let events = vec![
+            bmz_chart::model::TimingEvent {
+                tick: ChartTick(0),
+                time: TimeUs(0),
+                kind: TimingEventKind::BpmChange { bpm: 120.0 },
+            },
+            bmz_chart::model::TimingEvent {
+                tick: ChartTick(1_920),
+                time: TimeUs(1_000_000),
+                kind: TimingEventKind::Stop { duration_us: 100_000 },
+            },
+            bmz_chart::model::TimingEvent {
+                tick: ChartTick(2_880),
+                time: TimeUs(1_500_000),
+                kind: TimingEventKind::BpmChange { bpm: 150.0 },
+            },
+            bmz_chart::model::TimingEvent {
+                tick: ChartTick(3_840),
+                time: TimeUs(2_000_000),
+                kind: TimingEventKind::Stop { duration_us: 100_000 },
+            },
+        ];
+        let visible = visible_timing_events(&events, TimeUs(1_000_000), Some((1_920.0, 2_880.0)));
+        assert_eq!(
+            visible.iter().map(|event| event.tick.0).collect::<Vec<_>>(),
+            vec![1_920, 2_880]
+        );
+    }
+
+    #[test]
+    fn simple_scroll_long_note_range_keeps_crossing_notes_without_past_scan() {
+        use bmz_chart::model::{LongNotePair, LongNoteStyle};
+
+        let long = |start_tick: u64, end_tick: u64| LongNotePair {
+            lane: Lane::Key1,
+            style: LongNoteStyle::ChannelPair,
+            mode: None,
+            start_note_id: NoteId(start_tick as u32),
+            end_note_id: NoteId(end_tick as u32),
+            start_tick: ChartTick(start_tick),
+            end_tick: ChartTick(end_tick),
+            start_time: TimeUs(start_tick as i64),
+            end_time: TimeUs(end_tick as i64),
+            sound: None,
+        };
+        let longs = vec![long(0, 960), long(480, 3_000), long(1_920, 2_880), long(4_000, 5_000)];
+        let prefix = [960, 3_000, 3_000, 5_000];
+        let visible = visible_long_notes(&longs, &prefix, TimeUs(1_920), Some((1_920.0, 3_000.0)))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        assert_eq!(visible, vec![1, 2]);
+    }
+
+    #[test]
+    fn simple_scroll_time_line_range_uses_visible_seconds_only() {
+        use bmz_chart::timing::build_timing_map;
+
+        let timing_map = build_timing_map(120.0, Vec::new());
+        let upper_tick = timing_map.time_to_tick_f64(TimeUs(184_000_000));
+        assert_eq!(
+            visible_time_line_seconds(&timing_map, 600, TimeUs(180_100_000), Some(upper_tick)),
+            181..185
+        );
+        // SCROLL/SPEED path keeps all candidates because negative SCROLL can make
+        // past lines visible again.
+        assert_eq!(visible_time_line_seconds(&timing_map, 600, TimeUs(180_100_000), None), 1..601);
+    }
+
+    #[test]
+    fn simple_scroll_time_line_range_handles_stop_tick_boundaries() {
+        use bmz_chart::timing::{TickTimingEvent, TickTimingEventKind, build_timing_map};
+
+        let timing_map = build_timing_map(
+            120.0,
+            vec![TickTimingEvent {
+                tick: ChartTick(1_920),
+                kind: TickTimingEventKind::StopRaw { value: 192 },
+            }],
+        );
+        let during_stop_tick = timing_map.time_to_tick_f64(TimeUs(1_050_000));
+        assert!(
+            timing_map.time_to_tick_f64(TimeUs(1_000_000))
+                <= timing_map.time_to_tick_f64(TimeUs(1_050_000))
+        );
+        assert!(
+            timing_map.time_to_tick_f64(TimeUs(1_050_000))
+                <= timing_map.time_to_tick_f64(TimeUs(1_100_000))
+        );
+
+        let visible = visible_time_line_seconds(&timing_map, 5, TimeUs(0), Some(during_stop_tick));
+        for second in 1..=5 {
+            let tick = timing_map.time_to_tick_f64(TimeUs(second * 1_000_000));
+            assert_eq!(visible.contains(&second), tick <= during_stop_tick);
+        }
     }
 
     #[test]
