@@ -11922,9 +11922,9 @@ fn select_row_bar_image_index(row: &SelectRowSnapshot) -> usize {
         SelectRowKind::SearchFolder => 6,
         SelectRowKind::Course => 3,
         SelectRowKind::Command | SelectRowKind::Container => 5,
-        SelectRowKind::SettingsRoot | SelectRowKind::SettingsFolder => 7,
-        SelectRowKind::SettingsBack => 8,
-        SelectRowKind::SettingsClose => 9,
+        SelectRowKind::SettingsRoot | SelectRowKind::SettingsFolder => 8,
+        SelectRowKind::SettingsBack => 9,
+        SelectRowKind::SettingsClose => 10,
         SelectRowKind::Config => 0,
     }
 }
@@ -14856,10 +14856,10 @@ mod tests {
             (SelectRowKind::Command, true, 5, 9),
             (SelectRowKind::Container, true, 5, 9),
             (SelectRowKind::NoSong, false, 4, 8),
-            (SelectRowKind::SettingsRoot, true, 7, 11),
-            (SelectRowKind::SettingsFolder, true, 7, 11),
-            (SelectRowKind::SettingsBack, true, 8, 12),
-            (SelectRowKind::SettingsClose, true, 9, 13),
+            (SelectRowKind::SettingsRoot, true, 8, 11),
+            (SelectRowKind::SettingsFolder, true, 8, 11),
+            (SelectRowKind::SettingsBack, true, 9, 12),
+            (SelectRowKind::SettingsClose, true, 10, 13),
             (SelectRowKind::Config, true, 0, 2),
         ];
 
@@ -14919,10 +14919,10 @@ mod tests {
         assert_eq!(select_row_bar_image_fallback_indices(&search), &[1]);
         assert_eq!(select_row_bar_text_fallback_indices(&search), &[4]);
         let cases: [(&SelectRowSnapshot, usize, usize, &[usize], &[usize]); 4] = [
-            (&settings_root, 7, 11, &[6, 1], &[10, 4]),
-            (&settings_folder, 7, 11, &[1], &[4]),
-            (&settings_back, 8, 12, &[6, 1], &[10, 4]),
-            (&settings_close, 9, 13, &[6, 1], &[10, 4]),
+            (&settings_root, 8, 11, &[6, 1], &[10, 4]),
+            (&settings_folder, 8, 11, &[1], &[4]),
+            (&settings_back, 9, 12, &[6, 1], &[10, 4]),
+            (&settings_close, 10, 13, &[6, 1], &[10, 4]),
         ];
         for (row, image, text, fallback_images, fallback_texts) in cases {
             assert_eq!(select_row_bar_image_index(row), image);
@@ -14933,12 +14933,25 @@ mod tests {
     }
 
     #[test]
-    fn select_row_slot_fallbacks_reach_legacy_folder_before_first_slot() {
-        let dedicated_slots: Vec<_> = (0..10).collect();
-        assert_eq!(select_row_slot_with_fallbacks(&dedicated_slots, 8, &[6, 1]).copied(), Some(8));
+    fn select_settings_image_slots_follow_legacy_search_and_folder_fallbacks() {
+        let dedicated_slots: Vec<_> = (0..11).collect();
+        for primary in [8, 9, 10] {
+            assert_eq!(
+                select_row_slot_with_fallbacks(&dedicated_slots, primary, &[6, 1]).copied(),
+                Some(primary)
+            );
+        }
 
-        let search_slots: Vec<_> = (0..7).collect();
-        assert_eq!(select_row_slot_with_fallbacks(&search_slots, 8, &[6, 1]).copied(), Some(6));
+        // beatoraja skin may define index 7 as a legacy no-song bar. BMZ settings
+        // slots start after all eight existing entries, so ECFN-style arrays
+        // continue to use the search bar at index 6.
+        let beatoraja_slots: Vec<_> = (0..8).collect();
+        for primary in [8, 9, 10] {
+            assert_eq!(
+                select_row_slot_with_fallbacks(&beatoraja_slots, primary, &[6, 1]).copied(),
+                Some(6)
+            );
+        }
 
         let folder_slots: Vec<_> = (0..2).collect();
         assert_eq!(select_row_slot_with_fallbacks(&folder_slots, 8, &[6, 1]).copied(), Some(1));
