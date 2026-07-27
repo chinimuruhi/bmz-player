@@ -307,3 +307,7 @@ profile の `[skin]` は key mode ごとに play skin path と設定を持つ。
 `Default` は従来通り `Scratch, White, Blue, Yellow, Blue, White`
 (scratch left 時の画面左からの並び)。`6Key-like` は scratch side に関わらず、
 画面左から `White, Blue, White, White, Blue, White` になる。
+
+`F-RANDOM` / `MF-RANDOM` は既存の146×19 ARRANGE sprite領域へフォントで表示する。
+Lua定義の `align=1` は destination の `x` を中央基準にするため、Rmz-skin側で
+sprite左端から半幅だけ中央へ移し、フォントサイズもspriteの実字高へ合わせる。

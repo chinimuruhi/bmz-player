@@ -3996,14 +3996,14 @@ mod tests {
             ("lane-op-fran-tx", "F-RANDOM", "event_index(344) == 10"),
             ("lane-op-mfran-tx", "MF-RANDOM", "event_index(344) == 11"),
         ] {
-            assert!(
-                loaded
-                    .document
-                    .text
-                    .iter()
-                    .any(|text| text.id == id && text.constant_text == label),
-                "Rmz play6 should decode {id} text"
-            );
+            let text = loaded
+                .document
+                .text
+                .iter()
+                .find(|text| text.id == id && text.constant_text == label)
+                .unwrap_or_else(|| panic!("Rmz play6 should decode {id} text"));
+            assert_eq!(text.size, 30, "Rmz play6 {id} should match the sprite text height");
+            assert_eq!(text.align, 1);
             let draws = loaded
                 .document
                 .destination
@@ -4018,6 +4018,26 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
             assert!(draws.contains(&draw), "Rmz play6 {id} should use {draw}, got {draws:?}");
+        }
+        let destination_frame = |id: &str| {
+            loaded.document.destination.iter().find_map(|entry| match entry {
+                bmz_skin_document::DestinationListEntry::Single(destination)
+                    if destination.id == id =>
+                {
+                    destination.dst.first().and_then(|entry| match entry {
+                        bmz_skin_document::SkinDstEntry::Frame(frame) => Some(*frame),
+                        bmz_skin_document::SkinDstEntry::Conditional { .. } => None,
+                    })
+                }
+                _ => None,
+            })
+        };
+        let sprite_frame = destination_frame("lane-op-tx").expect("Rmz arrange sprite destination");
+        for id in ["lane-op-fran-tx", "lane-op-mfran-tx"] {
+            let frame = destination_frame(id).unwrap_or_else(|| panic!("Rmz {id} destination"));
+            assert_eq!(frame.x, sprite_frame.x.zip(sprite_frame.w).map(|(x, w)| x + w / 2));
+            assert_eq!(frame.w, sprite_frame.w);
+            assert_eq!(frame.h, sprite_frame.h);
         }
         let random_draw = (0..10)
             .map(|value| format!("event_index(344) == {value}"))
