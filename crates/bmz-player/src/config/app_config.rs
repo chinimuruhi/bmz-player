@@ -121,6 +121,9 @@ pub struct VideoConfig {
     pub monitor_name: String,
     pub width: u32,
     pub height: u32,
+    /// 内部描画にウィンドウ解像度を使うか、現在シーンのスキン解像度を使うか。
+    #[serde(default)]
+    pub internal_resolution: InternalResolutionModeConfig,
     pub vsync_mode: VsyncModeConfig,
     /// 目標 FPS。0 はフレームペーサーによる待機を行わず、無制限を意味する。
     pub target_fps: u32,
@@ -252,6 +255,17 @@ pub enum RendererBackend {
     Metal,
     Dx12,
     Gl,
+}
+
+/// 内部描画の解像度の決定方法。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub enum InternalResolutionModeConfig {
+    /// 現在のウィンドウ解像度で内部描画する。
+    #[default]
+    Native,
+    /// 現在のシーンの `SkinDocument` が宣言する幅・高さで内部描画する。
+    Skin,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -520,6 +534,7 @@ impl Default for AppConfig {
                 monitor_name: String::new(),
                 width: 1280,
                 height: 720,
+                internal_resolution: InternalResolutionModeConfig::Native,
                 vsync_mode: VsyncModeConfig::Vsync,
                 target_fps: 240,
                 frame_limit_in_background: 60,
@@ -566,6 +581,7 @@ mod tests {
         assert!(config.scan.follow_symlinks);
         assert!(!config.scan.auto_rescan_on_startup);
         assert_eq!(config.video.vsync_mode, VsyncModeConfig::Vsync);
+        assert_eq!(config.video.internal_resolution, InternalResolutionModeConfig::Native);
         assert_eq!(config.video.frame_limit_in_background, 60);
     }
 
@@ -595,6 +611,28 @@ mod tests {
         let loaded: AppConfig = toml::from_str(&toml).unwrap();
 
         assert_eq!(loaded.video.target_fps, 0);
+    }
+
+    #[test]
+    fn app_config_round_trips_skin_internal_resolution() {
+        let mut config = AppConfig::default();
+        config.video.internal_resolution = InternalResolutionModeConfig::Skin;
+
+        let toml = toml::to_string(&config).unwrap();
+        let loaded: AppConfig = toml::from_str(&toml).unwrap();
+
+        assert_eq!(loaded.video.internal_resolution, InternalResolutionModeConfig::Skin);
+    }
+
+    #[test]
+    fn app_config_loads_missing_internal_resolution_as_native() {
+        let toml = toml::to_string(&AppConfig::default())
+            .unwrap()
+            .replace("internal_resolution = \"Native\"\n", "");
+
+        let config: AppConfig = toml::from_str(&toml).unwrap();
+
+        assert_eq!(config.video.internal_resolution, InternalResolutionModeConfig::Native);
     }
 
     #[test]

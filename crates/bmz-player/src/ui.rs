@@ -21,8 +21,9 @@ use winit::window::Window;
 
 use crate::config::app_config::{
     AppConfig, AudioBackend, AudioBufferSizeMode, AudioOutputMode, AudioSampleRateMode,
-    DifficultyTableSource, GamepadBackendKind, InputBackendKind, LogLevel, ObsActionConfig,
-    ObsRecordingMode, PathEntry, RendererBackend, UpdateChannelConfig, VsyncModeConfig, WindowMode,
+    DifficultyTableSource, GamepadBackendKind, InputBackendKind, InternalResolutionModeConfig,
+    LogLevel, ObsActionConfig, ObsRecordingMode, PathEntry, RendererBackend, UpdateChannelConfig,
+    VsyncModeConfig, WindowMode,
 };
 use crate::config::play::{TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN};
 use crate::config::profile_config::{
@@ -3120,6 +3121,26 @@ fn build_settings_panel(
                         egui::Slider::new(&mut config.video.height, 480..=2160)
                             .text(tr!(text, "settings-video-height")),
                     );
+                    egui::ComboBox::new(
+                        "video_internal_resolution",
+                        tr!(text, "settings-video-internal-resolution"),
+                    )
+                    .selected_text(internal_resolution_mode_label(
+                        &config.video.internal_resolution,
+                        text,
+                    ))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut config.video.internal_resolution,
+                            InternalResolutionModeConfig::Native,
+                            tr!(text, "settings-video-internal-resolution-native"),
+                        );
+                        ui.selectable_value(
+                            &mut config.video.internal_resolution,
+                            InternalResolutionModeConfig::Skin,
+                            tr!(text, "settings-video-internal-resolution-skin"),
+                        );
+                    });
                     let available_monitors = window.available_monitors().collect::<Vec<_>>();
                     let selected_monitor = if config.video.monitor_name.is_empty() {
                         tr!(text, "settings-video-primary-monitor")
@@ -3950,6 +3971,17 @@ fn renderer_backend_label(backend: &RendererBackend, text: Localizer) -> String 
         RendererBackend::Metal => "Metal".to_owned(),
         RendererBackend::Dx12 => "DirectX 12".to_owned(),
         RendererBackend::Gl => "OpenGL".to_owned(),
+    }
+}
+
+fn internal_resolution_mode_label(mode: &InternalResolutionModeConfig, text: Localizer) -> String {
+    match mode {
+        InternalResolutionModeConfig::Native => {
+            tr!(text, "settings-video-internal-resolution-native")
+        }
+        InternalResolutionModeConfig::Skin => {
+            tr!(text, "settings-video-internal-resolution-skin")
+        }
     }
 }
 

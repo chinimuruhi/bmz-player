@@ -14,4 +14,4 @@ pub mod text;
 pub mod ui;
 
 pub use bmz_font::FontCoverage;
-pub use renderer::{WgpuBackend, WgpuPresentMode, available_wgpu_backends};
+pub use renderer::{InternalResolutionMode, WgpuBackend, WgpuPresentMode, available_wgpu_backends};

@@ -48,6 +48,18 @@ pub enum WgpuPresentMode {
     Mailbox,
 }
 
+/// ゲーム / スキン描画に使う解像度。
+///
+/// `Skin` は現在のスキン document の `w` / `h` が表示領域より小さい場合だけ
+/// 中間 render target を使い、最終 surface へ拡大する。egui は常に surface の
+/// native 解像度で描画する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InternalResolutionMode {
+    #[default]
+    Native,
+    Skin,
+}
+
 /// Surfaceへ実際に適用されたpresent設定。要求modeがGPU/OSで利用できない場合、
 /// `effective_mode`はfallback後の値になる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,6 +159,7 @@ pub struct Renderer {
     last_frame_timings: Option<RenderFrameTimings>,
     /// サーフェス生成時および `set_present_mode` で参照する希望 present mode。
     present_mode: WgpuPresentMode,
+    internal_resolution_mode: InternalResolutionMode,
     backend: WgpuBackend,
     default_font_coverage: bmz_font::FontCoverage,
 }
@@ -247,6 +260,22 @@ impl CanvasRenderPolicy {
             fit_mode: CanvasFitMode::Contain,
             canvas_size: Some(CanvasSize { width: document.w.max(1), height: document.h.max(1) }),
         }
+    }
+
+    fn internal_render_size(
+        self,
+        surface: SurfaceSize,
+        mode: InternalResolutionMode,
+    ) -> Option<SurfaceSize> {
+        if mode == InternalResolutionMode::Native || !surface.is_drawable() {
+            return None;
+        }
+        let canvas = self.canvas_size?;
+        let content = CanvasViewport::from_policy(surface, self).content_size();
+        // 小さいwindowでスキン解像度へ一度拡大してから縮小すると、負荷だけが増える。
+        // 両辺が表示領域より小さい場合に限り内部targetを使う。
+        (canvas.width < content.width && canvas.height < content.height)
+            .then_some(SurfaceSize { width: canvas.width, height: canvas.height })
     }
 }
 
@@ -375,6 +404,10 @@ struct WgpuRenderer {
     image_bind_group_layout: wgpu::BindGroupLayout,
     image_sampler: wgpu::Sampler,
     image_sampler_linear: wgpu::Sampler,
+    upscale_pipeline: wgpu::RenderPipeline,
+    upscale_buffer: wgpu::Buffer,
+    upscale_rect: Option<Rect>,
+    internal_scene_target: Option<InternalSceneTarget>,
     image_textures: HashMap<TextureId, PreparedTexture>,
     image_bind_group_cache: HashMap<(TextureId, bool), wgpu::BindGroup>,
     image_bind_group_scratch: Vec<wgpu::BindGroup>,
@@ -400,6 +433,13 @@ struct WgpuRenderer {
     // Drop the surface after GPU resources so Linux native contexts are
     // released before the window/display teardown.
     surface: wgpu::Surface<'static>,
+}
+
+struct InternalSceneTarget {
+    _texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    bind_group: wgpu::BindGroup,
+    size: SurfaceSize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1103,6 +1143,17 @@ impl Renderer {
         }
     }
 
+    pub fn set_internal_resolution_mode(&mut self, mode: InternalResolutionMode) {
+        if self.internal_resolution_mode == mode {
+            return;
+        }
+        self.internal_resolution_mode = mode;
+        if let Some(gpu) = &mut self.gpu {
+            gpu.clear_internal_scene_target();
+        }
+        tracing::info!(?mode, "internal resolution mode updated");
+    }
+
     pub fn surface_presentation_status(&self) -> Option<SurfacePresentationStatus> {
         let gpu = self.gpu.as_ref()?;
         Some(SurfacePresentationStatus {
@@ -1143,6 +1194,7 @@ impl Renderer {
         let (status, gpu_timings) = gpu.render_plan(
             plan,
             self.last_plan_canvas_policy,
+            self.internal_resolution_mode,
             &self.fonts,
             &self.bitmap_fonts,
             egui.as_ref(),
@@ -1391,6 +1443,14 @@ impl WgpuRenderer {
             &image_bind_group_layout,
             BlendMode::LayerMask,
         );
+        let upscale_pipeline =
+            create_upscale_pipeline(&device, config.format, &image_bind_group_layout);
+        let upscale_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bmz-render internal upscale buffer"),
+            size: IMAGE_INSTANCE_BYTES as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let image_textures = create_default_image_textures(&device, &queue);
         let text_bind_group_layout = create_text_bind_group_layout(&device);
         let text_sampler = create_text_sampler(&device);
@@ -1412,6 +1472,10 @@ impl WgpuRenderer {
             image_bind_group_layout,
             image_sampler,
             image_sampler_linear,
+            upscale_pipeline,
+            upscale_buffer,
+            upscale_rect: None,
+            internal_scene_target: None,
             image_textures,
             image_bind_group_cache: HashMap::new(),
             image_bind_group_scratch: Vec::new(),
@@ -1445,12 +1509,79 @@ impl WgpuRenderer {
 
         self.config.width = size.width;
         self.config.height = size.height;
+        self.clear_internal_scene_target();
         self.clear_offscreen_rect_batches();
         self.configure_surface();
     }
 
     fn surface_size(&self) -> SurfaceSize {
         SurfaceSize { width: self.config.width, height: self.config.height }
+    }
+
+    fn clear_internal_scene_target(&mut self) {
+        self.internal_scene_target = None;
+        self.upscale_rect = None;
+    }
+
+    fn ensure_internal_scene_target(&mut self, size: SurfaceSize) {
+        if self.internal_scene_target.as_ref().is_some_and(|target| target.size == size) {
+            return;
+        }
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("bmz-render internal scene target"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bmz-render internal scene bind group"),
+            layout: &self.image_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.image_sampler_linear),
+                },
+            ],
+        });
+        self.internal_scene_target =
+            Some(InternalSceneTarget { _texture: texture, view, bind_group, size });
+        self.upscale_rect = None;
+        tracing::info!(
+            width = size.width,
+            height = size.height,
+            "created internal scene render target"
+        );
+    }
+
+    fn update_upscale_instance(&mut self, rect: Rect, surface_size: SurfaceSize) {
+        if self.upscale_rect == Some(rect) {
+            return;
+        }
+        let mut bytes = Vec::with_capacity(IMAGE_INSTANCE_BYTES);
+        encode_image_instance(
+            &mut bytes,
+            &rect,
+            &UvRect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+            &Color::rgb(1.0, 1.0, 1.0),
+            0.0,
+            Point { x: 0.5, y: 0.5 },
+            surface_size.width as f32 / surface_size.height.max(1) as f32,
+        );
+        self.queue.write_buffer(&self.upscale_buffer, 0, &bytes);
+        self.upscale_rect = Some(rect);
     }
 
     fn poll_screenshot_work(&mut self) {
@@ -1564,6 +1695,7 @@ impl WgpuRenderer {
         &mut self,
         plan: &DrawPlan,
         canvas_policy: CanvasRenderPolicy,
+        internal_resolution_mode: InternalResolutionMode,
         fonts: &HashMap<String, FontArc>,
         bitmap_fonts: &HashMap<String, BitmapFont>,
         egui: Option<&EguiFrame>,
@@ -1584,7 +1716,11 @@ impl WgpuRenderer {
             timings.draw_us = draw_start.elapsed().as_micros();
             return Ok((RenderSurfaceStatus::SkippedZeroSize, timings));
         }
-        let canvas_viewport = CanvasViewport::from_policy(surface_size, canvas_policy);
+        let output_viewport = CanvasViewport::from_policy(surface_size, canvas_policy);
+        let internal_render_size =
+            canvas_policy.internal_render_size(surface_size, internal_resolution_mode);
+        let render_size = internal_render_size.unwrap_or(surface_size);
+        let canvas_viewport = CanvasViewport::from_policy(render_size, canvas_policy);
 
         let text_start = Instant::now();
         let mut text_frame =
@@ -1599,9 +1735,9 @@ impl WgpuRenderer {
         encode_plan_geometry_into(
             plan,
             &text_frame,
-            surface_size,
+            render_size,
             canvas_viewport,
-            &mut |rects, cache| self.offscreen_rect_batch_texture(rects, cache, surface_size),
+            &mut |rects, cache| self.offscreen_rect_batch_texture(rects, cache, render_size),
             &mut geometry,
         );
         let geometry_stats = geometry.stats();
@@ -1672,13 +1808,76 @@ impl WgpuRenderer {
         }
         let text_bind_group = self.text_bind_group();
         timings.bind_us = bind_start.elapsed().as_micros();
+        let internal_target = internal_render_size.map(|size| {
+            self.ensure_internal_scene_target(size);
+            self.update_upscale_instance(output_viewport.rect, surface_size);
+            let target =
+                self.internal_scene_target.as_ref().expect("internal scene target was created");
+            (target.view.clone(), target.bind_group.clone())
+        });
         let encode_start = Instant::now();
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("bmz-render clear encoder"),
         });
-        {
+        if let Some((internal_view, upscale_bind_group)) = &internal_target {
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("bmz-render internal scene pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: internal_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(plan.clear.to_wgpu()),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        depth_slice: None,
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                draw_plan_geometry(
+                    &mut pass,
+                    &geometry,
+                    &self.rect_pipeline,
+                    self.rect_buffer.as_ref(),
+                    &self.image_pipeline,
+                    &self.image_add_pipeline,
+                    &self.image_premultiplied_pipeline,
+                    &self.image_layer_pipeline,
+                    &image_bind_groups,
+                    self.image_buffer.as_ref(),
+                    &self.text_pipeline,
+                    text_bind_group.as_ref(),
+                    self.text_buffer.as_ref(),
+                );
+            }
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("bmz-render internal upscale pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(plan.clear.to_wgpu()),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        depth_slice: None,
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                pass.set_pipeline(&self.upscale_pipeline);
+                pass.set_bind_group(0, upscale_bind_group, &[]);
+                pass.set_vertex_buffer(0, self.upscale_buffer.slice(..));
+                pass.draw(0..6, 0..1);
+            }
+        } else {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("bmz-render clear pass"),
+                label: Some("bmz-render scene surface pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -1693,69 +1892,21 @@ impl WgpuRenderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // DrawPlan.commands の順序を保ったまま rect / image / text を交互に描く。
-            // これにより skin が画像をテキストより前面に置く演出も正しく重なる。
-            let mut image_step_index = 0_usize;
-            for step in &geometry.steps {
-                match step {
-                    DrawStep::Rects { range } => {
-                        let Some(buffer) = &self.rect_buffer else {
-                            continue;
-                        };
-                        let instance_count = (range.len() / RECT_INSTANCE_BYTES) as u32;
-                        if instance_count == 0 {
-                            continue;
-                        }
-                        pass.set_pipeline(&self.rect_pipeline);
-                        pass.set_vertex_buffer(
-                            0,
-                            buffer.slice(range.start as u64..range.end as u64),
-                        );
-                        pass.draw(0..6, 0..instance_count);
-                    }
-                    DrawStep::Image { blend, range, .. } => {
-                        let bind_group = &image_bind_groups[image_step_index];
-                        image_step_index += 1;
-                        let Some(buffer) = &self.image_buffer else {
-                            continue;
-                        };
-                        let instance_count = (range.len() / IMAGE_INSTANCE_BYTES) as u32;
-                        if instance_count == 0 {
-                            continue;
-                        }
-                        pass.set_pipeline(match blend {
-                            BlendMode::Normal => &self.image_pipeline,
-                            BlendMode::Add => &self.image_add_pipeline,
-                            BlendMode::Premultiplied => &self.image_premultiplied_pipeline,
-                            BlendMode::LayerMask => &self.image_layer_pipeline,
-                        });
-                        pass.set_bind_group(0, bind_group, &[]);
-                        pass.set_vertex_buffer(
-                            0,
-                            buffer.slice(range.start as u64..range.end as u64),
-                        );
-                        pass.draw(0..6, 0..instance_count);
-                    }
-                    DrawStep::Text { range } => {
-                        let (Some(bind_group), Some(buffer)) =
-                            (&text_bind_group, &self.text_buffer)
-                        else {
-                            continue;
-                        };
-                        let instance_count = (range.len() / TEXT_INSTANCE_BYTES) as u32;
-                        if instance_count == 0 {
-                            continue;
-                        }
-                        pass.set_pipeline(&self.text_pipeline);
-                        pass.set_bind_group(0, bind_group, &[]);
-                        pass.set_vertex_buffer(
-                            0,
-                            buffer.slice(range.start as u64..range.end as u64),
-                        );
-                        pass.draw(0..6, 0..instance_count);
-                    }
-                }
-            }
+            draw_plan_geometry(
+                &mut pass,
+                &geometry,
+                &self.rect_pipeline,
+                self.rect_buffer.as_ref(),
+                &self.image_pipeline,
+                &self.image_add_pipeline,
+                &self.image_premultiplied_pipeline,
+                &self.image_layer_pipeline,
+                &image_bind_groups,
+                self.image_buffer.as_ref(),
+                &self.text_pipeline,
+                text_bind_group.as_ref(),
+                self.text_buffer.as_ref(),
+            );
         }
 
         // ゲーム / スキン描画の上に egui を重ねる。staging 用 CommandBuffer は
@@ -2295,6 +2446,74 @@ impl PlanGeometry {
             }
         }
         stats
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_plan_geometry<'pass>(
+    pass: &mut wgpu::RenderPass<'pass>,
+    geometry: &'pass PlanGeometry,
+    rect_pipeline: &'pass wgpu::RenderPipeline,
+    rect_buffer: Option<&'pass wgpu::Buffer>,
+    image_pipeline: &'pass wgpu::RenderPipeline,
+    image_add_pipeline: &'pass wgpu::RenderPipeline,
+    image_premultiplied_pipeline: &'pass wgpu::RenderPipeline,
+    image_layer_pipeline: &'pass wgpu::RenderPipeline,
+    image_bind_groups: &'pass [wgpu::BindGroup],
+    image_buffer: Option<&'pass wgpu::Buffer>,
+    text_pipeline: &'pass wgpu::RenderPipeline,
+    text_bind_group: Option<&'pass wgpu::BindGroup>,
+    text_buffer: Option<&'pass wgpu::Buffer>,
+) {
+    let mut image_step_index = 0_usize;
+    for step in &geometry.steps {
+        match step {
+            DrawStep::Rects { range } => {
+                let Some(buffer) = rect_buffer else {
+                    continue;
+                };
+                let instance_count = (range.len() / RECT_INSTANCE_BYTES) as u32;
+                if instance_count == 0 {
+                    continue;
+                }
+                pass.set_pipeline(rect_pipeline);
+                pass.set_vertex_buffer(0, buffer.slice(range.start as u64..range.end as u64));
+                pass.draw(0..6, 0..instance_count);
+            }
+            DrawStep::Image { blend, range, .. } => {
+                let bind_group = &image_bind_groups[image_step_index];
+                image_step_index += 1;
+                let Some(buffer) = image_buffer else {
+                    continue;
+                };
+                let instance_count = (range.len() / IMAGE_INSTANCE_BYTES) as u32;
+                if instance_count == 0 {
+                    continue;
+                }
+                pass.set_pipeline(match blend {
+                    BlendMode::Normal => image_pipeline,
+                    BlendMode::Add => image_add_pipeline,
+                    BlendMode::Premultiplied => image_premultiplied_pipeline,
+                    BlendMode::LayerMask => image_layer_pipeline,
+                });
+                pass.set_bind_group(0, bind_group, &[]);
+                pass.set_vertex_buffer(0, buffer.slice(range.start as u64..range.end as u64));
+                pass.draw(0..6, 0..instance_count);
+            }
+            DrawStep::Text { range } => {
+                let (Some(bind_group), Some(buffer)) = (text_bind_group, text_buffer) else {
+                    continue;
+                };
+                let instance_count = (range.len() / TEXT_INSTANCE_BYTES) as u32;
+                if instance_count == 0 {
+                    continue;
+                }
+                pass.set_pipeline(text_pipeline);
+                pass.set_bind_group(0, bind_group, &[]);
+                pass.set_vertex_buffer(0, buffer.slice(range.start as u64..range.end as u64));
+                pass.draw(0..6, 0..instance_count);
+            }
+        }
     }
 }
 
@@ -4523,6 +4742,45 @@ fn create_image_pipeline(
         BlendMode::LayerMask => IMAGE_SHADER_LAYER,
         BlendMode::Normal | BlendMode::Add | BlendMode::Premultiplied => IMAGE_SHADER,
     };
+    let label = match blend_mode {
+        BlendMode::Normal => "bmz-render image pipeline",
+        BlendMode::Add => "bmz-render additive image pipeline",
+        BlendMode::Premultiplied => "bmz-render premultiplied image pipeline",
+        BlendMode::LayerMask => "bmz-render layer-mask image pipeline",
+    };
+    create_image_quad_pipeline(
+        device,
+        format,
+        bind_group_layout,
+        shader_source,
+        label,
+        Some(image_blend_state(blend_mode)),
+    )
+}
+
+fn create_upscale_pipeline(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+    bind_group_layout: &wgpu::BindGroupLayout,
+) -> wgpu::RenderPipeline {
+    create_image_quad_pipeline(
+        device,
+        format,
+        bind_group_layout,
+        IMAGE_SHADER,
+        "bmz-render internal upscale pipeline",
+        None,
+    )
+}
+
+fn create_image_quad_pipeline(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    shader_source: &'static str,
+    label: &'static str,
+    blend: Option<wgpu::BlendState>,
+) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("bmz-render image shader"),
         source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
@@ -4534,12 +4792,7 @@ fn create_image_pipeline(
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some(match blend_mode {
-            BlendMode::Normal => "bmz-render image pipeline",
-            BlendMode::Add => "bmz-render additive image pipeline",
-            BlendMode::Premultiplied => "bmz-render premultiplied image pipeline",
-            BlendMode::LayerMask => "bmz-render layer-mask image pipeline",
-        }),
+        label: Some(label),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader,
@@ -4578,7 +4831,7 @@ fn create_image_pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: Some(image_blend_state(blend_mode)),
+                blend,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -5420,6 +5673,56 @@ mod tests {
         assert_eq!(viewport.rect, Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 });
         assert!(viewport.is_identity());
         assert_eq!(viewport.content_size(), SurfaceSize { width: 320, height: 240 });
+    }
+
+    #[test]
+    fn skin_internal_resolution_only_downscales_larger_surface_content() {
+        let policy = CanvasRenderPolicy {
+            fit_mode: CanvasFitMode::Contain,
+            canvas_size: Some(CanvasSize { width: 1920, height: 1080 }),
+        };
+        let four_k = SurfaceSize { width: 3840, height: 2160 };
+
+        assert_eq!(
+            policy.internal_render_size(four_k, InternalResolutionMode::Skin),
+            Some(SurfaceSize { width: 1920, height: 1080 })
+        );
+        assert_eq!(policy.internal_render_size(four_k, InternalResolutionMode::Native), None);
+        assert_eq!(
+            policy.internal_render_size(
+                SurfaceSize { width: 1280, height: 720 },
+                InternalResolutionMode::Skin,
+            ),
+            None
+        );
+        assert_eq!(
+            CanvasRenderPolicy::default()
+                .internal_render_size(four_k, InternalResolutionMode::Skin),
+            None
+        );
+    }
+
+    #[test]
+    fn skin_internal_resolution_keeps_surface_contain_rect_for_final_upscale() {
+        let surface = SurfaceSize { width: 1000, height: 1000 };
+        let policy = CanvasRenderPolicy {
+            fit_mode: CanvasFitMode::Contain,
+            canvas_size: Some(CanvasSize { width: 320, height: 180 }),
+        };
+
+        assert_eq!(
+            policy.internal_render_size(surface, InternalResolutionMode::Skin),
+            Some(SurfaceSize { width: 320, height: 180 })
+        );
+        let output = CanvasViewport::from_policy(surface, policy);
+        assert_approx(output.rect.x, 0.0);
+        assert_approx(output.rect.y, 0.21875);
+        assert_approx(output.rect.width, 1.0);
+        assert_approx(output.rect.height, 0.5625);
+        assert!(
+            CanvasViewport::from_policy(SurfaceSize { width: 320, height: 180 }, policy)
+                .is_identity()
+        );
     }
 
     #[test]

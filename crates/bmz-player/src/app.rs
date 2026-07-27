@@ -72,8 +72,8 @@ use crate::cli::{
     SMOKE_SCREENSHOT_ARG,
 };
 use crate::config::app_config::{
-    AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind, ObsConfig, PathEntry,
-    WindowMode,
+    AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind,
+    InternalResolutionModeConfig, ObsConfig, PathEntry, WindowMode,
 };
 use crate::config::key_config::{
     KeyBindingSlot, KeyBindingTarget, apply_play_binding, clear_play_binding,
@@ -3002,6 +3002,8 @@ impl WinitApp {
         let select_keys = SelectKeyBindings::from_profile(&boot.profile_config.input);
         let mut renderer = Box::new(Renderer::default());
         renderer.set_default_font_coverage(boot.profile_config.ui.locale().font_coverage());
+        renderer
+            .set_internal_resolution_mode(config_internal_resolution_mode(&boot.app_config.video));
         let skin_catalog = scan_skin_catalog(&boot.app_paths);
         let (skin_decode_tx, skin_decode_rx) = mpsc::channel::<PendingSkinResult>();
         // GPU upload 済みのスキンを main thread 側で一度に大量に install しないよう、
@@ -14279,6 +14281,9 @@ impl WinitApp {
         }
         // 本体設定パネルでの present mode 変更を即座に反映する。
         self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
+        self.renderer.set_internal_resolution_mode(config_internal_resolution_mode(
+            &self.boot.app_config.video,
+        ));
         // ウィンドウモード変更をライブ反映する (差分があるときのみ適用)。
         let desired_mode = self.boot.app_config.video.mode.clone();
         if desired_mode != self.applied_window_mode {
@@ -17361,6 +17366,15 @@ fn config_present_mode(
         crate::config::app_config::VsyncModeConfig::FastVsync => {
             bmz_render::WgpuPresentMode::Mailbox
         }
+    }
+}
+
+fn config_internal_resolution_mode(
+    video: &crate::config::app_config::VideoConfig,
+) -> bmz_render::InternalResolutionMode {
+    match video.internal_resolution {
+        InternalResolutionModeConfig::Native => bmz_render::InternalResolutionMode::Native,
+        InternalResolutionModeConfig::Skin => bmz_render::InternalResolutionMode::Skin,
     }
 }
 
@@ -23605,6 +23619,23 @@ mod tests {
 
         config.vsync_mode = VsyncModeConfig::FastVsync;
         assert_eq!(config_present_mode(&config), bmz_render::WgpuPresentMode::Mailbox);
+    }
+
+    #[test]
+    fn config_internal_resolution_mode_maps_video_setting() {
+        let mut config = AppConfig::default().video;
+
+        config.internal_resolution = InternalResolutionModeConfig::Native;
+        assert_eq!(
+            config_internal_resolution_mode(&config),
+            bmz_render::InternalResolutionMode::Native
+        );
+
+        config.internal_resolution = InternalResolutionModeConfig::Skin;
+        assert_eq!(
+            config_internal_resolution_mode(&config),
+            bmz_render::InternalResolutionMode::Skin
+        );
     }
 
     #[test]
