@@ -124,8 +124,27 @@ pub async fn fetch_difficulty_table(
     source_url: &str,
     fetched_at: i64,
 ) -> Result<FetchedDifficultyTable> {
-    let client = reqwest::Client::builder().user_agent("bmz-player/0.1").build()?;
+    let client = build_difficulty_table_client()?;
+    fetch_difficulty_table_with_client(&client, source_url, fetched_at).await
+}
 
+/// Creates the HTTP client shared by a batch of difficulty-table fetches.
+///
+/// Sharing one client keeps the connection pool available to every source in
+/// the batch instead of creating a separate pool for each table.
+pub(crate) fn build_difficulty_table_client() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder().user_agent("bmz-player/0.1").build()?)
+}
+
+/// Fetches and parses one difficulty table with an existing HTTP client.
+///
+/// The caller can run multiple independent sources concurrently while keeping
+/// the per-table HTML → header → data-file dependency order intact.
+pub(crate) async fn fetch_difficulty_table_with_client(
+    client: &reqwest::Client,
+    source_url: &str,
+    fetched_at: i64,
+) -> Result<FetchedDifficultyTable> {
     let head_url = if source_url.ends_with(".json") {
         source_url.to_string()
     } else {

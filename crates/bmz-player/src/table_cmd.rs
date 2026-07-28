@@ -1,4 +1,8 @@
+use std::collections::HashSet;
+use std::future::Future;
+
 use anyhow::{Result, bail};
+use futures_util::stream::{self, Stream, StreamExt};
 
 use crate::cli::TableCommand;
 use crate::config::app_config::DifficultyTableSource;
@@ -7,6 +11,56 @@ use crate::config::save::save_app_config;
 use crate::paths::resolve_app_paths;
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::migration::migrate_library_db;
+
+/// Upper bound for simultaneous difficulty-table source downloads.
+///
+/// A source may require an HTML page, a header JSON, and one or more data
+/// files.  Limiting concurrent sources keeps first-run downloads responsive
+/// without overwhelming table hosts.
+pub const DIFFICULTY_TABLE_FETCH_CONCURRENCY: usize = 4;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableFetchSuccess {
+    pub url: String,
+    pub name: String,
+    pub symbol: String,
+    pub entries: usize,
+    pub courses: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableFetchFailure {
+    pub url: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TableFetchOutcome {
+    Succeeded(TableFetchSuccess),
+    Failed(TableFetchFailure),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TableFetchReport {
+    pub requested: usize,
+    pub outcomes: Vec<TableFetchOutcome>,
+}
+
+impl TableFetchReport {
+    pub fn succeeded_count(&self) -> usize {
+        self.outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, TableFetchOutcome::Succeeded(_)))
+            .count()
+    }
+
+    pub fn failed_count(&self) -> usize {
+        self.outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, TableFetchOutcome::Failed(_)))
+            .count()
+    }
+}
 
 pub async fn run_table_command(cmd: TableCommand) -> Result<()> {
     match cmd {
@@ -85,44 +139,217 @@ async fn fetch_tables(url: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    let mut ok = 0usize;
-    let mut failed = 0usize;
-    for source in &sources {
-        print!("Fetching {}... ", source.url);
-        match fetch_table_url(&source.url, &mut library_db).await {
-            Ok(()) => {
-                ok += 1;
-            }
-            Err(e) => {
-                println!("FAILED: {e}");
-                failed += 1;
-            }
-        }
+    let urls = sources.iter().map(|source| source.url.clone()).collect();
+    let report = fetch_table_urls(urls, &mut library_db).await?;
+    for outcome in &report.outcomes {
+        print_table_fetch_outcome(outcome);
     }
 
-    println!("\n{ok} succeeded, {failed} failed.");
+    println!("\n{} succeeded, {} failed.", report.succeeded_count(), report.failed_count());
     Ok(())
 }
 
 pub async fn fetch_table_url(url: &str, library_db: &mut LibraryDatabase) -> Result<()> {
+    let report = fetch_table_urls(vec![url.to_string()], library_db).await?;
+    let Some(outcome) = report.outcomes.into_iter().next() else {
+        bail!("no difficulty table URL provided");
+    };
+    match outcome {
+        TableFetchOutcome::Succeeded(success) => {
+            print_table_fetch_success(&success);
+            Ok(())
+        }
+        TableFetchOutcome::Failed(failure) => bail!("{}", failure.error),
+    }
+}
+
+/// Fetches a batch of table sources concurrently and stores each completed
+/// table through the provided single SQLite connection.
+///
+/// Network requests are bounded, but database writes remain sequential so the
+/// main app and this worker do not contend with several SQLite writers.
+pub async fn fetch_table_urls(
+    urls: Vec<String>,
+    library_db: &mut LibraryDatabase,
+) -> Result<TableFetchReport> {
+    fetch_table_urls_with_progress(urls, library_db, |_| {}).await
+}
+
+/// Same as [`fetch_table_urls`], reporting each completed source immediately.
+///
+/// The callback is invoked after a successful table has been committed, or
+/// after the source has failed.  Consumers can therefore display reliable
+/// progress without accessing the worker's SQLite connection.
+pub async fn fetch_table_urls_with_progress<F>(
+    urls: Vec<String>,
+    library_db: &mut LibraryDatabase,
+    mut on_outcome: F,
+) -> Result<TableFetchReport>
+where
+    F: FnMut(&TableFetchOutcome),
+{
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+    let urls = unique_table_urls(urls);
+    let requested = urls.len();
+    let client = crate::difficulty_table::build_difficulty_table_client()?;
+    let mut pending = pending_table_fetches(urls, move |url| {
+        let client = client.clone();
+        async move {
+            crate::difficulty_table::fetch_difficulty_table_with_client(&client, &url, now).await
+        }
+    });
+    let mut outcomes = Vec::with_capacity(requested);
 
-    println!("Fetching {url}...");
-    let table = crate::difficulty_table::fetch_difficulty_table(url, now).await?;
-    println!("Fetched: {} ({}) — {} entries", table.name, table.symbol, table.entries.len());
-    library_db.upsert_difficulty_table(&table)?;
+    while let Some((url, fetched)) = pending.next().await {
+        let outcome = match fetched {
+            Ok(table) => match store_fetched_table(library_db, &table) {
+                Ok(success) => TableFetchOutcome::Succeeded(success),
+                Err(error) => TableFetchOutcome::Failed(TableFetchFailure {
+                    url,
+                    error: format!("failed to store difficulty table: {error:#}"),
+                }),
+            },
+            Err(error) => TableFetchOutcome::Failed(TableFetchFailure {
+                url,
+                error: format!("failed to fetch difficulty table: {error:#}"),
+            }),
+        };
+        on_outcome(&outcome);
+        outcomes.push(outcome);
+    }
 
-    // Save any courses embedded in the table header.
-    let source = format!("table:{url}");
+    Ok(TableFetchReport { requested, outcomes })
+}
+
+fn unique_table_urls(urls: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    urls.into_iter().filter(|url| seen.insert(url.clone())).collect()
+}
+
+fn pending_table_fetches<F, Fut>(
+    urls: Vec<String>,
+    fetch: F,
+) -> impl Stream<Item = (String, Result<crate::difficulty_table::FetchedDifficultyTable>)>
+where
+    F: Fn(String) -> Fut,
+    Fut: Future<Output = Result<crate::difficulty_table::FetchedDifficultyTable>>,
+{
+    stream::iter(urls.into_iter().map(move |url| {
+        let future = fetch(url.clone());
+        async move { (url, future.await) }
+    }))
+    .buffer_unordered(DIFFICULTY_TABLE_FETCH_CONCURRENCY)
+}
+
+fn store_fetched_table(
+    library_db: &mut LibraryDatabase,
+    table: &crate::difficulty_table::FetchedDifficultyTable,
+) -> Result<TableFetchSuccess> {
+    library_db.upsert_difficulty_table(table)?;
+
+    let source = format!("table:{}", table.source_url);
     for (position, course) in table.courses.iter().enumerate() {
-        library_db.upsert_course(&source, course, position as i64, now)?;
-    }
-    if !table.courses.is_empty() {
-        println!("  {} course(s) stored.", table.courses.len());
+        library_db.upsert_course(&source, course, position as i64, table.fetched_at)?;
     }
 
-    Ok(())
+    Ok(TableFetchSuccess {
+        url: table.source_url.clone(),
+        name: table.name.clone(),
+        symbol: table.symbol.clone(),
+        entries: table.entries.len(),
+        courses: table.courses.len(),
+    })
+}
+
+fn print_table_fetch_outcome(outcome: &TableFetchOutcome) {
+    match outcome {
+        TableFetchOutcome::Succeeded(success) => print_table_fetch_success(success),
+        TableFetchOutcome::Failed(failure) => println!("FAILED {}: {}", failure.url, failure.error),
+    }
+}
+
+fn print_table_fetch_success(success: &TableFetchSuccess) {
+    println!(
+        "Fetched {}: {} ({}) — {} entries",
+        success.url, success.name, success.symbol, success.entries
+    );
+    if success.courses > 0 {
+        println!("  {} course(s) stored.", success.courses);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    #[test]
+    fn unique_table_urls_keeps_first_occurrence_order() {
+        assert_eq!(
+            unique_table_urls(vec![
+                "https://example.com/a".to_string(),
+                "https://example.com/b".to_string(),
+                "https://example.com/a".to_string(),
+            ]),
+            vec!["https://example.com/a".to_string(), "https://example.com/b".to_string()]
+        );
+    }
+
+    #[test]
+    fn table_fetch_report_counts_each_outcome() {
+        let report = TableFetchReport {
+            requested: 2,
+            outcomes: vec![
+                TableFetchOutcome::Succeeded(TableFetchSuccess {
+                    url: "https://example.com/ok".to_string(),
+                    name: "OK".to_string(),
+                    symbol: "★".to_string(),
+                    entries: 1,
+                    courses: 0,
+                }),
+                TableFetchOutcome::Failed(TableFetchFailure {
+                    url: "https://example.com/no".to_string(),
+                    error: "offline".to_string(),
+                }),
+            ],
+        };
+
+        assert_eq!(report.succeeded_count(), 1);
+        assert_eq!(report.failed_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn pending_table_fetches_limits_concurrent_network_requests() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+        let urls = (0..DIFFICULTY_TABLE_FETCH_CONCURRENCY * 2)
+            .map(|index| format!("https://example.com/{index}"))
+            .collect();
+        let mut pending = pending_table_fetches(urls, {
+            let active = Arc::clone(&active);
+            let max_active = Arc::clone(&max_active);
+            move |_url| {
+                let active = Arc::clone(&active);
+                let max_active = Arc::clone(&max_active);
+                async move {
+                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(current, Ordering::SeqCst);
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Err(anyhow::anyhow!("test fetch failure"))
+                }
+            }
+        });
+
+        while pending.next().await.is_some() {}
+
+        assert!(max_active.load(Ordering::SeqCst) > 1);
+        assert!(max_active.load(Ordering::SeqCst) <= DIFFICULTY_TABLE_FETCH_CONCURRENCY);
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+    }
 }

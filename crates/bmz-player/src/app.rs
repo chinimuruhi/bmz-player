@@ -182,6 +182,7 @@ use crate::storage::replay::load_replay_for_chart_policy_and_double_option;
 use crate::storage::scan::{ScanProgress, ScanReport};
 use crate::storage::score_db::{DailyPlayerStats, PlayerStats, ScoreDatabase};
 use crate::storage::score_import::{ScoreImportRequest, import_scores};
+use crate::table_cmd::{TableFetchOutcome, TableFetchReport};
 use crate::ui::{
     DebugInfo, EguiLayer, EguiRunContext, SceneSkinDefs, SkinCandidate, SkinCandidateOrigin,
     SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest, UpdateDialog,
@@ -202,6 +203,7 @@ const SAMPLE_PLAYABLE_TITLE: &str = "BMZ Sample Playable";
 #[derive(Debug, Clone, Copy)]
 enum AppUserEvent {
     SkinUploadReady { sent_at: Instant },
+    TableFetchReady,
 }
 
 pub async fn run() -> Result<()> {
@@ -216,9 +218,7 @@ pub async fn run_with_options_and_log_buffer(
     options: AppOptions,
     log_buffer: LogBuffer,
 ) -> Result<()> {
-    let mut boot = bootstrap::bootstrap()?;
-
-    fetch_startup_difficulty_tables(&mut boot).await;
+    let boot = bootstrap::bootstrap()?;
 
     let event_loop = EventLoop::<AppUserEvent>::with_user_event()
         .build()
@@ -320,10 +320,7 @@ fn spawn_ir_sync_worker(boot: &bootstrap::BootstrappedApp) {
     });
 }
 
-async fn fetch_startup_difficulty_tables(boot: &mut bootstrap::BootstrappedApp) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-
+fn startup_difficulty_table_fetch_urls_for_boot(boot: &BootstrappedApp) -> Vec<String> {
     let fetched_source_urls: HashSet<String> = match boot
         .library_db
         .list_difficulty_table_sources_with_current_download_metadata()
@@ -334,38 +331,7 @@ async fn fetch_startup_difficulty_tables(boot: &mut bootstrap::BootstrappedApp) 
             HashSet::new()
         }
     };
-    let sources = startup_difficulty_table_fetch_urls(&boot.app_config, &fetched_source_urls);
-
-    for url in sources {
-        tracing::info!(%url, "fetching difficulty table");
-        match crate::difficulty_table::fetch_difficulty_table(&url, now).await {
-            Ok(table) => {
-                tracing::info!(
-                    name = %table.name,
-                    entries = table.entries.len(),
-                    courses = table.courses.len(),
-                    "difficulty table fetched"
-                );
-                if let Err(e) = boot.library_db.upsert_difficulty_table(&table) {
-                    tracing::warn!(%url, error = %e, "failed to store difficulty table");
-                }
-                let source = format!("table:{url}");
-                for (position, course) in table.courses.iter().enumerate() {
-                    if let Err(e) =
-                        boot.library_db.upsert_course(&source, course, position as i64, now)
-                    {
-                        tracing::warn!(%url, course = %course.title, error = %e, "failed to store table course");
-                    }
-                }
-                if !table.courses.is_empty() {
-                    tracing::info!(count = table.courses.len(), %url, "stored table courses");
-                }
-            }
-            Err(e) => {
-                tracing::warn!(%url, error = %e, "failed to fetch difficulty table");
-            }
-        }
-    }
+    startup_difficulty_table_fetch_urls(&boot.app_config, &fetched_source_urls)
 }
 
 fn startup_difficulty_table_fetch_urls(
@@ -424,6 +390,20 @@ struct LeftOverlayToast {
 }
 
 const LEFT_OVERLAY_TOAST_DURATION: Duration = Duration::from_secs(2);
+
+#[derive(Debug)]
+enum TableFetchWorkerEvent {
+    Outcome(TableFetchOutcome),
+    Finished(Result<TableFetchReport>),
+}
+
+struct TableFetchProgress {
+    label: String,
+    total: usize,
+    completed: usize,
+    succeeded: usize,
+    failed: usize,
+}
 
 /// beatoraja の `Gdx.graphics.getFramesPerSecond()` と同様、1 秒ごとに
 /// 確定したフレーム数を skin の NUMBER_CURRENT_FPS (20) と右上表示へ渡す。
@@ -591,7 +571,12 @@ struct WinitApp {
     renderer: Box<Renderer>,
     skin_catalog: SkinCatalog,
     skin_defs_cache: BTreeMap<String, SceneSkinDefs>,
-    pending_table_fetch: Option<Receiver<Result<()>>>,
+    /// 初回描画後に開始する自動取得対象。起動前のネットワーク待機を避ける。
+    startup_table_fetch_urls: Option<Vec<String>>,
+    pending_table_fetch: Option<Receiver<TableFetchWorkerEvent>>,
+    pending_table_fetch_urls: HashSet<String>,
+    queued_table_fetch_urls: Vec<String>,
+    table_fetch_progress: Option<TableFetchProgress>,
     pending_song_scan: Option<Receiver<SongScanEvent>>,
     pending_chart_download: Option<Receiver<Result<ChartDownloadResult>>>,
     queued_download_scan: Option<(PathBuf, String)>,
@@ -2967,6 +2952,10 @@ impl WinitApp {
             boot.app_config.video.renderer = cli_renderer;
         }
 
+        // ネットワークへ出る前に、DBから必要なURLだけ選定しておく。実際の取得は
+        // 最初の描画後に開始するため、初回起動でもウィンドウ表示を待たせない。
+        let startup_table_fetch_urls = startup_difficulty_table_fetch_urls_for_boot(&boot);
+
         let folder_stack = initial_folder_stack(&boot.app_config);
         let initial_mode_filter =
             SelectModeFilter::from_str_or_default(&boot.profile_config.select.mode_filter);
@@ -3165,7 +3154,11 @@ impl WinitApp {
             renderer,
             skin_catalog,
             skin_defs_cache: BTreeMap::new(),
+            startup_table_fetch_urls: Some(startup_table_fetch_urls),
             pending_table_fetch: None,
+            pending_table_fetch_urls: HashSet::new(),
+            queued_table_fetch_urls: Vec::new(),
+            table_fetch_progress: None,
             pending_song_scan: None,
             pending_chart_download: None,
             queued_download_scan: None,
@@ -3863,14 +3856,19 @@ impl WinitApp {
             self.left_overlay_toast
                 .as_ref()
                 .map(|toast| (toast.message.as_str(), toast.shown_at.elapsed())),
-            &self.song_scan_overlay_text(),
+            &self.background_task_overlay_text(),
         )
     }
 
-    fn song_scan_overlay_text(&self) -> String {
-        self.song_scan_progress
-            .map(|progress| format!("SCAN {} / {}", progress.done, progress.total))
-            .unwrap_or_default()
+    fn background_task_overlay_text(&self) -> String {
+        let mut tasks = Vec::new();
+        if let Some(progress) = self.song_scan_progress {
+            tasks.push(format!("SCAN {} / {}", progress.done, progress.total));
+        }
+        if let Some(progress) = &self.table_fetch_progress {
+            tasks.push(format!("TABLE {} / {}", progress.completed, progress.total));
+        }
+        tasks.join(" | ")
     }
 
     fn always_overlay_text(&self) -> String {
@@ -12333,78 +12331,161 @@ impl WinitApp {
         self.spawn_table_fetches(vec![url], "table fetch".to_string());
     }
 
+    /// 起動直後の初回描画が完了してから、未取得の有効な表を取得する。
+    fn start_startup_table_fetch_after_first_frame(&mut self) {
+        let Some(urls) = self.startup_table_fetch_urls.take() else {
+            return;
+        };
+        self.spawn_table_fetches(urls, "startup table fetch".to_string());
+    }
+
     fn spawn_table_fetches(&mut self, urls: Vec<String>, label: String) {
+        let urls = self.filter_new_table_fetch_urls(urls);
         if urls.is_empty() {
             return;
         }
         if self.pending_table_fetch.is_some() {
-            tracing::debug!(count = urls.len(), %label, "table fetch already in progress");
+            self.queued_table_fetch_urls.extend(urls);
+            tracing::debug!(
+                queued = self.queued_table_fetch_urls.len(),
+                %label,
+                "queued table fetch while another batch is in progress"
+            );
             return;
         }
         let library_db_path = self.boot.app_paths.library_db.clone();
         let (tx, rx) = mpsc::channel();
         let fetch_urls = urls.clone();
+        let progress_tx = tx.clone();
+        let event_proxy = self.event_proxy.clone();
         thread::Builder::new()
             .name("table-fetch".to_string())
             .spawn(move || {
-                let result = (|| -> Result<()> {
+                let result = (|| -> Result<TableFetchReport> {
                     migrate_library_db(&library_db_path)?;
                     let mut library_db = LibraryDatabase::open(&library_db_path)?;
                     let rt =
                         tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-                    let mut failures = Vec::new();
-                    for url in &fetch_urls {
-                        if let Err(error) =
-                            rt.block_on(crate::table_cmd::fetch_table_url(url, &mut library_db))
-                        {
-                            failures.push(format!("{url}: {error:#}"));
-                        }
-                    }
-                    if !failures.is_empty() {
-                        anyhow::bail!(
-                            "{} of {} table fetches failed: {}",
-                            failures.len(),
-                            fetch_urls.len(),
-                            failures.join("; ")
-                        );
-                    }
-                    Ok(())
+                    rt.block_on(crate::table_cmd::fetch_table_urls_with_progress(
+                        fetch_urls,
+                        &mut library_db,
+                        |outcome| {
+                            let _ =
+                                progress_tx.send(TableFetchWorkerEvent::Outcome(outcome.clone()));
+                            let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
+                        },
+                    ))
                 })();
-                let _ = tx.send(result);
+                let _ = tx.send(TableFetchWorkerEvent::Finished(result));
+                let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
             })
             .expect("failed to spawn table fetch thread");
+        self.pending_table_fetch_urls = urls.iter().cloned().collect();
+        self.table_fetch_progress = Some(TableFetchProgress {
+            label: label.clone(),
+            total: urls.len(),
+            completed: 0,
+            succeeded: 0,
+            failed: 0,
+        });
         self.pending_table_fetch = Some(rx);
         tracing::info!(count = urls.len(), %label, "started table fetch");
     }
 
+    fn filter_new_table_fetch_urls(&self, urls: Vec<String>) -> Vec<String> {
+        let mut seen = HashSet::new();
+        urls.into_iter()
+            .filter(|url| seen.insert(url.clone()))
+            .filter(|url| !self.pending_table_fetch_urls.contains(url))
+            .filter(|url| !self.queued_table_fetch_urls.iter().any(|queued| queued == url))
+            .collect()
+    }
+
     fn poll_pending_table_fetch(&mut self) {
-        let Some(rx) = &self.pending_table_fetch else {
+        let Some(rx) = self.pending_table_fetch.take() else {
             return;
         };
-        match rx.try_recv() {
-            Ok(Ok(())) => {
-                tracing::info!("table fetch complete");
-                self.pending_table_fetch = None;
-                match self.boot.library_db.list_difficulty_tables() {
-                    Ok(tables) => self.difficulty_tables = tables,
-                    Err(error) => {
-                        tracing::warn!(%error, "failed to refresh difficulty table metadata")
+        let mut keep_pending = true;
+        loop {
+            match rx.try_recv() {
+                Ok(TableFetchWorkerEvent::Outcome(outcome)) => {
+                    if let Some(progress) = &mut self.table_fetch_progress {
+                        progress.completed =
+                            progress.completed.saturating_add(1).min(progress.total);
+                        match outcome {
+                            TableFetchOutcome::Succeeded(_) => progress.succeeded += 1,
+                            TableFetchOutcome::Failed(_) => progress.failed += 1,
+                        }
+                    }
+                    match outcome {
+                        TableFetchOutcome::Succeeded(success) => tracing::info!(
+                            url = %success.url,
+                            name = %success.name,
+                            entries = success.entries,
+                            courses = success.courses,
+                            "difficulty table fetched"
+                        ),
+                        TableFetchOutcome::Failed(failure) => tracing::warn!(
+                            url = %failure.url,
+                            error = %failure.error,
+                            "failed to fetch difficulty table"
+                        ),
                     }
                 }
-                self.table_breadcrumb_cache.borrow_mut().clear();
-                self.invalidate_select_folder_summaries();
-                self.reload_select_items();
-            }
-            Ok(Err(error)) => {
-                tracing::error!(%error, "table fetch failed");
-                self.pending_table_fetch = None;
-            }
-            Err(mpsc::TryRecvError::Empty) => {}
-            Err(mpsc::TryRecvError::Disconnected) => {
-                tracing::warn!("table fetch worker disconnected");
-                self.pending_table_fetch = None;
+                Ok(TableFetchWorkerEvent::Finished(Ok(report))) => {
+                    keep_pending = false;
+                    self.finish_table_fetch(report);
+                    break;
+                }
+                Ok(TableFetchWorkerEvent::Finished(Err(error))) => {
+                    keep_pending = false;
+                    let label = self
+                        .table_fetch_progress
+                        .as_ref()
+                        .map(|progress| progress.label.as_str())
+                        .unwrap_or("table fetch");
+                    tracing::error!(%label, %error, "table fetch worker failed");
+                    self.show_left_overlay_toast("TABLE: fetch failed");
+                    break;
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    keep_pending = false;
+                    tracing::warn!("table fetch worker disconnected");
+                    self.show_left_overlay_toast("TABLE: worker disconnected");
+                    break;
+                }
             }
         }
+        if keep_pending {
+            self.pending_table_fetch = Some(rx);
+            return;
+        }
+
+        self.pending_table_fetch_urls.clear();
+        self.table_fetch_progress = None;
+        if !self.queued_table_fetch_urls.is_empty() {
+            let queued = std::mem::take(&mut self.queued_table_fetch_urls);
+            self.spawn_table_fetches(queued, "queued table fetch".to_string());
+        }
+    }
+
+    fn finish_table_fetch(&mut self, report: TableFetchReport) {
+        let succeeded = report.succeeded_count();
+        let failed = report.failed_count();
+        tracing::info!(requested = report.requested, succeeded, failed, "table fetch complete");
+        if succeeded > 0 {
+            match self.boot.library_db.list_difficulty_tables() {
+                Ok(tables) => self.difficulty_tables = tables,
+                Err(error) => {
+                    tracing::warn!(%error, "failed to refresh difficulty table metadata")
+                }
+            }
+            self.table_breadcrumb_cache.borrow_mut().clear();
+            self.invalidate_select_folder_summaries();
+            self.reload_select_items();
+        }
+        self.show_left_overlay_toast(format!("TABLE: {succeeded} succeeded, {failed} failed"));
     }
 
     fn spawn_update_check(&mut self, label: &'static str, report_up_to_date: bool) {
@@ -17572,6 +17653,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let post_scene_start = Instant::now();
                 if !self.first_frame_startup_completed {
                     self.first_frame_startup_completed = true;
+                    self.start_startup_table_fetch_after_first_frame();
                     self.start_deferred_boot();
                     if self.current_scene_kind() == AppSceneKind::Result {
                         self.ensure_result_skin_ready(self.current_result_skin_slot());
@@ -17701,6 +17783,10 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     drain_us,
                     "skin upload ready event timings"
                 );
+            }
+            AppUserEvent::TableFetchReady => {
+                self.poll_pending_table_fetch();
+                self.request_redraw();
             }
         }
     }
