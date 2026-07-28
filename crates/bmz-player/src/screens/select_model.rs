@@ -387,6 +387,8 @@ pub struct SelectCourseRow {
     pub course_id: i64,
     /// Canonical IR course hash. None while any course entry is unresolved.
     pub course_hash: Option<String>,
+    /// rianIR/beatoraja connector互換のremote course hash。
+    pub rian_course_hash_v1: Option<String>,
     pub title: String,
     pub kind: CourseKind,
     pub constraints: bmz_core::course::CourseConstraints,
@@ -788,6 +790,7 @@ fn build_select_course_row(
     SelectItem::Course(SelectCourseRow {
         course_id: stored.id,
         course_hash: identity.as_ref().map(|identity| identity.course_hash.clone()),
+        rian_course_hash_v1: identity.as_ref().map(|identity| identity.rian_course_hash_v1.clone()),
         title: stored.definition.title,
         kind: stored.definition.kind,
         constraints: stored.definition.constraints,

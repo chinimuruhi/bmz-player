@@ -98,9 +98,17 @@ pub enum ResultIrTarget {
     Course {
         local_score_id: i64,
         course_hash: String,
+        rian_course_hash_v1: String,
         gauge: String,
         ln_policy: String,
+        rule_mode: RuleMode,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct ResultIrCourseHashes {
+    pub local: String,
+    pub rian_v1: String,
 }
 
 impl ResultIrTarget {
@@ -123,12 +131,45 @@ impl ResultIrTarget {
             Self::Course { local_score_id, .. } => (IrJobKind::Course, *local_score_id),
         }
     }
+
+    fn matches_chart_result(
+        &self,
+        local_score_id: i64,
+        chart_sha256_hex: &str,
+        ln_policy: LnScorePolicy,
+        double_option: DoubleOptionScoreBucket,
+        rule_mode: RuleMode,
+    ) -> bool {
+        matches!(
+            self,
+            Self::Chart {
+                local_score_id: state_score_id,
+                chart_sha256_hex: state_chart_sha256,
+                ln_policy: state_ln_policy,
+                double_option: state_double_option,
+                rule_mode: state_rule_mode,
+            } if *state_score_id == local_score_id
+                && state_chart_sha256 == chart_sha256_hex
+                && *state_ln_policy == ln_policy
+                && *state_double_option == double_option
+                && *state_rule_mode == rule_mode
+        )
+    }
+}
+
+impl ResultIrTaskQuery {
+    fn supports_scope(&self, scope: IrRankingScope) -> bool {
+        self.target.supports_scope(scope)
+            && (!crate::ir::rian_ir::is_rian_ir_provider(&self.provider)
+                || scope == IrRankingScope::Global)
+    }
 }
 
 #[derive(Debug, Clone)]
 struct ResultIrTaskQuery {
     profile_root: PathBuf,
     provider: String,
+    account_id: String,
     base_url: String,
     target: ResultIrTarget,
 }
@@ -141,6 +182,7 @@ pub struct ResultIrState {
     ir_connect_begin_at: Option<Instant>,
     ir_connect_success_at: Option<Instant>,
     ir_connect_fail_at: Option<Instant>,
+    provider_name: bmz_render::scene::ResultIrRankingName,
     user_name: bmz_render::scene::ResultIrRankingName,
     skin_scroll_offset: usize,
     query: ResultIrTaskQuery,
@@ -149,6 +191,27 @@ pub struct ResultIrState {
 }
 
 impl ResultIrState {
+    /// この state が指定された単曲リザルトのために作られたものかを返す。
+    ///
+    /// 同じ譜面をクイックリトライしても chart hash は変わらないため、保存された
+    /// score history ID まで照合して旧試行の state を再利用しない。
+    pub fn matches_chart_result(
+        &self,
+        local_score_id: i64,
+        chart_sha256_hex: &str,
+        ln_policy: LnScorePolicy,
+        double_option: DoubleOptionScoreBucket,
+        rule_mode: RuleMode,
+    ) -> bool {
+        self.query.target.matches_chart_result(
+            local_score_id,
+            chart_sha256_hex,
+            ln_policy,
+            double_option,
+            rule_mode,
+        )
+    }
+
     /// 受信済みイベントを状態へ反映する。毎フレーム呼ぶ。
     pub fn poll(&mut self) -> Vec<ResultIrLoadedChartRanking> {
         let mut loaded_chart_rankings = Vec::new();
@@ -215,7 +278,7 @@ impl ResultIrState {
     }
 
     pub fn request_scope(&mut self, scope: IrRankingScope) {
-        if !self.query.target.supports_scope(scope) {
+        if !self.query.supports_scope(scope) {
             return;
         }
         if let Some(slot) = self.scope_slot(scope) {
@@ -225,7 +288,7 @@ impl ResultIrState {
     }
 
     pub fn supports_tab(&self, tab: ResultRankingTab) -> bool {
-        self.query.target.supports_scope(scope_for_tab(tab))
+        self.query.supports_scope(scope_for_tab(tab))
     }
 
     pub fn is_course(&self) -> bool {
@@ -258,6 +321,7 @@ impl ResultIrState {
         snapshot.connect_begin_ms = self.ir_connect_begin_at.map(elapsed_since_ms);
         snapshot.connect_success_ms = self.ir_connect_success_at.map(elapsed_since_ms);
         snapshot.connect_fail_ms = self.ir_connect_fail_at.map(elapsed_since_ms);
+        snapshot.provider_name = self.provider_name;
         snapshot.user_name = self.user_name;
         snapshot
     }
@@ -444,9 +508,10 @@ pub fn spawn_course_result_ir_task(
     logs_dir: PathBuf,
     ir_config: &IrConfig,
     local_score_id: i64,
-    course_hash: String,
+    hashes: ResultIrCourseHashes,
     gauge: String,
     ln_policy: String,
+    rule_mode: RuleMode,
 ) -> Option<ResultIrState> {
     spawn_result_ir_task_for_target(
         profile_root,
@@ -454,7 +519,14 @@ pub fn spawn_course_result_ir_task(
         network_db_path,
         logs_dir,
         ir_config,
-        ResultIrTarget::Course { local_score_id, course_hash, gauge, ln_policy },
+        ResultIrTarget::Course {
+            local_score_id,
+            course_hash: hashes.local,
+            rian_course_hash_v1: hashes.rian_v1,
+            gauge,
+            ln_policy,
+            rule_mode,
+        },
     )
 }
 
@@ -466,15 +538,12 @@ fn spawn_result_ir_task_for_target(
     ir_config: &IrConfig,
     target: ResultIrTarget,
 ) -> Option<ResultIrState> {
-    let provider = ir_config.providers.iter().find(|provider| {
-        provider.enabled
-            && !provider.base_url.is_empty()
-            && crate::ir::provider_key::configured_provider_key(provider).is_some()
-    })?;
+    let provider = crate::ir::provider_key::primary_provider_config(ir_config)?;
     let provider_key = crate::ir::provider_key::configured_provider_key(provider)?;
     let query = ResultIrTaskQuery {
         profile_root,
         provider: provider_key.to_string(),
+        account_id: provider.account_id.clone(),
         base_url: provider.base_url.clone(),
         target,
     };
@@ -488,6 +557,9 @@ fn spawn_result_ir_task_for_target(
         ir_connect_begin_at: Some(Instant::now()),
         ir_connect_success_at: None,
         ir_connect_fail_at: None,
+        provider_name: bmz_render::scene::ResultIrRankingName::from_display_name(
+            crate::ir::provider_key::configured_provider_display_name(provider)?,
+        ),
         user_name: bmz_render::scene::ResultIrRankingName::from_display_name(
             &provider.account_display_name,
         ),
@@ -503,8 +575,8 @@ fn spawn_result_ir_task_for_target(
     // global は Result スキンの NUMBER_IR_RANK / OPTION_IR_* 表示にも使うため、
     // prefetch 設定に関わらず常に取得する。rivals scope のみ設定に従う。
     let prefetch_global = true;
-    let prefetch_rivals = query.target.supports_scope(IrRankingScope::SelfAndRivals)
-        && state_prefetch_rivals(&ir_config);
+    let prefetch_rivals =
+        query.supports_scope(IrRankingScope::SelfAndRivals) && state_prefetch_rivals(&ir_config);
     tokio::spawn(async move {
         let now = now_unix_seconds();
         let outcome = async {
@@ -529,13 +601,11 @@ fn spawn_result_ir_task_for_target(
         match outcome {
             Ok(report) => {
                 included_global_ranking = included_global_ranking_for_query(&submit_query, &report);
-                let watch_sender = submit_sender.clone();
-                let watch_target = submit_query.target.clone();
-                let watch_db_path = network_db_path.clone();
-                tokio::spawn(async move {
-                    let event = watch_result_submission(&watch_db_path, &watch_target).await;
-                    let _ = watch_sender.send(event);
-                });
+                // 別の同期 task がこの job を先に claim していても、送信完了まで
+                // 待ってから ranking を取得する。これで古いサーバ側 ranking を
+                // Result に固定しない。
+                let event = watch_result_submission(&network_db_path, &submit_query.target).await;
+                let _ = submit_sender.send(event);
             }
             Err(error) => {
                 let _ = submit_sender.send(ResultIrEvent::Submit {
@@ -640,17 +710,21 @@ fn included_global_ranking_for_query(
     query: &ResultIrTaskQuery,
     report: &IrSyncReport,
 ) -> Option<ResultIrRanking> {
-    let ResultIrTarget::Chart { chart_sha256_hex, .. } = &query.target else {
+    let ResultIrTarget::Chart { local_score_id, chart_sha256_hex, .. } = &query.target else {
         return None;
     };
     report
         .included_rankings
         .iter()
         .find(|ranking| {
-            ranking.chart.sha256 == *chart_sha256_hex
-                && ranking.ranking.scope == IrRankingScope::Global
+            ranking.provider == query.provider
+                && ranking.account_id == query.account_id
+                && ranking.kind == IrJobKind::Score
+                && ranking.local_score_id == *local_score_id
+                && ranking.ranking.chart.sha256 == *chart_sha256_hex
+                && ranking.ranking.ranking.scope == IrRankingScope::Global
         })
-        .map(chart_ranking_to_result_ir_ranking)
+        .map(|ranking| chart_ranking_to_result_ir_ranking(&ranking.ranking))
 }
 
 fn spawn_ranking_fetch(
@@ -693,9 +767,26 @@ async fn fetch_result_ranking(
             .await?;
             Ok(chart_ranking_to_result_ir_ranking(&ranking))
         }
-        ResultIrTarget::Course { course_hash, gauge, ln_policy, .. } => {
+        ResultIrTarget::Course {
+            course_hash,
+            rian_course_hash_v1,
+            gauge,
+            ln_policy,
+            rule_mode,
+            ..
+        } => {
             if scope != IrRankingScope::Global {
                 anyhow::bail!("course IR ranking supports global scope only");
+            }
+            if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+                return crate::ir::rian_ir::RianIrClient::new(&query.base_url)?
+                    .fetch_course_ranking(
+                        rian_course_hash_v1,
+                        crate::ir::rian_ir::body_for_rule_mode(*rule_mode),
+                        20,
+                    )
+                    .await
+                    .map(|ranking| course_ranking_to_result_ir_ranking(&ranking));
             }
             let client = BmzOfficialIrClient::anonymous(&query.base_url)?;
             let ranking = client
@@ -718,6 +809,21 @@ pub(crate) async fn fetch_ranking(
     scope: IrRankingScope,
 ) -> anyhow::Result<IrRankingResult> {
     let now = now_unix_seconds();
+    if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+        let credentials =
+            ensure_fresh_credentials(&query.profile_root, &query.provider, &query.base_url, now)
+                .await
+                .ok();
+        return crate::ir::rian_ir::RianIrClient::new(&query.base_url)?
+            .fetch_ranking(
+                &query.chart_sha256_hex,
+                crate::ir::rian_ir::body_for_rule_mode(query.rule_mode),
+                scope,
+                20,
+                credentials.as_ref().map(|credentials| credentials.account_id.as_str()),
+            )
+            .await;
+    }
     let mut client = BmzOfficialIrClient::anonymous(&query.base_url)?;
     // self / rivals scope は認証必須。global は匿名でも可。
     match ensure_fresh_credentials(&query.profile_root, &query.provider, &query.base_url, now).await
@@ -754,7 +860,7 @@ mod tests {
 
     use bmz_gameplay::rule::RuleMode;
 
-    use crate::ir::sync::IrSyncReport;
+    use crate::ir::sync::{IrIncludedRanking, IrSyncReport};
     use crate::ir::types::{
         IrCourseRankingBody, IrCourseRankingCourseRef, IrCourseRankingEntry, IrCourseRankingResult,
         IrCourseRankingScore, IrRankingBody, IrRankingChartRef, IrRankingEntry,
@@ -763,6 +869,7 @@ mod tests {
     };
     use crate::ln_policy::LnScorePolicy;
     use crate::select_options::DoubleOptionScoreBucket;
+    use crate::storage::network_db::IrJobKind;
 
     use super::{
         ResultIrRanking, ResultIrRankingEntry, ResultIrTarget, ResultIrTaskQuery,
@@ -883,13 +990,14 @@ mod tests {
     }
 
     #[test]
-    fn included_global_ranking_uses_only_current_chart() {
+    fn included_global_ranking_uses_only_current_result_attempt() {
         let query = ResultIrTaskQuery {
             profile_root: PathBuf::new(),
             provider: "bmz-official".to_string(),
+            account_id: "account-1".to_string(),
             base_url: "https://ir.example.test".to_string(),
             target: ResultIrTarget::Chart {
-                local_score_id: 1,
+                local_score_id: 2,
                 chart_sha256_hex: "current".to_string(),
                 ln_policy: LnScorePolicy::AutoLn,
                 double_option: DoubleOptionScoreBucket::Off,
@@ -901,29 +1009,57 @@ mod tests {
             failed: 0,
             messages: Vec::new(),
             included_rankings: vec![
-                IrRankingResult {
-                    chart: IrRankingChartRef { sha256: "other".to_string() },
-                    ranking: IrRankingBody {
-                        scope: IrRankingScope::Global,
-                        entries: Vec::new(),
-                        clear_rate: None,
-                        self_summary: None,
-                        pagination: None,
+                IrIncludedRanking {
+                    provider: "bmz-official".to_string(),
+                    account_id: "account-1".to_string(),
+                    kind: IrJobKind::Score,
+                    local_score_id: 1,
+                    ranking: IrRankingResult {
+                        chart: IrRankingChartRef { sha256: "current".to_string() },
+                        ranking: IrRankingBody {
+                            scope: IrRankingScope::Global,
+                            entries: Vec::new(),
+                            clear_rate: Some(25),
+                            self_summary: None,
+                            pagination: None,
+                        },
                     },
                 },
-                IrRankingResult {
-                    chart: IrRankingChartRef { sha256: "current".to_string() },
-                    ranking: IrRankingBody {
-                        scope: IrRankingScope::Global,
-                        entries: Vec::new(),
-                        clear_rate: Some(75),
-                        self_summary: None,
-                        pagination: Some(IrRankingPagination {
-                            limit: 20,
-                            offset: 0,
-                            total: Some(2),
-                            has_more: false,
-                        }),
+                IrIncludedRanking {
+                    provider: "bmz-official".to_string(),
+                    account_id: "account-1".to_string(),
+                    kind: IrJobKind::Course,
+                    local_score_id: 2,
+                    ranking: IrRankingResult {
+                        chart: IrRankingChartRef { sha256: "current".to_string() },
+                        ranking: IrRankingBody {
+                            scope: IrRankingScope::Global,
+                            entries: Vec::new(),
+                            clear_rate: Some(50),
+                            self_summary: None,
+                            pagination: None,
+                        },
+                    },
+                },
+                IrIncludedRanking {
+                    provider: "bmz-official".to_string(),
+                    account_id: "account-1".to_string(),
+                    kind: IrJobKind::Score,
+                    local_score_id: 2,
+                    ranking: IrRankingResult {
+                        chart: IrRankingChartRef { sha256: "current".to_string() },
+                        ranking: IrRankingBody {
+                            scope: IrRankingScope::Global,
+                            entries: Vec::new(),
+                            clear_rate: Some(75),
+                            self_summary: None,
+                            pagination: Some(IrRankingPagination {
+                                limit: 20,
+                                offset: 0,
+                                total: Some(2),
+                                has_more: false,
+                            }),
+                        },
                     },
                 },
             ],
@@ -934,5 +1070,31 @@ mod tests {
         assert_eq!(ranking.scope, IrRankingScope::Global);
         assert_eq!(ranking.clear_rate, Some(75));
         assert_eq!(ranking.total, Some(2));
+    }
+
+    #[test]
+    fn chart_result_target_rejects_previous_retry_with_same_chart_hash() {
+        let target = ResultIrTarget::Chart {
+            local_score_id: 42,
+            chart_sha256_hex: "same-chart".to_string(),
+            ln_policy: LnScorePolicy::AutoLn,
+            double_option: DoubleOptionScoreBucket::Off,
+            rule_mode: RuleMode::Beatoraja,
+        };
+
+        assert!(target.matches_chart_result(
+            42,
+            "same-chart",
+            LnScorePolicy::AutoLn,
+            DoubleOptionScoreBucket::Off,
+            RuleMode::Beatoraja,
+        ));
+        assert!(!target.matches_chart_result(
+            41,
+            "same-chart",
+            LnScorePolicy::AutoLn,
+            DoubleOptionScoreBucket::Off,
+            RuleMode::Beatoraja,
+        ));
     }
 }

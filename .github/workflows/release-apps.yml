@@ -212,6 +212,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist\release | Out-Null
 
+          node scripts/generate-client-hash-manifest.mjs `
+            --executable "dist\windows\BMZ Player\bmz-player.exe" `
+            --output "dist\release\bmz-player-v$env:BMZ_VERSION-windows-x64-client-manifest.json" `
+            --version $env:BMZ_VERSION `
+            --target windows-x64 `
+            --git-commit $env:GITHUB_SHA
+
           $portable = "dist\release\bmz-player-v$env:BMZ_VERSION-windows-x64-portable.zip"
           Compress-Archive -Path "dist\windows\BMZ Player" -DestinationPath $portable -Force
 
@@ -385,6 +392,12 @@ jobs:
       - name: Create macOS release files
         run: |
           mkdir -p dist/release
+          node scripts/generate-client-hash-manifest.mjs \
+            --executable "dist/macos/BMZ Player.app/Contents/MacOS/bmz-player" \
+            --output "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-client-manifest.json" \
+            --version "${BMZ_VERSION}" \
+            --target "macos-${BMZ_MACOS_ARCH}" \
+            --git-commit "${GITHUB_SHA}"
           ditto -c -k --keepParent \
             "dist/macos/BMZ Player.app" \
             "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}.app.zip"
@@ -455,6 +468,7 @@ jobs:
           appstreamcli --version
           command -v desktop-file-validate
           command -v dbus-run-session
+          command -v node
 
       - name: Cache Flatpak builder state
         uses: actions/cache@v5
@@ -523,10 +537,23 @@ jobs:
           mkdir -p dist/release
           src="dist/flatpak/bmz-player-${BMZ_VERSION}-linux.flatpak"
           dst="dist/release/bmz-player-v${BMZ_VERSION}-linux-x64.flatpak"
+          executable="dist/flatpak/build/files/bin/bmz-player"
           if [[ ! -f "${src}" ]]; then
             echo "missing Flatpak bundle: ${src}" >&2
             exit 1
           fi
+          if [[ ! -x "${executable}" ]]; then
+            echo "missing Flatpak executable: ${executable}" >&2
+            exit 1
+          fi
+
+          node scripts/generate-client-hash-manifest.mjs \
+            --executable "${executable}" \
+            --output "dist/release/bmz-player-v${BMZ_VERSION}-linux-x64-flatpak-client-manifest.json" \
+            --version "${BMZ_VERSION}" \
+            --target linux-x64-flatpak \
+            --git-commit "${GITHUB_SHA}"
+
           cp "${src}" "${dst}"
 
           {
@@ -567,10 +594,12 @@ jobs:
           path: dist/release
           merge-multiple: true
 
-      - name: Remove metadata sidecars from release upload
+      - name: Remove private metadata sidecars from release upload
         run: |
           set -euo pipefail
-          find dist/release -maxdepth 1 -type f \( -name "*.txt" -o -name "*.json" \) -print -delete
+          find dist/release -maxdepth 1 -type f \
+            \( -name "*.txt" -o \( -name "*.json" ! -name "*-client-manifest.json" \) \) \
+            -print -delete
 
       - name: Generate SHA256SUMS
         run: |

@@ -11719,7 +11719,7 @@ fn skin_main_state_text(
             if matches!(state.ir_ranking.state, crate::scene::ResultIrState::Offline) {
                 String::new()
             } else {
-                "BMZ IR".to_string()
+                state.ir_ranking.provider_name.as_str().to_string()
             }
         }
         1021 => state.ir_ranking.user_name.as_str().to_string(),
@@ -26449,6 +26449,7 @@ mod tests {
     fn skin_state_text_maps_string_refs() {
         let ir_ranking = crate::scene::ResultIrSnapshot {
             state: crate::scene::ResultIrState::Loaded,
+            provider_name: crate::scene::ResultIrRankingName::from_display_name("rianIR"),
             user_name: crate::scene::ResultIrRankingName::from_display_name("hyrorre"),
             entries: [
                 crate::scene::ResultIrRankingEntrySnapshot {
@@ -26528,7 +26529,7 @@ mod tests {
         assert_eq!(skin_state_text(&make_text(150), &state), "Stage 1");
         assert_eq!(skin_state_text(&make_text(159), &state), "Stage 10");
         // STRING_IR_NAME / STRING_IR_USERNAME
-        assert_eq!(skin_state_text(&make_text(1020), &state), "BMZ IR");
+        assert_eq!(skin_state_text(&make_text(1020), &state), "rianIR");
         assert_eq!(skin_state_text(&make_text(1021), &state), "hyrorre");
         // Unknown ref → empty
         assert_eq!(skin_state_text(&make_text(99), &state), "");

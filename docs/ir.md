@@ -2,6 +2,7 @@
 
 Codex に最終レビューと実装を引き継ぐための設計まとめ。
 本ドキュメントでは、BMZ 新BMSプレイヤー向けの IR API、クライアント側 Provider trait、認証、ランキング取得、リザルト画面連携、replay 拡張、NuxtHub / Drizzle 実装方針を整理する。
+beatoraja向け既存サービスrianIRとの互換adapterは `docs/rian-ir.md` を参照する。
 
 ---
 

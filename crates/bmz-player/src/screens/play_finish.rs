@@ -284,7 +284,13 @@ fn enqueue_ir_jobs(
         .providers
         .iter()
         .filter(|provider| {
-            provider.enabled && should_send_ir_score(provider.send_policy, result, previous_best)
+            provider.enabled
+                && should_send_ir_score(provider.send_policy, result, previous_best)
+                && (!crate::ir::rian_ir::is_rian_ir_config(provider)
+                    || crate::ir::rian_ir::score_submission_supported(
+                        score_key.ln_policy,
+                        applied_arrange.double_option,
+                    ))
         })
         .collect();
     if enabled.is_empty() {

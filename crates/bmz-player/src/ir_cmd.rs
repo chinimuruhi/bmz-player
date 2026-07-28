@@ -295,7 +295,11 @@ async fn login(
         })
         .map(|entry| entry.base_url.clone())
         .filter(|url| !url.is_empty());
-    let Some(base_url) = base_url.or(existing_base_url) else {
+    let base_url = base_url.or(existing_base_url).or_else(|| {
+        crate::ir::rian_ir::is_rian_ir_provider(provider)
+            .then(|| crate::ir::rian_ir::RIAN_IR_DEFAULT_BASE_URL.to_string())
+    });
+    let Some(base_url) = base_url else {
         bail!("IR base URL is not configured. Pass --base-url <URL> on first login.");
     };
 
@@ -304,8 +308,11 @@ async fn login(
         None => prompt_password()?,
     };
 
-    let client = BmzOfficialIrClient::anonymous(&base_url)?;
-    let tokens = client.login(email, &password).await?;
+    let tokens = if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+        crate::ir::rian_ir::RianIrClient::new(&base_url)?.login(email, &password).await?
+    } else {
+        BmzOfficialIrClient::anonymous(&base_url)?.login(email, &password).await?
+    };
     let provider_key = tokens.provider_key.clone();
     let display_name = tokens.player.display_name.clone().unwrap_or_default();
     let now = now_unix_seconds();
@@ -391,6 +398,7 @@ async fn logout(
     };
     if let Some(credentials) = &credentials
         && let Some(entry) = entry
+        && !crate::ir::rian_ir::is_rian_ir_config(entry)
     {
         let client = BmzOfficialIrClient::new(&entry.base_url, credentials.access_token.clone())?;
         if let Err(error) = client.logout(&credentials.refresh_token).await {
@@ -455,14 +463,21 @@ async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result
                     .await
                     {
                         Ok(fresh) => {
-                            let client =
-                                BmzOfficialIrClient::new(&entry.base_url, fresh.access_token)?;
-                            match client.me().await {
-                                Ok(me) => println!(
-                                    "  connection: OK ({})",
-                                    me.player.display_name.unwrap_or(me.player.id)
-                                ),
-                                Err(error) => println!("  connection: NG ({error:#})"),
+                            if crate::ir::rian_ir::is_rian_ir_config(entry) {
+                                println!(
+                                    "  connection: credentials stored ({})",
+                                    fresh.display_name
+                                );
+                            } else {
+                                let client =
+                                    BmzOfficialIrClient::new(&entry.base_url, fresh.access_token)?;
+                                match client.me().await {
+                                    Ok(me) => println!(
+                                        "  connection: OK ({})",
+                                        me.player.display_name.unwrap_or(me.player.id)
+                                    ),
+                                    Err(error) => println!("  connection: NG ({error:#})"),
+                                }
                             }
                         }
                         Err(error) => println!("  connection: NG ({error:#})"),
@@ -486,6 +501,32 @@ async fn ranking(
     let provider = primary_provider(profile)?;
     let scope = parse_scope(scope)?;
     let now = now_unix_seconds();
+    if crate::ir::rian_ir::is_rian_ir_config(provider) {
+        if scope != IrRankingScope::Global {
+            bail!("rianIR supports --scope global only");
+        }
+        let provider_key = crate::ir::provider_key::configured_provider_key(provider)
+            .context("IR provider key is not set; log in again")?;
+        let credentials = ensure_fresh_credentials(
+            profile_paths.root_dir.as_path(),
+            provider_key,
+            &provider.base_url,
+            now,
+        )
+        .await
+        .ok();
+        let result = crate::ir::rian_ir::RianIrClient::new(&provider.base_url)?
+            .fetch_ranking(
+                sha256,
+                crate::ir::rian_ir::body_for_rule_mode(profile.play.rule_mode),
+                scope,
+                limit,
+                credentials.as_ref().map(|credentials| credentials.account_id.as_str()),
+            )
+            .await?;
+        print_ranking(&result, ln_policy, profile.play.rule_mode);
+        return Ok(());
+    }
     let mut client = BmzOfficialIrClient::anonymous(&provider.base_url)?;
     if let Some(provider_key) = crate::ir::provider_key::configured_provider_key(provider)
         && let Ok(credentials) = ensure_fresh_credentials(
@@ -513,13 +554,19 @@ async fn ranking(
         )
         .await?;
 
+    print_ranking(&result, ln_policy, profile.play.rule_mode);
+    Ok(())
+}
+
+fn print_ranking(
+    result: &crate::ir::types::IrRankingResult,
+    ln_policy: &str,
+    rule_mode: bmz_gameplay::rule::RuleMode,
+) {
     println!("chart: {}", result.chart.sha256);
     if result.ranking.entries.is_empty() {
-        println!(
-            "no scores for ln_policy={ln_policy} rule_mode={}",
-            profile.play.rule_mode.as_str()
-        );
-        return Ok(());
+        println!("no scores for ln_policy={ln_policy} rule_mode={}", rule_mode.as_str());
+        return;
     }
     println!("{:>4}  {:<24} {:>7} {:<16} {:>6} {:>5}", "#", "player", "EX", "clear", "combo", "bp");
     for entry in &result.ranking.entries {
@@ -536,7 +583,6 @@ async fn ranking(
     if let Some(own) = &result.ranking.self_summary {
         println!("self rank: {}", own.rank);
     }
-    Ok(())
 }
 
 async fn sync(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {

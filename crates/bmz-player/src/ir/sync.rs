@@ -24,7 +24,21 @@ pub struct IrSyncReport {
     pub submitted: u32,
     pub failed: u32,
     pub messages: Vec<String>,
-    pub included_rankings: Vec<IrRankingResult>,
+    /// 送信レスポンスに同梱されたランキングと、そのレスポンスを返したローカル job。
+    ///
+    /// 同じ譜面を複数回送信するバッチでは chart hash だけで ranking を選ぶと、
+    /// 古い試行の応答を今回のリザルトへ表示してしまう。Result 側が今回の
+    /// score_history_id と照合できるよう、job の識別子を一緒に保持する。
+    pub included_rankings: Vec<IrIncludedRanking>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IrIncludedRanking {
+    pub provider: String,
+    pub account_id: String,
+    pub kind: IrJobKind,
+    pub local_score_id: i64,
+    pub ranking: IrRankingResult,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -361,7 +375,13 @@ async fn sync_pending_ir_jobs_with_filter(
                     .filter(|ranking| ranking.succeeded)
                     .and_then(|ranking| ranking.data.clone())
                 {
-                    report.included_rankings.push(ranking);
+                    report.included_rankings.push(IrIncludedRanking {
+                        provider: job.provider.clone(),
+                        account_id: job.account_id.clone(),
+                        kind: job.kind,
+                        local_score_id: job.local_score_id,
+                        ranking,
+                    });
                 }
                 let remote_score_id = parsed_response
                     .as_ref()
@@ -536,7 +556,7 @@ fn replay_job_for_score(
     remote_score_id: &str,
     now: i64,
 ) -> Result<Option<NewIrScoreJob>> {
-    if job.kind != IrJobKind::Score {
+    if job.kind != IrJobKind::Score || super::rian_ir::is_rian_ir_provider(&job.provider) {
         return Ok(None);
     }
     let payload: IrScoreSubmission =
@@ -620,6 +640,13 @@ async fn submit_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if super::rian_ir::is_rian_ir_config(provider) {
+        let client = super::rian_ir::RianIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_score(&payload, &credentials.account_id, &credentials.access_token)
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
     attach_evidence(profile_root, provider, &client, &mut payload).await;
     let request_json = serde_json::to_string(&payload)?;
@@ -684,6 +711,13 @@ async fn submit_course_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if super::rian_ir::is_rian_ir_config(provider) {
+        let client = super::rian_ir::RianIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_course_score(&payload, &credentials.account_id, &credentials.access_token)
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
     let evidence = async {
         let key =

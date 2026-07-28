@@ -28,6 +28,9 @@ pub struct IrCourseDefinition {
 pub struct IrCourseIdentity {
     pub definition: IrCourseDefinition,
     pub course_hash: String,
+    /// rianIR/beatoraja connector互換:
+    /// SHA256(UTF-8(decoded title + ordered chart SHA256 hex strings))。
+    pub rian_course_hash_v1: String,
     pub constraints_json: String,
     pub chart_sha256s_json: String,
     pub chart_sha256s: Vec<[u8; 32]>,
@@ -53,6 +56,19 @@ pub fn compute_course_hash(definition: &IrCourseDefinition) -> String {
     }))
     .unwrap_or_default();
     hash_to_hex(&Sha256::digest(canonical.as_bytes()))
+}
+
+/// rianIRのcourse送信・取得・URL生成で共通利用する互換hash。
+///
+/// `title` はB64 decode済みの表示文字列、`charts` はプレイ順とする。BMZ内部や
+/// BMZ公式IRのcourse identityには使わない。
+pub fn compute_rian_course_hash_v1(title: &str, charts: &[String]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(title.as_bytes());
+    for chart in charts {
+        digest.update(chart.as_bytes());
+    }
+    hash_to_hex(&digest.finalize())
 }
 
 pub fn course_identity_from_stored(
@@ -82,12 +98,14 @@ pub fn course_identity_from_stored(
         },
     };
     let course_hash = compute_course_hash(&definition);
+    let rian_course_hash_v1 = compute_rian_course_hash_v1(&definition.title, &definition.charts);
     let constraints_json = super::device_key::canonical_json_value(&definition.constraints).ok()?;
     let chart_sha256s_json =
         super::device_key::canonical_json_value(&json!(definition.charts)).ok()?;
     Some(IrCourseIdentity {
         definition,
         course_hash,
+        rian_course_hash_v1,
         constraints_json,
         chart_sha256s_json,
         chart_sha256s,
@@ -182,6 +200,7 @@ pub fn build_course_submission(
             "trophies": trophies,
             "ex_score": result.total_ex_score,
             "max_ex_score": result.max_ex_score,
+            "total_notes": result.total_notes,
             "max_combo": result.course_max_combo,
             "bp": result.bp,
             "judges": {
@@ -265,6 +284,44 @@ mod tests {
         let mut renamed = base.clone();
         renamed.title = "Renamed".to_string();
         assert_eq!(same, compute_course_hash(&renamed));
+    }
+
+    #[test]
+    fn rian_course_hash_v1_matches_beatoraja_title_and_ordered_charts() {
+        let charts = vec!["ab".repeat(32), "cd".repeat(32)];
+        assert_eq!(
+            compute_rian_course_hash_v1("段位", &charts),
+            "c3a672ab2881fdd8efb583ff04e94fa88c9ff730941eb72063dadc59101f6d77"
+        );
+
+        let mut reversed = charts.clone();
+        reversed.reverse();
+        assert_ne!(
+            compute_rian_course_hash_v1("段位", &charts),
+            compute_rian_course_hash_v1("段位", &reversed)
+        );
+        assert_ne!(
+            compute_rian_course_hash_v1("段位", &charts),
+            compute_rian_course_hash_v1("別名", &charts)
+        );
+    }
+
+    #[test]
+    fn rian_course_hash_v1_does_not_include_constraints() {
+        let charts = vec!["ab".repeat(32)];
+        let normal = IrCourseDefinition {
+            charts: charts.clone(),
+            constraints: json!({ "judge": "normal" }),
+            title: "Course".to_string(),
+            kind: "course".to_string(),
+        };
+        let no_good =
+            IrCourseDefinition { constraints: json!({ "judge": "no_good" }), ..normal.clone() };
+
+        assert_eq!(
+            compute_rian_course_hash_v1(&normal.title, &normal.charts),
+            compute_rian_course_hash_v1(&no_good.title, &no_good.charts)
+        );
     }
 
     #[test]

@@ -13,6 +13,9 @@ use super::types::{
     IrRivalsResponse, IrScoreSubmission, IrSubmitOptions, IrSubmitResponse,
 };
 
+pub const BMZ_IR_PROVIDER: &str = "bmz";
+pub const BMZ_IR_DEFAULT_BASE_URL: &str = "https://bmz-player.hyrorre.workers.dev/";
+
 #[derive(Debug, Clone)]
 pub struct BmzOfficialIrClient {
     base_url: Url,
