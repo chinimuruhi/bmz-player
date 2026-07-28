@@ -527,6 +527,8 @@ struct WinitApp {
     /// 完了したコースの canonical hash。IR ranking の起動や replay slot 保存で
     /// course 定義を DB から再走査しないため、identity 解決時に保持する。
     finished_course_hash: Option<String>,
+    /// 完了したcourseのrianIR/beatoraja connector互換hash。
+    finished_course_rian_hash_v1: Option<String>,
     /// IR 無効時も course ranking task の起動判定を毎フレーム繰り返さないための印。
     finished_course_ir_attempted: bool,
     /// プレイ終了でリザルトへ移った後、曲の余韻を鳴らし切るために保持する音声出力。
@@ -3120,6 +3122,7 @@ impl WinitApp {
             finished_course: None,
             finished_course_skin_summary: None,
             finished_course_hash: None,
+            finished_course_rian_hash_v1: None,
             finished_course_ir_attempted: false,
             draining_audio: None,
             audio_runtime,
@@ -3648,10 +3651,12 @@ impl WinitApp {
         &mut self,
         course: CourseResultSummary,
         course_hash: Option<String>,
+        rian_course_hash_v1: Option<String>,
     ) {
         self.finished_course_skin_summary = Some(course_result_summary_for_skin(&course));
         self.finished_course = Some(course);
         self.finished_course_hash = course_hash;
+        self.finished_course_rian_hash_v1 = rian_course_hash_v1;
         self.finished_course_ir_attempted = false;
     }
 
@@ -3659,6 +3664,7 @@ impl WinitApp {
         self.finished_course = None;
         self.finished_course_skin_summary = None;
         self.finished_course_hash = None;
+        self.finished_course_rian_hash_v1 = None;
         self.finished_course_ir_attempted = false;
     }
 
@@ -4211,6 +4217,7 @@ impl WinitApp {
         };
         Some(crate::screens::select_ir::SelectCourseIrTarget {
             course_hash: row.course_hash.clone()?,
+            rian_course_hash_v1: row.rian_course_hash_v1.clone()?,
             gauge: crate::screens::play_start::course_gauge_for(self.gauge_option)
                 .as_str()
                 .to_string(),
@@ -8888,7 +8895,7 @@ impl WinitApp {
                     course_id,
                     "course identity unavailable; skipping course score save"
                 );
-                self.install_finished_course(course_result, None);
+                self.install_finished_course(course_result, None, None);
                 if let Some(last) = last_finished {
                     self.result_gauge_graph_type = last.summary.gauge_type as i32;
                     self.finished_play = Some(last);
@@ -9063,7 +9070,9 @@ impl WinitApp {
         }
         let course_hash =
             course_identity.as_ref().map(|(_, identity)| identity.course_hash.clone());
-        self.install_finished_course(course_result, course_hash);
+        let rian_course_hash_v1 =
+            course_identity.as_ref().map(|(_, identity)| identity.rian_course_hash_v1.clone());
+        self.install_finished_course(course_result, course_hash, rian_course_hash_v1);
         // Use the last chart's result for the standard result skin display.
         if let Some(last) = last_finished {
             self.result_gauge_graph_type = last.summary.gauge_type as i32;
@@ -9112,12 +9121,19 @@ impl WinitApp {
 
     fn course_result_ir_target(
         &self,
-    ) -> Option<(String, String, String, bmz_gameplay::rule::RuleMode)> {
+    ) -> Option<(String, String, String, String, bmz_gameplay::rule::RuleMode)> {
         let course = self.finished_course.as_ref()?;
         let course_hash = self.finished_course_hash.clone()?;
+        let rian_course_hash_v1 = self.finished_course_rian_hash_v1.clone()?;
         let gauge = course.final_gauge_type.as_str().to_string();
         let ln_policy = self.boot.profile_config.play.ln_mode_policy.as_ir_str().to_string();
-        Some((course_hash, gauge, ln_policy, self.boot.profile_config.play.rule_mode))
+        Some((
+            course_hash,
+            rian_course_hash_v1,
+            gauge,
+            ln_policy,
+            self.boot.profile_config.play.rule_mode,
+        ))
     }
 
     fn start_result_ir_for_finished_play(&mut self, finished: &FinishedPlaySession) {
@@ -14095,7 +14111,8 @@ impl WinitApp {
             // IR が無効、または identity が解決できない場合も、この Result 滞在中の
             // 起動判定は一度で完了させる。
             self.finished_course_ir_attempted = true;
-            if let Some((course_hash, gauge, ln_policy, rule_mode)) = self.course_result_ir_target()
+            if let Some((course_hash, rian_course_hash_v1, gauge, ln_policy, rule_mode)) =
+                self.course_result_ir_target()
             {
                 self.result_ir = crate::screens::result_ir::spawn_course_result_ir_task(
                     self.boot.profile_paths.root_dir.clone(),
@@ -14107,7 +14124,10 @@ impl WinitApp {
                         .as_ref()
                         .and_then(|course| course.course_score_id)
                         .unwrap_or_default(),
-                    course_hash,
+                    crate::screens::result_ir::ResultIrCourseHashes {
+                        local: course_hash,
+                        rian_v1: rian_course_hash_v1,
+                    },
                     gauge,
                     ln_policy,
                     rule_mode,
@@ -14206,8 +14226,9 @@ impl WinitApp {
             let ir_config = self.boot.profile_config.ir.clone();
             if let Some(course) = selected_course_ir_target {
                 let context = format!(
-                    "course:{}:{}:{}:{}",
+                    "course:{}:{}:{}:{}:{}",
                     course.course_hash,
+                    course.rian_course_hash_v1,
                     course.gauge,
                     course.ln_policy,
                     course.rule_mode.as_str()
@@ -28935,6 +28956,7 @@ mod tests {
         SelectCourseRow {
             course_id: resolved_count as i64,
             course_hash: None,
+            rian_course_hash_v1: None,
             title: format!("Course {resolved_count}/{entry_count}"),
             kind: bmz_core::course::CourseKind::Dan,
             constraints: bmz_core::course::CourseConstraints::default(),

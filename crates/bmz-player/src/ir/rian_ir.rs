@@ -342,7 +342,23 @@ fn course_request(payload: &Value, player_id: &str, api_token: &str) -> Result<V
     let rule = payload.get("rule").context("course payload is missing rule")?;
     let result = payload.get("result").context("course payload is missing result")?;
     let play_options = payload.get("play_options").unwrap_or(&Value::Null);
-    let course_hash = required_str(course, "course_hash")?;
+    let course_title = course.get("title").and_then(Value::as_str).unwrap_or("Unknown Course");
+    let charts: Vec<String> = course
+        .get("charts")
+        .and_then(Value::as_array)
+        .context("course payload is missing charts")?
+        .iter()
+        .map(|chart| {
+            chart
+                .as_str()
+                .map(str::to_string)
+                .context("course payload contains a non-string chart hash")
+        })
+        .collect::<Result<_>>()?;
+    if charts.is_empty() {
+        bail!("course payload has no chart hashes");
+    }
+    let course_hash = super::course_payload::compute_rian_course_hash_v1(course_title, &charts);
     let played_at = required_i64(result, "played_at")?;
     let ex_score = required_u64(result, "ex_score")?;
     let max_combo = required_u64(result, "max_combo")?;
@@ -369,7 +385,7 @@ fn course_request(payload: &Value, player_id: &str, api_token: &str) -> Result<V
         "client_version": env!("CARGO_PKG_VERSION"),
         "course_sha256": course_hash,
         "course_md5": "",
-        "course_title": b64(course.get("title").and_then(Value::as_str).unwrap_or("Unknown Course")),
+        "course_title": b64(course_title),
         "clear_type": clear_type_id(required_str(result, "clear")?)?,
         "exscore": ex_score,
         "maxcombo": max_combo,
@@ -401,7 +417,7 @@ fn course_request(payload: &Value, player_id: &str, api_token: &str) -> Result<V
         api_token,
         &[
             player_id.to_string(),
-            course_hash.to_string(),
+            course_hash.clone(),
             ex_score.to_string(),
             max_combo.to_string(),
             played_at.to_string(),
@@ -994,11 +1010,11 @@ mod tests {
     }
 
     #[test]
-    fn course_request_uses_body_and_bmz_canonical_hash() {
-        let course_hash = "ef".repeat(32);
+    fn course_request_uses_body_and_rian_course_hash_v1() {
+        let local_course_hash = "ef".repeat(32);
         let payload = json!({
             "course": {
-                "course_hash": course_hash,
+                "course_hash": local_course_hash,
                 "title": "段位",
                 "charts": ["ab".repeat(32), "cd".repeat(32)],
                 "constraints": { "grade": true },
@@ -1031,7 +1047,24 @@ mod tests {
             },
         });
         let request = course_request(&payload, "player", "token").unwrap();
-        assert_eq!(request["course_sha256"], "ef".repeat(32));
+        assert_eq!(
+            request["course_sha256"],
+            "c3a672ab2881fdd8efb583ff04e94fa88c9ff730941eb72063dadc59101f6d77"
+        );
+        assert_eq!(
+            request["signature"],
+            signature(
+                "token",
+                &[
+                    "player".to_string(),
+                    "c3a672ab2881fdd8efb583ff04e94fa88c9ff730941eb72063dadc59101f6d77".to_string(),
+                    "4000".to_string(),
+                    "1200".to_string(),
+                    "1700000001".to_string(),
+                ],
+            )
+            .unwrap()
+        );
         assert_eq!(request["body"], "DX MODE");
         assert!(request.get("rule_mode").is_none());
         assert_eq!(request["ln_mode"], 3);

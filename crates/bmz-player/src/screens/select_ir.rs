@@ -40,6 +40,7 @@ type CourseFetchResult =
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SelectCourseIrTarget {
     pub course_hash: String,
+    pub rian_course_hash_v1: String,
     pub gauge: String,
     pub ln_policy: String,
     pub rule_mode: RuleMode,
@@ -505,7 +506,7 @@ fn spawn_course_fetch(
             if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
                 return crate::ir::rian_ir::RianIrClient::new(&base_url)?
                     .fetch_course_ranking(
-                        &target.course_hash,
+                        &target.rian_course_hash_v1,
                         crate::ir::rian_ir::body_for_rule_mode(target.rule_mode),
                         20,
                     )
@@ -743,6 +744,7 @@ mod tests {
         let mut select_ir = SelectIrRanking::default();
         let target = SelectCourseIrTarget {
             course_hash: "ab".repeat(32),
+            rian_course_hash_v1: "cd".repeat(32),
             gauge: "Class".to_string(),
             ln_policy: "auto".to_string(),
             rule_mode: RuleMode::Beatoraja,

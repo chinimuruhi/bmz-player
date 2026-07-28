@@ -98,10 +98,17 @@ pub enum ResultIrTarget {
     Course {
         local_score_id: i64,
         course_hash: String,
+        rian_course_hash_v1: String,
         gauge: String,
         ln_policy: String,
         rule_mode: RuleMode,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct ResultIrCourseHashes {
+    pub local: String,
+    pub rian_v1: String,
 }
 
 impl ResultIrTarget {
@@ -453,7 +460,7 @@ pub fn spawn_course_result_ir_task(
     logs_dir: PathBuf,
     ir_config: &IrConfig,
     local_score_id: i64,
-    course_hash: String,
+    hashes: ResultIrCourseHashes,
     gauge: String,
     ln_policy: String,
     rule_mode: RuleMode,
@@ -464,7 +471,14 @@ pub fn spawn_course_result_ir_task(
         network_db_path,
         logs_dir,
         ir_config,
-        ResultIrTarget::Course { local_score_id, course_hash, gauge, ln_policy, rule_mode },
+        ResultIrTarget::Course {
+            local_score_id,
+            course_hash: hashes.local,
+            rian_course_hash_v1: hashes.rian_v1,
+            gauge,
+            ln_policy,
+            rule_mode,
+        },
     )
 }
 
@@ -699,14 +713,21 @@ async fn fetch_result_ranking(
             .await?;
             Ok(chart_ranking_to_result_ir_ranking(&ranking))
         }
-        ResultIrTarget::Course { course_hash, gauge, ln_policy, rule_mode, .. } => {
+        ResultIrTarget::Course {
+            course_hash,
+            rian_course_hash_v1,
+            gauge,
+            ln_policy,
+            rule_mode,
+            ..
+        } => {
             if scope != IrRankingScope::Global {
                 anyhow::bail!("course IR ranking supports global scope only");
             }
             if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
                 return crate::ir::rian_ir::RianIrClient::new(&query.base_url)?
                     .fetch_course_ranking(
-                        course_hash,
+                        rian_course_hash_v1,
                         crate::ir::rian_ir::body_for_rule_mode(*rule_mode),
                         20,
                     )

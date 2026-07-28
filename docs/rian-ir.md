@@ -27,7 +27,7 @@ rianIR は BMZ 公式 IR とは別 provider とする。credential、送信 queu
 | 単曲送信 | `POST /api/score/score.php` | BMZ score/result/chart を rianIR payload へ変換し、署名して送る |
 | 単曲ランキング取得 | `GET /api/score/get_score.php` | chart SHA-256 と `body` を条件に取得し、BMZ の共通ランキング型へ変換する |
 | course送信 | `POST /api/score/course_score.php` | 完走した course attempt を変換し、署名して送る |
-| courseランキング取得 | `GET /api/score/get_course_score.php` | BMZ の canonical course hash と `body` で取得する |
+| courseランキング取得 | `GET /api/score/get_course_score.php` | `rian_course_hash_v1` と `body` で取得する |
 
 初期スコープ外:
 
@@ -53,6 +53,7 @@ rianIR は BMZ 公式 IR とは別 provider とする。credential、送信 queu
 - 既存IR queueを使った単曲・course送信
 - 選曲・リザルト・CLIのglobal単曲ランキング取得
 - 選曲・リザルトのglobal courseランキング取得
+- BMZ内部hashと分離した `rian_course_hash_v1` によるcourse送信・ランキング取得
 - 正規化後Force LN/CN/HCNだけをqueueへ入れるprovider別eligibility
 - Battle / Battle ASの非送信
 - rianIR成功後にBMZ公式IR用replay/evidence jobを作らないcapability分離
@@ -291,8 +292,16 @@ course送信にも単曲と同じ client/rule/LN/arrange の送信可否判定�
 - 初期版は誤った曲 metadata を登録しないため `tracks=[]` とする。BMZの既存course
   queueはstage SHA-256を保持するが、曲名・artist・levelまでは保持しないためである。
   正確なstage metadata送信はqueue拡張後の後続課題とする。
-- 初期版の `course_sha256` はBMZの既存canonical course hashを使い、送信と取得で
-  同じ値を使う。
+- rianIRへ送る `course_sha256` とランキング取得には次の
+  `rian_course_hash_v1` を使う。
+
+```text
+rian_course_hash_v1 =
+    SHA256(UTF-8(decoded_course_title + ordered_stage_sha256_hex_strings))
+```
+
+BMZ内部・BMZ公式IR用のcanonical course hashは変更しない。course identityには両方を
+保持し、provider境界で使い分ける。
 - course constraint、gauge、total notes、判定合計が server の期待値と一致することを
   送信前に検証する。
 
@@ -340,9 +349,12 @@ payload互換を先に検証するための暫定措置であり、正規 BMZ �
 - rianIR の API error は JSON:API形式と旧形式が混在する可能性があるため、
   HTTP statusを主、response bodyを補助情報として扱う。
 - rianIR の client version 補正は BMZ 1.x を誤変換しないよう client別に限定する必要がある。
-- 現行beatoraja/rianIR connectorはcourseの送信時と取得時でhash生成が一致しない。
-  初期BMZ同士はBMZ canonical hashで一致するが、既存beatoraja course scoreとの
-  横断ランキング互換は保証しない。
+- 現行beatoraja/rianIR connectorはcourse送信時に `score.sha256`（stage SHA-256の
+  単純連結）を優先する一方、取得時は `rian_course_hash_v1` を使う。connector側で
+  送信・取得・URL生成を同じhelperへ統一するまで、beatorajaからの新規course scoreと
+  BMZの横断ランキングは成立しない。
+- `rian_course_hash_v1` はconstraintsを含まないため、同じタイトル・同じ曲順で
+  constraintsだけが異なるcourseは現行rianIRと同様に同じランキングへ混在する。
 - courseの `ln_mode` は現行connectorで複合値になり得る。BMZ初期版はForce LN/CN/HCN
   の実効値1/2/3を送るが、既存beatoraja scoreとの分類互換は後続課題とする。
 - 初期実装では server-side replay verification が無く、送信内容の正当性を完全には
@@ -356,13 +368,16 @@ score、get_score、course_score、get_course_scoreをそのまま利用する�
 rianIR側の初期作業は次に限定する。
 
 - `beat-4k` / `beat-6k` / `beat-8k` を検索・表示・統計のmode classifierへ追加する。
+- Java connectorに `rian_course_hash_v1` helperを1つ追加し、
+  `sendCoursePlayData` / `getCoursePlayData` / `getCourseURL`から共通利用する。
+  `sendCoursePlayData`での `score.sha256` 優先は廃止する。
 - 現行API testのcourse成功response期待値を実Controllerの
   `{"status":"success"}` に合わせる。
 
 次は初期接続を止めず、後続課題とする。
 
 - get_score / get_course_scoreのLN別filter・集約
-- beatoraja connectorを含むcanonical course hashとcourse `ln_mode` の統一
+- constraints込みのcourse hash v2とcourse `ln_mode` の統一
 - `client=bmz-player` が1.xになったときのversion prefix補正除外
 - 正式な `client_hash` の生成・配布・失効設計
 
@@ -380,6 +395,7 @@ rianIR側の初期作業は次に限定する。
 - Off/Flip は送信でき、Battle/Battle AS は送信できないこと。
 - SP seed、DP packed seed、24 bit境界値。
 - unix秒、曲長、play duration の単位変換。
+- UTF-8タイトルとstage順を含む `rian_course_hash_v1` のRust/Java共通golden fixture。
 - login/score/course request と HMAC の golden fixture。
 - retry時に date、signature、seed が変わらないこと。
 
