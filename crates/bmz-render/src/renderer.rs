@@ -162,6 +162,7 @@ pub struct Renderer {
     internal_resolution_mode: InternalResolutionMode,
     backend: WgpuBackend,
     default_font_coverage: bmz_font::FontCoverage,
+    default_font_search_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -427,6 +428,8 @@ struct WgpuRenderer {
     text_buffer: Option<wgpu::Buffer>,
     text_buffer_capacity: usize,
     default_fonts: FontFallbackChain,
+    default_font_coverage: bmz_font::FontCoverage,
+    default_font_search_paths: Vec<PathBuf>,
     egui: EguiPainter,
     pending_screenshot_readbacks: Vec<ScreenshotReadback>,
     screenshot_save_jobs: Vec<ScreenshotSaveJob>,
@@ -780,6 +783,7 @@ impl Renderer {
             self.present_mode,
             self.backend,
             self.default_font_coverage,
+            self.default_font_search_paths.clone(),
         )?;
         for texture in self.pending_textures.drain(..) {
             gpu.upsert_rgba_texture(texture.id, texture.width, texture.height, &texture.rgba);
@@ -1181,6 +1185,20 @@ impl Renderer {
         }
     }
 
+    /// 未指定テキストの fallback として使う、アプリ同梱フォントの検索ディレクトリを設定する。
+    ///
+    /// ここで指定した resource font は OS フォントより先に解決される。明示指定された
+    /// スキンフォントの選択には影響しない。
+    pub fn set_default_font_search_paths(&mut self, paths: Vec<PathBuf>) {
+        if self.default_font_search_paths == paths {
+            return;
+        }
+        self.default_font_search_paths = paths;
+        if let Some(gpu) = &mut self.gpu {
+            gpu.set_default_font_search_paths(self.default_font_search_paths.clone());
+        }
+    }
+
     pub fn render_last_plan(&mut self) -> Result<RenderSurfaceStatus> {
         let egui = self.pending_egui.take();
         let screenshot = self.pending_screenshot.take();
@@ -1334,6 +1352,7 @@ impl WgpuRenderer {
         present_mode: WgpuPresentMode,
         backend: WgpuBackend,
         default_font_coverage: bmz_font::FontCoverage,
+        default_font_search_paths: Vec<PathBuf>,
     ) -> Result<Self>
     where
         T: Into<wgpu::SurfaceTarget<'static>> + Clone,
@@ -1341,7 +1360,14 @@ impl WgpuRenderer {
         let candidates = fallback_wgpu_backends(backend);
         let mut last_error = None;
         for candidate in candidates {
-            match Self::new(window.clone(), size, present_mode, *candidate, default_font_coverage) {
+            match Self::new(
+                window.clone(),
+                size,
+                present_mode,
+                *candidate,
+                default_font_coverage,
+                default_font_search_paths.clone(),
+            ) {
                 Ok(renderer) => {
                     if backend == WgpuBackend::Auto && *candidate != WgpuBackend::Auto {
                         tracing::info!(backend = ?candidate, "selected auto renderer backend");
@@ -1369,6 +1395,7 @@ impl WgpuRenderer {
         present_mode: WgpuPresentMode,
         backend: WgpuBackend,
         default_font_coverage: bmz_font::FontCoverage,
+        default_font_search_paths: Vec<PathBuf>,
     ) -> Result<Self>
     where
         T: Into<wgpu::SurfaceTarget<'static>>,
@@ -1494,7 +1521,12 @@ impl WgpuRenderer {
             text_atlas: TextAtlasCache::new(TEXT_ATLAS_WIDTH),
             text_buffer: None,
             text_buffer_capacity: 0,
-            default_fonts: load_default_font_fallbacks(default_font_coverage),
+            default_fonts: load_default_font_fallbacks(
+                default_font_coverage,
+                &default_font_search_paths,
+            ),
+            default_font_coverage,
+            default_font_search_paths,
             egui,
             pending_screenshot_readbacks: Vec::new(),
             screenshot_save_jobs: Vec::new(),
@@ -2105,7 +2137,20 @@ impl WgpuRenderer {
     }
 
     fn set_default_font_coverage(&mut self, coverage: bmz_font::FontCoverage) {
-        self.default_fonts = load_default_font_fallbacks(coverage);
+        self.default_font_coverage = coverage;
+        self.default_fonts = load_default_font_fallbacks(coverage, &self.default_font_search_paths);
+        self.reset_text_atlas();
+    }
+
+    fn set_default_font_search_paths(&mut self, paths: Vec<PathBuf>) {
+        if self.default_font_search_paths == paths {
+            return;
+        }
+        self.default_font_search_paths = paths;
+        self.default_fonts = load_default_font_fallbacks(
+            self.default_font_coverage,
+            &self.default_font_search_paths,
+        );
         self.reset_text_atlas();
     }
 
@@ -2117,9 +2162,6 @@ impl WgpuRenderer {
         surface: SurfaceSize,
     ) -> TextFrame {
         if !surface.is_drawable() {
-            return TextFrame::default();
-        }
-        if self.default_fonts.is_empty() {
             return TextFrame::default();
         }
         build_text_frame_with_fallback_cache(
@@ -2928,10 +2970,6 @@ struct FontFallbackChain {
 }
 
 impl FontFallbackChain {
-    fn is_empty(&self) -> bool {
-        self.faces.is_empty()
-    }
-
     fn primary(&self) -> Option<&FontFallbackFace> {
         self.faces.first()
     }
@@ -5225,13 +5263,16 @@ fn wgpu_present_mode_label(mode: wgpu::PresentMode) -> &'static str {
 
 #[cfg(test)]
 fn load_default_font() -> Option<FontArc> {
-    load_default_font_fallbacks(bmz_font::FontCoverage::Japanese)
+    load_default_font_fallbacks(bmz_font::FontCoverage::Japanese, &[])
         .primary()
         .map(|face| face.font.clone())
 }
 
-fn load_default_font_fallbacks(preferred: bmz_font::FontCoverage) -> FontFallbackChain {
-    let mut resolved = bmz_font::resolve_system_font_fallbacks(preferred);
+fn load_default_font_fallbacks(
+    preferred: bmz_font::FontCoverage,
+    font_roots: &[PathBuf],
+) -> FontFallbackChain {
+    let mut resolved = bmz_font::resolve_font_fallbacks(preferred, font_roots);
     if let Some(general) = bmz_font::resolve_system_font(false)
         && !resolved.iter().any(|(_, font)| font == &general)
     {
@@ -5312,10 +5353,14 @@ pub fn load_system_font_data_for_coverage(
 }
 
 /// 優先 coverage を先頭にして、利用可能な全 CJK fallback font を返す。
+///
+/// `font_roots` の同梱フォントを OS フォントより優先する。egui のフォント定義と
+/// ゲーム/スキン描画の fallback 順を一致させるために使用する。
 pub fn load_cjk_font_fallback_data(
     preferred: bmz_font::FontCoverage,
+    font_roots: &[PathBuf],
 ) -> Vec<(bmz_font::FontCoverage, SystemFontData)> {
-    bmz_font::resolve_system_font_fallbacks(preferred)
+    bmz_font::resolve_font_fallbacks(preferred, font_roots)
         .into_iter()
         .filter_map(|(coverage, resolved)| {
             let bytes = bmz_font::read_resolved_font_bytes(&resolved).ok()?;
@@ -6120,7 +6165,7 @@ mod tests {
             if bmz_font::resolve_system_font_for_coverage(coverage).is_none() {
                 continue;
             }
-            let fonts = load_default_font_fallbacks(coverage);
+            let fonts = load_default_font_fallbacks(coverage, &[]);
             let Some(primary) = fonts.primary() else {
                 panic!("resolved {coverage:?} font should be loadable");
             };
@@ -6132,8 +6177,25 @@ mod tests {
     }
 
     #[test]
+    fn bundled_noto_cjk_supplies_ui_fallbacks() {
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/fonts/noto-cjk");
+        let font_roots = vec![root];
+        let fallbacks = load_cjk_font_fallback_data(bmz_font::FontCoverage::Japanese, &font_roots);
+
+        assert!(fallbacks.iter().any(|(coverage, data)| {
+            *coverage == bmz_font::FontCoverage::Japanese
+                && bmz_font::font_supports_coverage(
+                    &data.bytes,
+                    data.font_index,
+                    bmz_font::FontCoverage::Japanese,
+                )
+        }));
+    }
+
+    #[test]
     fn default_font_fallback_uses_selected_face_in_glyph_and_layout_cache_keys() {
-        let fonts = load_default_font_fallbacks(bmz_font::FontCoverage::Japanese);
+        let fonts = load_default_font_fallbacks(bmz_font::FontCoverage::Japanese, &[]);
         let Some(primary) = fonts.primary() else { return };
         let fallback_char = bmz_font::ALL_FONT_COVERAGES
             .iter()
@@ -6206,7 +6268,7 @@ mod tests {
 
     #[test]
     fn explicit_vector_font_does_not_use_default_fallback_faces() {
-        let default_fonts = load_default_font_fallbacks(bmz_font::FontCoverage::Japanese);
+        let default_fonts = load_default_font_fallbacks(bmz_font::FontCoverage::Japanese, &[]);
         let Some(primary) = default_fonts.primary() else { return };
         let fallback_char = bmz_font::ALL_FONT_COVERAGES
             .iter()
@@ -6262,6 +6324,86 @@ mod tests {
     }
 
     #[test]
+    fn explicit_vector_font_renders_without_default_fallback() {
+        let Some(font) = load_default_font() else { return };
+        let surface = SurfaceSize { width: 320, height: 240 };
+        let mut fonts = HashMap::new();
+        fonts.insert("skin:custom".to_string(), font);
+        let plan = DrawPlan {
+            clear: Color::rgb(0.0, 0.0, 0.0),
+            commands: vec![DrawCommand::Text {
+                origin: Point { x: 0.1, y: 0.1 },
+                text: "A".to_string(),
+                caret: None,
+                style: TextStyle {
+                    font_id: Some("skin:custom".to_string()),
+                    size: 0.1,
+                    bitmap_size: None,
+                    color: Color::rgb(1.0, 1.0, 1.0),
+                    layer: crate::plan::TextLayer::Skin,
+                    align: TextAlign::Left,
+                    max_width: 0.0,
+                    overflow: TextOverflow::Overflow,
+                    wrapping: false,
+                    outline: None,
+                    shadow: None,
+                },
+            }],
+        };
+        let mut atlas = TextAtlasCache::new(TEXT_ATLAS_WIDTH);
+
+        let frame = build_text_frame_with_fallback_cache(
+            &plan,
+            &FontFallbackChain::default(),
+            &fonts,
+            &HashMap::new(),
+            surface,
+            &mut atlas,
+        );
+
+        assert!(!frame.instances.is_empty());
+    }
+
+    #[test]
+    fn text_without_any_font_is_skipped_without_default_fallback() {
+        let surface = SurfaceSize { width: 320, height: 240 };
+        let plan = DrawPlan {
+            clear: Color::rgb(0.0, 0.0, 0.0),
+            commands: vec![DrawCommand::Text {
+                origin: Point { x: 0.1, y: 0.1 },
+                text: "A".to_string(),
+                caret: None,
+                style: TextStyle {
+                    font_id: None,
+                    size: 0.1,
+                    bitmap_size: None,
+                    color: Color::rgb(1.0, 1.0, 1.0),
+                    layer: crate::plan::TextLayer::Skin,
+                    align: TextAlign::Left,
+                    max_width: 0.0,
+                    overflow: TextOverflow::Overflow,
+                    wrapping: false,
+                    outline: None,
+                    shadow: None,
+                },
+            }],
+        };
+        let mut atlas = TextAtlasCache::new(TEXT_ATLAS_WIDTH);
+
+        let frame = build_text_frame_with_fallback_cache(
+            &plan,
+            &FontFallbackChain::default(),
+            &HashMap::new(),
+            &HashMap::new(),
+            surface,
+            &mut atlas,
+        );
+
+        assert!(frame.instances.is_empty());
+        assert_eq!(frame.command_quad_counts, vec![0]);
+    }
+
+    #[test]
     fn japanese_text_emits_glyph_quads_with_default_font() {
         let Some(font) = load_default_font() else { return };
         if !font_supports_japanese(&font) {
@@ -6297,7 +6439,6 @@ mod tests {
 
     #[test]
     fn bitmap_font_text_uses_registered_font() {
-        let Some(default_font) = load_default_font() else { return };
         let surface = SurfaceSize { width: 320, height: 240 };
         let mut pages = HashMap::new();
         pages.insert(
@@ -6363,10 +6504,18 @@ mod tests {
             }],
         };
 
-        let frame = build_text_frame(&plan, &default_font, &HashMap::new(), &bitmap_fonts, surface);
+        let mut atlas = TextAtlasCache::new(TEXT_ATLAS_WIDTH);
+        let frame = build_text_frame_with_fallback_cache(
+            &plan,
+            &FontFallbackChain::default(),
+            &HashMap::new(),
+            &bitmap_fonts,
+            surface,
+            &mut atlas,
+        );
 
         assert_eq!(frame.instances.len(), TEXT_INSTANCE_BYTES);
-        assert!(frame.pixels.contains(&255));
+        assert!(!frame.dirty_regions.is_empty());
     }
 
     #[test]

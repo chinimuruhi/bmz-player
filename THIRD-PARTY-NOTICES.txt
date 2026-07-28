@@ -71,6 +71,25 @@ Project:
   https://www.nuget.org/packages/Microsoft.GameInput
 
 
+Noto Sans CJK
+-------------
+
+BMZ Player bundles Noto Sans CJK Regular so UI and skin text render even on
+systems or containers without a suitable system font. The unmodified font and
+its license are included as:
+
+  resources/fonts/noto-cjk/NotoSansCJK-Regular.ttc
+  resources/licenses/NotoSansCJK-OFL-1.1.txt
+
+Source:
+  https://github.com/notofonts/noto-cjk
+  commit f8d157532fbfaeda587e826d4cd5b21a49186f7c
+  Sans/OTC/NotoSansCJK-Regular.ttc
+
+License:
+  SIL Open Font License, Version 1.1
+
+
 Bundled Skins
 -------------
 

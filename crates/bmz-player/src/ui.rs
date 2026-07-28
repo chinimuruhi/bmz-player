@@ -385,6 +385,8 @@ pub struct EguiLayer {
     state: egui_winit::State,
     /// egui の未指定テキストで最優先する地域別 CJK coverage。
     font_coverage: bmz_render::FontCoverage,
+    /// OS フォントに依存しない CJK fallback の検索先。
+    font_search_paths: Vec<PathBuf>,
     /// メニュー全体の表示状態。F1 でトグルする。
     visible: bool,
     /// デバッグ表示パネルの開閉状態。
@@ -720,10 +722,10 @@ struct AudioDevicePickerState {
 
 impl EguiLayer {
     /// `show_fps` は右上 FPS オーバーレイの初期表示状態。
-    pub fn new(window: &Window, show_fps: bool) -> Self {
+    pub fn new(window: &Window, show_fps: bool, font_search_paths: Vec<PathBuf>) -> Self {
         let ctx = egui::Context::default();
         let font_coverage = bmz_render::FontCoverage::Japanese;
-        install_cjk_fonts(&ctx, font_coverage);
+        install_cjk_fonts(&ctx, font_coverage, &font_search_paths);
         let state = egui_winit::State::new(
             ctx.clone(),
             ViewportId::ROOT,
@@ -736,6 +738,7 @@ impl EguiLayer {
             ctx,
             state,
             font_coverage,
+            font_search_paths,
             visible: false,
             show_debug: false,
             show_random_trainer: false,
@@ -836,7 +839,7 @@ impl EguiLayer {
         font_coverage: bmz_render::FontCoverage,
     ) -> EguiFrame {
         if font_coverage != self.font_coverage {
-            install_cjk_fonts(&self.ctx, font_coverage);
+            install_cjk_fonts(&self.ctx, font_coverage, &self.font_search_paths);
             self.font_coverage = font_coverage;
         }
         self.update_dialog_active = false;
@@ -874,7 +877,7 @@ impl EguiLayer {
         } = context;
         let font_coverage = profile_config.ui.locale().font_coverage();
         if font_coverage != self.font_coverage {
-            install_cjk_fonts(&self.ctx, font_coverage);
+            install_cjk_fonts(&self.ctx, font_coverage, &self.font_search_paths);
             self.font_coverage = font_coverage;
         }
         let text = Localizer::new(profile_config.ui.locale());
@@ -1074,8 +1077,12 @@ fn egui_frame_needs_full_state(
 
 /// egui のデフォルトフォントは CJK グリフを含まないため、locale の地域別字形を
 /// 優先した全 CJK face を各フォントファミリの末尾 fallback として登録する。
-fn install_cjk_fonts(ctx: &egui::Context, preferred: bmz_render::FontCoverage) {
-    let fallbacks = bmz_render::renderer::load_cjk_font_fallback_data(preferred);
+fn install_cjk_fonts(
+    ctx: &egui::Context,
+    preferred: bmz_render::FontCoverage,
+    font_search_paths: &[PathBuf],
+) {
+    let fallbacks = bmz_render::renderer::load_cjk_font_fallback_data(preferred, font_search_paths);
     ctx.set_fonts(cjk_font_definitions(fallbacks));
 }
 

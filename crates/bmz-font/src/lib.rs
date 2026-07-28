@@ -8,6 +8,7 @@ mod system;
 
 pub use system::{
     ALL_FONT_COVERAGES, FontCoverage, ResolvedFont, font_supports_coverage, font_supports_japanese,
-    read_resolved_font_bytes, resolve_system_font, resolve_system_font_fallbacks,
-    resolve_system_font_for_coverage, resolved_font_source, resolved_font_supports_coverage,
+    read_resolved_font_bytes, resolve_font_fallbacks, resolve_font_for_coverage,
+    resolve_system_font, resolve_system_font_fallbacks, resolve_system_font_for_coverage,
+    resolved_font_source, resolved_font_supports_coverage,
 };

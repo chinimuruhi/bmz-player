@@ -96,6 +96,22 @@ Release policy:
 - Do not present the GameInput name or Microsoft trademarks as an endorsement
   of BMZ Player.
 
+## Noto Sans CJK
+
+BMZ Player bundles the unmodified `NotoSansCJK-Regular.ttc` so the application
+can render CJK UI and skin text even when a packaged runtime has no usable
+system font (for example, Flatpak).
+
+- Source repository: https://github.com/notofonts/noto-cjk
+- Pinned source commit: `f8d157532fbfaeda587e826d4cd5b21a49186f7c`
+- Source file: `Sans/OTC/NotoSansCJK-Regular.ttc`
+- License: SIL Open Font License, Version 1.1
+- Repository asset and provenance: `data/fonts/noto-cjk/README.md`
+
+Release packages must preserve the font unchanged and install its `LICENSE` as
+`resources/licenses/NotoSansCJK-OFL-1.1.txt` (or the corresponding location in
+a macOS app bundle / Flatpak resource directory).
+
 ## Bundled Skins
 
 `data/skins/default` is BMZ Player's first-party minimal skin.
@@ -203,7 +219,7 @@ Before publishing a binary release:
 2. Generate a third-party Rust dependency license report with `cargo-about --fail`.
 3. Record the FFmpeg version, configure flags, source URL, and binary source/provenance.
 4. Confirm no bundled FFmpeg build uses `--enable-nonfree`.
-5. Include `THIRD-PARTY-NOTICES.txt`, `rust-dependency-licenses.txt`, GameInput, FFmpeg, ASIO SDK, and bundled-skin notices in the release package.
+5. Include `THIRD-PARTY-NOTICES.txt`, `rust-dependency-licenses.txt`, the Noto Sans CJK OFL text, GameInput, FFmpeg, ASIO SDK, and bundled-skin notices in the release package.
 6. Confirm bundled skin submodules such as `data/skins/Rmz-skin`, `data/skins/mz-select`, and `data/skins/Luxez-Flat` point at the intended commits.
 7. Confirm Windows release artifacts built with default features are intended to include ASIO support.
 8. Confirm no gitignored third-party skins, songs, databases, profiles, credentials, or `.env` files are included.

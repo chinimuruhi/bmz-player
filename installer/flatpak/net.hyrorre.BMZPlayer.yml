@@ -32,16 +32,18 @@ modules:
       - install -Dm644 installer/flatpak/net.hyrorre.BMZPlayer.desktop /app/share/applications/net.hyrorre.BMZPlayer.desktop
       - install -Dm644 installer/flatpak/net.hyrorre.BMZPlayer.metainfo.xml /app/share/metainfo/net.hyrorre.BMZPlayer.metainfo.xml
       - install -Dm644 assets/app-icon/bmz-player-window-windows.png /app/share/icons/hicolor/256x256/apps/net.hyrorre.BMZPlayer.png
-      - mkdir -p /app/share/bmz-player/skins /app/share/bmz-player/songs /app/share/bmz-player/licenses
+      - mkdir -p /app/share/bmz-player/skins /app/share/bmz-player/songs /app/share/bmz-player/fonts/noto-cjk /app/share/bmz-player/licenses
       - cp -a data/skins/default /app/share/bmz-player/skins/default
       - cp -a data/skins/Rmz-skin /app/share/bmz-player/skins/Rmz-skin
       - cp -a data/skins/mz-select /app/share/bmz-player/skins/mz-select
       - cp -a data/skins/Luxez-Flat /app/share/bmz-player/skins/Luxez-Flat
       - cp -a data/songs/sample-playable /app/share/bmz-player/songs/sample-playable
+      - install -Dm644 data/fonts/noto-cjk/NotoSansCJK-Regular.ttc /app/share/bmz-player/fonts/noto-cjk/NotoSansCJK-Regular.ttc
       - find /app/share/bmz-player -name .git -prune -exec rm -rf '{}' +
       - install -Dm644 LICENSE /app/share/bmz-player/licenses/BMZ-GPL-3.0-only.txt
       - install -Dm644 docs/licenses.md /app/share/bmz-player/licenses/license-notes.md
       - install -Dm644 THIRD-PARTY-NOTICES.txt /app/share/bmz-player/licenses/third-party-notices.txt
+      - install -Dm644 data/fonts/noto-cjk/LICENSE /app/share/bmz-player/licenses/NotoSansCJK-OFL-1.1.txt
       - if [ -f rust-dependency-licenses.txt ]; then install -Dm644 rust-dependency-licenses.txt /app/share/bmz-player/licenses/rust-dependency-licenses.txt; fi
     sources:
       - type: dir

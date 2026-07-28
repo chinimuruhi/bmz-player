@@ -146,6 +146,9 @@ main() {
     die "missing Luxez-Flat contents; run: git submodule update --init --recursive data/skins/Luxez-Flat"
   [[ -f "${root}/data/songs/sample-playable/sample-playable.bms" ]] || \
     die "missing bundled sample song"
+  [[ -f "${root}/data/fonts/noto-cjk/NotoSansCJK-Regular.ttc" ]] || \
+    die "missing bundled Noto Sans CJK font"
+  [[ -f "${root}/data/fonts/noto-cjk/LICENSE" ]] || die "missing bundled Noto Sans CJK license"
   [[ -f "${root}/assets/app-icon/bmz-player-window-windows.png" ]] || die "missing Flatpak app icon"
 
   local build_dir="${out_dir}/build"

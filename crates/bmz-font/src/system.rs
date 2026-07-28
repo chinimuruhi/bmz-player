@@ -5,7 +5,9 @@ use ab_glyph::{Font, FontVec};
 use font_kit::family_name::FamilyName;
 use font_kit::handle::Handle;
 use font_kit::properties::{Properties, Style, Weight};
-use font_kit::source::SystemSource;
+use font_kit::source::{Source, SystemSource};
+use font_kit::sources::fs::FsSource;
+use font_kit::sources::multi::MultiSource;
 
 /// font-kit が解決した OS フォントの実ファイル位置またはメモリ上のバイト列。
 ///
@@ -145,12 +147,35 @@ pub fn resolve_system_font(require_japanese: bool) -> Option<ResolvedFont> {
 /// OS フォント DB から指定 coverage と地域別字形に適した face を解決する。
 pub fn resolve_system_font_for_coverage(coverage: FontCoverage) -> Option<ResolvedFont> {
     let source = SystemSource::new();
+    resolve_font_for_coverage_from_source(&source, coverage)
+}
+
+/// アプリ同梱フォントを OS フォントより先に見て、指定 coverage に適した face を解決する。
+///
+/// `font_roots` はアプリの resource directory 配下など、再配布するフォントを置く
+/// ディレクトリを渡す。存在しないディレクトリは無視するため、開発時・旧配布物では
+/// 既存の OS フォント解決へそのまま fallback する。
+pub fn resolve_font_for_coverage(
+    coverage: FontCoverage,
+    font_roots: &[PathBuf],
+) -> Option<ResolvedFont> {
+    let source = font_source_with_roots(font_roots);
+    resolve_font_for_coverage_from_source(&source, coverage)
+}
+
+fn resolve_font_for_coverage_from_source<S>(
+    source: &S,
+    coverage: FontCoverage,
+) -> Option<ResolvedFont>
+where
+    S: Source + ?Sized,
+{
     let properties =
         Properties { weight: Weight::NORMAL, style: Style::Normal, stretch: Default::default() };
 
     for family in coverage.font_families() {
         if let Some(resolved) =
-            resolve_family(&source, FamilyName::Title((*family).to_string()), properties)
+            resolve_family(source, FamilyName::Title((*family).to_string()), properties)
             && resolved_font_supports_coverage(&resolved, coverage)
         {
             return Some(resolved);
@@ -163,10 +188,21 @@ pub fn resolve_system_font_for_coverage(coverage: FontCoverage) -> Option<Resolv
 ///
 /// 同じ face が複数 coverage を満たす場合は先に解決した coverage だけを残す。
 pub fn resolve_system_font_fallbacks(preferred: FontCoverage) -> Vec<(FontCoverage, ResolvedFont)> {
+    resolve_font_fallbacks(preferred, &[])
+}
+
+/// 同梱フォントを先頭にして、利用可能な全 CJK fallback face を返す。
+///
+/// 同じ face が複数 coverage を満たす場合は先に解決した coverage だけを残す。
+pub fn resolve_font_fallbacks(
+    preferred: FontCoverage,
+    font_roots: &[PathBuf],
+) -> Vec<(FontCoverage, ResolvedFont)> {
+    let source = font_source_with_roots(font_roots);
     std::iter::once(preferred)
         .chain(ALL_FONT_COVERAGES.into_iter().filter(|coverage| *coverage != preferred))
         .filter_map(|coverage| {
-            resolve_system_font_for_coverage(coverage).map(|font| (coverage, font))
+            resolve_font_for_coverage_from_source(&source, coverage).map(|font| (coverage, font))
         })
         .fold(Vec::new(), |mut fonts, candidate| {
             if !fonts.iter().any(|(_, font)| font == &candidate.1) {
@@ -174,6 +210,16 @@ pub fn resolve_system_font_fallbacks(preferred: FontCoverage) -> Vec<(FontCovera
             }
             fonts
         })
+}
+
+fn font_source_with_roots(font_roots: &[PathBuf]) -> MultiSource {
+    let mut sources: Vec<Box<dyn Source>> = font_roots
+        .iter()
+        .filter(|root| root.is_dir())
+        .map(|root| Box::new(FsSource::in_path(root)) as Box<dyn Source>)
+        .collect();
+    sources.push(Box::new(SystemSource::new()));
+    MultiSource::from_sources(sources)
 }
 
 /// 解決済みフォントの生バイト列を読み込む。
@@ -222,11 +268,10 @@ pub fn resolved_font_supports_coverage(resolved: &ResolvedFont, coverage: FontCo
     font_supports_coverage(&bytes, resolved.font_index, coverage)
 }
 
-fn resolve_family(
-    source: &SystemSource,
-    family: FamilyName,
-    properties: Properties,
-) -> Option<ResolvedFont> {
+fn resolve_family<S>(source: &S, family: FamilyName, properties: Properties) -> Option<ResolvedFont>
+where
+    S: Source + ?Sized,
+{
     let handle = source.select_best_match(&[family], &properties).ok()?;
     handle_to_resolved(&handle)
 }
@@ -247,6 +292,7 @@ fn handle_to_resolved(handle: &Handle) -> Option<ResolvedFont> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::Path;
 
     use font_kit::sources::fs::FsSource;
 
@@ -321,6 +367,22 @@ mod tests {
             for (index, (_, font)) in fonts.iter().enumerate() {
                 assert!(!fonts[..index].iter().any(|(_, previous)| previous == font));
             }
+        }
+    }
+
+    #[test]
+    fn bundled_noto_cjk_resolves_every_supported_coverage() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/fonts/noto-cjk");
+        assert!(root.is_dir(), "bundled font directory should exist: {}", root.display());
+
+        let roots = vec![root];
+        for coverage in ALL_FONT_COVERAGES {
+            let resolved = resolve_font_for_coverage(coverage, &roots)
+                .unwrap_or_else(|| panic!("bundled font should resolve {coverage:?}"));
+            assert!(
+                resolved_font_supports_coverage(&resolved, coverage),
+                "bundled font should support {coverage:?}"
+            );
         }
     }
 

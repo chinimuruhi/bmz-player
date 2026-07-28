@@ -2990,6 +2990,7 @@ impl WinitApp {
         let target_option = target_option_from_profile(boot.profile_config.play.target);
         let select_keys = SelectKeyBindings::from_profile(&boot.profile_config.input);
         let mut renderer = Box::new(Renderer::default());
+        renderer.set_default_font_search_paths(vec![boot.app_paths.bundled_noto_cjk_font_root()]);
         renderer.set_default_font_coverage(boot.profile_config.ui.locale().font_coverage());
         renderer
             .set_internal_resolution_mode(config_internal_resolution_mode(&boot.app_config.video));
@@ -3527,7 +3528,11 @@ impl WinitApp {
                 self.start_skin_upload_worker();
                 self.configure_device_events(event_loop);
                 window.request_redraw();
-                self.egui = Some(EguiLayer::new(&window, self.boot.profile_config.ui.show_fps));
+                self.egui = Some(EguiLayer::new(
+                    &window,
+                    self.boot.profile_config.ui.show_fps,
+                    vec![self.boot.app_paths.bundled_noto_cjk_font_root()],
+                ));
                 self.window = Some(window);
             }
             Err(error) => {

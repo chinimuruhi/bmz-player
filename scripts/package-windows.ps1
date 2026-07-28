@@ -400,12 +400,16 @@ $rmzSkin = Join-Path $repoRoot "data\skins\Rmz-skin\play7main.luaskin"
 $mzSelectSkin = Join-Path $repoRoot "data\skins\mz-select\music_select.luaskin"
 $luxezFlatSkin = Join-Path $repoRoot "data\skins\Luxez-Flat\music_select.luaskin"
 $sampleSong = Join-Path $repoRoot "data\songs\sample-playable\sample-playable.bms"
+$notoCjkFont = Join-Path $repoRoot "data\fonts\noto-cjk\NotoSansCJK-Regular.ttc"
+$notoCjkLicense = Join-Path $repoRoot "data\fonts\noto-cjk\LICENSE"
 $appIcon = Join-Path $repoRoot "assets\app-icon\bmz-player.ico"
 Require-File $defaultSkin
 Require-File $rmzSkin
 Require-File $mzSelectSkin
 Require-File $luxezFlatSkin
 Require-File $sampleSong
+Require-File $notoCjkFont
+Require-File $notoCjkLicense
 Require-File $appIcon
 
 $stageDir = Join-Path $OutDir $StageName
@@ -419,6 +423,7 @@ if (Test-Path -LiteralPath $stageDir) {
 New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $resourcesDir "skins") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $resourcesDir "songs") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $resourcesDir "fonts\noto-cjk") | Out-Null
 New-Item -ItemType Directory -Force -Path $licensesDir | Out-Null
 
 Copy-RequiredFile $binary (Join-Path $stageDir "bmz-player.exe")
@@ -427,9 +432,11 @@ Copy-DirectoryMirror (Join-Path $repoRoot "data\skins\Rmz-skin") (Join-Path $res
 Copy-DirectoryMirror (Join-Path $repoRoot "data\skins\mz-select") (Join-Path $resourcesDir "skins\mz-select")
 Copy-DirectoryMirror (Join-Path $repoRoot "data\skins\Luxez-Flat") (Join-Path $resourcesDir "skins\Luxez-Flat")
 Copy-DirectoryMirror (Join-Path $repoRoot "data\songs\sample-playable") (Join-Path $resourcesDir "songs\sample-playable")
+Copy-RequiredFile $notoCjkFont (Join-Path $resourcesDir "fonts\noto-cjk\NotoSansCJK-Regular.ttc")
 Copy-RequiredFile (Join-Path $repoRoot "LICENSE") (Join-Path $licensesDir "BMZ-GPL-3.0-only.txt")
 Copy-RequiredFile (Join-Path $repoRoot "docs\licenses.md") (Join-Path $licensesDir "license-notes.md")
 Copy-RequiredFile (Join-Path $repoRoot "THIRD-PARTY-NOTICES.txt") (Join-Path $licensesDir "third-party-notices.txt")
+Copy-RequiredFile $notoCjkLicense (Join-Path $licensesDir "NotoSansCJK-OFL-1.1.txt")
 if ($GameInputPackageDir) {
     $redistDir = Join-Path $resourcesDir "redist"
     New-Item -ItemType Directory -Force -Path $redistDir | Out-Null

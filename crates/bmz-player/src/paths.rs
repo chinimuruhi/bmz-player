@@ -120,6 +120,11 @@ impl AppPaths {
         self.resource_dir.join("skins/default")
     }
 
+    /// OS フォントがなくても UI / スキン文字列を描画できるように同梱する Noto CJK の位置。
+    pub fn bundled_noto_cjk_font_root(&self) -> PathBuf {
+        self.resource_dir.join("fonts/noto-cjk")
+    }
+
     pub fn hides_bundled_skin_label(&self) -> bool {
         same_path(&self.resource_dir.join("skins"), &self.data_dir.join("skins"))
             || sibling_named_dirs(&self.resource_dir, "resources", &self.data_dir, "data")
@@ -457,6 +462,13 @@ mod tests {
             app.resolve_path_ref("data/skins/legacy/play7.luaskin").unwrap(),
             PathBuf::from("data/skins/legacy/play7.luaskin")
         );
+    }
+
+    #[test]
+    fn bundled_noto_cjk_font_root_is_under_resource_dir() {
+        let app = test_app_paths();
+
+        assert_eq!(app.bundled_noto_cjk_font_root(), PathBuf::from("resources/fonts/noto-cjk"));
     }
 
     #[test]

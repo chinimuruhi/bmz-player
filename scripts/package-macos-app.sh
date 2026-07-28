@@ -392,6 +392,9 @@ main() {
     die "missing Luxez-Flat contents; run: git submodule update --init --recursive data/skins/Luxez-Flat"
   [[ -f "${root}/data/songs/sample-playable/sample-playable.bms" ]] || \
     die "missing bundled sample song"
+  [[ -f "${root}/data/fonts/noto-cjk/NotoSansCJK-Regular.ttc" ]] || \
+    die "missing bundled Noto Sans CJK font"
+  [[ -f "${root}/data/fonts/noto-cjk/LICENSE" ]] || die "missing bundled Noto Sans CJK license"
   [[ -f "${root}/assets/app-icon/bmz-player.icns" ]] || die "missing macOS app icon"
 
   local app_dir="${out_dir}/${app_name}.app"
@@ -402,7 +405,7 @@ main() {
 
   echo "==> Creating ${app_dir}"
   rm -rf "${app_dir}"
-  mkdir -p "${macos_dir}" "${resources_dir}/skins" "${resources_dir}/songs" "${resources_dir}/licenses"
+  mkdir -p "${macos_dir}" "${resources_dir}/skins" "${resources_dir}/songs" "${resources_dir}/fonts/noto-cjk" "${resources_dir}/licenses"
 
   copy_file "${binary}" "${macos_dir}/bmz-player"
   chmod 755 "${macos_dir}/bmz-player"
@@ -412,9 +415,11 @@ main() {
   copy_dir "${root}/data/skins/mz-select" "${resources_dir}/skins/mz-select"
   copy_dir "${root}/data/skins/Luxez-Flat" "${resources_dir}/skins/Luxez-Flat"
   copy_dir "${root}/data/songs/sample-playable" "${resources_dir}/songs/sample-playable"
+  copy_file "${root}/data/fonts/noto-cjk/NotoSansCJK-Regular.ttc" "${resources_dir}/fonts/noto-cjk/NotoSansCJK-Regular.ttc"
   copy_file "${root}/LICENSE" "${resources_dir}/licenses/BMZ-GPL-3.0-only.txt"
   copy_file "${root}/docs/licenses.md" "${resources_dir}/licenses/license-notes.md"
   copy_file "${root}/THIRD-PARTY-NOTICES.txt" "${resources_dir}/licenses/third-party-notices.txt"
+  copy_file "${root}/data/fonts/noto-cjk/LICENSE" "${resources_dir}/licenses/NotoSansCJK-OFL-1.1.txt"
   if [[ "${skip_rust_license_report}" == "1" ]]; then
     echo "==> Skipping Rust dependency license report"
   else
