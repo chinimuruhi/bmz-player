@@ -24,7 +24,7 @@ function writeManifest(directory, target, overrides = {}) {
   )
 }
 
-test('combines schema v1 target manifests into deterministic schema v2', () => {
+test('combines target manifests into the rianIR importer schema', () => {
   const directory = mkdtempSync(resolve(tmpdir(), 'bmz-client-manifest-'))
   for (const target of ['windows-x64', 'macos-arm64', 'linux-x64-flatpak', 'macos-x64']) {
     writeManifest(directory, target)
@@ -42,11 +42,24 @@ test('combines schema v1 target manifests into deterministic schema v2', () => {
   ])
 
   const combined = JSON.parse(readFileSync(output, 'utf8'))
-  assert.equal(combined.schema_version, 2)
+  assert.equal(combined.schema, 'bmz-rianir-client-manifest-v1')
   assert.equal(combined.client, 'bmz-player')
   assert.deepEqual(
-    combined.artifacts.map((artifact) => artifact.target),
-    ['linux-x64-flatpak', 'macos-arm64', 'macos-x64', 'windows-x64'],
+    combined.builds.map(({ platform, arch, package_kind }) => ({
+      platform,
+      arch,
+      package_kind,
+    })),
+    [
+      {
+        platform: 'windows',
+        arch: 'x86_64',
+        package_kind: 'portable-installer',
+      },
+      { platform: 'macos', arch: 'aarch64', package_kind: 'app' },
+      { platform: 'macos', arch: 'x86_64', package_kind: 'app' },
+      { platform: 'linux', arch: 'x86_64', package_kind: 'flatpak' },
+    ],
   )
 })
 

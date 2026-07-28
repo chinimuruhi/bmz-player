@@ -35,9 +35,15 @@ if (inputNames.length === 0) {
 
 const hashPattern = /^[0-9a-f]{64}$/
 const commitPattern = /^[0-9a-f]{40}$/
+const buildIdentityByTarget = new Map([
+  ['windows-x64', { platform: 'windows', arch: 'x86_64', package_kind: 'portable-installer' }],
+  ['macos-arm64', { platform: 'macos', arch: 'aarch64', package_kind: 'app' }],
+  ['macos-x64', { platform: 'macos', arch: 'x86_64', package_kind: 'app' }],
+  ['linux-x64-flatpak', { platform: 'linux', arch: 'x86_64', package_kind: 'flatpak' }],
+])
 const targets = new Set()
 let common
-const artifacts = inputNames.map((name) => {
+const buildsByTarget = inputNames.map((name) => {
   let manifest
   try {
     manifest = JSON.parse(readFileSync(resolve(inputDirectory, name), 'utf8'))
@@ -75,12 +81,18 @@ const artifacts = inputNames.map((name) => {
     fail(`${name}: duplicate target ${manifest.target}`)
   }
   targets.add(manifest.target)
-
-  return {
-    target: manifest.target,
-    executable: manifest.executable,
-    client_hash: manifest.client_hash,
+  const buildIdentity = buildIdentityByTarget.get(manifest.target)
+  if (buildIdentity === undefined) {
+    fail(`${name}: unsupported target ${manifest.target}`)
   }
+
+  return [
+    manifest.target,
+    {
+      ...buildIdentity,
+      client_hash: manifest.client_hash,
+    },
+  ]
 })
 
 const expectedTargets = (options.get('expected-targets') ?? '')
@@ -99,14 +111,15 @@ if (
   )
 }
 
-artifacts.sort((left, right) => left.target.localeCompare(right.target))
+const targetOrder = [...buildIdentityByTarget.keys()]
+buildsByTarget.sort(([left], [right]) => targetOrder.indexOf(left) - targetOrder.indexOf(right))
 writeFileSync(
   output,
   `${JSON.stringify(
     {
-      schema_version: 2,
+      schema: 'bmz-rianir-client-manifest-v1',
       ...common,
-      artifacts,
+      builds: buildsByTarget.map(([, build]) => build),
     },
     null,
     2,
