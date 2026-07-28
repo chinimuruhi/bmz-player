@@ -479,6 +479,13 @@ struct IrProviderUiTarget {
     base_url: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IrProviderPreset {
+    BmzIr,
+    RianIr,
+    Other,
+}
+
 impl IrProviderUiTarget {
     fn new(provider: String, base_url: String) -> Self {
         Self { provider, base_url }
@@ -4707,6 +4714,7 @@ fn build_profile_settings_panel(
                         tr!(text, "profile-ir-prefetch-rival"),
                     );
                     let mut remove_index = None;
+                    let mut logged_out_provider_key = None;
                     for (index, provider) in profile.ir.providers.iter_mut().enumerate() {
                         ui.push_id(("ir_provider", index), |ui| {
                             ui.separator();
@@ -4717,15 +4725,100 @@ fn build_profile_settings_panel(
                                     remove_index = Some(index);
                                 }
                             });
-                            ir_provider_text_row(ui, "Provider", &mut provider.provider);
-                            ir_provider_text_row(ui, "Base URL", &mut provider.base_url);
+                            let provider_key =
+                                crate::ir::provider_key::configured_provider_key(provider)
+                                    .map(str::to_string);
+                            let endpoint_editable = provider_key.is_none() && !ir_login.busy;
+                            let mut preset = classify_ir_provider_preset(provider);
+                            let previous_preset = preset;
+                            ui.add_enabled_ui(endpoint_editable, |ui| {
+                                egui::ComboBox::new(
+                                    ("profile_ir_provider_preset", index),
+                                    tr!(text, "profile-ir-provider-kind"),
+                                )
+                                .selected_text(ir_provider_preset_label(text, preset))
+                                .show_ui(ui, |ui| {
+                                    for value in [
+                                        IrProviderPreset::BmzIr,
+                                        IrProviderPreset::RianIr,
+                                        IrProviderPreset::Other,
+                                    ] {
+                                        ui.selectable_value(
+                                            &mut preset,
+                                            value,
+                                            ir_provider_preset_label(text, value),
+                                        );
+                                    }
+                                });
+                            });
+                            if preset != previous_preset {
+                                apply_ir_provider_preset(provider, preset);
+                                if preset == IrProviderPreset::Other {
+                                    provider.provider =
+                                        crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string();
+                                    provider.base_url.clear();
+                                }
+                            }
+                            match preset {
+                                IrProviderPreset::BmzIr | IrProviderPreset::RianIr => {
+                                    ui.horizontal(|ui| {
+                                        ui.label(tr!(text, "profile-ir-base-url"));
+                                        ui.add_enabled(
+                                            false,
+                                            egui::TextEdit::singleline(&mut provider.base_url)
+                                                .desired_width(300.0),
+                                        );
+                                        ui.hyperlink_to(
+                                            tr!(text, "profile-ir-open-browser"),
+                                            provider.base_url.clone(),
+                                        );
+                                    });
+                                }
+                                IrProviderPreset::Other => {
+                                    ui.add_enabled_ui(endpoint_editable, |ui| {
+                                        let mut family =
+                                            ir_provider_family(&provider.provider).to_string();
+                                        let previous_family = family.clone();
+                                        egui::ComboBox::new(
+                                            ("profile_ir_provider_protocol", index),
+                                            tr!(text, "profile-ir-provider-protocol"),
+                                        )
+                                        .selected_text(family.clone())
+                                        .show_ui(
+                                            ui,
+                                            |ui| {
+                                                ui.selectable_value(
+                                                    &mut family,
+                                                    crate::ir::bmz_official::BMZ_IR_PROVIDER
+                                                        .to_string(),
+                                                    crate::ir::bmz_official::BMZ_IR_PROVIDER,
+                                                );
+                                                ui.selectable_value(
+                                                    &mut family,
+                                                    crate::ir::rian_ir::RIAN_IR_PROVIDER
+                                                        .to_string(),
+                                                    crate::ir::rian_ir::RIAN_IR_PROVIDER,
+                                                );
+                                            },
+                                        );
+                                        if family != previous_family {
+                                            provider.provider = family;
+                                        }
+                                        ir_provider_text_row(
+                                            ui,
+                                            &tr!(text, "profile-ir-base-url"),
+                                            &mut provider.base_url,
+                                        );
+                                    });
+                                }
+                            }
+                            if !endpoint_editable && provider_key.is_some() {
+                                ui.small(tr!(text, "profile-ir-logout-to-change"));
+                            }
                             let row_target = IrProviderUiTarget::new(
                                 provider.provider.clone(),
                                 provider.base_url.clone(),
                             );
-                            let provider_key =
-                                crate::ir::provider_key::configured_provider_key(provider)
-                                    .map(str::to_string);
                             let is_rian = crate::ir::rian_ir::is_rian_ir_config(provider);
                             let provider_key_text = provider_key
                                 .clone()
@@ -4735,7 +4828,11 @@ fn build_profile_settings_panel(
                                 ui.monospace(&provider_key_text);
                             });
                             ui.horizontal(|ui| {
-                                ui.label(tr!(text, "profile-ir-email"));
+                                ui.label(if is_rian {
+                                    tr!(text, "profile-ir-login-id")
+                                } else {
+                                    tr!(text, "profile-ir-email")
+                                });
                                 ui.text_edit_singleline(&mut ir_login.email);
                             });
                             ui.horizontal(|ui| {
@@ -4747,7 +4844,7 @@ fn build_profile_settings_panel(
                             });
                             ui.horizontal(|ui| {
                                 let can_login = !ir_login.busy
-                                    && !provider.base_url.is_empty()
+                                    && normalized_ir_base_url(&provider.base_url).is_some()
                                     && !ir_login.email.is_empty()
                                     && !ir_login.password.is_empty();
                                 if ui
@@ -4783,6 +4880,11 @@ fn build_profile_settings_panel(
                                     match result {
                                         Ok(_) => {
                                             provider.enabled = false;
+                                            logged_out_provider_key = provider_key.clone();
+                                            provider.provider_key.clear();
+                                            provider.account_id.clear();
+                                            provider.account_display_name.clear();
+                                            provider.last_login_at = None;
                                             ir_login.message = Some(IrProviderUiMessage {
                                                 target: row_target.clone(),
                                                 ok: true,
@@ -4876,14 +4978,21 @@ fn build_profile_settings_panel(
                             });
                         });
                     }
+                    if logged_out_provider_key
+                        .as_deref()
+                        .is_some_and(|key| profile.ir.primary_provider == key)
+                    {
+                        profile.ir.primary_provider.clear();
+                        sync_ir_provider_roles(&mut profile.ir);
+                    }
                     if let Some(index) = remove_index {
                         profile.ir.providers.remove(index);
                     }
                     if ui.button(tr!(text, "profile-ir-add-provider")).clicked() {
                         profile.ir.providers.push(IrProviderConfig {
-                            provider: "bmz-official".to_string(),
+                            provider: crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string(),
                             provider_key: String::new(),
-                            base_url: String::new(),
+                            base_url: crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL.to_string(),
                             enabled: false,
                             account_display_name: String::new(),
                             account_id: String::new(),
@@ -5369,6 +5478,66 @@ fn ir_provider_text_row(ui: &mut egui::Ui, label: &str, value: &mut String) {
         ui.label(label);
         ui.text_edit_singleline(value);
     });
+}
+
+fn ir_provider_family(provider: &str) -> &'static str {
+    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+        crate::ir::rian_ir::RIAN_IR_PROVIDER
+    } else {
+        crate::ir::bmz_official::BMZ_IR_PROVIDER
+    }
+}
+
+fn normalized_ir_base_url(url: &str) -> Option<String> {
+    let mut parsed = reqwest::Url::parse(url.trim()).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    parsed.set_fragment(None);
+    parsed.set_query(None);
+    let path = parsed.path().trim_end_matches('/').to_string();
+    parsed.set_path(if path.is_empty() { "/" } else { &path });
+    Some(parsed.to_string().trim_end_matches('/').to_ascii_lowercase())
+}
+
+fn classify_ir_provider_preset(provider: &IrProviderConfig) -> IrProviderPreset {
+    let normalized = normalized_ir_base_url(&provider.base_url);
+    let family = ir_provider_family(&provider.provider);
+    let bmz_url = normalized_ir_base_url(crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL);
+    let rian_public = normalized_ir_base_url(crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL);
+    let rian_api = normalized_ir_base_url(crate::ir::rian_ir::RIAN_IR_DEFAULT_BASE_URL);
+
+    if family == crate::ir::bmz_official::BMZ_IR_PROVIDER && normalized == bmz_url {
+        IrProviderPreset::BmzIr
+    } else if family == crate::ir::rian_ir::RIAN_IR_PROVIDER
+        && (normalized == rian_public || normalized == rian_api)
+    {
+        IrProviderPreset::RianIr
+    } else {
+        IrProviderPreset::Other
+    }
+}
+
+fn apply_ir_provider_preset(provider: &mut IrProviderConfig, preset: IrProviderPreset) {
+    match preset {
+        IrProviderPreset::BmzIr => {
+            provider.provider = crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string();
+            provider.base_url = crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL.to_string();
+        }
+        IrProviderPreset::RianIr => {
+            provider.provider = crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string();
+            provider.base_url = crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL.to_string();
+        }
+        IrProviderPreset::Other => {}
+    }
+}
+
+fn ir_provider_preset_label(text: Localizer, preset: IrProviderPreset) -> String {
+    match preset {
+        IrProviderPreset::BmzIr => tr!(text, "profile-ir-provider-bmz"),
+        IrProviderPreset::RianIr => tr!(text, "profile-ir-provider-rian"),
+        IrProviderPreset::Other => tr!(text, "profile-ir-provider-other"),
+    }
 }
 
 fn ir_send_policy_label(value: IrSendPolicyConfig) -> &'static str {
@@ -6655,6 +6824,56 @@ fn filepath_def_acronym(def: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_ir_provider(provider: &str, base_url: &str) -> IrProviderConfig {
+        IrProviderConfig {
+            provider: provider.to_string(),
+            provider_key: String::new(),
+            base_url: base_url.to_string(),
+            enabled: false,
+            account_display_name: String::new(),
+            account_id: String::new(),
+            send_policy: IrSendPolicyConfig::default(),
+            role: IrProviderRoleConfig::default(),
+            last_login_at: None,
+            last_success_at: None,
+        }
+    }
+
+    #[test]
+    fn ir_provider_presets_recognize_official_and_legacy_urls() {
+        assert_eq!(
+            classify_ir_provider_preset(&test_ir_provider(
+                "bmz-official",
+                "https://bmz-player.hyrorre.workers.dev"
+            )),
+            IrProviderPreset::BmzIr
+        );
+        assert_eq!(
+            classify_ir_provider_preset(&test_ir_provider("rianIR", "https://rianir.link/api/")),
+            IrProviderPreset::RianIr
+        );
+        assert_eq!(
+            classify_ir_provider_preset(&test_ir_provider("rian-ir", "http://localhost:8888/api/")),
+            IrProviderPreset::Other
+        );
+    }
+
+    #[test]
+    fn applying_ir_provider_presets_writes_canonical_values() {
+        let mut provider = test_ir_provider("custom", "http://localhost:8888/");
+        apply_ir_provider_preset(&mut provider, IrProviderPreset::BmzIr);
+        assert_eq!(provider.provider, "bmz");
+        assert_eq!(provider.base_url, "https://bmz-player.hyrorre.workers.dev/");
+
+        apply_ir_provider_preset(&mut provider, IrProviderPreset::RianIr);
+        assert_eq!(provider.provider, "rian-ir");
+        assert_eq!(provider.base_url, "https://rianir.link/");
+
+        apply_ir_provider_preset(&mut provider, IrProviderPreset::Other);
+        assert_eq!(provider.provider, "rian-ir");
+        assert_eq!(provider.base_url, "https://rianir.link/");
+    }
 
     #[test]
     fn cjk_font_definitions_keep_latin_first_and_preserve_face_indices() {

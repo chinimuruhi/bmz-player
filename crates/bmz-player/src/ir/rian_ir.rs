@@ -26,6 +26,7 @@ use super::types::{
 
 pub const RIAN_IR_PROVIDER: &str = "rian-ir";
 pub const RIAN_IR_DEFAULT_BASE_URL: &str = "https://rianir.link/api/";
+pub const RIAN_IR_PUBLIC_BASE_URL: &str = "https://rianir.link/";
 
 #[derive(Debug, Clone)]
 pub struct RianIrClient {
