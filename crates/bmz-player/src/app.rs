@@ -19147,17 +19147,8 @@ fn result_long_note_mode_index(mode: bmz_chart::model::LongNoteMode) -> usize {
 }
 
 fn result_ir_skin_name(ir_config: &crate::config::profile_config::IrConfig) -> Option<&str> {
-    let provider = ir_config.providers.iter().find(|provider| {
-        provider.enabled
-            && !provider.base_url.is_empty()
-            && crate::ir::provider_key::configured_provider_key(provider).is_some()
-    })?;
-    let provider_key = crate::ir::provider_key::configured_provider_key(provider)?;
-    Some(if provider_key == "bmz-official" || provider.provider == "bmz-official" {
-        "BMZ IR"
-    } else {
-        provider_key
-    })
+    let provider = crate::ir::provider_key::primary_provider_config(ir_config)?;
+    crate::ir::provider_key::configured_provider_display_name(provider)
 }
 
 fn lua_runtime_state_for_result(
@@ -24695,6 +24686,36 @@ mod tests {
         assert_eq!(offline.option_values.get(&160), Some(&false));
         assert_eq!(offline.option_values.get(&161), Some(&true));
         assert_eq!(offline.text_values.get(&1020).map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn result_ir_skin_name_uses_primary_provider_instead_of_registration_order() {
+        use crate::config::profile_config::{
+            IrConfig, IrProviderConfig, IrProviderRoleConfig, IrSendPolicyConfig,
+        };
+
+        let provider = |provider: &str, provider_key: &str, role| IrProviderConfig {
+            provider: provider.to_string(),
+            provider_key: provider_key.to_string(),
+            base_url: "https://example.test/".to_string(),
+            enabled: true,
+            account_display_name: String::new(),
+            account_id: String::new(),
+            send_policy: IrSendPolicyConfig::default(),
+            role,
+            last_login_at: None,
+            last_success_at: None,
+        };
+        let ir = IrConfig {
+            primary_provider: "rian-ir".to_string(),
+            providers: vec![
+                provider("bmz", "bmz", IrProviderRoleConfig::SubmitOnly),
+                provider("rian-ir", "rian-ir", IrProviderRoleConfig::Primary),
+            ],
+            ..IrConfig::default()
+        };
+
+        assert_eq!(result_ir_skin_name(&ir), Some("rianIR"));
     }
 
     #[test]

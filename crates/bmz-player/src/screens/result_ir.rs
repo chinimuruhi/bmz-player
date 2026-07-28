@@ -182,6 +182,7 @@ pub struct ResultIrState {
     ir_connect_begin_at: Option<Instant>,
     ir_connect_success_at: Option<Instant>,
     ir_connect_fail_at: Option<Instant>,
+    provider_name: bmz_render::scene::ResultIrRankingName,
     user_name: bmz_render::scene::ResultIrRankingName,
     skin_scroll_offset: usize,
     query: ResultIrTaskQuery,
@@ -320,6 +321,7 @@ impl ResultIrState {
         snapshot.connect_begin_ms = self.ir_connect_begin_at.map(elapsed_since_ms);
         snapshot.connect_success_ms = self.ir_connect_success_at.map(elapsed_since_ms);
         snapshot.connect_fail_ms = self.ir_connect_fail_at.map(elapsed_since_ms);
+        snapshot.provider_name = self.provider_name;
         snapshot.user_name = self.user_name;
         snapshot
     }
@@ -555,6 +557,9 @@ fn spawn_result_ir_task_for_target(
         ir_connect_begin_at: Some(Instant::now()),
         ir_connect_success_at: None,
         ir_connect_fail_at: None,
+        provider_name: bmz_render::scene::ResultIrRankingName::from_display_name(
+            crate::ir::provider_key::configured_provider_display_name(provider)?,
+        ),
         user_name: bmz_render::scene::ResultIrRankingName::from_display_name(
             &provider.account_display_name,
         ),

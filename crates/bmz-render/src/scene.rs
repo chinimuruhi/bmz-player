@@ -547,6 +547,8 @@ impl ResultIrRankingEntrySnapshot {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResultIrSnapshot {
     pub state: ResultIrState,
+    /// STRING_IR_NAME=1020。primary IRの表示名。
+    pub provider_name: ResultIrRankingName,
     /// STRING_IR_USER_NAME=1021。自分のランキング行判定にも使う。
     pub user_name: ResultIrRankingName,
     /// IR connect/send/access begin timer elapsed ms (TIMER_IR_CONNECT_BEGIN=172).
@@ -573,6 +575,7 @@ pub struct ResultIrSnapshot {
 impl ResultIrSnapshot {
     pub const EMPTY: Self = Self {
         state: ResultIrState::Offline,
+        provider_name: ResultIrRankingName::EMPTY,
         user_name: ResultIrRankingName::EMPTY,
         connect_begin_ms: None,
         connect_success_ms: None,

@@ -5,6 +5,19 @@ pub fn configured_provider_key(entry: &IrProviderConfig) -> Option<&str> {
     if key.is_empty() { None } else { Some(key) }
 }
 
+pub fn configured_provider_display_name(entry: &IrProviderConfig) -> Option<&str> {
+    let provider_key = configured_provider_key(entry)?;
+    if crate::ir::rian_ir::is_rian_ir_config(entry) {
+        Some("rianIR")
+    } else if matches!(entry.provider.trim().to_ascii_lowercase().as_str(), "bmz" | "bmz-official")
+        || matches!(provider_key, "bmz" | "bmz-official")
+    {
+        Some("BMZ IR")
+    } else {
+        Some(provider_key)
+    }
+}
+
 pub fn provider_config_for_key<'a>(
     ir_config: &'a IrConfig,
     key: &str,
