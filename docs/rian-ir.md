@@ -313,23 +313,44 @@ release buildはbeatorajaのJAR hashと同じ考え方で、実行ファイル�
 SHA-256（小文字64桁hex）を `client_hash` として送る。archive、installer、app bundle
 全体のhashではない。
 
-Windows/macOS/Flatpakのrelease workflowは最終実行ファイルからschema v1 manifestを生成し、
-workflow artifactとGitHub Release assetへ含める。
+Windows/macOS/Flatpakの各release buildは最終実行ファイルから内部用schema v1 manifestを
+生成する。最終release jobは全targetのmanifestを検証・集約し、GitHub Releaseには
+schema v2のmanifestを1ファイルだけ含める。
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "client": "bmz-player",
   "version": "0.1.11",
   "git_commit": "<40 hex>",
-  "target": "windows-x64",
-  "executable": "bmz-player.exe",
-  "client_hash": "<64 hex>"
+  "artifacts": [
+    {
+      "target": "windows-x64",
+      "executable": "bmz-player.exe",
+      "client_hash": "<64 hex>"
+    },
+    {
+      "target": "macos-arm64",
+      "executable": "bmz-player",
+      "client_hash": "<64 hex>"
+    },
+    {
+      "target": "macos-x64",
+      "executable": "bmz-player",
+      "client_hash": "<64 hex>"
+    },
+    {
+      "target": "linux-x64-flatpak",
+      "executable": "bmz-player",
+      "client_hash": "<64 hex>"
+    }
+  ]
 }
 ```
 
-rianIR管理者はmanifestのversion、commit、targetを確認してから `client_hash` を
-`allowed_clients` へ登録する。失効時は同テーブルから削除する。debug buildまたは
+集約時はclient、version、commitの一致、targetの重複・欠落、hash形式を検証する。
+rianIR管理者はmanifestのversion、commit、各targetを確認してから
+`artifacts[].client_hash`を `allowed_clients` へ登録する。失効時は同テーブルから削除する。debug buildまたは
 実行ファイルhashの取得に失敗した場合だけ、暫定互換値 `UNKNOWN` を送る。
 
 Flatpakは配布 `.flatpak` 全体ではなく、`flatpak-builder` が最終配置した

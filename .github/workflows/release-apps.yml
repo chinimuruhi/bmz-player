@@ -587,6 +587,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
+          fetch-depth: 1
+
       - name: Download release files
         uses: actions/download-artifact@v8
         with:
@@ -600,6 +606,21 @@ jobs:
           find dist/release -maxdepth 1 -type f \
             \( -name "*.txt" -o \( -name "*.json" ! -name "*-client-manifest.json" \) \) \
             -print -delete
+
+      - name: Combine client hash manifests
+        env:
+          BMZ_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          output="dist/release/bmz-player-v${BMZ_VERSION}-client-manifest.json"
+          node scripts/combine-client-hash-manifests.mjs \
+            --input-dir dist/release \
+            --output "${output}" \
+            --expected-targets windows-x64,macos-arm64,macos-x64,linux-x64-flatpak
+          find dist/release -maxdepth 1 -type f \
+            -name "*-client-manifest.json" ! -path "${output}" \
+            -print -delete
+          cat "${output}"
 
       - name: Generate SHA256SUMS
         run: |
