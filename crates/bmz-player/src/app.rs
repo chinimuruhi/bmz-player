@@ -4215,6 +4215,7 @@ impl WinitApp {
                 .as_str()
                 .to_string(),
             ln_policy: self.boot.profile_config.play.ln_mode_policy.as_ir_str().to_string(),
+            rule_mode: self.boot.profile_config.play.rule_mode,
         })
     }
 
@@ -9109,12 +9110,14 @@ impl WinitApp {
         self.course_identity_with_stored(course_id).map(|(_, identity)| identity)
     }
 
-    fn course_result_ir_target(&self) -> Option<(String, String, String)> {
+    fn course_result_ir_target(
+        &self,
+    ) -> Option<(String, String, String, bmz_gameplay::rule::RuleMode)> {
         let course = self.finished_course.as_ref()?;
         let course_hash = self.finished_course_hash.clone()?;
         let gauge = course.final_gauge_type.as_str().to_string();
         let ln_policy = self.boot.profile_config.play.ln_mode_policy.as_ir_str().to_string();
-        Some((course_hash, gauge, ln_policy))
+        Some((course_hash, gauge, ln_policy, self.boot.profile_config.play.rule_mode))
     }
 
     fn start_result_ir_for_finished_play(&mut self, finished: &FinishedPlaySession) {
@@ -9155,7 +9158,15 @@ impl WinitApp {
             .ir
             .providers
             .iter()
-            .filter(|provider| provider.enabled && !provider.base_url.is_empty())
+            .filter(|provider| {
+                provider.enabled
+                    && !provider.base_url.is_empty()
+                    && (!crate::ir::rian_ir::is_rian_ir_config(provider)
+                        || crate::ir::rian_ir::course_submission_supported(
+                            self.boot.profile_config.play.ln_mode_policy,
+                            self.double_option,
+                        ))
+            })
             .cloned()
             .collect();
         if enabled.is_empty() {
@@ -14084,7 +14095,8 @@ impl WinitApp {
             // IR が無効、または identity が解決できない場合も、この Result 滞在中の
             // 起動判定は一度で完了させる。
             self.finished_course_ir_attempted = true;
-            if let Some((course_hash, gauge, ln_policy)) = self.course_result_ir_target() {
+            if let Some((course_hash, gauge, ln_policy, rule_mode)) = self.course_result_ir_target()
+            {
                 self.result_ir = crate::screens::result_ir::spawn_course_result_ir_task(
                     self.boot.profile_paths.root_dir.clone(),
                     self.boot.profile_paths.score_db.clone(),
@@ -14098,6 +14110,7 @@ impl WinitApp {
                     course_hash,
                     gauge,
                     ln_policy,
+                    rule_mode,
                 );
             }
         }
@@ -14192,8 +14205,13 @@ impl WinitApp {
             let double_option = self.double_option.normalize_for_key_mode(key_mode).score_bucket();
             let ir_config = self.boot.profile_config.ir.clone();
             if let Some(course) = selected_course_ir_target {
-                let context =
-                    format!("course:{}:{}:{}", course.course_hash, course.gauge, course.ln_policy);
+                let context = format!(
+                    "course:{}:{}:{}:{}",
+                    course.course_hash,
+                    course.gauge,
+                    course.ln_policy,
+                    course.rule_mode.as_str()
+                );
                 self.select_ir.update_course(&ir_config, &context, Some(course));
             } else {
                 let context = select_ir_cache_context(

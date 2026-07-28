@@ -42,6 +42,7 @@ pub struct SelectCourseIrTarget {
     pub course_hash: String,
     pub gauge: String,
     pub ln_policy: String,
+    pub rule_mode: RuleMode,
 }
 
 /// カーソル譜面ごとのキャッシュ済み IR 表示データ。
@@ -262,6 +263,7 @@ impl SelectIrRanking {
                     self.course_in_flight =
                         Some((self.context.clone(), target.clone(), requested_at));
                     spawn_course_fetch(
+                        provider.0,
                         provider.1,
                         self.context.clone(),
                         target,
@@ -456,20 +458,11 @@ impl SelectIrRanking {
 }
 
 fn enabled_provider(ir_config: &IrConfig) -> Option<(String, String)> {
-    ir_config
-        .providers
-        .iter()
-        .find(|provider| {
-            provider.enabled
-                && !provider.base_url.is_empty()
-                && crate::ir::provider_key::configured_provider_key(provider).is_some()
-        })
-        .map(|provider| {
-            (
-                crate::ir::provider_key::configured_provider_key(provider).unwrap().to_string(),
-                provider.base_url.clone(),
-            )
-        })
+    let provider = crate::ir::provider_key::primary_provider_config(ir_config)?;
+    Some((
+        crate::ir::provider_key::configured_provider_key(provider)?.to_string(),
+        provider.base_url.clone(),
+    ))
 }
 
 fn spawn_fetch(
@@ -486,8 +479,11 @@ fn spawn_fetch(
                 crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Global).await?;
             // rivals scope は要認証。未ログイン等で失敗してもライバル表示を
             // 諦めるだけで、グローバルランキング表示は維持する。
-            let rivals =
-                crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Rivals).await.ok();
+            let rivals = if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+                None
+            } else {
+                crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Rivals).await.ok()
+            };
             anyhow::Ok((global, rivals))
         }
         .await
@@ -497,6 +493,7 @@ fn spawn_fetch(
 }
 
 fn spawn_course_fetch(
+    provider: String,
     base_url: String,
     context: String,
     target: SelectCourseIrTarget,
@@ -505,6 +502,15 @@ fn spawn_course_fetch(
 ) {
     tokio::spawn(async move {
         let result = async {
+            if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
+                return crate::ir::rian_ir::RianIrClient::new(&base_url)?
+                    .fetch_course_ranking(
+                        &target.course_hash,
+                        crate::ir::rian_ir::body_for_rule_mode(target.rule_mode),
+                        20,
+                    )
+                    .await;
+            }
             let client = BmzOfficialIrClient::anonymous(&base_url)?;
             client
                 .fetch_course_ranking(
@@ -739,6 +745,7 @@ mod tests {
             course_hash: "ab".repeat(32),
             gauge: "Class".to_string(),
             ln_policy: "auto".to_string(),
+            rule_mode: RuleMode::Beatoraja,
         };
         let requested_at = Instant::now();
         select_ir.context = "course-context".to_string();

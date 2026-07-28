@@ -664,8 +664,15 @@ impl IrLoginUiState {
         let password = self.password.clone();
         tokio::spawn(async move {
             let outcome = async {
-                let client = crate::ir::bmz_official::BmzOfficialIrClient::anonymous(&base_url)?;
-                let tokens = client.login(&email, &password).await?;
+                let tokens = if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
+                    crate::ir::rian_ir::RianIrClient::new(&base_url)?
+                        .login(&email, &password)
+                        .await?
+                } else {
+                    crate::ir::bmz_official::BmzOfficialIrClient::anonymous(&base_url)?
+                        .login(&email, &password)
+                        .await?
+                };
                 let provider_key = tokens.provider_key.clone();
                 let display_name =
                     tokens.player.display_name.clone().unwrap_or_else(|| email.clone());
@@ -4710,6 +4717,7 @@ fn build_profile_settings_panel(
                                     remove_index = Some(index);
                                 }
                             });
+                            ir_provider_text_row(ui, "Provider", &mut provider.provider);
                             ir_provider_text_row(ui, "Base URL", &mut provider.base_url);
                             let row_target = IrProviderUiTarget::new(
                                 provider.provider.clone(),
@@ -4718,6 +4726,7 @@ fn build_profile_settings_panel(
                             let provider_key =
                                 crate::ir::provider_key::configured_provider_key(provider)
                                     .map(str::to_string);
+                            let is_rian = crate::ir::rian_ir::is_rian_ir_config(provider);
                             let provider_key_text = provider_key
                                 .clone()
                                 .unwrap_or_else(|| tr!(text, "profile-ir-key-after-login"));
@@ -4796,7 +4805,8 @@ fn build_profile_settings_panel(
                                     == provider_key.as_deref();
                                 let can_rotate = !busy
                                     && !provider.base_url.is_empty()
-                                    && provider_key.is_some();
+                                    && provider_key.is_some()
+                                    && !is_rian;
                                 if ui
                                     .add_enabled(
                                         can_rotate,
@@ -4871,7 +4881,7 @@ fn build_profile_settings_panel(
                     }
                     if ui.button(tr!(text, "profile-ir-add-provider")).clicked() {
                         profile.ir.providers.push(IrProviderConfig {
-                            provider: "bmz".to_string(),
+                            provider: "bmz-official".to_string(),
                             provider_key: String::new(),
                             base_url: String::new(),
                             enabled: false,

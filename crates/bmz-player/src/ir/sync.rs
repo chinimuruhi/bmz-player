@@ -536,7 +536,7 @@ fn replay_job_for_score(
     remote_score_id: &str,
     now: i64,
 ) -> Result<Option<NewIrScoreJob>> {
-    if job.kind != IrJobKind::Score {
+    if job.kind != IrJobKind::Score || super::rian_ir::is_rian_ir_provider(&job.provider) {
         return Ok(None);
     }
     let payload: IrScoreSubmission =
@@ -620,6 +620,13 @@ async fn submit_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if super::rian_ir::is_rian_ir_config(provider) {
+        let client = super::rian_ir::RianIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_score(&payload, &credentials.account_id, &credentials.access_token)
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
     attach_evidence(profile_root, provider, &client, &mut payload).await;
     let request_json = serde_json::to_string(&payload)?;
@@ -684,6 +691,13 @@ async fn submit_course_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if super::rian_ir::is_rian_ir_config(provider) {
+        let client = super::rian_ir::RianIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_course_score(&payload, &credentials.account_id, &credentials.access_token)
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
     let evidence = async {
         let key =

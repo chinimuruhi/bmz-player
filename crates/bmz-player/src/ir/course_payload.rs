@@ -182,6 +182,7 @@ pub fn build_course_submission(
             "trophies": trophies,
             "ex_score": result.total_ex_score,
             "max_ex_score": result.max_ex_score,
+            "total_notes": result.total_notes,
             "max_combo": result.course_max_combo,
             "bp": result.bp,
             "judges": {

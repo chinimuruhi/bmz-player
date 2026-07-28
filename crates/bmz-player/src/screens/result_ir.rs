@@ -100,6 +100,7 @@ pub enum ResultIrTarget {
         course_hash: String,
         gauge: String,
         ln_policy: String,
+        rule_mode: RuleMode,
     },
 }
 
@@ -122,6 +123,14 @@ impl ResultIrTarget {
             Self::Chart { local_score_id, .. } => (IrJobKind::Score, *local_score_id),
             Self::Course { local_score_id, .. } => (IrJobKind::Course, *local_score_id),
         }
+    }
+}
+
+impl ResultIrTaskQuery {
+    fn supports_scope(&self, scope: IrRankingScope) -> bool {
+        self.target.supports_scope(scope)
+            && (!crate::ir::rian_ir::is_rian_ir_provider(&self.provider)
+                || scope == IrRankingScope::Global)
     }
 }
 
@@ -215,7 +224,7 @@ impl ResultIrState {
     }
 
     pub fn request_scope(&mut self, scope: IrRankingScope) {
-        if !self.query.target.supports_scope(scope) {
+        if !self.query.supports_scope(scope) {
             return;
         }
         if let Some(slot) = self.scope_slot(scope) {
@@ -225,7 +234,7 @@ impl ResultIrState {
     }
 
     pub fn supports_tab(&self, tab: ResultRankingTab) -> bool {
-        self.query.target.supports_scope(scope_for_tab(tab))
+        self.query.supports_scope(scope_for_tab(tab))
     }
 
     pub fn is_course(&self) -> bool {
@@ -447,6 +456,7 @@ pub fn spawn_course_result_ir_task(
     course_hash: String,
     gauge: String,
     ln_policy: String,
+    rule_mode: RuleMode,
 ) -> Option<ResultIrState> {
     spawn_result_ir_task_for_target(
         profile_root,
@@ -454,7 +464,7 @@ pub fn spawn_course_result_ir_task(
         network_db_path,
         logs_dir,
         ir_config,
-        ResultIrTarget::Course { local_score_id, course_hash, gauge, ln_policy },
+        ResultIrTarget::Course { local_score_id, course_hash, gauge, ln_policy, rule_mode },
     )
 }
 
@@ -466,11 +476,7 @@ fn spawn_result_ir_task_for_target(
     ir_config: &IrConfig,
     target: ResultIrTarget,
 ) -> Option<ResultIrState> {
-    let provider = ir_config.providers.iter().find(|provider| {
-        provider.enabled
-            && !provider.base_url.is_empty()
-            && crate::ir::provider_key::configured_provider_key(provider).is_some()
-    })?;
+    let provider = crate::ir::provider_key::primary_provider_config(ir_config)?;
     let provider_key = crate::ir::provider_key::configured_provider_key(provider)?;
     let query = ResultIrTaskQuery {
         profile_root,
@@ -503,8 +509,8 @@ fn spawn_result_ir_task_for_target(
     // global は Result スキンの NUMBER_IR_RANK / OPTION_IR_* 表示にも使うため、
     // prefetch 設定に関わらず常に取得する。rivals scope のみ設定に従う。
     let prefetch_global = true;
-    let prefetch_rivals = query.target.supports_scope(IrRankingScope::SelfAndRivals)
-        && state_prefetch_rivals(&ir_config);
+    let prefetch_rivals =
+        query.supports_scope(IrRankingScope::SelfAndRivals) && state_prefetch_rivals(&ir_config);
     tokio::spawn(async move {
         let now = now_unix_seconds();
         let outcome = async {
@@ -693,9 +699,19 @@ async fn fetch_result_ranking(
             .await?;
             Ok(chart_ranking_to_result_ir_ranking(&ranking))
         }
-        ResultIrTarget::Course { course_hash, gauge, ln_policy, .. } => {
+        ResultIrTarget::Course { course_hash, gauge, ln_policy, rule_mode, .. } => {
             if scope != IrRankingScope::Global {
                 anyhow::bail!("course IR ranking supports global scope only");
+            }
+            if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+                return crate::ir::rian_ir::RianIrClient::new(&query.base_url)?
+                    .fetch_course_ranking(
+                        course_hash,
+                        crate::ir::rian_ir::body_for_rule_mode(*rule_mode),
+                        20,
+                    )
+                    .await
+                    .map(|ranking| course_ranking_to_result_ir_ranking(&ranking));
             }
             let client = BmzOfficialIrClient::anonymous(&query.base_url)?;
             let ranking = client
@@ -718,6 +734,21 @@ pub(crate) async fn fetch_ranking(
     scope: IrRankingScope,
 ) -> anyhow::Result<IrRankingResult> {
     let now = now_unix_seconds();
+    if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+        let credentials =
+            ensure_fresh_credentials(&query.profile_root, &query.provider, &query.base_url, now)
+                .await
+                .ok();
+        return crate::ir::rian_ir::RianIrClient::new(&query.base_url)?
+            .fetch_ranking(
+                &query.chart_sha256_hex,
+                crate::ir::rian_ir::body_for_rule_mode(query.rule_mode),
+                scope,
+                20,
+                credentials.as_ref().map(|credentials| credentials.account_id.as_str()),
+            )
+            .await;
+    }
     let mut client = BmzOfficialIrClient::anonymous(&query.base_url)?;
     // self / rivals scope は認証必須。global は匿名でも可。
     match ensure_fresh_credentials(&query.profile_root, &query.provider, &query.base_url, now).await

@@ -31,7 +31,7 @@ pub enum Command {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrCommand {
-    /// `ir login --email X [--password Y] [--base-url URL] [--provider NAME]`
+    /// `ir login --id X [--password Y] [--base-url URL] [--provider NAME]`
     Login { email: String, password: Option<String>, base_url: Option<String>, provider: String },
     /// `ir logout [--provider NAME]`
     Logout { provider: String },
@@ -294,7 +294,7 @@ fn parse_ir_command(rest: &[String]) -> Result<Command> {
             let mut iter = rest[1..].iter();
             while let Some(flag) = iter.next() {
                 match flag.as_str() {
-                    "--email" => email = iter.next().cloned(),
+                    "--id" | "--email" => email = iter.next().cloned(),
                     "--password" => password = iter.next().cloned(),
                     "--base-url" => base_url = iter.next().cloned(),
                     "--provider" => {
@@ -306,8 +306,7 @@ fn parse_ir_command(rest: &[String]) -> Result<Command> {
                     other => bail!("unknown flag for ir login: {other}"),
                 }
             }
-            let email =
-                email.ok_or_else(|| anyhow::anyhow!("ir login requires --email <EMAIL>"))?;
+            let email = email.ok_or_else(|| anyhow::anyhow!("ir login requires --id <ID>"))?;
             Ok(Command::Ir(IrCommand::Login { email, password, base_url, provider }))
         }
         Some("logout") => {
@@ -1221,6 +1220,29 @@ mod tests {
                 resend: true,
                 include_course_stages: true,
                 include_replay: true,
+            })
+        );
+    }
+
+    #[test]
+    fn parse_command_accepts_rian_login_id() {
+        assert_eq!(
+            parse_command([
+                "ir",
+                "login",
+                "--provider",
+                "rian-ir",
+                "--id",
+                "player",
+                "--password",
+                "secret",
+            ])
+            .unwrap(),
+            Command::Ir(IrCommand::Login {
+                email: "player".to_string(),
+                password: Some("secret".to_string()),
+                base_url: None,
+                provider: "rian-ir".to_string(),
             })
         );
     }
