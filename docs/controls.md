@@ -19,6 +19,8 @@ gilrsを初期化できない場合はGameInputへfallbackします。backend変
 旧 `Scratch Input Mode` 設定は使用しません。スクラッチ方向はキー設定の
 `Scratch Up` / `Scratch Down` 割り当てで指定し、既存profileの `scratch_mode` は読込時に
 無視され、次回保存時に削除されます。
+キー設定の `KEYBOARD` と `KEYBOARD SUB` は独立したスロットとして保存されるため、
+`KEYBOARD` を未割り当てにしたまま `KEYBOARD SUB` だけを使用することもできます。
 `AUTO SCRATCH` / `LEGACY NOTE` を選ぶ旧ASSIST設定は、仕様を確定して実装するまで
 F1メニューとゲーム内設定の両方で非表示にします。既存profileの保存値は保持します。
 `RULE MODE` / `LN MODE` を変更すると、選曲一覧のスコア・リプレイ・フォルダ集計を

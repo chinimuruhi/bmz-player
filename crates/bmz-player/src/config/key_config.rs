@@ -6,8 +6,8 @@ use super::play_input::{
     resolve_play_bindings, scratch_play_binding,
 };
 use super::profile_config::{
-    BindingConfigEntry, InputActionConfig, LaneConfig, PlayModeInputConfig, ProfileConfig,
-    ProfileInputConfig, ScratchDirectionConfig,
+    BindingConfigEntry, InputActionConfig, KeyboardBindingSlotConfig, LaneConfig,
+    PlayModeInputConfig, ProfileConfig, ProfileInputConfig, ScratchDirectionConfig,
 };
 
 /// 選曲画面のキー設定で編集対象とする KEY モード。
@@ -267,14 +267,11 @@ fn resolved_play_bindings(
 fn format_target_control(bindings: &[BindingConfigEntry], target: KeyBindingTarget) -> String {
     match target {
         KeyBindingTarget::Key { lane, slot } => match slot {
-            KeyBindingSlot::KeyboardPrimary => keyboard_controls_for_lane(bindings, lane)
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "(none)".to_string()),
-            KeyBindingSlot::KeyboardSecondary => keyboard_controls_for_lane(bindings, lane)
-                .get(1)
-                .cloned()
-                .unwrap_or_else(|| "(none)".to_string()),
+            KeyBindingSlot::KeyboardPrimary | KeyBindingSlot::KeyboardSecondary => {
+                read_lane_keyboard_slots(bindings, lane)
+                    .get(slot)
+                    .unwrap_or_else(|| "(none)".to_string())
+            }
             KeyBindingSlot::Controller
             | KeyBindingSlot::Controller1P
             | KeyBindingSlot::Controller2P => {
@@ -304,30 +301,81 @@ fn format_action_binding(input: &ProfileInputConfig, target: KeyBindingTarget) -
     let KeyBindingTarget::Action { action, slot } = target else {
         return "(none)".to_string();
     };
-    let controls: Vec<_> = input
-        .ui
-        .bindings
-        .iter()
-        .filter(|entry| entry.device == slot.device() && entry.action == Some(action))
-        .map(|entry| entry.control.clone())
-        .collect();
     match slot {
-        KeyBindingSlot::KeyboardPrimary => {
-            controls.first().cloned().unwrap_or_else(|| "(none)".to_string())
-        }
-        KeyBindingSlot::KeyboardSecondary => {
-            controls.get(1).cloned().unwrap_or_else(|| "(none)".to_string())
+        KeyBindingSlot::KeyboardPrimary | KeyBindingSlot::KeyboardSecondary => {
+            read_action_keyboard_slots(input, action)
+                .get(slot)
+                .unwrap_or_else(|| "(none)".to_string())
         }
         KeyBindingSlot::Controller
         | KeyBindingSlot::Controller1P
         | KeyBindingSlot::Controller2P => {
-            if controls.is_empty() {
-                "(none)".to_string()
-            } else {
-                controls.join(" / ")
-            }
+            let controls = action_controls_for_slot(input, action, slot);
+            if controls.is_empty() { "(none)".to_string() } else { controls.join(" / ") }
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct KeyboardSlots {
+    primary: Option<String>,
+    secondary: Option<String>,
+}
+
+impl KeyboardSlots {
+    fn get(self, slot: KeyBindingSlot) -> Option<String> {
+        match slot {
+            KeyBindingSlot::KeyboardPrimary => self.primary,
+            KeyBindingSlot::KeyboardSecondary => self.secondary,
+            KeyBindingSlot::Controller
+            | KeyBindingSlot::Controller1P
+            | KeyBindingSlot::Controller2P => None,
+        }
+    }
+}
+
+fn read_keyboard_slots<'a>(entries: impl Iterator<Item = &'a BindingConfigEntry>) -> KeyboardSlots {
+    let mut slots = KeyboardSlots::default();
+    let mut legacy = Vec::new();
+    for entry in entries {
+        match entry.keyboard_slot {
+            Some(KeyboardBindingSlotConfig::Primary) if slots.primary.is_none() => {
+                slots.primary = Some(entry.control.clone());
+            }
+            Some(KeyboardBindingSlotConfig::Secondary) if slots.secondary.is_none() => {
+                slots.secondary = Some(entry.control.clone());
+            }
+            Some(_) => {}
+            None => legacy.push(entry.control.clone()),
+        }
+    }
+    for control in legacy {
+        if slots.primary.is_none() {
+            slots.primary = Some(control);
+        } else if slots.secondary.is_none() {
+            slots.secondary = Some(control);
+        }
+    }
+    slots
+}
+
+fn read_lane_keyboard_slots(bindings: &[BindingConfigEntry], lane: LaneConfig) -> KeyboardSlots {
+    read_keyboard_slots(
+        bindings.iter().filter(|entry| entry.device == "keyboard" && entry.lane == Some(lane)),
+    )
+}
+
+fn read_action_keyboard_slots(
+    input: &ProfileInputConfig,
+    action: InputActionConfig,
+) -> KeyboardSlots {
+    read_keyboard_slots(
+        input
+            .ui
+            .bindings
+            .iter()
+            .filter(|entry| entry.device == "keyboard" && entry.action == Some(action)),
+    )
 }
 
 #[derive(Debug, Clone, Default)]
@@ -402,29 +450,28 @@ fn read_scratch_keyboard_slots(
     bindings: &[BindingConfigEntry],
     lane: LaneConfig,
 ) -> ScratchKeyboardSlots {
-    let mut slots = ScratchKeyboardSlots::default();
-    let mut up = Vec::new();
-    let mut down = Vec::new();
-    let mut undirected = Vec::new();
-
-    for entry in
-        bindings.iter().filter(|entry| entry.device == "keyboard" && entry.lane == Some(lane))
-    {
-        match entry.scratch {
-            Some(ScratchDirectionConfig::Up) => up.push(entry.control.clone()),
-            Some(ScratchDirectionConfig::Down) => down.push(entry.control.clone()),
-            None => undirected.push(entry.control.clone()),
-        }
-    }
-
-    slots.up_primary = up.first().cloned();
-    slots.up_secondary = up.get(1).cloned();
-    slots.down_primary = down.first().cloned();
-    slots.down_secondary = down.get(1).cloned();
+    let keyboard_entries =
+        || bindings.iter().filter(|entry| entry.device == "keyboard" && entry.lane == Some(lane));
+    let up = read_keyboard_slots(
+        keyboard_entries().filter(|entry| entry.scratch == Some(ScratchDirectionConfig::Up)),
+    );
+    let down = read_keyboard_slots(
+        keyboard_entries().filter(|entry| entry.scratch == Some(ScratchDirectionConfig::Down)),
+    );
+    let mut slots = ScratchKeyboardSlots {
+        up_primary: up.primary,
+        down_primary: down.primary,
+        up_secondary: up.secondary,
+        down_secondary: down.secondary,
+    };
 
     // scratch direction を持たない旧 profile は従来の表示順
     // (UP, DOWN, UP, DOWN) をフォールバックとして使う。
-    for (index, control) in undirected.into_iter().enumerate() {
+    let undirected: Vec<_> = keyboard_entries()
+        .filter(|entry| entry.scratch.is_none())
+        .map(|entry| entry.control.clone())
+        .collect();
+    for (index, control) in undirected.iter().cloned().enumerate() {
         match index {
             0 if slots.up_primary.is_none() => slots.up_primary = Some(control),
             1 if slots.down_primary.is_none() => slots.down_primary = Some(control),
@@ -433,10 +480,10 @@ fn read_scratch_keyboard_slots(
             _ => {}
         }
     }
-    if slots.down_primary.is_none() {
+    if !undirected.is_empty() && slots.down_primary.is_none() {
         slots.down_primary = slots.up_primary.clone();
     }
-    if slots.down_secondary.is_none() {
+    if !undirected.is_empty() && slots.down_secondary.is_none() {
         slots.down_secondary = slots.up_secondary.clone();
     }
     slots
@@ -482,14 +529,6 @@ fn read_scratch_gamepad_slots_for_device(
     }
 
     slots
-}
-
-fn keyboard_controls_for_lane(bindings: &[BindingConfigEntry], lane: LaneConfig) -> Vec<String> {
-    bindings
-        .iter()
-        .filter(|entry| entry.device == "keyboard" && entry.lane == Some(lane))
-        .map(|entry| entry.control.clone())
-        .collect()
 }
 
 fn gamepad_controls_for_lane_device(
@@ -577,10 +616,20 @@ fn write_action_keyboard_bindings(
 ) {
     remove_action_device_bindings(input, action, "keyboard");
     if let Some(control) = primary.filter(|value| !value.is_empty()) {
-        input.ui.bindings.push(action_binding_for_device("keyboard", control, action));
+        input.ui.bindings.push(action_binding_for_device(
+            "keyboard",
+            control,
+            action,
+            Some(KeyboardBindingSlotConfig::Primary),
+        ));
     }
     if let Some(control) = secondary.filter(|value| !value.is_empty()) {
-        input.ui.bindings.push(action_binding_for_device("keyboard", control, action));
+        input.ui.bindings.push(action_binding_for_device(
+            "keyboard",
+            control,
+            action,
+            Some(KeyboardBindingSlotConfig::Secondary),
+        ));
     }
 }
 
@@ -592,7 +641,7 @@ fn write_action_gamepad_bindings(
     remove_action_device_bindings(input, action, "gamepad");
     for control in controls {
         if !control.is_empty() {
-            input.ui.bindings.push(action_binding_for_device("gamepad", control, action));
+            input.ui.bindings.push(action_binding_for_device("gamepad", control, action, None));
         }
     }
 }
@@ -601,10 +650,12 @@ fn action_binding_for_device(
     device: &str,
     control: &str,
     action: InputActionConfig,
+    keyboard_slot: Option<KeyboardBindingSlotConfig>,
 ) -> BindingConfigEntry {
     BindingConfigEntry {
         device: device.to_string(),
         control: control.to_string(),
+        keyboard_slot,
         lane: None,
         action: Some(action),
         scratch: None,
@@ -617,9 +668,9 @@ fn apply_action_binding(
     slot: KeyBindingSlot,
     control: &str,
 ) {
-    let keyboard = action_controls_for_slot(input, action, KeyBindingSlot::KeyboardPrimary);
-    let primary = keyboard.first().cloned();
-    let secondary = keyboard.get(1).cloned();
+    let keyboard = read_action_keyboard_slots(input, action);
+    let primary = keyboard.primary;
+    let secondary = keyboard.secondary;
     let gamepad = action_controls_for_slot(input, action, KeyBindingSlot::Controller);
 
     remove_ui_control_from_device(input, slot.device(), control);
@@ -649,9 +700,9 @@ fn clear_action_binding(
     action: InputActionConfig,
     slot: KeyBindingSlot,
 ) {
-    let keyboard = action_controls_for_slot(input, action, KeyBindingSlot::KeyboardPrimary);
-    let primary = keyboard.first().cloned();
-    let secondary = keyboard.get(1).cloned();
+    let keyboard = read_action_keyboard_slots(input, action);
+    let primary = keyboard.primary;
+    let secondary = keyboard.secondary;
     let gamepad = action_controls_for_slot(input, action, KeyBindingSlot::Controller);
 
     remove_action_device_bindings(input, action, "keyboard");
@@ -683,10 +734,14 @@ fn write_lane_keyboard_bindings(
 ) {
     remove_lane_device_bindings(bindings, lane, "keyboard");
     if let Some(control) = primary.filter(|value| !value.is_empty()) {
-        bindings.push(play_binding(control, lane));
+        let mut entry = play_binding(control, lane);
+        entry.keyboard_slot = Some(KeyboardBindingSlotConfig::Primary);
+        bindings.push(entry);
     }
     if let Some(control) = secondary.filter(|value| !value.is_empty()) {
-        bindings.push(play_binding(control, lane));
+        let mut entry = play_binding(control, lane);
+        entry.keyboard_slot = Some(KeyboardBindingSlotConfig::Secondary);
+        bindings.push(entry);
     }
 }
 
@@ -696,14 +751,32 @@ fn write_scratch_keyboard_bindings(
     slots: &ScratchKeyboardSlots,
 ) {
     remove_lane_device_bindings(bindings, lane, "keyboard");
-    for (control, direction) in [
-        (slots.up_primary.as_deref(), ScratchDirectionConfig::Up),
-        (slots.down_primary.as_deref(), ScratchDirectionConfig::Down),
-        (slots.up_secondary.as_deref(), ScratchDirectionConfig::Up),
-        (slots.down_secondary.as_deref(), ScratchDirectionConfig::Down),
+    for (control, direction, keyboard_slot) in [
+        (
+            slots.up_primary.as_deref(),
+            ScratchDirectionConfig::Up,
+            KeyboardBindingSlotConfig::Primary,
+        ),
+        (
+            slots.down_primary.as_deref(),
+            ScratchDirectionConfig::Down,
+            KeyboardBindingSlotConfig::Primary,
+        ),
+        (
+            slots.up_secondary.as_deref(),
+            ScratchDirectionConfig::Up,
+            KeyboardBindingSlotConfig::Secondary,
+        ),
+        (
+            slots.down_secondary.as_deref(),
+            ScratchDirectionConfig::Down,
+            KeyboardBindingSlotConfig::Secondary,
+        ),
     ] {
         if let Some(control) = control.filter(|value| !value.is_empty()) {
-            bindings.push(scratch_play_binding(control, lane, direction));
+            let mut entry = scratch_play_binding(control, lane, direction);
+            entry.keyboard_slot = Some(keyboard_slot);
+            bindings.push(entry);
         }
     }
 }
@@ -793,9 +866,9 @@ pub fn apply_play_binding(
 
     match target {
         KeyBindingTarget::Key { lane, slot } => {
-            let controls = keyboard_controls_for_lane(&bindings, lane);
-            let primary = controls.first().cloned();
-            let secondary = controls.get(1).cloned();
+            let keyboard = read_lane_keyboard_slots(&bindings, lane);
+            let primary = keyboard.primary;
+            let secondary = keyboard.secondary;
 
             match slot {
                 KeyBindingSlot::KeyboardPrimary => {
@@ -874,9 +947,9 @@ pub fn clear_play_binding(
 
     match target {
         KeyBindingTarget::Key { lane, slot } => {
-            let controls = keyboard_controls_for_lane(&bindings, lane);
-            let primary = controls.first().cloned();
-            let secondary = controls.get(1).cloned();
+            let keyboard = read_lane_keyboard_slots(&bindings, lane);
+            let primary = keyboard.primary;
+            let secondary = keyboard.secondary;
 
             match slot {
                 KeyBindingSlot::KeyboardPrimary => {
@@ -1031,6 +1104,142 @@ mod tests {
             ),
             "Q"
         );
+    }
+
+    #[test]
+    fn secondary_binding_survives_without_primary_and_toml_roundtrip() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        let primary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary);
+        let secondary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary);
+        clear_play_binding(&mut profile.input, KeyMode::K7, primary).unwrap();
+        apply_play_binding(&mut profile.input, KeyMode::K7, secondary, "Q").unwrap();
+
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, primary), "(none)");
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, secondary), "Q");
+        assert!(profile.input.play["7k"].bindings.iter().any(|entry| {
+            entry.device == "keyboard"
+                && entry.control == "Q"
+                && entry.lane == Some(LaneConfig::Key1)
+                && entry.keyboard_slot == Some(KeyboardBindingSlotConfig::Secondary)
+        }));
+
+        let serialized = toml::to_string(&profile).unwrap();
+        let restored: ProfileConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(format_play_binding(&restored, KeyMode::K7, primary), "(none)");
+        assert_eq!(format_play_binding(&restored, KeyMode::K7, secondary), "Q");
+
+        let runtime =
+            crate::config::play_input::lane_binding_for_key_mode(&restored.input, KeyMode::K7)
+                .unwrap();
+        assert_eq!(
+            runtime.resolve(
+                bmz_gameplay::input::backend::DeviceId(0),
+                &bmz_gameplay::input::backend::PhysicalControl::KeyboardKey("Q".to_string()),
+            ),
+            Some(bmz_core::lane::Lane::Key1),
+        );
+    }
+
+    #[test]
+    fn explicit_keyboard_slots_ignore_binding_entry_order() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        let primary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary);
+        let secondary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary);
+        apply_play_binding(&mut profile.input, KeyMode::K7, primary, "A").unwrap();
+        apply_play_binding(&mut profile.input, KeyMode::K7, secondary, "Q").unwrap();
+        profile.input.play.get_mut("7k").unwrap().bindings.reverse();
+
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, primary), "A");
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, secondary), "Q");
+    }
+
+    #[test]
+    fn secondary_binding_is_preserved_in_every_key_config_mode() {
+        for &key_mode in KEY_CONFIG_MODES {
+            let mut profile = ProfileConfig::new_default("default", "Default", 0);
+            let primary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary);
+            let secondary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary);
+            apply_play_binding(&mut profile.input, key_mode, secondary, "Q").unwrap();
+
+            assert_eq!(
+                format_play_binding(&profile, key_mode, primary),
+                "Z",
+                "{} primary",
+                key_mode.as_str(),
+            );
+            assert_eq!(
+                format_play_binding(&profile, key_mode, secondary),
+                "Q",
+                "{} secondary",
+                key_mode.as_str(),
+            );
+            let controller =
+                key_target(LaneConfig::Key1, controller_slot_for_lane(key_mode, LaneConfig::Key1));
+            let expected_controller =
+                if matches!(key_mode, KeyMode::K8 | KeyMode::K9) { "(none)" } else { "Button1" };
+            assert_eq!(
+                format_play_binding(&profile, key_mode, controller),
+                expected_controller,
+                "{} controller",
+                key_mode.as_str(),
+            );
+        }
+    }
+
+    #[test]
+    fn action_secondary_survives_without_primary() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        let primary = action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardPrimary);
+        let secondary = action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardSecondary);
+        clear_play_binding(&mut profile.input, KeyMode::K7, primary).unwrap();
+        apply_play_binding(&mut profile.input, KeyMode::K7, secondary, "T").unwrap();
+
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, primary), "(none)");
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, secondary), "T");
+        assert!(profile.input.ui.bindings.iter().any(|entry| {
+            entry.control == "T"
+                && entry.action == Some(InputActionConfig::E4)
+                && entry.keyboard_slot == Some(KeyboardBindingSlotConfig::Secondary)
+        }));
+    }
+
+    #[test]
+    fn scratch_secondary_directions_survive_without_primary() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        for direction in [ScratchDirection::Up, ScratchDirection::Down] {
+            clear_play_binding(
+                &mut profile.input,
+                KeyMode::K7,
+                scratch_target(LaneConfig::Scratch, direction, KeyBindingSlot::KeyboardPrimary),
+            )
+            .unwrap();
+        }
+        let up_secondary = scratch_target(
+            LaneConfig::Scratch,
+            ScratchDirection::Up,
+            KeyBindingSlot::KeyboardSecondary,
+        );
+        let down_secondary = scratch_target(
+            LaneConfig::Scratch,
+            ScratchDirection::Down,
+            KeyBindingSlot::KeyboardSecondary,
+        );
+        apply_play_binding(&mut profile.input, KeyMode::K7, up_secondary, "Q").unwrap();
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, down_secondary), "(none)");
+        apply_play_binding(&mut profile.input, KeyMode::K7, down_secondary, "W").unwrap();
+
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, up_secondary), "Q");
+        assert_eq!(format_play_binding(&profile, KeyMode::K7, down_secondary), "W");
+        for direction in [ScratchDirection::Up, ScratchDirection::Down] {
+            assert_eq!(
+                format_play_binding(
+                    &profile,
+                    KeyMode::K7,
+                    scratch_target(LaneConfig::Scratch, direction, KeyBindingSlot::KeyboardPrimary,),
+                ),
+                "(none)",
+            );
+        }
     }
 
     #[test]

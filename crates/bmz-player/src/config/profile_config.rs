@@ -511,6 +511,10 @@ fn default_controller_release_bounce_ms() -> u32 {
 pub struct BindingConfigEntry {
     pub device: String,
     pub control: String,
+    /// キーボードの主 / 副スロット。旧 profile の未指定 entry は表示側で
+    /// 従来の配列順へフォールバックする。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keyboard_slot: Option<KeyboardBindingSlotConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane: Option<LaneConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -519,6 +523,14 @@ pub struct BindingConfigEntry {
     /// 依存せず方向を確定させるため、キーコンフィグで設定した entry に保存する。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scratch: Option<ScratchDirectionConfig>,
+}
+
+/// キーボードバインドの表示・編集スロット。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyboardBindingSlotConfig {
+    Primary,
+    Secondary,
 }
 
 /// スクラッチバインドの方向タグ。
@@ -1309,6 +1321,7 @@ fn binding(control: &str, lane: LaneConfig) -> BindingConfigEntry {
     BindingConfigEntry {
         device: "keyboard".to_string(),
         control: control.to_string(),
+        keyboard_slot: None,
         lane: Some(lane),
         action: None,
         scratch: None,
@@ -1329,6 +1342,7 @@ fn gamepad_binding(control: &str, lane: LaneConfig) -> BindingConfigEntry {
     BindingConfigEntry {
         device: "gamepad".to_string(),
         control: control.to_string(),
+        keyboard_slot: None,
         lane: Some(lane),
         action: None,
         scratch: None,
@@ -1349,6 +1363,7 @@ fn action_binding(control: &str, action: InputActionConfig) -> BindingConfigEntr
     BindingConfigEntry {
         device: "keyboard".to_string(),
         control: control.to_string(),
+        keyboard_slot: None,
         lane: None,
         action: Some(action),
         scratch: None,
@@ -1359,6 +1374,7 @@ fn gamepad_action_binding(control: &str, action: InputActionConfig) -> BindingCo
     BindingConfigEntry {
         device: "gamepad".to_string(),
         control: control.to_string(),
+        keyboard_slot: None,
         lane: None,
         action: Some(action),
         scratch: None,
@@ -1899,6 +1915,29 @@ mod tests {
     }
 
     #[test]
+    fn keyboard_binding_slot_is_optional_and_roundtrips_through_toml() {
+        let legacy: BindingConfigEntry = toml::from_str(
+            r#"
+            device = "keyboard"
+            control = "Z"
+            lane = "Key1"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(legacy.keyboard_slot, None);
+
+        let tagged = BindingConfigEntry {
+            keyboard_slot: Some(KeyboardBindingSlotConfig::Secondary),
+            ..legacy
+        };
+        let serialized = toml::to_string(&tagged).unwrap();
+        let restored: BindingConfigEntry = toml::from_str(&serialized).unwrap();
+
+        assert!(serialized.contains("keyboard_slot = \"secondary\""));
+        assert_eq!(restored.keyboard_slot, Some(KeyboardBindingSlotConfig::Secondary));
+    }
+
+    #[test]
     fn input_release_bounce_settings_roundtrip_through_toml() {
         let mut input = crate::config::play_input::default_profile_input();
         input.keyboard_release_bounce_ms = 3;
@@ -1921,6 +1960,7 @@ mod tests {
             bindings: vec![BindingConfigEntry {
                 device: "keyboard".to_string(),
                 control: "Z".to_string(),
+                keyboard_slot: None,
                 lane: Some(LaneConfig::Key1),
                 action: None,
                 scratch: None,

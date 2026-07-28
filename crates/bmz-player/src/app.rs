@@ -27524,6 +27524,7 @@ mod tests {
         input.ui.bindings.push(crate::config::profile_config::BindingConfigEntry {
             device: "gamepad1".to_string(),
             control: "Button10".to_string(),
+            keyboard_slot: None,
             lane: None,
             action: Some(InputActionConfig::E2),
             scratch: None,

@@ -1,6 +1,6 @@
 //! プレイモード別入力 binding の inherit 解決。
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use std::fmt;
 
@@ -381,9 +381,8 @@ fn apply_inherit(
     parent_bindings: &[BindingConfigEntry],
 ) -> Result<Vec<BindingConfigEntry>, InheritError> {
     let rule = inherit_rule(child, parent).ok_or(InheritError::Disallowed { child, parent })?;
-    let parent_by_lane = lane_binding_map(parent_bindings);
 
-    let mut out = match rule {
+    let out = match rule {
         InheritRule::FilterOnly => parent_bindings
             .iter()
             .filter(|entry| {
@@ -393,30 +392,19 @@ fn apply_inherit(
             })
             .cloned()
             .collect(),
-        InheritRule::Remap(remap) => {
-            let mut remapped = Vec::with_capacity(remap.len());
-            for &(child_lane, parent_lane) in remap {
-                let parent_config = parent_lane_to_config(parent_lane);
-                let Some(entry) = parent_by_lane.get(&parent_config) else {
-                    continue;
-                };
-                remapped.push(BindingConfigEntry {
-                    device: entry.device.clone(),
-                    control: entry.control.clone(),
-                    lane: Some(lane_to_config(child_lane)),
-                    action: None,
-                    scratch: entry.scratch,
-                });
-            }
-            remapped
-        }
+        InheritRule::Remap(remap) => parent_bindings
+            .iter()
+            .filter_map(|entry| {
+                let parent_lane = entry.lane?;
+                let &(child_lane, _) = remap
+                    .iter()
+                    .find(|&&(_, candidate)| lane_to_config(candidate) == parent_lane)?;
+                let mut remapped = entry.clone();
+                remapped.lane = Some(lane_to_config(child_lane));
+                Some(remapped)
+            })
+            .collect(),
     };
-
-    if matches!(rule, InheritRule::FilterOnly) {
-        out.retain(|entry| {
-            entry.lane.is_some_and(|lane| child.active_lanes().contains(&lane_from_config(lane)))
-        });
-    }
 
     Ok(out)
 }
@@ -425,31 +413,10 @@ fn merge_lane_overrides(
     mut base: Vec<BindingConfigEntry>,
     overrides: &[BindingConfigEntry],
 ) -> Vec<BindingConfigEntry> {
-    for override_entry in overrides {
-        let Some(lane) = override_entry.lane else {
-            continue;
-        };
-        base.retain(|entry| entry.lane != Some(lane));
-        base.push(override_entry.clone());
-    }
+    let overridden_lanes: HashSet<_> = overrides.iter().filter_map(|entry| entry.lane).collect();
+    base.retain(|entry| entry.lane.is_none_or(|lane| !overridden_lanes.contains(&lane)));
+    base.extend(overrides.iter().filter(|entry| entry.lane.is_some()).cloned());
     base
-}
-
-fn lane_binding_map(bindings: &[BindingConfigEntry]) -> HashMap<LaneConfig, BindingConfigEntry> {
-    let mut map = HashMap::new();
-    for entry in bindings {
-        let Some(lane) = entry.lane else { continue };
-        match map.get(&lane) {
-            None => {
-                map.insert(lane, entry.clone());
-            }
-            Some(existing) if existing.device != "keyboard" && entry.device == "keyboard" => {
-                map.insert(lane, entry.clone());
-            }
-            _ => {}
-        }
-    }
-    map
 }
 
 fn parent_lane_to_config(lane: Lane) -> LaneConfig {
@@ -656,6 +623,7 @@ pub fn play_binding(control: &str, lane: LaneConfig) -> BindingConfigEntry {
     BindingConfigEntry {
         device: "keyboard".to_string(),
         control: control.to_string(),
+        keyboard_slot: None,
         lane: Some(lane),
         action: None,
         scratch: None,
@@ -684,6 +652,7 @@ pub fn gamepad_play_binding_for_device(
     BindingConfigEntry {
         device: device.to_string(),
         control: control.to_string(),
+        keyboard_slot: None,
         lane: Some(lane),
         action: None,
         scratch: None,
@@ -958,7 +927,74 @@ mod tests {
         let input = ProfileInputConfig { play, ..input };
         validate_play_inherit_config(&input).unwrap();
         let bindings = resolve_play_bindings(&input, KeyMode::K4).unwrap();
-        assert_eq!(bindings.len(), 4);
+        assert_eq!(bindings.len(), 8);
+    }
+
+    #[test]
+    fn remap_inherit_preserves_all_bindings_for_each_parent_lane() {
+        for (key_mode, parent_lane, child_lane) in [
+            (KeyMode::K4, LaneConfig::Key4, LaneConfig::Key3),
+            (KeyMode::K6, LaneConfig::Key5, LaneConfig::Key4),
+        ] {
+            let mut input = sample_7k_input();
+            let mut secondary = play_binding("Q", parent_lane);
+            secondary.keyboard_slot =
+                Some(crate::config::profile_config::KeyboardBindingSlotConfig::Secondary);
+            input.play.get_mut("7k").unwrap().bindings.push(secondary);
+
+            let remapped: Vec<_> = resolve_play_bindings(&input, key_mode)
+                .unwrap()
+                .into_iter()
+                .filter(|entry| entry.lane == Some(child_lane))
+                .collect();
+
+            assert_eq!(remapped.len(), 3, "{}", key_mode.as_str());
+            assert!(
+                remapped
+                    .iter()
+                    .any(|entry| entry.device == "keyboard" && entry.keyboard_slot.is_none())
+            );
+            assert!(remapped.iter().any(|entry| {
+                entry.device == "keyboard"
+                    && entry.control == "Q"
+                    && entry.keyboard_slot
+                        == Some(crate::config::profile_config::KeyboardBindingSlotConfig::Secondary)
+            }));
+            assert!(
+                remapped.iter().any(|entry| entry.device == "gamepad"),
+                "{}",
+                key_mode.as_str(),
+            );
+        }
+    }
+
+    #[test]
+    fn lane_override_replaces_parent_with_all_override_bindings() {
+        let mut input = sample_7k_input();
+        let mut primary = play_binding("A", LaneConfig::Key1);
+        primary.keyboard_slot =
+            Some(crate::config::profile_config::KeyboardBindingSlotConfig::Primary);
+        let mut secondary = play_binding("Q", LaneConfig::Key1);
+        secondary.keyboard_slot =
+            Some(crate::config::profile_config::KeyboardBindingSlotConfig::Secondary);
+        input.play.insert(
+            "5k".to_string(),
+            PlayModeInputConfig {
+                inherit: None,
+                bindings: vec![primary, secondary],
+                ..Default::default()
+            },
+        );
+
+        let overridden: Vec<_> = resolve_play_bindings(&input, KeyMode::K5)
+            .unwrap()
+            .into_iter()
+            .filter(|entry| entry.lane == Some(LaneConfig::Key1))
+            .collect();
+
+        assert_eq!(overridden.len(), 2);
+        assert_eq!(overridden[0].control, "A");
+        assert_eq!(overridden[1].control, "Q");
     }
 
     #[test]
