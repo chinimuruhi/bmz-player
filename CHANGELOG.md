@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## v0.1.12
+
+### 改善
+
+- rianIR 互換の IR 連携を追加しました。
+  - ログイン、単曲・コーススコア送信、グローバルランキング取得に対応しました。
+  - IR 接続先を BMZ IR / rianIR / Other から選べる preset 設定を追加しました。
+  - 配布実行ファイルの SHA-256 client hash manifest を Windows / macOS / Flatpak 向けに生成し、rianIR の allowlist 登録に利用できるようにしました。
+  - リザルト skin では primary IR provider の名称を表示するようにしました。
+
+- 難易度表の初回取得をバックグラウンド処理に変更しました。
+  - 初回描画後に最大4件を並列取得し、進捗・完了通知と手動取得要求の待ち行列に対応しました。
+
+- CJK フォントを同梱しました。
+  - Flatpak などシステムフォントが不足する環境でも、Noto Sans CJK を fallback として UI とスキン文字列を描画できます。
+
+### 修正
+
+- `KEYBOARD SUB` の割り当てが、PRIMARY 未設定時やキー設定の継承・再配置時に失われる問題を修正しました。
+- rianIR のコース hash、クイックリトライ後のリザルト IR 応答、primary provider 名の表示を beatoraja 互換の挙動へ修正しました。
+- macOS 配布時に bzip2 依存のライセンス判定でパッケージ生成が停止する問題を修正しました。
+- クイックリトライ時に、古いプレイ結果がリザルトスキンのランキングに表示される不具合を修正しました。
+
+### テスト・開発環境
+
+- rianIR の provider / score・course payload / hash / リザルト照合、難易度表の並列取得、CJK fallback font、キー設定の回帰テストを追加・更新しました。
+- `docs/rian-ir.md`、`docs/ir.md`、`docs/controls.md`、`docs/licenses.md` を更新しました。
+
 ## v0.1.11
 
 ### 改善
