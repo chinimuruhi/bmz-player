@@ -212,6 +212,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist\release | Out-Null
 
+          node scripts/generate-client-hash-manifest.mjs `
+            --executable "dist\windows\BMZ Player\bmz-player.exe" `
+            --output "dist\release\bmz-player-v$env:BMZ_VERSION-windows-x64-client-manifest.json" `
+            --version $env:BMZ_VERSION `
+            --target windows-x64 `
+            --git-commit $env:GITHUB_SHA
+
           $portable = "dist\release\bmz-player-v$env:BMZ_VERSION-windows-x64-portable.zip"
           Compress-Archive -Path "dist\windows\BMZ Player" -DestinationPath $portable -Force
 
@@ -385,6 +392,12 @@ jobs:
       - name: Create macOS release files
         run: |
           mkdir -p dist/release
+          node scripts/generate-client-hash-manifest.mjs \
+            --executable "dist/macos/BMZ Player.app/Contents/MacOS/bmz-player" \
+            --output "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-client-manifest.json" \
+            --version "${BMZ_VERSION}" \
+            --target "macos-${BMZ_MACOS_ARCH}" \
+            --git-commit "${GITHUB_SHA}"
           ditto -c -k --keepParent \
             "dist/macos/BMZ Player.app" \
             "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}.app.zip"

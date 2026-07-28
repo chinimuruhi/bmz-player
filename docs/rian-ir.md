@@ -307,20 +307,33 @@ BMZ内部・BMZ公式IR用のcanonical course hashは変更しない。course id
 
 course endpoint の `client_hash` 検証方針は単曲 endpoint と統一する。
 
-## Temporary `client_hash` Policy
+## `client_hash` Manifest
 
-初期実装では次を送る。
+release buildはbeatorajaのJAR hashと同じ考え方で、実行ファイルそのものの
+SHA-256（小文字64桁hex）を `client_hash` として送る。archive、installer、app bundle
+全体のhashではない。
 
-```text
-client_hash = UNKNOWN
+Windows/macOSのrelease workflowは最終実行ファイルからschema v1 manifestを生成し、
+workflow artifactへ含める。
+
+```json
+{
+  "schema_version": 1,
+  "client": "bmz-player",
+  "version": "0.1.11",
+  "git_commit": "<40 hex>",
+  "target": "windows-x64",
+  "executable": "bmz-player.exe",
+  "client_hash": "<64 hex>"
+}
 ```
 
-rianIR の既存 allowlist に `UNKNOWN` が登録されていることを前提とする。これは接続・
-payload互換を先に検証するための暫定措置であり、正規 BMZ クライアントであることを
-証明しない。UIやAPIで `UNKNOWN` のスコアを verified client と表示してはならない。
+rianIR管理者はmanifestのversion、commit、targetを確認してから `client_hash` を
+`allowed_clients` へ登録する。失効時は同テーブルから削除する。debug buildまたは
+実行ファイルhashの取得に失敗した場合だけ、暫定互換値 `UNKNOWN` を送る。
 
-正式な生成・配布・失効方式の設計は初期スコープ外とし、後続課題へ送る。それまでは
-`client_hash` をチート対策・ランキング信頼度の根拠にしない。
+Flatpakは配布 `.flatpak` とsandbox内 `/app/bin/bmz-player` が同一ファイルではないため、
+初期版のmanifest生成対象外とする。
 
 ## Error and Queue Policy
 
@@ -339,8 +352,8 @@ payload互換を先に検証するための暫定措置であり、正規 BMZ �
 ## Known Constraints
 
 - `body` は既存の判定・ゲージ仕様区分として維持し、BMZ識別には使わない。
-- rianIR の現在の通常スコア送信は allowlist 済み `client_hash` を要求する。
-  初期 BMZ は `UNKNOWN` を使うため、正式なクライアント検証にはならない。
+- rianIR の現在の通常スコア送信はallowlist済みの実行ファイル `client_hash` を要求する。
+  debug buildとFlatpakは暫定的に `UNKNOWN` を使うため、正式なクライアント検証にはならない。
 - LN mode を含めないランキング query/grouping では Force LN/CN/HCN が混在する。
 - 4K / 6K / 8K は保存できても、rianIR の統計や画面から漏れる可能性がある。
 - F-RANDOM / MF-RANDOM は structured arrange field 対応版の rianIR が必要。
@@ -379,7 +392,7 @@ rianIR側の初期作業は次に限定する。
 - get_score / get_course_scoreのLN別filter・集約
 - constraints込みのcourse hash v2とcourse `ln_mode` の統一
 - `client=bmz-player` が1.xになったときのversion prefix補正除外
-- 正式な `client_hash` の生成・配布・失効設計
+- manifestへのrelease署名とrianIRへのallowlist登録自動化
 
 ## Verification Plan
 

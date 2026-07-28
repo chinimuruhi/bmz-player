@@ -1,5 +1,6 @@
 pub mod backfill;
 pub mod bmz_official;
+pub mod client_hash;
 pub mod course_payload;
 pub mod credentials;
 pub mod device_key;

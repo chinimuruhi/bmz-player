@@ -27,12 +27,6 @@ use super::types::{
 pub const RIAN_IR_PROVIDER: &str = "rian-ir";
 pub const RIAN_IR_DEFAULT_BASE_URL: &str = "https://rianir.link/api/";
 
-/// rianIR の現行 allowlist に含まれる暫定値。
-///
-/// 正式な `client_hash` の配布・更新方式が決まるまで、この値を adapter 内だけで
-/// 使用する。provider-neutral payload や profile config へは露出させない。
-const DEFERRED_CLIENT_HASH: &str = "UNKNOWN";
-
 #[derive(Debug, Clone)]
 pub struct RianIrClient {
     base_url: Url,
@@ -280,7 +274,7 @@ fn score_request(payload: &IrScoreSubmission, player_id: &str, api_token: &str) 
     let mut request = json!({
         "player_name": player_id,
         "api_token": api_token,
-        "client_hash": DEFERRED_CLIENT_HASH,
+        "client_hash": super::client_hash::current_client_hash(),
         "client_git_commit": option_env!("GIT_COMMIT_HASH").unwrap_or("unknown"),
         "client": "bmz-player",
         "client_version": env!("CARGO_PKG_VERSION"),
@@ -379,7 +373,7 @@ fn course_request(payload: &Value, player_id: &str, api_token: &str) -> Result<V
     let mut request = json!({
         "player_name": player_id,
         "api_token": api_token,
-        "client_hash": DEFERRED_CLIENT_HASH,
+        "client_hash": super::client_hash::current_client_hash(),
         "client_git_commit": option_env!("GIT_COMMIT_HASH").unwrap_or("unknown"),
         "client": "bmz-player",
         "client_version": env!("CARGO_PKG_VERSION"),
