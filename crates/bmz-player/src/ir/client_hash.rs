@@ -18,7 +18,7 @@ static CLIENT_HASH: OnceLock<String> = OnceLock::new();
 pub fn current_client_hash() -> &'static str {
     CLIENT_HASH
         .get_or_init(|| {
-            if cfg!(debug_assertions) || std::env::var_os("FLATPAK_ID").is_some() {
+            if cfg!(debug_assertions) {
                 return UNKNOWN_CLIENT_HASH.to_string();
             }
             std::env::current_exe()

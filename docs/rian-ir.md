@@ -313,8 +313,8 @@ release buildはbeatorajaのJAR hashと同じ考え方で、実行ファイル�
 SHA-256（小文字64桁hex）を `client_hash` として送る。archive、installer、app bundle
 全体のhashではない。
 
-Windows/macOSのrelease workflowは最終実行ファイルからschema v1 manifestを生成し、
-workflow artifactへ含める。
+Windows/macOS/Flatpakのrelease workflowは最終実行ファイルからschema v1 manifestを生成し、
+workflow artifactとGitHub Release assetへ含める。
 
 ```json
 {
@@ -332,8 +332,8 @@ rianIR管理者はmanifestのversion、commit、targetを確認してから `cli
 `allowed_clients` へ登録する。失効時は同テーブルから削除する。debug buildまたは
 実行ファイルhashの取得に失敗した場合だけ、暫定互換値 `UNKNOWN` を送る。
 
-Flatpakは配布 `.flatpak` とsandbox内 `/app/bin/bmz-player` が同一ファイルではないため、
-初期版のmanifest生成対象外とする。
+Flatpakは配布 `.flatpak` 全体ではなく、`flatpak-builder` が最終配置した
+`build/files/bin/bmz-player`（実行時の `/app/bin/bmz-player`）をhash対象にする。
 
 ## Error and Queue Policy
 
@@ -353,7 +353,7 @@ Flatpakは配布 `.flatpak` とsandbox内 `/app/bin/bmz-player` が同一ファ�
 
 - `body` は既存の判定・ゲージ仕様区分として維持し、BMZ識別には使わない。
 - rianIR の現在の通常スコア送信はallowlist済みの実行ファイル `client_hash` を要求する。
-  debug buildとFlatpakは暫定的に `UNKNOWN` を使うため、正式なクライアント検証にはならない。
+  debug buildは暫定的に `UNKNOWN` を使うため、正式なクライアント検証にはならない。
 - LN mode を含めないランキング query/grouping では Force LN/CN/HCN が混在する。
 - 4K / 6K / 8K は保存できても、rianIR の統計や画面から漏れる可能性がある。
 - F-RANDOM / MF-RANDOM は structured arrange field 対応版の rianIR が必要。
