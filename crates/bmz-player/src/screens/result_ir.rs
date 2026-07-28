@@ -184,7 +184,8 @@ pub struct ResultIrState {
     ir_connect_fail_at: Option<Instant>,
     provider_name: bmz_render::scene::ResultIrRankingName,
     user_name: bmz_render::scene::ResultIrRankingName,
-    skin_scroll_offset: usize,
+    global_skin_scroll_offset: usize,
+    self_and_rivals_skin_scroll_offset: usize,
     query: ResultIrTaskQuery,
     sender: Sender<ResultIrEvent>,
     receiver: Receiver<ResultIrEvent>,
@@ -295,12 +296,25 @@ impl ResultIrState {
         self.query.target.is_course()
     }
 
-    /// Result スキンの `NUMBER_IR_*` / `OPTION_IR_*` に渡す snapshot を作る。
-    ///
-    /// スキン表示は beatoraja 同様グローバルランキングを基準にする。
+    /// 既存スキン互換の global ranking snapshot を作る。
     pub fn skin_snapshot(&self) -> bmz_render::scene::ResultIrSnapshot {
+        self.skin_snapshot_for_binding(bmz_render::skin::ResultIrScopeBinding::Global)
+    }
+
+    /// Result スキンの scope binding に従う snapshot を作る。
+    ///
+    /// `Global` は beatoraja 互換の既存 ref を常に全体ランキングへ束縛する。
+    /// `Active` は BMZ 拡張を宣言したスキンだけが選択中タブを受け取る。
+    pub fn skin_snapshot_for_binding(
+        &self,
+        binding: bmz_render::skin::ResultIrScopeBinding,
+    ) -> bmz_render::scene::ResultIrSnapshot {
         use bmz_render::scene::{ResultIrSnapshot, ResultIrState as SkinIrState};
-        let snapshot = match &self.global {
+        let tab = match binding {
+            bmz_render::skin::ResultIrScopeBinding::Global => ResultRankingTab::Global,
+            bmz_render::skin::ResultIrScopeBinding::Active => self.active_tab,
+        };
+        let snapshot = match self.state_for_tab(tab) {
             RankingLoadState::NotRequested | RankingLoadState::Loading => {
                 ResultIrSnapshot { state: SkinIrState::Loading, ..Default::default() }
             }
@@ -308,26 +322,37 @@ impl ResultIrState {
                 ResultIrSnapshot { state: SkinIrState::Failed, ..Default::default() }
             }
             RankingLoadState::Loaded(ranking) => {
-                result_ir_ranking_to_skin_snapshot_at(ranking, self.skin_scroll_offset)
+                result_ir_ranking_to_skin_snapshot_at(ranking, self.skin_scroll_offset_for(tab))
             }
         };
-        self.with_connect_timers(snapshot)
+        self.with_connect_timers(snapshot, tab)
     }
 
     fn with_connect_timers(
         &self,
         mut snapshot: bmz_render::scene::ResultIrSnapshot,
+        tab: ResultRankingTab,
     ) -> bmz_render::scene::ResultIrSnapshot {
         snapshot.connect_begin_ms = self.ir_connect_begin_at.map(elapsed_since_ms);
         snapshot.connect_success_ms = self.ir_connect_success_at.map(elapsed_since_ms);
         snapshot.connect_fail_ms = self.ir_connect_fail_at.map(elapsed_since_ms);
         snapshot.provider_name = self.provider_name;
         snapshot.user_name = self.user_name;
+        snapshot.scope = match tab {
+            ResultRankingTab::Global => bmz_render::scene::ResultIrScope::Global,
+            ResultRankingTab::SelfAndRivals => bmz_render::scene::ResultIrScope::Rival,
+        };
+        snapshot.global_scope_supported = self.supports_tab(ResultRankingTab::Global);
+        snapshot.rival_scope_supported = self.supports_tab(ResultRankingTab::SelfAndRivals);
         snapshot
     }
 
     pub fn active_state(&self) -> &RankingLoadState {
-        match self.active_tab {
+        self.state_for_tab(self.active_tab)
+    }
+
+    fn state_for_tab(&self, tab: ResultRankingTab) -> &RankingLoadState {
+        match tab {
             ResultRankingTab::Global => &self.global,
             ResultRankingTab::SelfAndRivals => &self.self_and_rivals,
         }
@@ -335,15 +360,26 @@ impl ResultIrState {
 
     pub fn set_skin_scroll_rate(&mut self, value: f32) {
         let max = self.skin_scroll_max();
-        self.skin_scroll_offset = ((value.clamp(0.0, 1.0) * max as f32).round() as usize).min(max);
+        let offset = ((value.clamp(0.0, 1.0) * max as f32).round() as usize).min(max);
+        match self.active_tab {
+            ResultRankingTab::Global => self.global_skin_scroll_offset = offset,
+            ResultRankingTab::SelfAndRivals => self.self_and_rivals_skin_scroll_offset = offset,
+        }
     }
 
     fn skin_scroll_max(&self) -> usize {
-        match &self.global {
+        match self.active_state() {
             RankingLoadState::Loaded(ranking) => {
                 ranking.entries.len().saturating_sub(bmz_render::scene::IR_RANKING_ENTRY_SLOTS)
             }
             _ => 0,
+        }
+    }
+
+    fn skin_scroll_offset_for(&self, tab: ResultRankingTab) -> usize {
+        match tab {
+            ResultRankingTab::Global => self.global_skin_scroll_offset,
+            ResultRankingTab::SelfAndRivals => self.self_and_rivals_skin_scroll_offset,
         }
     }
 
@@ -563,7 +599,8 @@ fn spawn_result_ir_task_for_target(
         user_name: bmz_render::scene::ResultIrRankingName::from_display_name(
             &provider.account_display_name,
         ),
-        skin_scroll_offset: 0,
+        global_skin_scroll_offset: 0,
+        self_and_rivals_skin_scroll_offset: 0,
         query: query.clone(),
         sender: sender.clone(),
         receiver,
@@ -857,6 +894,7 @@ fn now_unix_seconds() -> i64 {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::mpsc::channel;
 
     use bmz_gameplay::rule::RuleMode;
 
@@ -872,7 +910,8 @@ mod tests {
     use crate::storage::network_db::IrJobKind;
 
     use super::{
-        ResultIrRanking, ResultIrRankingEntry, ResultIrTarget, ResultIrTaskQuery,
+        IrSubmitState, RankingLoadState, ResultIrEvent, ResultIrRanking, ResultIrRankingEntry,
+        ResultIrState, ResultIrTarget, ResultIrTaskQuery, ResultRankingTab,
         course_ranking_to_result_ir_ranking, included_global_ranking_for_query,
         ranking_to_ir_snapshot, result_ir_ranking_to_skin_snapshot_at,
     };
@@ -987,6 +1026,81 @@ mod tests {
         assert_eq!(snapshot.scroll_max, 5);
         assert_eq!(snapshot.entries[0].rank, Some(4));
         assert_eq!(snapshot.entries[9].rank, Some(13));
+    }
+
+    #[test]
+    fn active_tab_uses_its_own_skin_rows_and_scroll_offset() {
+        let ranking = |scope, first_rank, count| ResultIrRanking {
+            scope,
+            entries: (first_rank..first_rank + count)
+                .map(|rank| ResultIrRankingEntry {
+                    rank,
+                    player_name: format!("player-{rank}"),
+                    ex_score: rank * 10,
+                    clear: "Normal".to_string(),
+                    bp: 0,
+                    max_combo: 0,
+                })
+                .collect(),
+            clear_rate: None,
+            self_rank: None,
+            total: Some(count),
+        };
+        let (sender, receiver) = channel::<ResultIrEvent>();
+        let mut state = ResultIrState {
+            submit: IrSubmitState::Sending,
+            global: RankingLoadState::Loaded(ranking(IrRankingScope::Global, 1, 15)),
+            self_and_rivals: RankingLoadState::Loaded(ranking(
+                IrRankingScope::SelfAndRivals,
+                101,
+                12,
+            )),
+            active_tab: ResultRankingTab::Global,
+            ir_connect_begin_at: None,
+            ir_connect_success_at: None,
+            ir_connect_fail_at: None,
+            provider_name: bmz_render::scene::ResultIrRankingName::default(),
+            user_name: bmz_render::scene::ResultIrRankingName::default(),
+            global_skin_scroll_offset: 3,
+            self_and_rivals_skin_scroll_offset: 1,
+            query: ResultIrTaskQuery {
+                profile_root: PathBuf::new(),
+                provider: "bmz-official".to_string(),
+                account_id: "account-1".to_string(),
+                base_url: "https://ir.example.test".to_string(),
+                target: ResultIrTarget::Chart {
+                    local_score_id: 1,
+                    chart_sha256_hex: "chart".to_string(),
+                    ln_policy: LnScorePolicy::AutoLn,
+                    double_option: DoubleOptionScoreBucket::Off,
+                    rule_mode: RuleMode::Beatoraja,
+                },
+            },
+            sender,
+            receiver,
+        };
+
+        assert_eq!(state.skin_snapshot().entries[0].rank, Some(4));
+
+        state.active_tab = ResultRankingTab::SelfAndRivals;
+        // 既存スキンの standard ref は active tab が変わっても global のまま。
+        assert_eq!(state.skin_snapshot().entries[0].rank, Some(4));
+        assert_eq!(
+            state.skin_snapshot_for_binding(bmz_render::skin::ResultIrScopeBinding::Active).entries
+                [0]
+            .rank,
+            Some(102)
+        );
+
+        state.set_skin_scroll_rate(1.0);
+        assert_eq!(
+            state
+                .skin_snapshot_for_binding(bmz_render::skin::ResultIrScopeBinding::Active)
+                .scroll_offset,
+            2
+        );
+        state.active_tab = ResultRankingTab::Global;
+        assert_eq!(state.skin_snapshot().scroll_offset, 3);
     }
 
     #[test]

@@ -565,6 +565,12 @@ pub struct ResultIrSnapshot {
     pub clear_rate: Option<i64>,
     /// 更新前の順位 (NUMBER_IR_PREVRANK=182)。未対応なら None。
     pub previous_rank: Option<i64>,
+    /// BMZ Result IR scope (`0=Ranking`, `1=Rival`) currently supplied to the skin.
+    pub scope: ResultIrScope,
+    /// Whether the global Ranking scope can be selected for this Result.
+    pub global_scope_supported: bool,
+    /// Whether the Self-and-Rivals scope can be selected for this Result.
+    pub rival_scope_supported: bool,
     /// IRランキングの先頭表示行と最大スクロール位置。rate type 8の算出に使う。
     pub scroll_offset: usize,
     pub scroll_max: usize,
@@ -584,10 +590,37 @@ impl ResultIrSnapshot {
         total_player: None,
         clear_rate: None,
         previous_rank: None,
+        scope: ResultIrScope::Global,
+        global_scope_supported: false,
+        rival_scope_supported: false,
         scroll_offset: 0,
         scroll_max: 0,
         entries: [ResultIrRankingEntrySnapshot::EMPTY; IR_RANKING_ENTRY_SLOTS],
     };
+}
+
+/// BMZ Result IR scope exposed to compatible skins.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ResultIrScope {
+    #[default]
+    Global,
+    Rival,
+}
+
+impl ResultIrScope {
+    pub const fn index(self) -> i64 {
+        match self {
+            Self::Global => 0,
+            Self::Rival => 1,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Global => "RANKING",
+            Self::Rival => "RIVAL",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

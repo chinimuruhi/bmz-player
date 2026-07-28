@@ -191,7 +191,8 @@ use crate::ui::{
 use crate::update::{DownloadedUpdate, UpdateAssetKind, UpdateCandidate};
 use crate::window_config::select_monitor;
 use bmz_render::skin::{
-    DestinationListEntry, SKIN_EVENT_DAILY_STATISTICS_RESET, SKIN_EVENT_RESULT_PANEL_GRAPH,
+    DestinationListEntry, SKIN_EVENT_DAILY_STATISTICS_RESET, SKIN_EVENT_IR_SCOPE_GLOBAL,
+    SKIN_EVENT_IR_SCOPE_RIVAL, SKIN_EVENT_IR_SCOPE_TOGGLE, SKIN_EVENT_RESULT_PANEL_GRAPH,
     SKIN_EVENT_RESULT_PANEL_IR, SKIN_OPTION_BMZ_DOUBLE_PLAY, SKIN_OPTION_BMZ_KEY_MODE_BASE,
     SKIN_OPTION_BMZ_KEY_MODE_COUNT, SKIN_OPTION_BMZ_NO_SCRATCH, SKIN_OPTION_BMZ_SINGLE_PLAY,
     SKIN_REF_BMZ_ACTIVE_LANE_COUNT, SKIN_REF_BMZ_KEY_MODE, SkinAnimationDef, SkinClickHit,
@@ -1259,6 +1260,8 @@ enum ResultSkinSlot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResultSkinClickAction {
     SetPanel(i32),
+    SelectIrScope(crate::screens::result_ir::ResultRankingTab),
+    ToggleIrScope,
     ToggleFavoriteChart,
     SaveReplay(u8),
     ResetDailyStatistics,
@@ -3694,6 +3697,11 @@ impl WinitApp {
                     .flatten();
                 let result_failed = result_failed_for_skin_ops(summary.clear_type, raw_clear_type);
                 let score_save_enabled = self.current_result_score_save_enabled();
+                let result_ir_scope_binding = self
+                    .renderer
+                    .result_skin_document()
+                    .map(|document| document.result_ir_scope_binding)
+                    .unwrap_or_default();
                 AppSceneSnapshot::Result(ResultSnapshot {
                     player_name: String::new(),
                     target_name: summary.target_name.clone(),
@@ -3817,7 +3825,7 @@ impl WinitApp {
                     ir: self
                         .result_ir
                         .as_ref()
-                        .map(|state| state.skin_snapshot())
+                        .map(|state| state.skin_snapshot_for_binding(result_ir_scope_binding))
                         .unwrap_or_default(),
                     player_stats: self.player_stats.clone(),
                 })
@@ -4042,6 +4050,11 @@ impl WinitApp {
         let text = Localizer::new(locale);
         let selected = self.select_items.get(self.selected_index);
         let selected_course_ir = self.selected_course_ir_target();
+        let select_ir_scope_binding = self
+            .renderer
+            .select_skin_document()
+            .map(|document| document.select_ir_scope_binding)
+            .unwrap_or_default();
         let current_folder = match self.folder_stack.last() {
             None => String::new(),
             Some(path) if path == FAVORITE_ROOT_PATH => "FAVORITE".to_string(),
@@ -4189,8 +4202,11 @@ impl WinitApp {
             mouse_position: self.cursor_position_normalized(),
             ir: selected_course_ir.as_ref().map_or_else(
                 || {
-                    self.select_ir
-                        .snapshot_for(&self.boot.profile_config.ir, self.selected_chart_sha256())
+                    self.select_ir.snapshot_for_binding(
+                        &self.boot.profile_config.ir,
+                        self.selected_chart_sha256(),
+                        select_ir_scope_binding,
+                    )
                 },
                 |target| {
                     self.select_ir.course_snapshot_for(&self.boot.profile_config.ir, Some(target))
@@ -6016,6 +6032,17 @@ impl WinitApp {
             self.update_select_e_action_hold(&control, event.state == ElementState::Pressed);
         }
 
+        if event.state == ElementState::Pressed
+            && !event.repeat
+            && self.select_option_panel == 0
+            && self.select_ir_scope_toggle_is_e3()
+            && let Some(control) = physical_key_name(event.physical_key)
+            && self.is_select_ir_scope_toggle_control(&control)
+            && self.toggle_select_ir_scope()
+        {
+            return;
+        }
+
         if is_select_start_key(event.physical_key, &self.select_keys) {
             self.set_start_held(event.state == ElementState::Pressed);
             return;
@@ -6619,6 +6646,14 @@ impl WinitApp {
             return;
         }
 
+        if self.select_option_panel == 0
+            && self.select_ir_scope_toggle_is_e3()
+            && self.is_select_ir_scope_toggle_control(button)
+            && self.toggle_select_ir_scope()
+        {
+            return;
+        }
+
         if should_toggle_select_gauge_auto_shift(
             button,
             self.start_held,
@@ -6831,6 +6866,12 @@ impl WinitApp {
             Some(ResultSkinClickAction::SetPanel(panel)) => {
                 self.set_result_panel(panel);
             }
+            Some(ResultSkinClickAction::SelectIrScope(tab)) => {
+                self.select_result_ir_scope(tab);
+            }
+            Some(ResultSkinClickAction::ToggleIrScope) => {
+                self.toggle_result_ir_scope();
+            }
             Some(ResultSkinClickAction::ToggleFavoriteChart) => {
                 self.toggle_favorite_chart_result();
             }
@@ -7026,6 +7067,19 @@ impl WinitApp {
 
     fn execute_select_skin_event(&mut self, event_id: i32, arg: i32) {
         match event_id {
+            SKIN_EVENT_IR_SCOPE_GLOBAL => {
+                self.select_select_ir_scope(
+                    crate::screens::select_ir::SelectIrRankingScope::Global,
+                );
+            }
+            SKIN_EVENT_IR_SCOPE_RIVAL => {
+                self.select_select_ir_scope(
+                    crate::screens::select_ir::SelectIrRankingScope::SelfAndRivals,
+                );
+            }
+            SKIN_EVENT_IR_SCOPE_TOGGLE => {
+                self.toggle_select_ir_scope();
+            }
             SKIN_EVENT_DAILY_STATISTICS_RESET => self.reset_daily_statistics(),
             // beatoraja EventFactory: play / autoplay / practice.
             15 => {
@@ -8742,6 +8796,16 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if pressed
+            && !repeat
+            && self.result_input_ready()
+            && self.result_panel == 1
+            && self.result_ir_scope_toggle_is_e1()
+            && self.is_result_ir_scope_toggle_control(control)
+            && self.toggle_result_ir_scope()
+        {
+            return true;
+        }
         if pressed
             && !repeat
             && self.result_input_ready()
@@ -11377,6 +11441,16 @@ impl WinitApp {
         if pressed
             && !repeat
             && self.result_input_ready()
+            && self.result_panel == 1
+            && self.result_ir_scope_toggle_is_e1()
+            && self.is_result_ir_scope_toggle_control(control)
+            && self.toggle_result_ir_scope()
+        {
+            return true;
+        }
+        if pressed
+            && !repeat
+            && self.result_input_ready()
             && self.select_result_panel_for_control(control)
         {
             return true;
@@ -11418,6 +11492,16 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if pressed
+            && !repeat
+            && self.result_input_ready()
+            && self.result_panel == 1
+            && self.result_ir_scope_toggle_is_e1()
+            && self.is_result_ir_scope_toggle_control(control)
+            && self.toggle_result_ir_scope()
+        {
+            return true;
+        }
         if pressed
             && !repeat
             && self.result_input_ready()
@@ -11610,6 +11694,110 @@ impl WinitApp {
         tracing::info!(panel = self.result_panel, "result panel changed");
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
         true
+    }
+
+    /// `resultIrScopeBinding=active` を宣言したスキンだけが Result IR scope を切り替える。
+    /// 既存スキンの standard IR ref は常に global のままにする。
+    fn select_result_ir_scope(&mut self, tab: crate::screens::result_ir::ResultRankingTab) -> bool {
+        let Some(document) = self.renderer.result_skin_document() else {
+            return false;
+        };
+        if document.result_ir_scope_binding != bmz_render::skin::ResultIrScopeBinding::Active {
+            return false;
+        }
+        let Some(result_ir) = &mut self.result_ir else {
+            return false;
+        };
+        if !result_ir.supports_tab(tab) || result_ir.active_tab == tab {
+            return false;
+        }
+        result_ir.select_tab(tab);
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        true
+    }
+
+    fn toggle_result_ir_scope(&mut self) -> bool {
+        let Some(document) = self.renderer.result_skin_document() else {
+            return false;
+        };
+        if document.result_ir_scope_binding != bmz_render::skin::ResultIrScopeBinding::Active {
+            return false;
+        }
+        let Some(result_ir) = &self.result_ir else {
+            return false;
+        };
+        let next = match result_ir.active_tab {
+            crate::screens::result_ir::ResultRankingTab::Global => {
+                crate::screens::result_ir::ResultRankingTab::SelfAndRivals
+            }
+            crate::screens::result_ir::ResultRankingTab::SelfAndRivals => {
+                crate::screens::result_ir::ResultRankingTab::Global
+            }
+        };
+        self.select_result_ir_scope(next)
+    }
+
+    fn result_ir_scope_toggle_is_e1(&self) -> bool {
+        self.renderer.result_skin_document().is_some_and(|document| {
+            document.result_ir_scope_binding == bmz_render::skin::ResultIrScopeBinding::Active
+                && document.result_ir_scope_toggle == bmz_render::skin::ResultIrScopeToggle::E1Press
+        })
+    }
+
+    fn is_result_ir_scope_toggle_control(&self, control: &PhysicalControl) -> bool {
+        physical_control_name(control).is_some_and(|name| {
+            self.select_keys.is_start(name)
+                || self.select_keys.e_action_for_control(name) == Some(InputActionConfig::E1)
+        })
+    }
+
+    /// `selectIrScopeBinding=active` を宣言したスキンだけが Select IR scope を切り替える。
+    /// 既存スキンの standard IR ref は常に global のままにする。
+    fn select_select_ir_scope(
+        &mut self,
+        scope: crate::screens::select_ir::SelectIrRankingScope,
+    ) -> bool {
+        let Some(document) = self.renderer.select_skin_document() else {
+            return false;
+        };
+        if document.select_ir_scope_binding != bmz_render::skin::IrScopeBinding::Active {
+            return false;
+        }
+        if !self.select_ir.select_scope(
+            &self.boot.profile_config.ir,
+            self.selected_chart_sha256(),
+            scope,
+        ) {
+            return false;
+        }
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        true
+    }
+
+    fn toggle_select_ir_scope(&mut self) -> bool {
+        let Some(document) = self.renderer.select_skin_document() else {
+            return false;
+        };
+        if document.select_ir_scope_binding != bmz_render::skin::IrScopeBinding::Active {
+            return false;
+        }
+        if !self.select_ir.toggle_scope(&self.boot.profile_config.ir, self.selected_chart_sha256())
+        {
+            return false;
+        }
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        true
+    }
+
+    fn select_ir_scope_toggle_is_e3(&self) -> bool {
+        self.renderer.select_skin_document().is_some_and(|document| {
+            document.select_ir_scope_binding == bmz_render::skin::IrScopeBinding::Active
+                && document.select_ir_scope_toggle == bmz_render::skin::SelectIrScopeToggle::E3Press
+        })
+    }
+
+    fn is_select_ir_scope_toggle_control(&self, control: &str) -> bool {
+        self.select_keys.e_action_for_control(control) == Some(InputActionConfig::E3)
     }
 
     fn cycle_result_gauge_graph_type(&mut self) {
@@ -18872,6 +19060,13 @@ fn result_skin_click_action(event_id: i32) -> Option<ResultSkinClickAction> {
     match event_id {
         SKIN_EVENT_RESULT_PANEL_IR => Some(ResultSkinClickAction::SetPanel(1)),
         SKIN_EVENT_RESULT_PANEL_GRAPH => Some(ResultSkinClickAction::SetPanel(2)),
+        SKIN_EVENT_IR_SCOPE_GLOBAL => Some(ResultSkinClickAction::SelectIrScope(
+            crate::screens::result_ir::ResultRankingTab::Global,
+        )),
+        SKIN_EVENT_IR_SCOPE_RIVAL => Some(ResultSkinClickAction::SelectIrScope(
+            crate::screens::result_ir::ResultRankingTab::SelfAndRivals,
+        )),
+        SKIN_EVENT_IR_SCOPE_TOGGLE => Some(ResultSkinClickAction::ToggleIrScope),
         SKIN_EVENT_DAILY_STATISTICS_RESET => Some(ResultSkinClickAction::ResetDailyStatistics),
         90 => Some(ResultSkinClickAction::ToggleFavoriteChart),
         19 => Some(ResultSkinClickAction::SaveReplay(0)),
@@ -26755,6 +26950,22 @@ mod tests {
         assert_eq!(
             result_skin_click_action(SKIN_EVENT_RESULT_PANEL_IR),
             Some(ResultSkinClickAction::SetPanel(1))
+        );
+        assert_eq!(
+            result_skin_click_action(SKIN_EVENT_IR_SCOPE_GLOBAL),
+            Some(ResultSkinClickAction::SelectIrScope(
+                crate::screens::result_ir::ResultRankingTab::Global
+            ))
+        );
+        assert_eq!(
+            result_skin_click_action(SKIN_EVENT_IR_SCOPE_RIVAL),
+            Some(ResultSkinClickAction::SelectIrScope(
+                crate::screens::result_ir::ResultRankingTab::SelfAndRivals
+            ))
+        );
+        assert_eq!(
+            result_skin_click_action(SKIN_EVENT_IR_SCOPE_TOGGLE),
+            Some(ResultSkinClickAction::ToggleIrScope)
         );
         assert_eq!(result_skin_click_action(91), None);
     }

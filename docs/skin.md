@@ -254,6 +254,74 @@ E1 は設定済み E1 と legacy Start、E2 は設定済み E2 と legacy Select
 }
 ```
 
+### BMZ Result IR Scope
+
+リザルトの IR パネル (`result_panel(1)`) は、BMZ 対応 skin に限り全体ランキングと
+「自分 + IR ライバル」の一覧を切り替えられる。既存 skin は全体ランキングを表示し続ける。
+
+```json
+{
+  "resultIrScopeBinding": "active",
+  "resultIrScopeToggle": "e1_press"
+}
+```
+
+`resultIrScopeBinding` は省略時または `global` で従来互換の全体ランキング固定、`active`
+では既存の IR number / text / option が選択中スコープを表示する。`resultIrScopeToggle` は
+省略時または `none` で E1 切替を無効にし、`e1_press` は IR パネル表示中の E1 press edge
+でスコープを切り替える。`resultIrScopeToggle` は `active` binding と組み合わせた場合だけ
+有効で、ほかの組み合わせでは無効になる。
+
+| scope | label | IR API scope |
+| ---: | --- | --- |
+| `0` | `RANKING` | `global` |
+| `1` | `RIVAL` | `self_and_rivals` |
+
+`RIVAL` はライバルだけではなく、自分を含む `self_and_rivals` を指す。リザルト対象や
+provider が Rival scope をサポートしない場合、E1 と Rival 選択イベントは no-op になる。
+
+以下の ref / option / クリックeventは Select IR Scope と共通である。
+
+| ref / option | kind | meaning |
+| ---: | --- | --- |
+| 1964 | number / event_index / text | 選択中 scope (`0` / `1`、text は `RANKING` / `RIVAL`) |
+| 1965 | option | `RANKING` 選択中 |
+| 1966 | option | `RIVAL` 選択中 |
+| 1967 | option | `global` を取得可能 |
+| 1968 | option | `self_and_rivals` を取得可能 |
+| 1969 | number | 選択中 scope 内の総人数 |
+
+クリックイベントは `-10003=RANKING`、`-10004=RIVAL`、`-10005=toggle`。いずれも当該sceneの
+`*IrScopeBinding: "active"` の skin でだけ IR scope を変更する。E1 は `-10005` と同じ動作で、
+IR パネルを自動では開かない。E2 / Select の IR・グラフ切替とは独立している。
+
+`runtimeEvent.triggerAction: "e1_press"` は runtime flag の更新専用であり、scope 切替には
+使わない。対応 skin が同じ E1 trigger を定義した場合、scope 切替と runtime flag 更新は
+ともに実行される。
+
+### BMZ Select IR Scope
+
+選曲中の曲行は、BMZ 対応 skin に限り全体ランキングと「自分 + IRライバル」の一覧を
+切り替えられる。既存 skin は全体ランキングを表示し続ける。コース行・フォルダ行・設定行は
+`RANKING` のみで、Rival scope は選択できない。
+
+```json
+{
+  "selectIrScopeBinding": "active",
+  "selectIrScopeToggle": "e3_press"
+}
+```
+
+`selectIrScopeBinding` は省略時または `global` で従来互換の全体ランキング固定、`active` では
+既存の IR number / text / option が選択中scopeを表示する。`selectIrScopeToggle` は省略時または
+`none` で E3切替を無効にし、`e3_press` は通常の選曲表示中の E3 press edge でscopeを切り替える。
+`active` binding 以外との組み合わせ、検索・設定編集・選曲オプションパネル表示中、またはRival
+scope未対応時は no-op になる。E3は設定済みのE3操作だけを対象とし、Start互換は持たない。
+
+Selectの `RIVAL` も `self_and_rivals` を指す。既存の `STRING_RIVAL` 等の単一ライバル表示と
+ターゲット用のライバル順位列は変更しない。`runtimeEvent.triggerAction: "e3_press"` を同時に
+定義した場合も、scope切替とruntime flag更新はともに実行される。
+
 ### BMZ Daily Statistics Refs
 
 `score.db` の local / non-autoplay `score_history` をプロファイル単位で集計する。

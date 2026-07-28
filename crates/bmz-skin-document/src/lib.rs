@@ -135,6 +135,18 @@ pub struct SkinDocument {
     /// 0=非表示、1=IR、2=グラフとして Result 入力と描画状態を同期する。
     #[serde(default, rename = "resultPanelDefault")]
     pub result_panel_default: Option<i32>,
+    /// BMZ Result IR の標準 ref を global / 現在選択中 scope のどちらへ束縛するか。
+    #[serde(default, rename = "resultIrScopeBinding")]
+    pub result_ir_scope_binding: IrScopeBinding,
+    /// BMZ Result IR の scope を切り替える入力。未指定なら操作を追加しない。
+    #[serde(default, rename = "resultIrScopeToggle")]
+    pub result_ir_scope_toggle: ResultIrScopeToggle,
+    /// BMZ Select IR の標準 ref を global / 現在選択中 scope のどちらへ束縛するか。
+    #[serde(default, rename = "selectIrScopeBinding")]
+    pub select_ir_scope_binding: IrScopeBinding,
+    /// BMZ Select IR の scope を切り替える入力。未指定なら操作を追加しない。
+    #[serde(default, rename = "selectIrScopeToggle")]
+    pub select_ir_scope_toggle: SelectIrScopeToggle,
     /// ユーザがスキン設定パネルで選んだオプションから算出した有効 op コード列。
     /// `Some` のときレンダー時の `enabled_options()` はこれを返し、`None` の
     /// ときは従来通り `property.def` (または各 property の先頭 item) を既定として
@@ -650,6 +662,25 @@ pub const SKIN_REF_BMZ_SELECT_SETTINGS_ROW_KIND: i32 = 1960;
 pub const SKIN_OPTION_BMZ_SETTINGS_FOLDER: i32 = 1961;
 pub const SKIN_OPTION_BMZ_SETTINGS_BACK: i32 = 1962;
 pub const SKIN_OPTION_BMZ_SETTINGS_CLOSE: i32 = 1963;
+/// BMZ extension: IR scope index and label (`0=Ranking`, `1=Rival`).
+pub const SKIN_REF_BMZ_IR_SCOPE: i32 = 1964;
+/// BMZ extension: IR scope selected options.
+pub const SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL: i32 = 1965;
+pub const SKIN_OPTION_BMZ_IR_SCOPE_RIVAL: i32 = 1966;
+/// BMZ extension: IR scope availability options.
+pub const SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL_SUPPORTED: i32 = 1967;
+pub const SKIN_OPTION_BMZ_IR_SCOPE_RIVAL_SUPPORTED: i32 = 1968;
+/// BMZ extension: number of players in the displayed IR scope.
+pub const SKIN_REF_BMZ_IR_SCOPE_TOTAL: i32 = 1969;
+/// Backward-compatible Rust aliases for the initial Result-only names.
+pub const SKIN_REF_BMZ_RESULT_IR_SCOPE: i32 = SKIN_REF_BMZ_IR_SCOPE;
+pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL: i32 = SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL;
+pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL: i32 = SKIN_OPTION_BMZ_IR_SCOPE_RIVAL;
+pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL_SUPPORTED: i32 =
+    SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL_SUPPORTED;
+pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL_SUPPORTED: i32 =
+    SKIN_OPTION_BMZ_IR_SCOPE_RIVAL_SUPPORTED;
+pub const SKIN_REF_BMZ_RESULT_IR_SCOPE_TOTAL: i32 = SKIN_REF_BMZ_IR_SCOPE_TOTAL;
 /// BMZ extension: course result stage count and ten stage slots.
 pub const SKIN_REF_BMZ_COURSE_STAGE_COUNT: i32 = 19_100;
 pub const SKIN_REF_BMZ_COURSE_STAGE_EX_BASE: i32 = 19_110;
@@ -661,6 +692,14 @@ pub const SKIN_BMZ_COURSE_STAGE_COUNT: usize = 10;
 /// beatoraja の正数イベント ID と衝突しない BMZ 内部予約値を使う。
 pub const SKIN_EVENT_RESULT_PANEL_IR: i32 = -10_001;
 pub const SKIN_EVENT_RESULT_PANEL_GRAPH: i32 = -10_002;
+/// BMZ IR scope selection events for compatible skins.
+pub const SKIN_EVENT_IR_SCOPE_GLOBAL: i32 = -10_003;
+pub const SKIN_EVENT_IR_SCOPE_RIVAL: i32 = -10_004;
+pub const SKIN_EVENT_IR_SCOPE_TOGGLE: i32 = -10_005;
+/// Backward-compatible Rust aliases for the initial Result-only names.
+pub const SKIN_EVENT_RESULT_IR_SCOPE_GLOBAL: i32 = SKIN_EVENT_IR_SCOPE_GLOBAL;
+pub const SKIN_EVENT_RESULT_IR_SCOPE_RIVAL: i32 = SKIN_EVENT_IR_SCOPE_RIVAL;
+pub const SKIN_EVENT_RESULT_IR_SCOPE_TOGGLE: i32 = SKIN_EVENT_IR_SCOPE_TOGGLE;
 /// Clear the visible daily statistics window without deleting score history.
 pub const SKIN_EVENT_DAILY_STATISTICS_RESET: i32 = -10_100;
 /// Lua callback から変換する runtime event の内部予約 ID 範囲。
@@ -672,6 +711,38 @@ pub const SKIN_RANDOM_LANE_REF_BASE: i32 = 450;
 pub const SKIN_RANDOM_LANE_REF_COUNT: usize = 20;
 /// `SkinDrawState::dynamic_timer_ms` のスロット数。
 pub const SKIN_DYNAMIC_TIMER_COUNT: usize = 64;
+
+/// Which IR ranking supplies standard IR refs for this skin.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IrScopeBinding {
+    /// Preserve beatoraja-compatible global ranking behavior.
+    #[default]
+    Global,
+    /// Bind standard IR refs to the scope currently selected by the player.
+    Active,
+}
+
+/// Backward-compatible type alias for the initial Result-only name.
+pub type ResultIrScopeBinding = IrScopeBinding;
+
+/// Optional Result IR scope switch input declared by a BMZ-compatible skin.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultIrScopeToggle {
+    #[default]
+    None,
+    E1Press,
+}
+
+/// Optional Select IR scope switch input declared by a BMZ-compatible skin.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectIrScopeToggle {
+    #[default]
+    None,
+    E3Press,
+}
 
 pub fn string_array_refs(values: &[String; 10]) -> [&str; 10] {
     std::array::from_fn(|index| values[index].as_str())

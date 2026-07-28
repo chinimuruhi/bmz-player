@@ -181,6 +181,29 @@ fn runtime_flags_and_events_deserialize() {
 }
 
 #[test]
+fn result_ir_scope_extensions_deserialize_with_global_defaults() {
+    let defaults: SkinDocument = serde_json::from_str("{}").unwrap();
+    assert_eq!(defaults.result_ir_scope_binding, IrScopeBinding::Global);
+    assert_eq!(defaults.result_ir_scope_toggle, ResultIrScopeToggle::None);
+    assert_eq!(defaults.select_ir_scope_binding, IrScopeBinding::Global);
+    assert_eq!(defaults.select_ir_scope_toggle, SelectIrScopeToggle::None);
+
+    let document: SkinDocument = serde_json::from_str(
+        r#"{
+            "resultIrScopeBinding": "active",
+            "resultIrScopeToggle": "e1_press",
+            "selectIrScopeBinding": "active",
+            "selectIrScopeToggle": "e3_press"
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(document.result_ir_scope_binding, IrScopeBinding::Active);
+    assert_eq!(document.result_ir_scope_toggle, ResultIrScopeToggle::E1Press);
+    assert_eq!(document.select_ir_scope_binding, IrScopeBinding::Active);
+    assert_eq!(document.select_ir_scope_toggle, SelectIrScopeToggle::E3Press);
+}
+
+#[test]
 fn scene_audio_and_custom_event_deserialize() {
     let document: SkinDocument = serde_json::from_str(
         r#"{

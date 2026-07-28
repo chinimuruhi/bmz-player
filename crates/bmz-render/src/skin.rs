@@ -7326,6 +7326,14 @@ fn test_skin_op(op: i32, enabled_options: &[i32], state: &SkinDrawState) -> bool
         40 => !state.bga_enabled,
         41 => state.bga_enabled,
         1901 => skin_hispeed_mode_is_floating(state),
+        SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL => {
+            state.ir_ranking.scope == crate::scene::ResultIrScope::Global
+        }
+        SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL => {
+            state.ir_ranking.scope == crate::scene::ResultIrScope::Rival
+        }
+        SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL_SUPPORTED => state.ir_ranking.global_scope_supported,
+        SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL_SUPPORTED => state.ir_ranking.rival_scope_supported,
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
         }
@@ -9497,6 +9505,8 @@ fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         375 => state.average_timing_ms.map(timing_afterdot),
         376 => state.stddev_timing_ms.map(|value| value as i64),
         377 => state.stddev_timing_ms.map(|value| ((value.abs() * 100.0) as i64) % 100),
+        SKIN_REF_BMZ_RESULT_IR_SCOPE => Some(state.ir_ranking.scope.index()),
+        SKIN_REF_BMZ_RESULT_IR_SCOPE_TOTAL => state.ir_ranking.total_player,
         // IR numbers (beatoraja NUMBER_IR_*)。Offline / 未取得時は
         // beatoraja の Integer.MIN_VALUE と同じく値なしにする。
         179 => state.ir_ranking.rank,
@@ -11693,6 +11703,9 @@ fn skin_main_state_text(
             .map(|entry| entry.player_name.as_str().to_string())
             .unwrap_or_default(),
         150..=159 => state.course_titles[(ref_id - 150) as usize].to_string(),
+        SKIN_REF_BMZ_RESULT_IR_SCOPE => {
+            draw_state.map(|state| state.ir_ranking.scope.label().to_string()).unwrap_or_default()
+        }
         SKIN_TEXT_BMZ_DAILY_RANK => draw_state
             .map(|state| daily_rank_label(&state.player_stats.daily).to_string())
             .unwrap_or_default(),
@@ -23164,6 +23177,33 @@ mod tests {
             ..SkinDrawState::default()
         };
         assert!(test_skin_op(603, &[], &no_player));
+    }
+
+    #[test]
+    fn bmz_result_ir_scope_refs_and_options_follow_snapshot() {
+        let state = SkinDrawState {
+            ir_ranking: crate::scene::ResultIrSnapshot {
+                scope: crate::scene::ResultIrScope::Rival,
+                global_scope_supported: true,
+                rival_scope_supported: true,
+                total_player: Some(7),
+                ..Default::default()
+            },
+            ..SkinDrawState::default()
+        };
+
+        assert_eq!(skin_state_number(SKIN_REF_BMZ_RESULT_IR_SCOPE, &state), Some(1));
+        assert_eq!(skin_state_number(SKIN_REF_BMZ_RESULT_IR_SCOPE_TOTAL, &state), Some(7));
+        assert!(!test_skin_op(SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL, &[], &state));
+        assert!(test_skin_op(SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL, &[], &state));
+        assert!(test_skin_op(SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL_SUPPORTED, &[], &state));
+        assert!(test_skin_op(SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL_SUPPORTED, &[], &state));
+
+        let text_state = SkinTextState::default();
+        assert_eq!(
+            skin_main_state_text(SKIN_REF_BMZ_RESULT_IR_SCOPE, Some(&state), &text_state),
+            "RIVAL"
+        );
     }
 
     #[test]

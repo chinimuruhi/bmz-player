@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 
 use bmz_gameplay::rule::RuleMode;
 use bmz_render::scene::{
-    ResultIrSnapshot, ResultIrState as SkinIrState, SelectRivalJudgeCounts, SelectRivalSnapshot,
+    ResultIrScope as SkinIrScope, ResultIrSnapshot, ResultIrState as SkinIrState,
+    SelectRivalJudgeCounts, SelectRivalSnapshot,
 };
 
 use crate::config::profile_config::IrConfig;
@@ -32,8 +33,12 @@ const FETCH_DEBOUNCE: Duration = Duration::from_millis(400);
 /// キャッシュ上限。超えたら全クリアして作り直す (LRU は持たない)。
 const CACHE_CAPACITY: usize = 256;
 
-type FetchResult =
-    (String, [u8; 32], Instant, Result<(IrRankingResult, Option<IrRankingResult>), String>);
+type FetchResult = (
+    String,
+    [u8; 32],
+    Instant,
+    Result<(IrRankingResult, Option<IrRankingResult>, Option<IrRankingResult>), String>,
+);
 type CourseFetchResult =
     (String, SelectCourseIrTarget, Instant, Result<IrCourseRankingResult, String>);
 
@@ -49,11 +54,24 @@ pub struct SelectCourseIrTarget {
 /// カーソル譜面ごとのキャッシュ済み IR 表示データ。
 #[derive(Debug, Clone)]
 struct CachedChartIr {
-    ir: ResultIrSnapshot,
+    global: ResultIrSnapshot,
+    self_and_rivals: Option<ResultIrSnapshot>,
     rival: Option<SelectRivalSnapshot>,
     global_ex_scores: Vec<u32>,
     rival_ex_scores: Vec<u32>,
     completed_at: Instant,
+}
+
+/// Select スキンへ供給するランキングの範囲。
+///
+/// Result と異なり選曲画面は既存スキンが常に global を見るため、
+/// `snapshot_for` はこの値を参照しない。対応スキンだけが
+/// [`SelectIrRanking::active_snapshot_for`] を使う。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SelectIrRankingScope {
+    #[default]
+    Global,
+    SelfAndRivals,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +94,7 @@ pub struct SelectIrRanking {
     course_pending: Option<(SelectCourseIrTarget, Instant)>,
     course_sender: Sender<CourseFetchResult>,
     course_receiver: Receiver<CourseFetchResult>,
+    active_scope: SelectIrRankingScope,
 }
 
 impl Default for SelectIrRanking {
@@ -94,6 +113,7 @@ impl Default for SelectIrRanking {
             course_pending: None,
             course_sender,
             course_receiver,
+            active_scope: SelectIrRankingScope::Global,
         }
     }
 }
@@ -136,8 +156,9 @@ impl SelectIrRanking {
             }
             let completed_at = Instant::now();
             let entry = match result {
-                Ok((global, rivals)) => CachedChartIr {
-                    ir: ranking_to_ir_snapshot(&global),
+                Ok((global, self_and_rivals, rivals)) => CachedChartIr {
+                    global: ranking_to_ir_snapshot(&global),
+                    self_and_rivals: self_and_rivals.as_ref().map(ranking_to_ir_snapshot),
                     rival: rivals.as_ref().and_then(top_rival_snapshot),
                     global_ex_scores: ranking_ex_scores(&global),
                     rival_ex_scores: rivals.as_ref().map(ranking_ex_scores).unwrap_or_default(),
@@ -146,7 +167,11 @@ impl SelectIrRanking {
                 Err(error) => {
                     tracing::debug!(%error, "select IR ranking fetch failed");
                     CachedChartIr {
-                        ir: ResultIrSnapshot { state: SkinIrState::Failed, ..Default::default() },
+                        global: ResultIrSnapshot {
+                            state: SkinIrState::Failed,
+                            ..Default::default()
+                        },
+                        self_and_rivals: None,
                         rival: None,
                         global_ex_scores: Vec::new(),
                         rival_ex_scores: Vec::new(),
@@ -301,7 +326,11 @@ impl SelectIrRanking {
         self.insert_entry(
             sha256,
             CachedChartIr {
-                ir: result_ir_ranking_to_skin_snapshot(ranking),
+                global: result_ir_ranking_to_skin_snapshot(ranking),
+                self_and_rivals: self
+                    .cache
+                    .get(&sha256)
+                    .and_then(|entry| entry.self_and_rivals.clone()),
                 rival,
                 global_ex_scores: result_ranking_ex_scores(ranking),
                 rival_ex_scores,
@@ -316,16 +345,64 @@ impl SelectIrRanking {
         ir_config: &IrConfig,
         selected: Option<[u8; 32]>,
     ) -> ResultIrSnapshot {
+        self.snapshot_for_scope(ir_config, selected, SelectIrRankingScope::Global)
+    }
+
+    /// 対応 Select スキン用の、現在選択されている scope の snapshot。
+    pub fn active_snapshot_for(
+        &self,
+        ir_config: &IrConfig,
+        selected: Option<[u8; 32]>,
+    ) -> ResultIrSnapshot {
+        self.snapshot_for_scope(ir_config, selected, self.active_scope)
+    }
+
+    /// Select スキンの scope binding に従う snapshot を返す。
+    ///
+    /// `Global` は既存スキンとの互換性を保ち、常に全体ランキングを返す。
+    pub fn snapshot_for_binding(
+        &self,
+        ir_config: &IrConfig,
+        selected: Option<[u8; 32]>,
+        binding: bmz_render::skin::IrScopeBinding,
+    ) -> ResultIrSnapshot {
+        match binding {
+            bmz_render::skin::IrScopeBinding::Global => self.snapshot_for(ir_config, selected),
+            bmz_render::skin::IrScopeBinding::Active => {
+                self.active_snapshot_for(ir_config, selected)
+            }
+        }
+    }
+
+    /// 指定 scope の snapshot。Rival scope が未取得・非対応なら Global へ戻す。
+    pub fn snapshot_for_scope(
+        &self,
+        ir_config: &IrConfig,
+        selected: Option<[u8; 32]>,
+        requested_scope: SelectIrRankingScope,
+    ) -> ResultIrSnapshot {
         if enabled_provider(ir_config).is_none() {
             return ResultIrSnapshot::default();
         }
         let Some(sha256) = selected else {
             return ResultIrSnapshot::default();
         };
-        self.cache
+        let scope = if requested_scope == SelectIrRankingScope::SelfAndRivals
+            && self.supports_scope(ir_config, Some(sha256), requested_scope)
+        {
+            requested_scope
+        } else {
+            SelectIrRankingScope::Global
+        };
+        let mut snapshot = self
+            .cache
             .get(&sha256)
-            .map(|entry| {
-                let mut snapshot = entry.ir.clone();
+            .and_then(|entry| match scope {
+                SelectIrRankingScope::Global => Some(entry.global.clone()),
+                SelectIrRankingScope::SelfAndRivals => entry.self_and_rivals.clone(),
+            })
+            .map(|mut snapshot| {
+                let entry = &self.cache[&sha256];
                 match snapshot.state {
                     SkinIrState::Loaded => {
                         snapshot.connect_success_ms = Some(elapsed_since_ms(entry.completed_at));
@@ -352,7 +429,58 @@ impl SelectIrRanking {
                     connect_begin_ms: begin_ms,
                     ..Default::default()
                 }
-            })
+            });
+        snapshot.scope = match scope {
+            SelectIrRankingScope::Global => SkinIrScope::Global,
+            SelectIrRankingScope::SelfAndRivals => SkinIrScope::Rival,
+        };
+        snapshot.global_scope_supported = true;
+        snapshot.rival_scope_supported =
+            self.supports_scope(ir_config, Some(sha256), SelectIrRankingScope::SelfAndRivals);
+        snapshot
+    }
+
+    pub fn active_scope(&self) -> SelectIrRankingScope {
+        self.active_scope
+    }
+
+    /// scope を選ぶ。Self-and-Rivals は取得済みの場合だけ選択できる。
+    pub fn select_scope(
+        &mut self,
+        ir_config: &IrConfig,
+        selected: Option<[u8; 32]>,
+        scope: SelectIrRankingScope,
+    ) -> bool {
+        if self.active_scope == scope || !self.supports_scope(ir_config, selected, scope) {
+            return false;
+        }
+        self.active_scope = scope;
+        true
+    }
+
+    pub fn toggle_scope(&mut self, ir_config: &IrConfig, selected: Option<[u8; 32]>) -> bool {
+        let next = match self.active_scope {
+            SelectIrRankingScope::Global => SelectIrRankingScope::SelfAndRivals,
+            SelectIrRankingScope::SelfAndRivals => SelectIrRankingScope::Global,
+        };
+        self.select_scope(ir_config, selected, next)
+    }
+
+    /// コース行は global のみ。単曲の Self-and-Rivals は取得済み時だけ有効にする。
+    pub fn supports_scope(
+        &self,
+        ir_config: &IrConfig,
+        selected: Option<[u8; 32]>,
+        scope: SelectIrRankingScope,
+    ) -> bool {
+        enabled_provider(ir_config).is_some()
+            && match scope {
+                SelectIrRankingScope::Global => selected.is_some(),
+                SelectIrRankingScope::SelfAndRivals => selected
+                    .and_then(|sha256| self.cache.get(&sha256))
+                    .and_then(|entry| entry.self_and_rivals.as_ref())
+                    .is_some(),
+            }
     }
 
     pub fn course_snapshot_for(
@@ -366,7 +494,8 @@ impl SelectIrRanking {
         let Some(target) = selected else {
             return ResultIrSnapshot::default();
         };
-        self.course_cache
+        let mut snapshot = self
+            .course_cache
             .get(target)
             .map(|entry| {
                 let mut snapshot = entry.ir.clone();
@@ -396,7 +525,11 @@ impl SelectIrRanking {
                     connect_begin_ms: begin_ms,
                     ..Default::default()
                 }
-            })
+            });
+        snapshot.scope = SkinIrScope::Global;
+        snapshot.global_scope_supported = true;
+        snapshot.rival_scope_supported = false;
+        snapshot
     }
 
     /// 選択中譜面のライバルベスト (最上位 1 名)。未取得 / IR 未設定なら None。
@@ -442,6 +575,7 @@ impl SelectIrRanking {
         self.course_cache.clear();
         self.course_in_flight = None;
         self.course_pending = None;
+        self.active_scope = SelectIrRankingScope::Global;
     }
 
     fn insert_entry(&mut self, sha256: [u8; 32], entry: CachedChartIr) {
@@ -478,14 +612,25 @@ fn spawn_fetch(
         let result = async {
             let global =
                 crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Global).await?;
-            // rivals scope は要認証。未ログイン等で失敗してもライバル表示を
-            // 諦めるだけで、グローバルランキング表示は維持する。
-            let rivals = if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
-                None
-            } else {
-                crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Rivals).await.ok()
-            };
-            anyhow::Ok((global, rivals))
+            // Self-and-Rivals / Rivals scope は要認証。未ログイン等で失敗しても
+            // グローバルランキング表示は維持する。
+            let (self_and_rivals, rivals) =
+                if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+                    (None, None)
+                } else {
+                    let self_and_rivals = crate::screens::result_ir::fetch_ranking(
+                        &query,
+                        IrRankingScope::SelfAndRivals,
+                    )
+                    .await
+                    .ok();
+                    let rivals =
+                        crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Rivals)
+                            .await
+                            .ok();
+                    (self_and_rivals, rivals)
+                };
+            anyhow::Ok((global, self_and_rivals, rivals))
         }
         .await
         .map_err(|error| format!("{error:#}"));
@@ -661,6 +806,17 @@ mod tests {
         }
     }
 
+    fn raw_self_and_rivals_ranking(
+        sha256: [u8; 32],
+        rank: u32,
+        ex_score: u32,
+        total: u32,
+    ) -> IrRankingResult {
+        let mut ranking = raw_global_ranking(sha256, rank, ex_score, total);
+        ranking.ranking.scope = IrRankingScope::SelfAndRivals;
+        ranking
+    }
+
     #[test]
     fn snapshot_is_offline_without_provider_and_waiting_when_uncached() {
         let select_ir = SelectIrRanking::default();
@@ -683,7 +839,7 @@ mod tests {
         select_ir.cache.insert(
             sha,
             CachedChartIr {
-                ir: ResultIrSnapshot {
+                global: ResultIrSnapshot {
                     state: SkinIrState::Loaded,
                     rank: Some(2),
                     total_player: Some(10),
@@ -691,6 +847,9 @@ mod tests {
                     previous_rank: None,
                     ..Default::default()
                 },
+                self_and_rivals: Some(ranking_to_ir_snapshot(&raw_self_and_rivals_ranking(
+                    sha, 1, 1750, 2,
+                ))),
                 rival: Some(SelectRivalSnapshot {
                     display_name: "RivalOne".to_string(),
                     ex_score: 1500,
@@ -707,6 +866,24 @@ mod tests {
         let snapshot = select_ir.snapshot_for(&ir_config(true), Some(sha));
         assert_eq!(snapshot.state, SkinIrState::Loaded);
         assert_eq!(snapshot.rank, Some(2));
+        assert_eq!(snapshot.scope, SkinIrScope::Global);
+        assert!(snapshot.rival_scope_supported);
+
+        assert!(select_ir.select_scope(
+            &ir_config(true),
+            Some(sha),
+            SelectIrRankingScope::SelfAndRivals,
+        ));
+        let active = select_ir.snapshot_for_binding(
+            &ir_config(true),
+            Some(sha),
+            bmz_render::skin::IrScopeBinding::Active,
+        );
+        assert_eq!(active.rank, Some(1));
+        assert_eq!(active.total_player, Some(2));
+        assert_eq!(active.scope, SkinIrScope::Rival);
+        assert!(active.rival_scope_supported);
+        // 既存の単一ライバル/targetは Rivals scope のまま変えない。
         let rival = select_ir.rival_for(&ir_config(true), Some(sha)).unwrap();
         assert_eq!(rival.display_name, "RivalOne");
         assert_eq!(rival.ex_score, 1500);
@@ -733,6 +910,9 @@ mod tests {
             Some(1200)
         );
         assert!(select_ir.rival_for(&ir_config(false), Some(sha)).is_none());
+
+        assert!(select_ir.toggle_scope(&ir_config(true), Some(sha)));
+        assert_eq!(select_ir.active_scope(), SelectIrRankingScope::Global);
 
         select_ir.clear();
         let cleared = select_ir.snapshot_for(&ir_config(true), Some(sha));
@@ -804,13 +984,14 @@ mod tests {
         select_ir.cache.insert(
             sha,
             CachedChartIr {
-                ir: ResultIrSnapshot {
+                global: ResultIrSnapshot {
                     state: SkinIrState::Loaded,
                     rank: Some(9),
                     total_player: Some(10),
                     previous_rank: None,
                     ..Default::default()
                 },
+                self_and_rivals: None,
                 rival: Some(SelectRivalSnapshot {
                     display_name: "RivalOne".to_string(),
                     ex_score: 1500,
@@ -951,7 +1132,7 @@ mod tests {
                 "ctx".to_string(),
                 sha,
                 requested_at,
-                Ok((raw_global_ranking(sha, 9, 1200, 10), None)),
+                Ok((raw_global_ranking(sha, 9, 1200, 10), None, None)),
             ))
             .unwrap();
 
