@@ -131,6 +131,30 @@ impl ResultIrTarget {
             Self::Course { local_score_id, .. } => (IrJobKind::Course, *local_score_id),
         }
     }
+
+    fn matches_chart_result(
+        &self,
+        local_score_id: i64,
+        chart_sha256_hex: &str,
+        ln_policy: LnScorePolicy,
+        double_option: DoubleOptionScoreBucket,
+        rule_mode: RuleMode,
+    ) -> bool {
+        matches!(
+            self,
+            Self::Chart {
+                local_score_id: state_score_id,
+                chart_sha256_hex: state_chart_sha256,
+                ln_policy: state_ln_policy,
+                double_option: state_double_option,
+                rule_mode: state_rule_mode,
+            } if *state_score_id == local_score_id
+                && state_chart_sha256 == chart_sha256_hex
+                && *state_ln_policy == ln_policy
+                && *state_double_option == double_option
+                && *state_rule_mode == rule_mode
+        )
+    }
 }
 
 impl ResultIrTaskQuery {
@@ -145,6 +169,7 @@ impl ResultIrTaskQuery {
 struct ResultIrTaskQuery {
     profile_root: PathBuf,
     provider: String,
+    account_id: String,
     base_url: String,
     target: ResultIrTarget,
 }
@@ -165,6 +190,27 @@ pub struct ResultIrState {
 }
 
 impl ResultIrState {
+    /// この state が指定された単曲リザルトのために作られたものかを返す。
+    ///
+    /// 同じ譜面をクイックリトライしても chart hash は変わらないため、保存された
+    /// score history ID まで照合して旧試行の state を再利用しない。
+    pub fn matches_chart_result(
+        &self,
+        local_score_id: i64,
+        chart_sha256_hex: &str,
+        ln_policy: LnScorePolicy,
+        double_option: DoubleOptionScoreBucket,
+        rule_mode: RuleMode,
+    ) -> bool {
+        self.query.target.matches_chart_result(
+            local_score_id,
+            chart_sha256_hex,
+            ln_policy,
+            double_option,
+            rule_mode,
+        )
+    }
+
     /// 受信済みイベントを状態へ反映する。毎フレーム呼ぶ。
     pub fn poll(&mut self) -> Vec<ResultIrLoadedChartRanking> {
         let mut loaded_chart_rankings = Vec::new();
@@ -495,6 +541,7 @@ fn spawn_result_ir_task_for_target(
     let query = ResultIrTaskQuery {
         profile_root,
         provider: provider_key.to_string(),
+        account_id: provider.account_id.clone(),
         base_url: provider.base_url.clone(),
         target,
     };
@@ -549,13 +596,11 @@ fn spawn_result_ir_task_for_target(
         match outcome {
             Ok(report) => {
                 included_global_ranking = included_global_ranking_for_query(&submit_query, &report);
-                let watch_sender = submit_sender.clone();
-                let watch_target = submit_query.target.clone();
-                let watch_db_path = network_db_path.clone();
-                tokio::spawn(async move {
-                    let event = watch_result_submission(&watch_db_path, &watch_target).await;
-                    let _ = watch_sender.send(event);
-                });
+                // 別の同期 task がこの job を先に claim していても、送信完了まで
+                // 待ってから ranking を取得する。これで古いサーバ側 ranking を
+                // Result に固定しない。
+                let event = watch_result_submission(&network_db_path, &submit_query.target).await;
+                let _ = submit_sender.send(event);
             }
             Err(error) => {
                 let _ = submit_sender.send(ResultIrEvent::Submit {
@@ -660,17 +705,21 @@ fn included_global_ranking_for_query(
     query: &ResultIrTaskQuery,
     report: &IrSyncReport,
 ) -> Option<ResultIrRanking> {
-    let ResultIrTarget::Chart { chart_sha256_hex, .. } = &query.target else {
+    let ResultIrTarget::Chart { local_score_id, chart_sha256_hex, .. } = &query.target else {
         return None;
     };
     report
         .included_rankings
         .iter()
         .find(|ranking| {
-            ranking.chart.sha256 == *chart_sha256_hex
-                && ranking.ranking.scope == IrRankingScope::Global
+            ranking.provider == query.provider
+                && ranking.account_id == query.account_id
+                && ranking.kind == IrJobKind::Score
+                && ranking.local_score_id == *local_score_id
+                && ranking.ranking.chart.sha256 == *chart_sha256_hex
+                && ranking.ranking.ranking.scope == IrRankingScope::Global
         })
-        .map(chart_ranking_to_result_ir_ranking)
+        .map(|ranking| chart_ranking_to_result_ir_ranking(&ranking.ranking))
 }
 
 fn spawn_ranking_fetch(
@@ -806,7 +855,7 @@ mod tests {
 
     use bmz_gameplay::rule::RuleMode;
 
-    use crate::ir::sync::IrSyncReport;
+    use crate::ir::sync::{IrIncludedRanking, IrSyncReport};
     use crate::ir::types::{
         IrCourseRankingBody, IrCourseRankingCourseRef, IrCourseRankingEntry, IrCourseRankingResult,
         IrCourseRankingScore, IrRankingBody, IrRankingChartRef, IrRankingEntry,
@@ -815,6 +864,7 @@ mod tests {
     };
     use crate::ln_policy::LnScorePolicy;
     use crate::select_options::DoubleOptionScoreBucket;
+    use crate::storage::network_db::IrJobKind;
 
     use super::{
         ResultIrRanking, ResultIrRankingEntry, ResultIrTarget, ResultIrTaskQuery,
@@ -935,13 +985,14 @@ mod tests {
     }
 
     #[test]
-    fn included_global_ranking_uses_only_current_chart() {
+    fn included_global_ranking_uses_only_current_result_attempt() {
         let query = ResultIrTaskQuery {
             profile_root: PathBuf::new(),
             provider: "bmz-official".to_string(),
+            account_id: "account-1".to_string(),
             base_url: "https://ir.example.test".to_string(),
             target: ResultIrTarget::Chart {
-                local_score_id: 1,
+                local_score_id: 2,
                 chart_sha256_hex: "current".to_string(),
                 ln_policy: LnScorePolicy::AutoLn,
                 double_option: DoubleOptionScoreBucket::Off,
@@ -953,29 +1004,57 @@ mod tests {
             failed: 0,
             messages: Vec::new(),
             included_rankings: vec![
-                IrRankingResult {
-                    chart: IrRankingChartRef { sha256: "other".to_string() },
-                    ranking: IrRankingBody {
-                        scope: IrRankingScope::Global,
-                        entries: Vec::new(),
-                        clear_rate: None,
-                        self_summary: None,
-                        pagination: None,
+                IrIncludedRanking {
+                    provider: "bmz-official".to_string(),
+                    account_id: "account-1".to_string(),
+                    kind: IrJobKind::Score,
+                    local_score_id: 1,
+                    ranking: IrRankingResult {
+                        chart: IrRankingChartRef { sha256: "current".to_string() },
+                        ranking: IrRankingBody {
+                            scope: IrRankingScope::Global,
+                            entries: Vec::new(),
+                            clear_rate: Some(25),
+                            self_summary: None,
+                            pagination: None,
+                        },
                     },
                 },
-                IrRankingResult {
-                    chart: IrRankingChartRef { sha256: "current".to_string() },
-                    ranking: IrRankingBody {
-                        scope: IrRankingScope::Global,
-                        entries: Vec::new(),
-                        clear_rate: Some(75),
-                        self_summary: None,
-                        pagination: Some(IrRankingPagination {
-                            limit: 20,
-                            offset: 0,
-                            total: Some(2),
-                            has_more: false,
-                        }),
+                IrIncludedRanking {
+                    provider: "bmz-official".to_string(),
+                    account_id: "account-1".to_string(),
+                    kind: IrJobKind::Course,
+                    local_score_id: 2,
+                    ranking: IrRankingResult {
+                        chart: IrRankingChartRef { sha256: "current".to_string() },
+                        ranking: IrRankingBody {
+                            scope: IrRankingScope::Global,
+                            entries: Vec::new(),
+                            clear_rate: Some(50),
+                            self_summary: None,
+                            pagination: None,
+                        },
+                    },
+                },
+                IrIncludedRanking {
+                    provider: "bmz-official".to_string(),
+                    account_id: "account-1".to_string(),
+                    kind: IrJobKind::Score,
+                    local_score_id: 2,
+                    ranking: IrRankingResult {
+                        chart: IrRankingChartRef { sha256: "current".to_string() },
+                        ranking: IrRankingBody {
+                            scope: IrRankingScope::Global,
+                            entries: Vec::new(),
+                            clear_rate: Some(75),
+                            self_summary: None,
+                            pagination: Some(IrRankingPagination {
+                                limit: 20,
+                                offset: 0,
+                                total: Some(2),
+                                has_more: false,
+                            }),
+                        },
                     },
                 },
             ],
@@ -986,5 +1065,31 @@ mod tests {
         assert_eq!(ranking.scope, IrRankingScope::Global);
         assert_eq!(ranking.clear_rate, Some(75));
         assert_eq!(ranking.total, Some(2));
+    }
+
+    #[test]
+    fn chart_result_target_rejects_previous_retry_with_same_chart_hash() {
+        let target = ResultIrTarget::Chart {
+            local_score_id: 42,
+            chart_sha256_hex: "same-chart".to_string(),
+            ln_policy: LnScorePolicy::AutoLn,
+            double_option: DoubleOptionScoreBucket::Off,
+            rule_mode: RuleMode::Beatoraja,
+        };
+
+        assert!(target.matches_chart_result(
+            42,
+            "same-chart",
+            LnScorePolicy::AutoLn,
+            DoubleOptionScoreBucket::Off,
+            RuleMode::Beatoraja,
+        ));
+        assert!(!target.matches_chart_result(
+            41,
+            "same-chart",
+            LnScorePolicy::AutoLn,
+            DoubleOptionScoreBucket::Off,
+            RuleMode::Beatoraja,
+        ));
     }
 }

@@ -9137,7 +9137,19 @@ impl WinitApp {
     }
 
     fn start_result_ir_for_finished_play(&mut self, finished: &FinishedPlaySession) {
-        if self.result_ir.is_some() || finished.stored.score_history_id <= 0 {
+        if finished.stored.score_history_id <= 0 {
+            return;
+        }
+        let chart_sha256_hex = crate::storage::common::hash_to_hex(&finished.result.chart_sha256);
+        if self.result_ir.as_ref().is_some_and(|state| {
+            state.matches_chart_result(
+                finished.stored.score_history_id,
+                &chart_sha256_hex,
+                finished.ln_policy,
+                finished.double_option,
+                finished.rule_mode,
+            )
+        }) {
             return;
         }
         self.result_ir = crate::screens::result_ir::spawn_result_ir_task(
@@ -9147,7 +9159,7 @@ impl WinitApp {
             self.boot.app_paths.logs_dir.clone(),
             &self.boot.profile_config.ir,
             finished.stored.score_history_id,
-            crate::storage::common::hash_to_hex(&finished.result.chart_sha256),
+            chart_sha256_hex,
             finished.ln_policy,
             finished.double_option,
             finished.rule_mode,
@@ -9944,6 +9956,10 @@ impl WinitApp {
         options: PlayStartOptions,
         mut snapshot: RenderSnapshot,
     ) {
+        // リザルトの非同期 IR state は今回の試行だけを表す。retry 中にも残すと
+        // 同じ chart hash の前回スコアを次の Result で表示し得るため、Play へ
+        // 入る時点で直ちに手放す（バックグラウンド送信自体は継続する）。
+        self.result_ir = None;
         self.play_ending = None;
         self.result_exit = None;
         self.play_ready_sound_started_at = None;

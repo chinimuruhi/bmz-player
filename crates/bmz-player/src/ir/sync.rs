@@ -24,7 +24,21 @@ pub struct IrSyncReport {
     pub submitted: u32,
     pub failed: u32,
     pub messages: Vec<String>,
-    pub included_rankings: Vec<IrRankingResult>,
+    /// 送信レスポンスに同梱されたランキングと、そのレスポンスを返したローカル job。
+    ///
+    /// 同じ譜面を複数回送信するバッチでは chart hash だけで ranking を選ぶと、
+    /// 古い試行の応答を今回のリザルトへ表示してしまう。Result 側が今回の
+    /// score_history_id と照合できるよう、job の識別子を一緒に保持する。
+    pub included_rankings: Vec<IrIncludedRanking>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IrIncludedRanking {
+    pub provider: String,
+    pub account_id: String,
+    pub kind: IrJobKind,
+    pub local_score_id: i64,
+    pub ranking: IrRankingResult,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -361,7 +375,13 @@ async fn sync_pending_ir_jobs_with_filter(
                     .filter(|ranking| ranking.succeeded)
                     .and_then(|ranking| ranking.data.clone())
                 {
-                    report.included_rankings.push(ranking);
+                    report.included_rankings.push(IrIncludedRanking {
+                        provider: job.provider.clone(),
+                        account_id: job.account_id.clone(),
+                        kind: job.kind,
+                        local_score_id: job.local_score_id,
+                        ranking,
+                    });
                 }
                 let remote_score_id = parsed_response
                     .as_ref()
