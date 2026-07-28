@@ -29,7 +29,7 @@ test('combines schema v1 target manifests into deterministic schema v2', () => {
   for (const target of ['windows-x64', 'macos-arm64', 'linux-x64-flatpak', 'macos-x64']) {
     writeManifest(directory, target)
   }
-  const output = resolve(directory, 'bmz-player-v0.1.11-client-manifest.json')
+  const output = resolve(directory, 'client-manifest-bmz-player-v0.1.11.json')
 
   execFileSync(process.execPath, [
     script,

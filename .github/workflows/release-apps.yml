@@ -612,7 +612,7 @@ jobs:
           BMZ_VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
-          output="dist/release/bmz-player-v${BMZ_VERSION}-client-manifest.json"
+          output="dist/release/client-manifest-bmz-player-v${BMZ_VERSION}.json"
           node scripts/combine-client-hash-manifests.mjs \
             --input-dir dist/release \
             --output "${output}" \
