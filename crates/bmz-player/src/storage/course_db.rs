@@ -130,6 +130,24 @@ pub(super) fn list_courses_by_source(conn: &Connection, source: &str) -> Result<
     Ok(courses)
 }
 
+pub(super) fn delete_courses_by_source(conn: &Connection, source: &str) -> Result<usize> {
+    Ok(conn.execute("DELETE FROM courses WHERE source = ?1", params![source])?)
+}
+
+pub(super) fn delete_table_courses_by_source_prefix(
+    conn: &Connection,
+    source_prefix: &str,
+) -> Result<usize> {
+    let escaped = format!("table:{source_prefix}")
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    Ok(conn.execute(
+        "DELETE FROM courses WHERE source LIKE ?1 ESCAPE '\\'",
+        params![format!("{escaped}%")],
+    )?)
+}
+
 pub(super) fn list_course_entries(
     conn: &Connection,
     course_id: i64,

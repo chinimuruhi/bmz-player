@@ -244,7 +244,7 @@ where
     .buffer_unordered(DIFFICULTY_TABLE_FETCH_CONCURRENCY)
 }
 
-fn store_fetched_table(
+pub(crate) fn store_fetched_table(
     library_db: &mut LibraryDatabase,
     table: &crate::difficulty_table::FetchedDifficultyTable,
 ) -> Result<TableFetchSuccess> {

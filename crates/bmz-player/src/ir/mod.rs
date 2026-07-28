@@ -11,4 +11,5 @@ pub mod provider_key;
 pub mod rian_ir;
 pub mod secret_store;
 pub mod sync;
+pub mod table;
 pub mod types;

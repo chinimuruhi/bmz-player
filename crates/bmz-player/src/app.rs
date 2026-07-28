@@ -105,6 +105,10 @@ use crate::input::winit::{
     W_KEYBOARD_DEVICE_ID, key_event_to_device_input, physical_key_to_control,
     physical_key_to_device_input,
 };
+use crate::ir::table::{
+    RIAN_TABLE_MANUAL_REFRESH_COOLDOWN, RIAN_TABLE_REFRESH_INTERVAL, RianTableIdentity,
+    active_source_urls as active_rian_table_source_urls, is_rian_table_source,
+};
 use crate::ln_policy::LnPolicySetting;
 use crate::logging::LogBuffer;
 use crate::practice_ui::PracticePanelContext;
@@ -406,6 +410,12 @@ struct TableFetchProgress {
     failed: usize,
 }
 
+struct RianTableFetchWorkerResult {
+    generation: u64,
+    identity: RianTableIdentity,
+    result: Result<Vec<crate::difficulty_table::FetchedDifficultyTable>>,
+}
+
 /// beatoraja の `Gdx.graphics.getFramesPerSecond()` と同様、1 秒ごとに
 /// 確定したフレーム数を skin の NUMBER_CURRENT_FPS (20) と右上表示へ渡す。
 struct SkinFpsCounter {
@@ -580,6 +590,11 @@ struct WinitApp {
     pending_table_fetch_urls: HashSet<String>,
     queued_table_fetch_urls: Vec<String>,
     table_fetch_progress: Option<TableFetchProgress>,
+    rian_table_identity: Option<RianTableIdentity>,
+    rian_table_fetch_generation: u64,
+    pending_rian_table_fetch: Option<Receiver<RianTableFetchWorkerResult>>,
+    rian_table_last_started_at: Option<Instant>,
+    rian_table_next_refresh_at: Option<Instant>,
     pending_song_scan: Option<Receiver<SongScanEvent>>,
     pending_chart_download: Option<Receiver<Result<ChartDownloadResult>>>,
     queued_download_scan: Option<(PathBuf, String)>,
@@ -3105,6 +3120,7 @@ impl WinitApp {
         };
         let select_folder_summary_ln_policy = boot.profile_config.play.ln_mode_policy;
         let select_folder_summary_rule_mode = boot.profile_config.play.rule_mode;
+        let rian_table_identity = RianTableIdentity::from_ir_config(&boot.profile_config.ir);
 
         let mut app = Self {
             boot,
@@ -3166,6 +3182,11 @@ impl WinitApp {
             pending_table_fetch_urls: HashSet::new(),
             queued_table_fetch_urls: Vec::new(),
             table_fetch_progress: None,
+            rian_table_identity,
+            rian_table_fetch_generation: 0,
+            pending_rian_table_fetch: None,
+            rian_table_last_started_at: None,
+            rian_table_next_refresh_at: None,
             pending_song_scan: None,
             pending_chart_download: None,
             queued_download_scan: None,
@@ -12456,7 +12477,11 @@ impl WinitApp {
     fn reload_from_select_context(&mut self) {
         let selected = self.select_items.get(self.selected_index);
         if let Some(url) = table_source_url_from_context(&self.folder_stack, selected) {
-            self.spawn_table_fetch(url);
+            if is_rian_table_source(&url) {
+                self.spawn_rian_table_fetch(true);
+            } else {
+                self.spawn_table_fetch(url);
+            }
             return;
         }
         if let Some(path) = song_scan_path_from_context(&self.folder_stack, selected) {
@@ -12573,6 +12598,178 @@ impl WinitApp {
             return;
         };
         self.spawn_table_fetches(urls, "startup table fetch".to_string());
+        self.spawn_rian_table_fetch(false);
+    }
+
+    fn spawn_rian_table_fetch(&mut self, manual: bool) {
+        let Some(identity) = self.rian_table_identity.clone() else {
+            return;
+        };
+        if self.pending_rian_table_fetch.is_some() {
+            tracing::debug!("rianIR table fetch already in progress");
+            return;
+        }
+        let now = Instant::now();
+        let minimum_interval =
+            if manual { RIAN_TABLE_MANUAL_REFRESH_COOLDOWN } else { RIAN_TABLE_REFRESH_INTERVAL };
+        if self
+            .rian_table_last_started_at
+            .is_some_and(|started| now.duration_since(started) < minimum_interval)
+        {
+            return;
+        }
+
+        let generation = self.rian_table_fetch_generation;
+        let fetched_at = now_unix_seconds();
+        let (tx, rx) = mpsc::channel();
+        let event_proxy = self.event_proxy.clone();
+        let worker_identity = identity.clone();
+        thread::Builder::new()
+            .name("rian-table-fetch".to_string())
+            .spawn(move || {
+                let result =
+                    (|| -> Result<Vec<crate::difficulty_table::FetchedDifficultyTable>> {
+                        let runtime = tokio::runtime::Runtime::new()
+                            .context("failed to create tokio runtime")?;
+                        runtime.block_on(crate::ir::table::fetch_account_tables(
+                            &worker_identity,
+                            fetched_at,
+                        ))
+                    })();
+                let _ = tx.send(RianTableFetchWorkerResult {
+                    generation,
+                    identity: worker_identity,
+                    result,
+                });
+                let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
+            })
+            .expect("failed to spawn rianIR table fetch thread");
+        self.pending_rian_table_fetch = Some(rx);
+        self.rian_table_last_started_at = Some(now);
+        self.rian_table_next_refresh_at = now.checked_add(RIAN_TABLE_REFRESH_INTERVAL);
+        tracing::info!(
+            provider = %identity.provider_key,
+            manual,
+            "started rianIR table fetch"
+        );
+    }
+
+    fn poll_pending_rian_table_fetch(&mut self) {
+        let Some(rx) = self.pending_rian_table_fetch.take() else {
+            return;
+        };
+        let result = match rx.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => {
+                self.pending_rian_table_fetch = Some(rx);
+                return;
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                tracing::warn!("rianIR table fetch worker disconnected");
+                self.show_left_overlay_toast("rianIR TABLE: worker disconnected");
+                return;
+            }
+        };
+
+        if result.generation != self.rian_table_fetch_generation
+            || self.rian_table_identity.as_ref() != Some(&result.identity)
+        {
+            tracing::info!("ignored stale rianIR table fetch result");
+            return;
+        }
+
+        match result.result {
+            Ok(tables) => {
+                match crate::ir::table::store_account_tables(
+                    &mut self.boot.library_db,
+                    &result.identity,
+                    &tables,
+                ) {
+                    Ok((table_count, entry_count)) => {
+                        tracing::info!(
+                            tables = table_count,
+                            entries = entry_count,
+                            "rianIR table fetch complete"
+                        );
+                        self.refresh_difficulty_tables_and_select();
+                        self.show_left_overlay_toast(format!(
+                            "rianIR TABLE: {table_count} tables, {entry_count} entries"
+                        ));
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, "failed to store rianIR tables");
+                        self.show_left_overlay_toast("rianIR TABLE: cache update failed");
+                    }
+                }
+            }
+            Err(error) => {
+                // stale-while-revalidate: 既存キャッシュは消さず、そのまま選曲に残す。
+                tracing::warn!(%error, "failed to fetch rianIR tables; keeping cached tables");
+                self.show_left_overlay_toast("rianIR TABLE: fetch failed (using cache)");
+            }
+        }
+    }
+
+    fn maybe_start_periodic_rian_table_fetch(&mut self) {
+        if self.pending_rian_table_fetch.is_some() {
+            return;
+        }
+        if self.rian_table_next_refresh_at.is_some_and(|deadline| Instant::now() >= deadline) {
+            self.spawn_rian_table_fetch(false);
+        }
+    }
+
+    fn reconcile_rian_table_identity(&mut self) {
+        let next = RianTableIdentity::from_ir_config(&self.boot.profile_config.ir);
+        if next == self.rian_table_identity {
+            return;
+        }
+
+        let previous = self.rian_table_identity.take();
+        self.rian_table_fetch_generation = self.rian_table_fetch_generation.wrapping_add(1);
+        self.pending_rian_table_fetch = None;
+        self.rian_table_last_started_at = None;
+        self.rian_table_next_refresh_at = None;
+
+        if let Some(previous) = &previous {
+            match self
+                .boot
+                .library_db
+                .delete_difficulty_tables_by_source_prefix(previous.source_prefix())
+            {
+                Ok(removed) => tracing::info!(
+                    removed,
+                    "removed rianIR account table cache after identity change"
+                ),
+                Err(error) => tracing::warn!(%error, "failed to remove old rianIR table cache"),
+            }
+            if let Err(error) =
+                self.boot.library_db.delete_table_courses_by_source_prefix(previous.source_prefix())
+            {
+                tracing::warn!(%error, "failed to remove old rianIR course cache");
+            }
+            if self.folder_stack.iter().any(|path| path.contains(previous.source_prefix())) {
+                self.folder_stack.clear();
+                self.selected_index_stack.clear();
+                self.selected_index = 0;
+            }
+        }
+
+        self.rian_table_identity = next;
+        self.refresh_difficulty_tables_and_select();
+        if self.first_frame_startup_completed {
+            self.spawn_rian_table_fetch(true);
+        }
+    }
+
+    fn refresh_difficulty_tables_and_select(&mut self) {
+        match self.boot.library_db.list_difficulty_tables() {
+            Ok(tables) => self.difficulty_tables = tables,
+            Err(error) => tracing::warn!(%error, "failed to refresh difficulty table metadata"),
+        }
+        self.table_breadcrumb_cache.borrow_mut().clear();
+        self.invalidate_select_folder_summaries();
+        self.reload_select_items();
     }
 
     fn spawn_table_fetches(&mut self, urls: Vec<String>, label: String) {
@@ -14581,6 +14778,7 @@ impl WinitApp {
             },
         );
         self.egui = Some(egui);
+        self.reconcile_rian_table_identity();
         let locale_after_ui = self.boot.profile_config.ui.locale();
         self.renderer.set_default_font_coverage(locale_after_ui.font_coverage());
         if locale_after_ui != locale_before_ui {
@@ -17875,6 +18073,8 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.poll_play_preload();
                 self.refresh_play_target_from_source();
                 self.poll_pending_table_fetch();
+                self.poll_pending_rian_table_fetch();
+                self.maybe_start_periodic_rian_table_fetch();
                 self.poll_pending_chart_download();
                 self.poll_pending_song_scan();
                 self.poll_pending_update_check();
@@ -18034,6 +18234,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             }
             AppUserEvent::TableFetchReady => {
                 self.poll_pending_table_fetch();
+                self.poll_pending_rian_table_fetch();
                 self.request_redraw();
             }
         }
@@ -18455,7 +18656,13 @@ fn build_select_items_for_stack(
     search_history: &[String],
 ) -> Vec<SelectItem> {
     let active_song_roots = enabled_root_paths(&boot.app_config);
-    let active_table_sources = table_source_order(&boot.app_config);
+    let mut active_table_sources = table_source_order(&boot.app_config);
+    if let Some(identity) = RianTableIdentity::from_ir_config(&boot.profile_config.ir) {
+        match active_rian_table_source_urls(&boot.library_db, &identity) {
+            Ok(sources) => active_table_sources.extend(sources),
+            Err(error) => tracing::warn!(%error, "failed to load cached rianIR table sources"),
+        }
+    }
     match stack.last() {
         Some(path) if path.starts_with(crate::screens::settings_model::CONFIG_ROOT_PATH) => {
             load_settings_items_for_locale(path, boot.profile_config.ui.locale())

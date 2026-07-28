@@ -905,6 +905,25 @@ impl LibraryDatabase {
         super::difficulty_table_db::list_difficulty_tables(&self.conn)
     }
 
+    pub fn delete_difficulty_tables_by_source_prefix(&self, source_prefix: &str) -> Result<usize> {
+        super::difficulty_table_db::delete_difficulty_tables_by_source_prefix(
+            &self.conn,
+            source_prefix,
+        )
+    }
+
+    pub fn delete_difficulty_table(&self, source_url: &str) -> Result<bool> {
+        super::difficulty_table_db::delete_difficulty_table(&self.conn, source_url)
+    }
+
+    pub fn delete_courses_by_source(&self, source: &str) -> Result<usize> {
+        super::course_db::delete_courses_by_source(&self.conn, source)
+    }
+
+    pub fn delete_table_courses_by_source_prefix(&self, source_prefix: &str) -> Result<usize> {
+        super::course_db::delete_table_courses_by_source_prefix(&self.conn, source_prefix)
+    }
+
     pub fn list_difficulty_table_sources_with_current_download_metadata(
         &self,
     ) -> Result<Vec<String>> {

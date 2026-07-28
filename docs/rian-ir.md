@@ -10,6 +10,7 @@ rule は `docs/rule.md` を正とし、本ドキュメントでは rianIR との
 - BMZ の単曲スコアを rianIR 互換 payload に変換して送信できる。
 - 選曲・リザルト表示に必要な単曲ランキングを取得できる。
 - BMZ のコース完走結果を rianIR へ送信できる。
+- rianIR が提供する難易度表、POPULAR、レビュー、Rivals RECENT、コースを選曲から利用できる。
 - クライアント実装と判定・ゲージ仕様を別フィールドとして扱い、同じ rule の
   beatoraja / LR2oraja / BMZ スコアを同じランキング条件で比較できる。
 
@@ -19,7 +20,7 @@ rianIR は BMZ 公式 IR とは別 provider とする。credential、送信 queu
 
 ## Initial Scope
 
-初期リリースでは次の5経路を実装対象とする。
+初期リリースでは次の6経路を実装対象とする。
 
 | 機能 | rianIR endpoint | BMZ側の責務 |
 | --- | --- | --- |
@@ -28,6 +29,7 @@ rianIR は BMZ 公式 IR とは別 provider とする。credential、送信 queu
 | 単曲ランキング取得 | `GET /api/score/get_score.php` | chart SHA-256 と `body` を条件に取得し、BMZ の共通ランキング型へ変換する |
 | course送信 | `POST /api/score/course_score.php` | 完走した course attempt を変換し、署名して送る |
 | courseランキング取得 | `GET /api/score/get_course_score.php` | `rian_course_hash_v1` と `body` で取得する |
+| テーブル取得 | `GET /api/common/get_tables.php?id=...` | rianIR の動的folder/courseを既存の難易度表・course modelへ変換してキャッシュする |
 
 初期スコープ外:
 
@@ -437,6 +439,23 @@ rianIR側の初期作業は次に限定する。
 - UTF-8タイトルとstage順を含む `rian_course_hash_v1` のRust/Java共通golden fixture。
 - login/score/course request と HMAC の golden fixture。
 - retry時に date、signature、seed が変わらないこと。
+- primary provider が rianIR の場合の難易度表・POPULAR・レビュー・Rivals RECENT・
+  course取得。既存の難易度表folderとcourse表示を再利用する。
+
+### rianIR table cache lifecycle
+
+- cache scopeは `provider_key + base_url + account_id` とし、scopeをSHA-256 digest化した
+  内部source URLでアカウント間を分離する。ログインIDをDBのsource URLへ直接含めない。
+- アプリ起動後の初回描画直後に取得する。前回cacheがあれば取得完了を待たずに表示する。
+- 起動中は30分間隔で再取得する。rianIR側のcommon table cacheは10分なので、それより
+  短いpollingは行わない。
+- rianIR由来table内、またはrootでrianIR tableを選択中のF5は、そのアカウントの
+  table一式を即時更新する。5秒以内の連打と同時実行は抑止する。
+- 通信失敗時は既存cacheを残す（stale-while-revalidate）。
+- primary provider、base URL、account IDの変更とlogoutでは旧scopeのtable/course
+  cacheを削除して選曲から即時非表示にする。変更前に開始した通信結果はgenerationで
+  破棄し、旧アカウントのcacheを復活させない。
+- rianIR側の変更は不要で、既存 `get_tables.php` responseをそのまま利用する。
 
 ### rianIR integration tests
 

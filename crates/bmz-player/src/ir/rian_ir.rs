@@ -75,6 +75,66 @@ struct RianRankingResource {
     attributes: Map<String, Value>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RianTableResource {
+    pub id: String,
+    pub attributes: RianTable,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RianTable {
+    pub name: String,
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub folders: Vec<RianTableFolder>,
+    #[serde(default)]
+    pub courses: Vec<RianTableCourse>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RianTableFolder {
+    pub name: String,
+    #[serde(default)]
+    pub charts: Vec<RianTableChart>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RianTableChart {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub subtitle: String,
+    #[serde(default)]
+    pub artist: String,
+    #[serde(default)]
+    pub subartist: String,
+    #[serde(default)]
+    pub md5: String,
+    #[serde(default)]
+    pub sha256: String,
+    #[serde(default)]
+    pub level: serde_json::Value,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RianTableCourse {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub sha256: String,
+    #[serde(default)]
+    pub constraint: Vec<String>,
+    #[serde(default)]
+    pub charts: Vec<RianTableChart>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RianTablesResponse {
+    #[serde(default)]
+    data: Vec<RianTableResource>,
+}
+
 impl RianIrClient {
     pub fn new(base_url: &str) -> Result<Self> {
         Ok(Self {
@@ -207,6 +267,16 @@ impl RianIrClient {
         let decoded: RianRankingResponse =
             decode_response(response, "rianIR course ranking").await?;
         Ok(convert_course_ranking(course_hash, decoded.data, limit))
+    }
+
+    pub async fn fetch_tables(&self, player_id: &str) -> Result<Vec<RianTableResource>> {
+        let mut url = self.endpoint("common/get_tables.php")?;
+        if !player_id.trim().is_empty() {
+            url.query_pairs_mut().append_pair("id", player_id);
+        }
+        let response = self.http.get(url).send().await.context("failed to fetch rianIR tables")?;
+        let decoded: RianTablesResponse = decode_response(response, "rianIR tables").await?;
+        Ok(decoded.data)
     }
 
     fn endpoint(&self, relative: &str) -> Result<Url> {
@@ -1124,5 +1194,46 @@ mod tests {
             parse_base_url("https://example.test/api/").unwrap().as_str(),
             "https://example.test/api/"
         );
+    }
+
+    #[test]
+    fn tables_response_accepts_dynamic_folders_and_courses() {
+        let response: RianTablesResponse = serde_json::from_value(json!({
+            "data": [{
+                "type": "difficulty-tables",
+                "id": "0",
+                "attributes": {
+                    "name": "rianIR POPULAR",
+                    "symbol": "POP",
+                    "folders": [{
+                        "name": "24H POPULAR SONGS",
+                        "charts": [{
+                            "title": "Song",
+                            "artist": "Artist",
+                            "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                            "level": "Top 20"
+                        }]
+                    }],
+                    "courses": [{
+                        "name": "Course",
+                        "sha256": "course-hash",
+                        "constraint": ["grade", "ln"],
+                        "charts": [{
+                            "title": "Song",
+                            "subtitle": "[Another]",
+                            "artist": "Artist",
+                            "subartist": "",
+                            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                            "level": 12
+                        }]
+                    }]
+                }
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(response.data[0].attributes.folders[0].charts[0].level, json!("Top 20"));
+        assert_eq!(response.data[0].attributes.courses[0].constraint, vec!["grade", "ln"]);
     }
 }

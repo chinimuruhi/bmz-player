@@ -137,6 +137,22 @@ pub(super) fn list_difficulty_tables(conn: &Connection) -> Result<Vec<Difficulty
     Ok(result)
 }
 
+pub(super) fn delete_difficulty_tables_by_source_prefix(
+    conn: &Connection,
+    source_prefix: &str,
+) -> Result<usize> {
+    let escaped = source_prefix.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    Ok(conn.execute(
+        "DELETE FROM difficulty_tables WHERE source_url LIKE ?1 ESCAPE '\\'",
+        params![format!("{escaped}%")],
+    )?)
+}
+
+pub(super) fn delete_difficulty_table(conn: &Connection, source_url: &str) -> Result<bool> {
+    Ok(conn.execute("DELETE FROM difficulty_tables WHERE source_url = ?1", params![source_url])?
+        > 0)
+}
+
 pub(super) fn list_difficulty_table_sources_with_current_download_metadata(
     conn: &Connection,
 ) -> Result<Vec<String>> {
@@ -377,6 +393,24 @@ mod tests {
         let md5 = "aabbcc".repeat(5) + "aabb";
         let entries = list_entries_by_md5s(&conn, &[md5.as_str()]).unwrap();
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn delete_by_source_prefix_only_removes_matching_account_cache() {
+        let mut conn = open_db();
+        upsert_difficulty_table(&mut conn, &sample_table("bmz-rian-table:account-a:popular"))
+            .unwrap();
+        upsert_difficulty_table(&mut conn, &sample_table("bmz-rian-table:account-b:popular"))
+            .unwrap();
+        upsert_difficulty_table(&mut conn, &sample_table("https://example.com/table")).unwrap();
+
+        let removed =
+            delete_difficulty_tables_by_source_prefix(&conn, "bmz-rian-table:account-a:").unwrap();
+        let remaining = list_difficulty_tables(&conn).unwrap();
+
+        assert_eq!(removed, 1);
+        assert_eq!(remaining.len(), 2);
+        assert!(remaining.iter().all(|table| !table.source_url.contains("account-a")));
     }
 
     #[test]
