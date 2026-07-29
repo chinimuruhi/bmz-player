@@ -1,4 +1,4 @@
-pub(super) fn profile_selection_label(
+pub(in crate::ui) fn profile_selection_label(
     profiles: &[crate::storage::profile::ProfileSummary],
     profile_id: &str,
 ) -> String {
@@ -9,37 +9,42 @@ pub(super) fn profile_selection_label(
         .unwrap_or_else(|| profile_id.to_string())
 }
 
-pub(super) fn trimmed_non_empty(value: &str) -> Option<&str> {
+pub(in crate::ui) fn trimmed_non_empty(value: &str) -> Option<&str> {
     let value = value.trim();
     (!value.is_empty()).then_some(value)
 }
 
-pub(super) fn profile_id_text_edit(ui: &mut egui::Ui, value: &mut String) {
+pub(in crate::ui) fn profile_id_text_edit(ui: &mut egui::Ui, value: &mut String) {
     if ui.text_edit_singleline(value).changed() {
         sanitize_profile_id_input(value);
     }
 }
 
-pub(super) fn sanitize_profile_id_input(value: &mut String) {
+pub(in crate::ui) fn sanitize_profile_id_input(value: &mut String) {
     value.retain(is_profile_id_char);
     if value.len() > 64 {
         value.truncate(64);
     }
 }
 
-pub(super) fn is_profile_id_char(ch: char) -> bool {
+pub(in crate::ui) fn is_profile_id_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'
 }
 
-pub(super) fn volume_slider(ui: &mut egui::Ui, value: &mut u32, label: &str) {
+pub(in crate::ui) fn volume_slider(ui: &mut egui::Ui, value: &mut u32, label: &str) {
     ui.add(egui::Slider::new(value, 0..=100).text(label));
 }
 
-pub(super) fn lane_unit_slider(ui: &mut egui::Ui, value: &mut u32, label: &str) {
+pub(in crate::ui) fn lane_unit_slider(ui: &mut egui::Ui, value: &mut u32, label: &str) {
     lane_unit_slider_with_max(ui, value, label, 1000);
 }
 
-pub(super) fn lane_unit_slider_with_max(ui: &mut egui::Ui, value: &mut u32, label: &str, max: u32) {
+pub(in crate::ui) fn lane_unit_slider_with_max(
+    ui: &mut egui::Ui,
+    value: &mut u32,
+    label: &str,
+    max: u32,
+) {
     *value = (*value).min(max);
     ui.add(egui::Slider::new(value, 0..=max).text(label));
 }
@@ -48,7 +53,7 @@ const OFFSET_SLIDER_MIN_MS: i64 = -500;
 const OFFSET_SLIDER_MAX_MS: i64 = 500;
 const OFFSET_SLIDER_STEP_MS: f64 = 1.0;
 
-pub(super) fn offset_ms_slider(ui: &mut egui::Ui, value_us: &mut i64, label: &str) {
+pub(in crate::ui) fn offset_ms_slider(ui: &mut egui::Ui, value_us: &mut i64, label: &str) {
     let mut value_ms = (*value_us / 1_000).clamp(OFFSET_SLIDER_MIN_MS, OFFSET_SLIDER_MAX_MS);
     let response = ui.add(
         egui::Slider::new(&mut value_ms, OFFSET_SLIDER_MIN_MS..=OFFSET_SLIDER_MAX_MS)
@@ -62,7 +67,7 @@ pub(super) fn offset_ms_slider(ui: &mut egui::Ui, value_us: &mut i64, label: &st
     }
 }
 
-pub(super) fn judge_algorithm_label(value: JudgeAlgorithmConfig) -> &'static str {
+pub(in crate::ui) fn judge_algorithm_label(value: JudgeAlgorithmConfig) -> &'static str {
     match value {
         JudgeAlgorithmConfig::Combo => "COMBO",
         JudgeAlgorithmConfig::Duration => "DURATION",
@@ -70,14 +75,14 @@ pub(super) fn judge_algorithm_label(value: JudgeAlgorithmConfig) -> &'static str
     }
 }
 
-pub(super) fn fast_slow_scope_label(text: Localizer, value: FastSlowDisplayScope) -> String {
+pub(in crate::ui) fn fast_slow_scope_label(text: Localizer, value: FastSlowDisplayScope) -> String {
     match value {
         FastSlowDisplayScope::Auto => tr!(text, "profile-fast-slow-auto"),
         FastSlowDisplayScope::ThresholdMs => tr!(text, "profile-fast-slow-threshold-mode"),
     }
 }
 
-pub(super) fn rule_mode_label(value: RuleMode) -> &'static str {
+pub(in crate::ui) fn rule_mode_label(value: RuleMode) -> &'static str {
     match value {
         RuleMode::Beatoraja => "BEATORAJA",
         RuleMode::Lr2Oraja => "LR2ORAJA",
@@ -85,7 +90,7 @@ pub(super) fn rule_mode_label(value: RuleMode) -> &'static str {
     }
 }
 
-pub(super) fn gauge_label(value: GaugeTypeConfig) -> &'static str {
+pub(in crate::ui) fn gauge_label(value: GaugeTypeConfig) -> &'static str {
     match value {
         GaugeTypeConfig::AssistEasy => "ASSIST EASY",
         GaugeTypeConfig::Easy => "EASY",
@@ -97,7 +102,7 @@ pub(super) fn gauge_label(value: GaugeTypeConfig) -> &'static str {
     }
 }
 
-pub(super) fn gauge_auto_shift_label(value: GaugeAutoShiftConfig) -> &'static str {
+pub(in crate::ui) fn gauge_auto_shift_label(value: GaugeAutoShiftConfig) -> &'static str {
     match value {
         GaugeAutoShiftConfig::Off => "OFF",
         GaugeAutoShiftConfig::Continue => "CONTINUE",
@@ -107,7 +112,9 @@ pub(super) fn gauge_auto_shift_label(value: GaugeAutoShiftConfig) -> &'static st
     }
 }
 
-pub(super) fn bottom_shiftable_gauge_label(value: BottomShiftableGaugeConfig) -> &'static str {
+pub(in crate::ui) fn bottom_shiftable_gauge_label(
+    value: BottomShiftableGaugeConfig,
+) -> &'static str {
     match value {
         BottomShiftableGaugeConfig::AssistEasy => "ASSIST EASY",
         BottomShiftableGaugeConfig::Easy => "EASY",
@@ -115,7 +122,7 @@ pub(super) fn bottom_shiftable_gauge_label(value: BottomShiftableGaugeConfig) ->
     }
 }
 
-pub(super) fn random_label(value: RandomOptionConfig) -> &'static str {
+pub(in crate::ui) fn random_label(value: RandomOptionConfig) -> &'static str {
     match value {
         RandomOptionConfig::Off => "OFF",
         RandomOptionConfig::Mirror => "MIRROR",
@@ -132,7 +139,7 @@ pub(super) fn random_label(value: RandomOptionConfig) -> &'static str {
     }
 }
 
-pub(super) fn random_options() -> [(RandomOptionConfig, &'static str); 12] {
+pub(in crate::ui) fn random_options() -> [(RandomOptionConfig, &'static str); 12] {
     [
         (RandomOptionConfig::Off, "OFF"),
         (RandomOptionConfig::Mirror, "MIRROR"),
@@ -149,7 +156,7 @@ pub(super) fn random_options() -> [(RandomOptionConfig, &'static str); 12] {
     ]
 }
 
-pub(super) fn double_option_label(value: DoubleOptionConfig) -> &'static str {
+pub(in crate::ui) fn double_option_label(value: DoubleOptionConfig) -> &'static str {
     match value {
         DoubleOptionConfig::Off => "OFF",
         DoubleOptionConfig::Flip => "FLIP",
@@ -158,7 +165,7 @@ pub(super) fn double_option_label(value: DoubleOptionConfig) -> &'static str {
     }
 }
 
-pub(super) fn hs_fix_label(value: HsFixConfig) -> &'static str {
+pub(in crate::ui) fn hs_fix_label(value: HsFixConfig) -> &'static str {
     match value {
         HsFixConfig::Off => "OFF",
         HsFixConfig::StartBpm => "START BPM",
@@ -168,7 +175,7 @@ pub(super) fn hs_fix_label(value: HsFixConfig) -> &'static str {
     }
 }
 
-pub(super) fn target_label(value: TargetOptionConfig) -> String {
+pub(in crate::ui) fn target_label(value: TargetOptionConfig) -> String {
     match value {
         TargetOptionConfig::None => "NONE".to_string(),
         TargetOptionConfig::RankA => "RANK_A".to_string(),
@@ -187,14 +194,14 @@ pub(super) fn target_label(value: TargetOptionConfig) -> String {
     }
 }
 
-pub(super) fn grade_diff_display_label(value: ResultGradeDiffDisplay) -> &'static str {
+pub(in crate::ui) fn grade_diff_display_label(value: ResultGradeDiffDisplay) -> &'static str {
     match value {
         ResultGradeDiffDisplay::Next => "NEXT",
         ResultGradeDiffDisplay::Nearest => "NEAREST",
     }
 }
 
-pub(super) fn lane_effect_label(value: LaneEffectConfig) -> &'static str {
+pub(in crate::ui) fn lane_effect_label(value: LaneEffectConfig) -> &'static str {
     match value {
         LaneEffectConfig::Off => "OFF",
         LaneEffectConfig::Hidden => "HIDDEN",
@@ -203,7 +210,7 @@ pub(super) fn lane_effect_label(value: LaneEffectConfig) -> &'static str {
     }
 }
 
-pub(super) fn bga_mode_label(value: BgaModeConfig) -> &'static str {
+pub(in crate::ui) fn bga_mode_label(value: BgaModeConfig) -> &'static str {
     match value {
         BgaModeConfig::On => "ON",
         BgaModeConfig::Auto => "AUTO",
@@ -211,7 +218,7 @@ pub(super) fn bga_mode_label(value: BgaModeConfig) -> &'static str {
     }
 }
 
-pub(super) fn bga_expand_label(value: BgaExpandConfig) -> &'static str {
+pub(in crate::ui) fn bga_expand_label(value: BgaExpandConfig) -> &'static str {
     match value {
         BgaExpandConfig::Full => "FULL",
         BgaExpandConfig::KeepAspect => "KEEP ASPECT",
@@ -219,14 +226,14 @@ pub(super) fn bga_expand_label(value: BgaExpandConfig) -> &'static str {
     }
 }
 
-pub(super) fn hispeed_mode_label(value: HispeedModeConfig) -> &'static str {
+pub(in crate::ui) fn hispeed_mode_label(value: HispeedModeConfig) -> &'static str {
     match value {
         HispeedModeConfig::Normal => "NORMAL",
         HispeedModeConfig::Floating => "FLOATING",
     }
 }
 
-pub(super) fn replay_slot_rule_label(value: ReplaySlotRule) -> &'static str {
+pub(in crate::ui) fn replay_slot_rule_label(value: ReplaySlotRule) -> &'static str {
     match value {
         ReplaySlotRule::Disabled => "DISABLED",
         ReplaySlotRule::Always => "ALWAYS",
@@ -237,7 +244,7 @@ pub(super) fn replay_slot_rule_label(value: ReplaySlotRule) -> &'static str {
     }
 }
 
-pub(super) fn system_sound_path_row(
+pub(in crate::ui) fn system_sound_path_row(
     ui: &mut egui::Ui,
     text: Localizer,
     label: &str,
@@ -254,14 +261,14 @@ pub(super) fn system_sound_path_row(
     });
 }
 
-pub(super) fn ir_provider_text_row(ui: &mut egui::Ui, label: &str, value: &mut String) {
+pub(in crate::ui) fn ir_provider_text_row(ui: &mut egui::Ui, label: &str, value: &mut String) {
     ui.horizontal(|ui| {
         ui.label(label);
         ui.text_edit_singleline(value);
     });
 }
 
-pub(super) fn ir_provider_family(provider: &str) -> &'static str {
+pub(in crate::ui) fn ir_provider_family(provider: &str) -> &'static str {
     if crate::ir::rian_ir::is_rian_ir_provider(provider) {
         crate::ir::rian_ir::RIAN_IR_PROVIDER
     } else {
@@ -269,7 +276,7 @@ pub(super) fn ir_provider_family(provider: &str) -> &'static str {
     }
 }
 
-pub(super) fn normalized_ir_base_url(url: &str) -> Option<String> {
+pub(in crate::ui) fn normalized_ir_base_url(url: &str) -> Option<String> {
     let mut parsed = reqwest::Url::parse(url.trim()).ok()?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return None;
@@ -281,7 +288,7 @@ pub(super) fn normalized_ir_base_url(url: &str) -> Option<String> {
     Some(parsed.to_string().trim_end_matches('/').to_ascii_lowercase())
 }
 
-pub(super) fn classify_ir_provider_preset(provider: &IrProviderConfig) -> IrProviderPreset {
+pub(in crate::ui) fn classify_ir_provider_preset(provider: &IrProviderConfig) -> IrProviderPreset {
     let normalized = normalized_ir_base_url(&provider.base_url);
     let family = ir_provider_family(&provider.provider);
     let bmz_url = normalized_ir_base_url(crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL);
@@ -299,7 +306,10 @@ pub(super) fn classify_ir_provider_preset(provider: &IrProviderConfig) -> IrProv
     }
 }
 
-pub(super) fn apply_ir_provider_preset(provider: &mut IrProviderConfig, preset: IrProviderPreset) {
+pub(in crate::ui) fn apply_ir_provider_preset(
+    provider: &mut IrProviderConfig,
+    preset: IrProviderPreset,
+) {
     match preset {
         IrProviderPreset::BmzIr => {
             provider.provider = crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string();
@@ -313,7 +323,7 @@ pub(super) fn apply_ir_provider_preset(provider: &mut IrProviderConfig, preset: 
     }
 }
 
-pub(super) fn ir_provider_preset_label(text: Localizer, preset: IrProviderPreset) -> String {
+pub(in crate::ui) fn ir_provider_preset_label(text: Localizer, preset: IrProviderPreset) -> String {
     match preset {
         IrProviderPreset::BmzIr => tr!(text, "profile-ir-provider-bmz"),
         IrProviderPreset::RianIr => tr!(text, "profile-ir-provider-rian"),
@@ -321,7 +331,7 @@ pub(super) fn ir_provider_preset_label(text: Localizer, preset: IrProviderPreset
     }
 }
 
-pub(super) fn ir_send_policy_label(value: IrSendPolicyConfig) -> &'static str {
+pub(in crate::ui) fn ir_send_policy_label(value: IrSendPolicyConfig) -> &'static str {
     match value {
         IrSendPolicyConfig::UpdateScore => "UPDATE SCORE",
         IrSendPolicyConfig::Always => "ALWAYS",
@@ -329,7 +339,10 @@ pub(super) fn ir_send_policy_label(value: IrSendPolicyConfig) -> &'static str {
     }
 }
 
-pub(super) fn ir_primary_provider_label(provider: &IrProviderConfig, provider_key: &str) -> String {
+pub(in crate::ui) fn ir_primary_provider_label(
+    provider: &IrProviderConfig,
+    provider_key: &str,
+) -> String {
     let account = provider.account_display_name.trim();
     if account.is_empty() {
         format!("{provider_key} ({})", provider.base_url)
@@ -338,7 +351,7 @@ pub(super) fn ir_primary_provider_label(provider: &IrProviderConfig, provider_ke
     }
 }
 
-pub(super) fn sync_ir_provider_roles(ir_config: &mut IrConfig) -> bool {
+pub(in crate::ui) fn sync_ir_provider_roles(ir_config: &mut IrConfig) -> bool {
     let primary_provider = ir_config.primary_provider.trim();
     let mut changed = false;
     for provider in &mut ir_config.providers {
@@ -358,6 +371,7 @@ pub(super) fn sync_ir_provider_roles(ir_config: &mut IrConfig) -> bool {
     changed
 }
 
-pub(super) fn format_optional_timestamp(value: Option<i64>) -> String {
+pub(in crate::ui) fn format_optional_timestamp(value: Option<i64>) -> String {
     value.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string())
 }
+use super::*;

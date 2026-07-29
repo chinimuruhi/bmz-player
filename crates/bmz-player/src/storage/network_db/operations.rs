@@ -515,7 +515,7 @@ impl NetworkDatabase {
         )
     }
 
-    fn prune_succeeded_ir_score_jobs_with_policy(
+    pub(super) fn prune_succeeded_ir_score_jobs_with_policy(
         &mut self,
         now: i64,
         retention_seconds: i64,
@@ -618,3 +618,5 @@ impl NetworkDatabase {
         Ok(report)
     }
 }
+use super::rows::{ir_score_job_from_row, sql_placeholders};
+use super::*;

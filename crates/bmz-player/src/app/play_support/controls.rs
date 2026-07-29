@@ -1,4 +1,4 @@
-pub(super) fn cycle_bga_option_with_direction(
+pub(in crate::app) fn cycle_bga_option_with_direction(
     current: BgaModeConfig,
     direction: i32,
 ) -> BgaModeConfig {
@@ -6,7 +6,7 @@ pub(super) fn cycle_bga_option_with_direction(
     cycle_enum(VALUES, current, direction)
 }
 
-pub(super) fn cycle_bga_expand_with_direction(
+pub(in crate::app) fn cycle_bga_expand_with_direction(
     current: BgaExpandConfig,
     direction: i32,
 ) -> BgaExpandConfig {
@@ -15,7 +15,7 @@ pub(super) fn cycle_bga_expand_with_direction(
     cycle_enum(VALUES, current, direction)
 }
 
-pub(super) fn select_option_panel_for_holds(start_held: bool, select_held: bool) -> u8 {
+pub(in crate::app) fn select_option_panel_for_holds(start_held: bool, select_held: bool) -> u8 {
     match (start_held, select_held) {
         (true, true) => 3,
         (true, false) => 1,
@@ -24,7 +24,7 @@ pub(super) fn select_option_panel_for_holds(start_held: bool, select_held: bool)
     }
 }
 
-pub(super) fn select_option_panel_sound_for_transition(
+pub(in crate::app) fn select_option_panel_sound_for_transition(
     current_panel: u8,
     next_panel: u8,
 ) -> Option<crate::system_sound::SoundType> {
@@ -37,7 +37,7 @@ pub(super) fn select_option_panel_sound_for_transition(
     }
 }
 
-pub(super) fn transition_select_option_panel(
+pub(in crate::app) fn transition_select_option_panel(
     current_panel: &mut u8,
     on_started_at: &mut Instant,
     off_started_at: &mut [Option<Instant>; 6],
@@ -58,7 +58,7 @@ pub(super) fn transition_select_option_panel(
     true
 }
 
-pub(super) fn select_hold_state_from_pressed_controls(
+pub(in crate::app) fn select_hold_state_from_pressed_controls(
     pressed_controls: &HashSet<String>,
     bindings: &SelectKeyBindings,
 ) -> (bool, bool, HashSet<InputActionConfig>) {
@@ -73,7 +73,7 @@ pub(super) fn select_hold_state_from_pressed_controls(
     (start_held, select_held, e_action_holds)
 }
 
-pub(super) fn skin_logical_input_snapshot_from_pressed_controls(
+pub(in crate::app) fn skin_logical_input_snapshot_from_pressed_controls(
     pressed_controls: &HashSet<String>,
     bindings: &SelectKeyBindings,
 ) -> SkinLogicalInputSnapshot {
@@ -99,7 +99,7 @@ pub(super) fn skin_logical_input_snapshot_from_pressed_controls(
     SkinLogicalInputSnapshot { held }
 }
 
-pub(super) fn apply_skin_logical_input_to_scene(
+pub(in crate::app) fn apply_skin_logical_input_to_scene(
     scene: &mut AppSceneSnapshot,
     skin_input: SkinLogicalInputSnapshot,
 ) {
@@ -112,7 +112,7 @@ pub(super) fn apply_skin_logical_input_to_scene(
     }
 }
 
-pub(super) fn play_control_hold_state_from_pressed_inputs(
+pub(in crate::app) fn play_control_hold_state_from_pressed_inputs(
     pressed_inputs: &HashSet<(DeviceId, PhysicalControl)>,
     input: &PlayOptionInput,
 ) -> (bool, bool, bool) {
@@ -127,11 +127,11 @@ pub(super) fn play_control_hold_state_from_pressed_inputs(
     (e1_held, e2_held, e3_held)
 }
 
-pub(super) fn play_ready_blocked_by_control_holds(e1_held: bool, e2_held: bool) -> bool {
+pub(in crate::app) fn play_ready_blocked_by_control_holds(e1_held: bool, e2_held: bool) -> bool {
     e1_held || e2_held
 }
 
-pub(super) fn play_ready_blocked_by_recent_control_hold(
+pub(in crate::app) fn play_ready_blocked_by_recent_control_hold(
     last_control_hold_at: Option<Instant>,
     now: Instant,
 ) -> bool {
@@ -140,7 +140,7 @@ pub(super) fn play_ready_blocked_by_recent_control_hold(
     })
 }
 
-pub(super) fn should_begin_play_fadeout_after_final_notes(
+pub(in crate::app) fn should_begin_play_fadeout_after_final_notes(
     control: &str,
     bindings: &SelectKeyBindings,
     ready_started: bool,
@@ -155,7 +155,7 @@ pub(super) fn should_begin_play_fadeout_after_final_notes(
         && (play_fadeout_after_final_notes_control(control, bindings) || control == "Escape")
 }
 
-pub(super) fn should_play_retire_sound_for_failed_transition(
+pub(in crate::app) fn should_play_retire_sound_for_failed_transition(
     previous: bmz_gameplay::session::PlayState,
     current: bmz_gameplay::session::PlayState,
 ) -> bool {
@@ -163,25 +163,28 @@ pub(super) fn should_play_retire_sound_for_failed_transition(
         && current == bmz_gameplay::session::PlayState::Failed
 }
 
-pub(super) fn play_fadeout_after_final_notes_control(
+pub(in crate::app) fn play_fadeout_after_final_notes_control(
     control: &str,
     bindings: &SelectKeyBindings,
 ) -> bool {
     bindings.is_start(control) || bindings.is_e2_action(control)
 }
 
-pub(super) fn is_select_start_key(physical_key: PhysicalKey, bindings: &SelectKeyBindings) -> bool {
+pub(in crate::app) fn is_select_start_key(
+    physical_key: PhysicalKey,
+    bindings: &SelectKeyBindings,
+) -> bool {
     physical_key_name(physical_key).is_some_and(|control| bindings.is_start(&control))
 }
 
-pub(super) fn is_select_modifier_key(
+pub(in crate::app) fn is_select_modifier_key(
     physical_key: PhysicalKey,
     bindings: &SelectKeyBindings,
 ) -> bool {
     physical_key_name(physical_key).is_some_and(|control| bindings.is_e2_action(&control))
 }
 
-pub(super) fn should_toggle_select_gauge_auto_shift(
+pub(in crate::app) fn should_toggle_select_gauge_auto_shift(
     control: &str,
     start_held: bool,
     select_held: bool,
@@ -190,7 +193,7 @@ pub(super) fn should_toggle_select_gauge_auto_shift(
     start_held && (select_held || bindings.is_e2_action(control)) && bindings.is_ui_key2(control)
 }
 
-pub(super) fn should_toggle_select_judge_auto_adjust(
+pub(in crate::app) fn should_toggle_select_judge_auto_adjust(
     control: &str,
     start_held: bool,
     select_held: bool,
@@ -198,3 +201,4 @@ pub(super) fn should_toggle_select_judge_auto_adjust(
 ) -> bool {
     start_held && (select_held || bindings.is_e2_action(control)) && bindings.is_ui_key3(control)
 }
+use super::*;

@@ -19,11 +19,20 @@ pub const PRACTICE_ARG: &str = "--practice";
 pub const PRACTICE_START_MS_ARG: &str = "--practice-start-ms";
 pub const PRACTICE_END_MS_ARG: &str = "--practice-end-ms";
 
-include!("cli/model.rs");
-include!("cli/parse.rs");
-include!("cli/ir.rs");
-include!("cli/options.rs");
-include!("cli/help.rs");
+mod help;
+mod ir;
+mod model;
+mod options;
+mod parse;
+
+#[cfg(test)]
+use help::parse_beatoraja_replay_flag;
+pub use help::{app_help_text, args_request_help};
+pub use model::{
+    Command, CourseCommand, IrCommand, ProfileCommand, RivalAction, SongsCommand, TableCommand,
+};
+pub use options::AppOptions;
+pub use parse::parse_command;
 
 #[cfg(test)]
 #[path = "cli/tests.rs"]

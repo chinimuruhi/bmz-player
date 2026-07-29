@@ -1,5 +1,5 @@
 /// スキンパス文字列からスキンルートディレクトリ (親ディレクトリ) を得る。
-pub(super) fn skin_root_path(app_paths: &AppPaths, skin_path: &str) -> Option<PathBuf> {
+pub(in crate::ui) fn skin_root_path(app_paths: &AppPaths, skin_path: &str) -> Option<PathBuf> {
     let trimmed = skin_path.trim();
     if trimmed.is_empty() {
         return None;
@@ -13,7 +13,7 @@ pub(super) fn skin_root_path(app_paths: &AppPaths, skin_path: &str) -> Option<Pa
 ///
 /// beatoraja の `path|filter|` 形式の `|...|` 接尾辞 (lanecover などの
 /// アセット用途タグ) は対象ファイル名には含まれないので、列挙前に取り除く。
-pub(super) fn glob_candidates(root: &Path, pattern: &str) -> Vec<String> {
+pub(in crate::ui) fn glob_candidates(root: &Path, pattern: &str) -> Vec<String> {
     let pattern = pattern.replace('\\', "/");
     let pattern = pattern.split_once('|').map_or(pattern.as_str(), |(path, _)| path).to_string();
     let (dir_part, name_part) = match pattern.rfind('/') {
@@ -41,7 +41,7 @@ pub(super) fn glob_candidates(root: &Path, pattern: &str) -> Vec<String> {
     candidates
 }
 
-pub(super) fn normalize_filepath_selection(
+pub(in crate::ui) fn normalize_filepath_selection(
     selected: &str,
     candidates: &[String],
 ) -> Option<String> {
@@ -63,7 +63,7 @@ pub(super) fn normalize_filepath_selection(
         .cloned()
 }
 
-pub(super) fn filepath_selection_label(value: &str) -> &str {
+pub(in crate::ui) fn filepath_selection_label(value: &str) -> &str {
     let slash = value.rfind('/').into_iter().chain(value.rfind('\\')).max();
     match slash {
         Some(index) if index + 1 < value.len() => &value[index + 1..],
@@ -73,7 +73,7 @@ pub(super) fn filepath_selection_label(value: &str) -> &str {
 
 /// property の既定選択肢名。beatoraja と同じく `def` が item name と一致する
 /// ときだけ採用し、未指定/不一致なら先頭 item を使う。
-pub(super) fn property_default(prop: &SkinPropertyDef) -> String {
+pub(in crate::ui) fn property_default(prop: &SkinPropertyDef) -> String {
     prop.item
         .iter()
         .find(|item| !prop.def.is_empty() && item.name == prop.def)
@@ -82,14 +82,14 @@ pub(super) fn property_default(prop: &SkinPropertyDef) -> String {
         .unwrap_or_default()
 }
 
-pub(super) fn property_selection_is_valid(prop: &SkinPropertyDef, selected: &str) -> bool {
+pub(in crate::ui) fn property_selection_is_valid(prop: &SkinPropertyDef, selected: &str) -> bool {
     if let Ok(op) = selected.parse::<i32>() {
         return prop.item.iter().any(|item| item.op == op);
     }
     prop.item.iter().any(|item| item.name == selected)
 }
 
-pub(super) fn filepath_default(
+pub(in crate::ui) fn filepath_default(
     filepath: &SkinFilepathDef,
     candidates: &[String],
 ) -> Option<String> {
@@ -116,7 +116,7 @@ pub(super) fn filepath_default(
     candidates.first().cloned()
 }
 
-pub(super) fn filename_matches_def(candidate: &str, def: &str) -> bool {
+pub(in crate::ui) fn filename_matches_def(candidate: &str, def: &str) -> bool {
     let file_name = Path::new(candidate).file_name().and_then(|name| name.to_str()).unwrap_or("");
     if file_name.eq_ignore_ascii_case(def) {
         return true;
@@ -132,7 +132,7 @@ pub(super) fn filename_matches_def(candidate: &str, def: &str) -> bool {
     })
 }
 
-pub(super) fn filepath_def_acronym(def: &str) -> Option<String> {
+pub(in crate::ui) fn filepath_def_acronym(def: &str) -> Option<String> {
     if !def.contains('-') {
         return None;
     }
@@ -142,3 +142,4 @@ pub(super) fn filepath_def_acronym(def: &str) -> Option<String> {
         .collect::<String>();
     (!acronym.is_empty()).then_some(acronym)
 }
+use super::*;

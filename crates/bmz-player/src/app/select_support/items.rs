@@ -1,8 +1,12 @@
-pub(super) fn enabled_root_paths(app_config: &crate::config::app_config::AppConfig) -> Vec<String> {
+pub(in crate::app) fn enabled_root_paths(
+    app_config: &crate::config::app_config::AppConfig,
+) -> Vec<String> {
     app_config.songs.roots.iter().filter(|p| p.enabled).map(|p| p.path.clone()).collect()
 }
 
-pub(super) fn table_source_order(app_config: &crate::config::app_config::AppConfig) -> Vec<String> {
+pub(in crate::app) fn table_source_order(
+    app_config: &crate::config::app_config::AppConfig,
+) -> Vec<String> {
     app_config
         .tables
         .sources
@@ -18,7 +22,7 @@ pub(super) fn table_source_order(app_config: &crate::config::app_config::AppConf
 /// チャートを「全て」消してしまう場合のみ、チャートが残るモードへ前方向に
 /// 自動送りする。実際に適用したモードを items と共に返すので、呼び出し側で
 /// 永続化 / 表示状態を更新できる。
-pub(super) fn load_items_for_stack(
+pub(in crate::app) fn load_items_for_stack(
     boot: &crate::bootstrap::BootstrappedApp,
     stack: &[String],
     search_history: &[String],
@@ -40,7 +44,7 @@ pub(super) fn load_items_for_stack(
     (items, resolved)
 }
 
-pub(super) fn build_select_items_for_stack(
+pub(in crate::app) fn build_select_items_for_stack(
     boot: &crate::bootstrap::BootstrappedApp,
     stack: &[String],
     search_history: &[String],
@@ -278,3 +282,4 @@ pub(super) fn build_select_items_for_stack(
         }
     }
 }
+use super::*;

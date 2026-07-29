@@ -94,3 +94,4 @@ pub enum ProfileCommand {
     Create { id: String, display_name: Option<String>, activate: bool },
     Copy { source_id: String, target_id: String, display_name: Option<String>, activate: bool },
 }
+use super::AppOptions;

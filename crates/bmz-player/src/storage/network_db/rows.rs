@@ -1,8 +1,10 @@
-fn sql_placeholders(count: usize) -> String {
+use super::*;
+
+pub(super) fn sql_placeholders(count: usize) -> String {
     std::iter::repeat_n("?", count).collect::<Vec<_>>().join(", ")
 }
 
-fn ir_score_job_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<IrScoreJobRecord> {
+pub(super) fn ir_score_job_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<IrScoreJobRecord> {
     let chart_sha256: String = row.get(4)?;
     let kind: String = row.get(13)?;
     Ok(IrScoreJobRecord {

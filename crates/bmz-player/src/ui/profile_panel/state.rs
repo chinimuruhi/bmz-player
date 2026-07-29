@@ -1,13 +1,13 @@
-pub(super) struct ProfileSettingsPanelActions {
-    pub(super) save: bool,
-    pub(super) save_app_config: bool,
+pub(in crate::ui) struct ProfileSettingsPanelActions {
+    pub(in crate::ui) save: bool,
+    pub(in crate::ui) save_app_config: bool,
 }
 
-pub(super) fn scene_restricts_settings(scene: &str) -> bool {
+pub(in crate::ui) fn scene_restricts_settings(scene: &str) -> bool {
     matches!(scene, "Decide" | "Play")
 }
 
-pub(super) fn restore_restricted_profile_settings(
+pub(in crate::ui) fn restore_restricted_profile_settings(
     profile: &mut ProfileConfig,
     mut readonly: ProfileConfig,
 ) {
@@ -17,3 +17,4 @@ pub(super) fn restore_restricted_profile_settings(
     readonly.input = profile.input.clone();
     *profile = readonly;
 }
+use super::*;

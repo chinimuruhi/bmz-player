@@ -3,7 +3,7 @@
 /// 指定モードがこの一覧の全 bar を消す（= 残るのが mismatch のチャート行だけ）
 /// 場合のみ、チャートが残るモードへ前方向に送る。フォルダ等チャート以外の行が
 /// 1 つでも残る、または ALL のように絞り込まないモードの場合は据え置く。
-pub(super) fn resolve_non_empty_mode_filter(
+pub(in crate::app) fn resolve_non_empty_mode_filter(
     items: &[SelectItem],
     start: SelectModeFilter,
 ) -> SelectModeFilter {
@@ -18,7 +18,7 @@ pub(super) fn resolve_non_empty_mode_filter(
 }
 
 /// `apply_select_mode_filter` を適用すると一覧が空になるか。
-pub(super) fn mode_filter_removes_everything(
+pub(in crate::app) fn mode_filter_removes_everything(
     items: &[SelectItem],
     filter: SelectModeFilter,
 ) -> bool {
@@ -40,7 +40,10 @@ pub(super) fn mode_filter_removes_everything(
     })
 }
 
-pub(super) fn apply_select_mode_filter(items: &mut Vec<SelectItem>, filter: SelectModeFilter) {
+pub(in crate::app) fn apply_select_mode_filter(
+    items: &mut Vec<SelectItem>,
+    filter: SelectModeFilter,
+) {
     let Some(key_mode) = filter.key_mode() else {
         return;
     };
@@ -54,7 +57,7 @@ pub(super) fn apply_select_mode_filter(items: &mut Vec<SelectItem>, filter: Sele
     });
 }
 
-pub(super) fn apply_select_sort(items: &mut [SelectItem], sort: SelectSort) {
+pub(in crate::app) fn apply_select_sort(items: &mut [SelectItem], sort: SelectSort) {
     items.sort_by(|a, b| match (a, b) {
         (SelectItem::Chart(a), SelectItem::Chart(b)) => compare_select_chart_rows(a, b, sort),
         _ => std::cmp::Ordering::Equal,
@@ -62,7 +65,7 @@ pub(super) fn apply_select_sort(items: &mut [SelectItem], sort: SelectSort) {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum SelectItemKey {
+pub(in crate::app) enum SelectItemKey {
     Folder(String),
     ChartId(i64),
     ChartSha256([u8; 32]),
@@ -76,7 +79,7 @@ pub(super) enum SelectItemKey {
     AdvancedSettings,
 }
 
-pub(super) fn select_item_key(item: &SelectItem) -> SelectItemKey {
+pub(in crate::app) fn select_item_key(item: &SelectItem) -> SelectItemKey {
     match item {
         SelectItem::Folder { path, .. } => SelectItemKey::Folder(path.clone()),
         SelectItem::Chart(row) => row
@@ -102,7 +105,7 @@ pub(super) fn select_item_key(item: &SelectItem) -> SelectItemKey {
     }
 }
 
-pub(super) fn favorite_hints_for_row(
+pub(in crate::app) fn favorite_hints_for_row(
     row: &crate::screens::select_model::SelectChartRow,
 ) -> FavoriteHints {
     let folder = row.chart.as_ref().map(|chart| chart.folder_path.clone()).unwrap_or_default();
@@ -114,7 +117,7 @@ pub(super) fn favorite_hints_for_row(
     }
 }
 
-pub(super) fn restored_select_index(
+pub(in crate::app) fn restored_select_index(
     items: &[SelectItem],
     previous_selected_key: Option<&SelectItemKey>,
     previous_index: usize,
@@ -124,7 +127,7 @@ pub(super) fn restored_select_index(
         .unwrap_or_else(|| previous_index.min(items.len().saturating_sub(1)))
 }
 
-pub(super) fn compare_select_chart_rows(
+pub(in crate::app) fn compare_select_chart_rows(
     a: &crate::screens::select_model::SelectChartRow,
     b: &crate::screens::select_model::SelectChartRow,
     sort: SelectSort,
@@ -142,19 +145,19 @@ pub(super) fn compare_select_chart_rows(
     ordering.then_with(|| compare_case_insensitive(a.display_title(), b.display_title()))
 }
 
-pub(super) fn compare_case_insensitive(a: &str, b: &str) -> std::cmp::Ordering {
+pub(in crate::app) fn compare_case_insensitive(a: &str, b: &str) -> std::cmp::Ordering {
     a.to_lowercase().cmp(&b.to_lowercase())
 }
 
-pub(super) fn chart_initial_bpm(row: &crate::screens::select_model::SelectChartRow) -> f64 {
+pub(in crate::app) fn chart_initial_bpm(row: &crate::screens::select_model::SelectChartRow) -> f64 {
     row.chart.as_ref().map(|chart| chart.initial_bpm).unwrap_or(0.0)
 }
 
-pub(super) fn chart_length_ms(row: &crate::screens::select_model::SelectChartRow) -> i64 {
+pub(in crate::app) fn chart_length_ms(row: &crate::screens::select_model::SelectChartRow) -> i64 {
     row.chart.as_ref().map(|chart| chart.length_ms).unwrap_or(0)
 }
 
-pub(super) fn compare_play_level(
+pub(in crate::app) fn compare_play_level(
     a: &crate::screens::select_model::SelectChartRow,
     b: &crate::screens::select_model::SelectChartRow,
 ) -> std::cmp::Ordering {
@@ -163,11 +166,11 @@ pub(super) fn compare_play_level(
         .then_with(|| compare_case_insensitive(a.display_title(), b.display_title()))
 }
 
-pub(super) fn play_level_number(row: &crate::screens::select_model::SelectChartRow) -> f64 {
+pub(in crate::app) fn play_level_number(row: &crate::screens::select_model::SelectChartRow) -> f64 {
     row.chart.as_ref().and_then(|chart| chart.play_level.parse::<f64>().ok()).unwrap_or(0.0)
 }
 
-pub(super) fn clear_rank(row: &crate::screens::select_model::SelectChartRow) -> i8 {
+pub(in crate::app) fn clear_rank(row: &crate::screens::select_model::SelectChartRow) -> i8 {
     if !row.in_library() {
         // 難易度表にあるがローカル未所持。NoPlay よりさらに下位へ並べる。
         return -1;
@@ -178,10 +181,11 @@ pub(super) fn clear_rank(row: &crate::screens::select_model::SelectChartRow) -> 
     ) as i8
 }
 
-pub(super) fn ex_score(row: &crate::screens::select_model::SelectChartRow) -> u32 {
+pub(in crate::app) fn ex_score(row: &crate::screens::select_model::SelectChartRow) -> u32 {
     row.best_score.as_ref().map(|score| score.ex_score).unwrap_or(0)
 }
 
-pub(super) fn bp(row: &crate::screens::select_model::SelectChartRow) -> u32 {
+pub(in crate::app) fn bp(row: &crate::screens::select_model::SelectChartRow) -> u32 {
     row.best_score.as_ref().map(|score| score.bp).unwrap_or(u32::MAX)
 }
+use super::*;

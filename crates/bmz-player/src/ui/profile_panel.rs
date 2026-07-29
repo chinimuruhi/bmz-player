@@ -1,6 +1,11 @@
 use super::*;
 
-include!("profile_panel/state.rs");
-include!("profile_panel/view.rs");
-include!("profile_panel/manager.rs");
-include!("profile_panel/helpers.rs");
+mod helpers;
+mod manager;
+mod state;
+mod view;
+
+pub(super) use helpers::*;
+pub(super) use manager::*;
+pub(super) use state::*;
+pub(super) use view::*;

@@ -1,4 +1,4 @@
-pub(super) fn skin_path_combo(
+pub(in crate::ui) fn skin_path_combo(
     ui: &mut egui::Ui,
     skin: &mut SkinConfig,
     slot: SkinSlot,
@@ -52,7 +52,7 @@ pub(super) fn skin_path_combo(
     combo_changed || text_changed
 }
 
-pub(super) fn skin_candidate_label(
+pub(in crate::ui) fn skin_candidate_label(
     candidates: &[SkinCandidate],
     current: &str,
     show_bundled_origin: bool,
@@ -68,7 +68,7 @@ pub(super) fn skin_candidate_label(
         .unwrap_or_else(|| current.to_string())
 }
 
-pub(super) fn skin_candidate_display(
+pub(in crate::ui) fn skin_candidate_display(
     candidate: &SkinCandidate,
     show_bundled_origin: bool,
     text: Localizer,
@@ -82,7 +82,7 @@ pub(super) fn skin_candidate_display(
     if let Some(label) = label { format!("{label} {text}") } else { text }
 }
 
-pub(super) fn skin_candidate_origin_label(
+pub(in crate::ui) fn skin_candidate_origin_label(
     origin: SkinCandidateOrigin,
     show_bundled_origin: bool,
     text: Localizer,
@@ -97,11 +97,14 @@ pub(super) fn skin_candidate_origin_label(
     }
 }
 
-pub(super) fn show_bundled_skin_origin(app_paths: &AppPaths, skin_catalog: &SkinCatalog) -> bool {
+pub(in crate::ui) fn show_bundled_skin_origin(
+    app_paths: &AppPaths,
+    skin_catalog: &SkinCatalog,
+) -> bool {
     !app_paths.hides_bundled_skin_label() && skin_catalog_has_non_bundled_candidate(skin_catalog)
 }
 
-pub(super) fn skin_catalog_has_non_bundled_candidate(skin_catalog: &SkinCatalog) -> bool {
+pub(in crate::ui) fn skin_catalog_has_non_bundled_candidate(skin_catalog: &SkinCatalog) -> bool {
     let groups: [&[SkinCandidate]; 14] = [
         &skin_catalog.select,
         &skin_catalog.decide,
@@ -123,7 +126,7 @@ pub(super) fn skin_catalog_has_non_bundled_candidate(skin_catalog: &SkinCatalog)
     })
 }
 
-pub(super) fn skin_slot_path(skin: &SkinConfig, slot: SkinSlot) -> &str {
+pub(in crate::ui) fn skin_slot_path(skin: &SkinConfig, slot: SkinSlot) -> &str {
     match slot {
         SkinSlot::Select => &skin.select,
         SkinSlot::Decide => &skin.decide,
@@ -142,7 +145,7 @@ pub(super) fn skin_slot_path(skin: &SkinConfig, slot: SkinSlot) -> &str {
     }
 }
 
-pub(super) fn skin_slot_path_mut(skin: &mut SkinConfig, slot: SkinSlot) -> &mut String {
+pub(in crate::ui) fn skin_slot_path_mut(skin: &mut SkinConfig, slot: SkinSlot) -> &mut String {
     match slot {
         SkinSlot::Select => &mut skin.select,
         SkinSlot::Decide => &mut skin.decide,
@@ -161,7 +164,7 @@ pub(super) fn skin_slot_path_mut(skin: &mut SkinConfig, slot: SkinSlot) -> &mut 
     }
 }
 
-pub(super) fn skin_slot_options_mut(
+pub(in crate::ui) fn skin_slot_options_mut(
     skin: &mut SkinConfig,
     slot: SkinSlot,
 ) -> &mut BTreeMap<String, String> {
@@ -183,7 +186,7 @@ pub(super) fn skin_slot_options_mut(
     }
 }
 
-pub(super) fn skin_slot_files_mut(
+pub(in crate::ui) fn skin_slot_files_mut(
     skin: &mut SkinConfig,
     slot: SkinSlot,
 ) -> &mut BTreeMap<String, String> {
@@ -205,7 +208,7 @@ pub(super) fn skin_slot_files_mut(
     }
 }
 
-pub(super) fn skin_slot_offsets_mut(
+pub(in crate::ui) fn skin_slot_offsets_mut(
     skin: &mut SkinConfig,
     slot: SkinSlot,
 ) -> &mut Vec<SkinOffsetConfig> {
@@ -227,7 +230,7 @@ pub(super) fn skin_slot_offsets_mut(
     }
 }
 
-pub(super) fn skin_slot_history_key(slot: SkinSlot, path: &str) -> String {
+pub(in crate::ui) fn skin_slot_history_key(slot: SkinSlot, path: &str) -> String {
     let slot_name = match slot {
         SkinSlot::Select => "select",
         SkinSlot::Decide => "decide",
@@ -247,7 +250,7 @@ pub(super) fn skin_slot_history_key(slot: SkinSlot, path: &str) -> String {
     format!("{slot_name}::{path}")
 }
 
-pub(super) fn save_skin_slot_history(skin: &mut SkinConfig, slot: SkinSlot) {
+pub(in crate::ui) fn save_skin_slot_history(skin: &mut SkinConfig, slot: SkinSlot) {
     let path = skin_slot_path(skin, slot).trim().to_string();
     if path.is_empty() {
         return;
@@ -261,7 +264,7 @@ pub(super) fn save_skin_slot_history(skin: &mut SkinConfig, slot: SkinSlot) {
     );
 }
 
-pub(super) fn restore_skin_slot_history(skin: &mut SkinConfig, slot: SkinSlot) {
+pub(in crate::ui) fn restore_skin_slot_history(skin: &mut SkinConfig, slot: SkinSlot) {
     let path = skin_slot_path(skin, slot).trim().to_string();
     let history_key = skin_slot_history_key(slot, &path);
     let Some(entry) =
@@ -277,3 +280,4 @@ pub(super) fn restore_skin_slot_history(skin: &mut SkinConfig, slot: SkinSlot) {
     *skin_slot_files_mut(skin, slot) = entry.files;
     *skin_slot_offsets_mut(skin, slot) = entry.offsets;
 }
+use super::*;

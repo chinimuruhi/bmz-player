@@ -1,4 +1,8 @@
-async fn upload_local(
+use super::download::now_unix_seconds;
+use super::jobs::sync_cli_jobs;
+use super::*;
+
+pub(super) async fn upload_local(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     options: IrLocalUploadOptions,
@@ -253,7 +257,10 @@ fn print_local_upload_sync_report(
     }
 }
 
-fn ensure_full_upload_progress(sync_report: &IrSyncReport, total_submitted: u32) -> Result<()> {
+pub(super) fn ensure_full_upload_progress(
+    sync_report: &IrSyncReport,
+    total_submitted: u32,
+) -> Result<()> {
     if sync_report.failed > 0 {
         bail!(
             "full local upload stopped after {total_submitted} submissions because {} jobs failed",

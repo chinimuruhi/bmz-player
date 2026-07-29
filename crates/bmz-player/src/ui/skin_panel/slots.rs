@@ -1,15 +1,15 @@
 /// スキン設定パネルからのアクション要求。
-pub(super) struct SkinPanelActions {
+pub(in crate::ui) struct SkinPanelActions {
     /// 「保存」ボタンが押された (profile.toml へ書き出し)。
-    pub(super) save: bool,
+    pub(in crate::ui) save: bool,
     /// 「リセット」ボタンが押された (profile.toml の値へ戻す)。
-    pub(super) reset: bool,
+    pub(in crate::ui) reset: bool,
     /// パネル内のスキン設定変更に対して必要な反映対象。
-    pub(super) reload: SkinReloadRequest,
+    pub(in crate::ui) reload: SkinReloadRequest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SkinSlot {
+pub(in crate::ui) enum SkinSlot {
     Select,
     Decide,
     Play4,
@@ -29,7 +29,7 @@ pub(super) enum SkinSlot {
 impl SkinSlot {
     /// locale を切り替えても egui の永続 widget ID が変わらないよう、
     /// i18n 前に ID へ使われていた日本語ラベルを固定 salt として維持する。
-    const fn path_combo_id(self) -> &'static str {
+    pub(in crate::ui) const fn path_combo_id(self) -> &'static str {
         match self {
             Self::Select => "選曲",
             Self::Decide => "決定",
@@ -48,7 +48,7 @@ impl SkinSlot {
         }
     }
 
-    const fn defs_header_id(self) -> &'static str {
+    pub(in crate::ui) const fn defs_header_id(self) -> &'static str {
         match self {
             Self::Select => "選曲スキン",
             Self::Decide => "決定スキン",
@@ -68,7 +68,7 @@ impl SkinSlot {
     }
 }
 
-pub(super) fn skin_scene_label(slot: SkinSlot, text: Localizer) -> String {
+pub(in crate::ui) fn skin_scene_label(slot: SkinSlot, text: Localizer) -> String {
     match slot {
         SkinSlot::Select => tr!(text, "skin-scene-select"),
         SkinSlot::Decide => tr!(text, "skin-scene-decide"),
@@ -87,11 +87,11 @@ pub(super) fn skin_scene_label(slot: SkinSlot, text: Localizer) -> String {
     }
 }
 
-pub(super) fn skin_scene_defs_label(slot: SkinSlot, text: Localizer) -> String {
+pub(in crate::ui) fn skin_scene_defs_label(slot: SkinSlot, text: Localizer) -> String {
     tr!(text, "skin-scene-options", "scene" => skin_scene_label(slot, text))
 }
 
-pub(super) fn skin_reload_request_from_diff(
+pub(in crate::ui) fn skin_reload_request_from_diff(
     before: &SkinConfig,
     after: &SkinConfig,
 ) -> SkinReloadRequest {
@@ -224,3 +224,4 @@ pub(super) fn skin_reload_request_from_diff(
         || course_result_offsets_changed;
     request
 }
+use super::*;

@@ -1,6 +1,9 @@
+use super::download::{now_unix_seconds, primary_provider};
 /// `ir replay <SCORE_ID>` — IR リプレイをダウンロードし、hash を検証して
 /// プロファイル配下に保存する。`--boot-replay-file` でそのまま再生できる。
-async fn replay(
+use super::*;
+
+pub(super) async fn replay(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     score_id: &str,
@@ -27,7 +30,7 @@ async fn replay(
 }
 
 /// `ir device-key` — 署名鍵の表示。`rotate` で旧鍵を失効し新しい鍵を登録する。
-async fn device_key(
+pub(super) async fn device_key(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     rotate: bool,
@@ -63,7 +66,7 @@ async fn device_key(
     Ok(())
 }
 
-async fn rivals(
+pub(super) async fn rivals(
     profile_paths: &ProfilePaths,
     profile: &mut ProfileConfig,
     action: Option<RivalAction>,
@@ -172,7 +175,7 @@ pub fn sync_ir_rivals_into_profile(
     changed
 }
 
-fn load_active_profile() -> Result<(ProfilePaths, ProfileConfig)> {
+pub(super) fn load_active_profile() -> Result<(ProfilePaths, ProfileConfig)> {
     let app_paths = resolve_app_paths()?;
     let app_config = load_app_config(&app_paths.config_toml)
         .context("failed to load data/config.toml; run the app once to create it")?;

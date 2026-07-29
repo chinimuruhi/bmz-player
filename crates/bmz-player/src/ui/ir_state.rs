@@ -3,85 +3,85 @@
 /// ログインはネットワーク I/O なので tokio タスクで実行し、
 /// 結果は channel 経由で次フレーム以降に反映する。
 #[derive(Default)]
-struct IrLoginUiState {
-    email: String,
-    password: String,
-    busy: bool,
-    busy_target: Option<IrProviderUiTarget>,
-    message: Option<IrProviderUiMessage>,
-    receiver: Option<std::sync::mpsc::Receiver<Result<IrLoginOutcome, String>>>,
+pub(super) struct IrLoginUiState {
+    pub(super) email: String,
+    pub(super) password: String,
+    pub(super) busy: bool,
+    pub(super) busy_target: Option<IrProviderUiTarget>,
+    pub(super) message: Option<IrProviderUiMessage>,
+    pub(super) receiver: Option<std::sync::mpsc::Receiver<Result<IrLoginOutcome, String>>>,
 }
 
 #[derive(Default)]
-struct ProfileManagerUiState {
-    create_id: String,
-    create_display_name: String,
-    create_activate: bool,
-    copy_source_id: String,
-    copy_target_id: String,
-    copy_display_name: String,
-    copy_activate: bool,
-    message: String,
-    error: String,
+pub(super) struct ProfileManagerUiState {
+    pub(super) create_id: String,
+    pub(super) create_display_name: String,
+    pub(super) create_activate: bool,
+    pub(super) copy_source_id: String,
+    pub(super) copy_target_id: String,
+    pub(super) copy_display_name: String,
+    pub(super) copy_activate: bool,
+    pub(super) message: String,
+    pub(super) error: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct IrProviderUiTarget {
-    provider: String,
-    base_url: String,
+pub(super) struct IrProviderUiTarget {
+    pub(super) provider: String,
+    pub(super) base_url: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum IrProviderPreset {
+pub(super) enum IrProviderPreset {
     BmzIr,
     RianIr,
     Other,
 }
 
 impl IrProviderUiTarget {
-    fn new(provider: String, base_url: String) -> Self {
+    pub(super) fn new(provider: String, base_url: String) -> Self {
         Self { provider, base_url }
     }
 
-    fn matches(&self, provider: &str, base_url: &str) -> bool {
+    pub(super) fn matches(&self, provider: &str, base_url: &str) -> bool {
         self.provider == provider && self.base_url == base_url
     }
 }
 
 #[derive(Debug, Clone)]
-struct IrProviderUiMessage {
-    target: IrProviderUiTarget,
-    ok: bool,
-    text: String,
+pub(super) struct IrProviderUiMessage {
+    pub(super) target: IrProviderUiTarget,
+    pub(super) ok: bool,
+    pub(super) text: String,
 }
 
 /// ログインタスクから UI スレッドへ返す結果。
-struct IrLoginOutcome {
-    provider: String,
-    provider_key: String,
-    base_url: String,
-    account_id: String,
-    display_name: String,
+pub(super) struct IrLoginOutcome {
+    pub(super) provider: String,
+    pub(super) provider_key: String,
+    pub(super) base_url: String,
+    pub(super) account_id: String,
+    pub(super) display_name: String,
 }
 
 /// プロファイル設定パネルの IR device key 操作状態。
 #[derive(Default)]
-struct IrDeviceKeyUiState {
-    busy_provider: Option<String>,
-    busy_target: Option<IrProviderUiTarget>,
-    message: Option<IrProviderUiMessage>,
-    receiver: Option<std::sync::mpsc::Receiver<Result<IrDeviceKeyOutcome, String>>>,
+pub(super) struct IrDeviceKeyUiState {
+    pub(super) busy_provider: Option<String>,
+    pub(super) busy_target: Option<IrProviderUiTarget>,
+    pub(super) message: Option<IrProviderUiMessage>,
+    pub(super) receiver: Option<std::sync::mpsc::Receiver<Result<IrDeviceKeyOutcome, String>>>,
 }
 
-struct IrDeviceKeyOutcome {
-    provider: String,
-    base_url: String,
-    public_key: String,
-    key_id: String,
+pub(super) struct IrDeviceKeyOutcome {
+    pub(super) provider: String,
+    pub(super) base_url: String,
+    pub(super) public_key: String,
+    pub(super) key_id: String,
 }
 
 impl IrDeviceKeyUiState {
-    fn poll(&mut self, text: Localizer) {
+    pub(super) fn poll(&mut self, text: Localizer) {
         let Some(receiver) = &self.receiver else {
             return;
         };
@@ -109,7 +109,7 @@ impl IrDeviceKeyUiState {
         };
     }
 
-    fn start_rotate(
+    pub(super) fn start_rotate(
         &mut self,
         profile_root: std::path::PathBuf,
         provider: String,
@@ -157,7 +157,7 @@ impl IrDeviceKeyUiState {
 impl IrLoginUiState {
     /// ログインタスクの完了を取り込み、成功時は provider 設定を更新する。
     /// profile 設定が更新された (保存が必要な) 場合に true を返す。
-    fn poll(&mut self, profile: &mut ProfileConfig, text: Localizer) -> bool {
+    pub(super) fn poll(&mut self, profile: &mut ProfileConfig, text: Localizer) -> bool {
         let Some(receiver) = &self.receiver else {
             return false;
         };
@@ -208,7 +208,7 @@ impl IrLoginUiState {
     }
 
     /// ログインタスクを起動する。
-    fn start_login(
+    pub(super) fn start_login(
         &mut self,
         profile_root: std::path::PathBuf,
         provider: String,
@@ -261,16 +261,17 @@ impl IrLoginUiState {
     }
 }
 
-fn now_unix_seconds() -> i64 {
+pub(super) fn now_unix_seconds() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }
 
-fn short_public_key(public_key: &str) -> String {
+pub(super) fn short_public_key(public_key: &str) -> String {
     if public_key.len() <= 16 {
         return public_key.to_string();
     }
     format!("{}…{}", &public_key[..8], &public_key[public_key.len() - 8..])
 }
+use super::*;

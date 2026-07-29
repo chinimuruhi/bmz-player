@@ -1,10 +1,10 @@
 /// 設定パネルの出力デバイス選択 ComboBox 用キャッシュ。
 #[derive(Default)]
-struct AudioDevicePickerState {
+pub(super) struct AudioDevicePickerState {
     /// 列挙済み出力デバイス名(ASIO ならドライバ名)。
-    names: Vec<String>,
+    pub(super) names: Vec<String>,
     /// `names` を列挙したときのバックエンド。変化したら再列挙する。
-    backend: Option<AudioBackend>,
+    pub(super) backend: Option<AudioBackend>,
 }
 
 impl EguiLayer {
@@ -352,7 +352,7 @@ impl EguiLayer {
     }
 }
 
-fn egui_frame_needs_full_state(
+pub(super) fn egui_frame_needs_full_state(
     visible: bool,
     practice_overlay: bool,
     has_update_dialog: bool,
@@ -364,7 +364,7 @@ fn egui_frame_needs_full_state(
 
 /// egui のデフォルトフォントは CJK グリフを含まないため、locale の地域別字形を
 /// 優先した全 CJK face を各フォントファミリの末尾 fallback として登録する。
-fn install_cjk_fonts(
+pub(super) fn install_cjk_fonts(
     ctx: &egui::Context,
     preferred: bmz_render::FontCoverage,
     font_search_paths: &[PathBuf],
@@ -373,7 +373,7 @@ fn install_cjk_fonts(
     ctx.set_fonts(cjk_font_definitions(fallbacks));
 }
 
-fn cjk_font_definitions(
+pub(super) fn cjk_font_definitions(
     fallbacks: Vec<(bmz_render::FontCoverage, bmz_render::renderer::SystemFontData)>,
 ) -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
@@ -398,7 +398,7 @@ fn cjk_font_definitions(
     fonts
 }
 
-const fn cjk_font_name(coverage: bmz_render::FontCoverage) -> &'static str {
+pub(super) const fn cjk_font_name(coverage: bmz_render::FontCoverage) -> &'static str {
     match coverage {
         bmz_render::FontCoverage::Japanese => "bmz_cjk_japanese",
         bmz_render::FontCoverage::Korean => "bmz_cjk_korean",
@@ -407,3 +407,4 @@ const fn cjk_font_name(coverage: bmz_render::FontCoverage) -> &'static str {
         bmz_render::FontCoverage::HongKong => "bmz_cjk_hong_kong",
     }
 }
+use super::*;

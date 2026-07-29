@@ -14,7 +14,7 @@ pub fn app_help_text() -> String {
         )
 }
 
-fn parse_practice_ms(value: &str, arg: &str) -> Result<u32> {
+pub(super) fn parse_practice_ms(value: &str, arg: &str) -> Result<u32> {
     let value = value.trim();
     if value.is_empty() {
         bail!("{arg} requires milliseconds");
@@ -24,15 +24,15 @@ fn parse_practice_ms(value: &str, arg: &str) -> Result<u32> {
     u32::try_from(ms).with_context(|| format!("{arg} value out of range: {value}"))
 }
 
-fn parse_smoke_exit_after_frames_value(value: &str) -> Result<u32> {
+pub(super) fn parse_smoke_exit_after_frames_value(value: &str) -> Result<u32> {
     parse_smoke_frame_count_value(value, SMOKE_EXIT_AFTER_FRAMES_ARG)
 }
 
-fn parse_smoke_exit_after_play_frames_value(value: &str) -> Result<u32> {
+pub(super) fn parse_smoke_exit_after_play_frames_value(value: &str) -> Result<u32> {
     parse_smoke_frame_count_value(value, SMOKE_EXIT_AFTER_PLAY_FRAMES_ARG)
 }
 
-fn parse_smoke_exit_after_result_frames_value(value: &str) -> Result<u32> {
+pub(super) fn parse_smoke_exit_after_result_frames_value(value: &str) -> Result<u32> {
     parse_smoke_frame_count_value(value, SMOKE_EXIT_AFTER_RESULT_FRAMES_ARG)
 }
 
@@ -47,7 +47,7 @@ fn parse_smoke_frame_count_value(value: &str, arg: &str) -> Result<u32> {
     Ok(frames.max(1))
 }
 
-fn parse_smoke_screenshot_path(value: &str) -> Result<String> {
+pub(super) fn parse_smoke_screenshot_path(value: &str) -> Result<String> {
     let value = value.trim();
     if value.is_empty() {
         bail!("{SMOKE_SCREENSHOT_ARG} requires an output path");
@@ -55,7 +55,7 @@ fn parse_smoke_screenshot_path(value: &str) -> Result<String> {
     Ok(value.to_string())
 }
 
-fn parse_boot_course_replay_id(value: &str) -> Result<i64> {
+pub(super) fn parse_boot_course_replay_id(value: &str) -> Result<i64> {
     let value = value.trim();
     if value.is_empty() {
         bail!("{BOOT_COURSE_REPLAY_ARG} requires a course id");
@@ -69,7 +69,7 @@ fn parse_boot_course_replay_id(value: &str) -> Result<i64> {
     Ok(id)
 }
 
-fn parse_course_history_id(value: &str) -> Result<i64> {
+pub(super) fn parse_course_history_id(value: &str) -> Result<i64> {
     let value = value.trim();
     if value.is_empty() {
         bail!("course history requires a COURSE_ID");
@@ -82,7 +82,7 @@ fn parse_course_history_id(value: &str) -> Result<i64> {
     Ok(id)
 }
 
-fn parse_course_history_limit(flags: &[String]) -> Result<u32> {
+pub(super) fn parse_course_history_limit(flags: &[String]) -> Result<u32> {
     // No flags → default limit.
     let Some(flag) = flags.first() else {
         return Ok(10);
@@ -106,7 +106,7 @@ fn parse_course_history_limit(flags: &[String]) -> Result<u32> {
     bail!("unknown flag for course history: {flag}");
 }
 
-fn parse_course_attempt_id(value: &str) -> Result<i64> {
+pub(super) fn parse_course_attempt_id(value: &str) -> Result<i64> {
     let value = value.trim();
     if value.is_empty() {
         bail!("course attempt requires a SCORE_ID");
@@ -131,7 +131,7 @@ fn parse_history_limit_value(value: &str) -> Result<u32> {
     Ok(n)
 }
 
-fn parse_boot_course_id(value: &str) -> Result<i64> {
+pub(super) fn parse_boot_course_id(value: &str) -> Result<i64> {
     let value = value.trim();
     if value.is_empty() {
         bail!("{BOOT_COURSE_ARG} requires a course id");
@@ -145,7 +145,7 @@ fn parse_boot_course_id(value: &str) -> Result<i64> {
     Ok(id)
 }
 
-fn parse_boot_replay_slot(value: &str) -> Result<u8> {
+pub(super) fn parse_boot_replay_slot(value: &str) -> Result<u8> {
     let value = value.trim();
     if value.is_empty() {
         bail!("{BOOT_REPLAY_ARG} requires a slot number (1..4)");
@@ -159,7 +159,7 @@ fn parse_boot_replay_slot(value: &str) -> Result<u8> {
 }
 
 /// beatoraja 互換の `-r1`..`-r4` を 0-based スロット index に変換する。
-fn parse_beatoraja_replay_flag(arg: &str) -> Option<u8> {
+pub(super) fn parse_beatoraja_replay_flag(arg: &str) -> Option<u8> {
     let rest = arg.strip_prefix('-')?;
     match rest {
         "r1" => Some(0),
@@ -170,7 +170,7 @@ fn parse_beatoraja_replay_flag(arg: &str) -> Option<u8> {
     }
 }
 
-fn parse_renderer_backend(value: &str) -> Result<RendererBackend> {
+pub(super) fn parse_renderer_backend(value: &str) -> Result<RendererBackend> {
     match value.trim().to_lowercase().as_str() {
         "auto" => Ok(RendererBackend::Auto),
         "vulkan" => Ok(RendererBackend::Vulkan),
@@ -182,3 +182,4 @@ fn parse_renderer_backend(value: &str) -> Result<RendererBackend> {
         }
     }
 }
+use super::*;

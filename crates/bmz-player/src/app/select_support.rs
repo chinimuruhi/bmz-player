@@ -1,8 +1,15 @@
 use super::*;
 
-include!("select_support/mode_sort.rs");
-include!("select_support/items.rs");
-include!("select_support/filters.rs");
-include!("select_support/options.rs");
-include!("select_support/snapshot.rs");
-include!("select_support/input.rs");
+mod filters;
+mod input;
+mod items;
+mod mode_sort;
+mod options;
+mod snapshot;
+
+pub(super) use filters::*;
+pub(super) use input::*;
+pub(super) use items::*;
+pub(super) use mode_sort::*;
+pub(super) use options::*;
+pub(super) use snapshot::*;

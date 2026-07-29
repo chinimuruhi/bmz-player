@@ -1,4 +1,4 @@
-pub(super) fn select_click_event_arg(
+pub(in crate::app) fn select_click_event_arg(
     click_type: i32,
     button: MouseButton,
     rect: Rect,
@@ -20,7 +20,7 @@ pub(super) fn select_click_event_arg(
     }
 }
 
-pub(super) fn chart_snapshot_metadata_for_chart(
+pub(in crate::app) fn chart_snapshot_metadata_for_chart(
     select_items: &[SelectItem],
     chart_id: i64,
     fallback: impl FnOnce(i64) -> Option<ChartListItem>,
@@ -37,7 +37,7 @@ pub(super) fn chart_snapshot_metadata_for_chart(
         .or_else(|| fallback(chart_id).map(|chart| (chart, None)))
 }
 
-pub(super) fn apply_chart_metadata_to_snapshot(
+pub(in crate::app) fn apply_chart_metadata_to_snapshot(
     snapshot: &mut RenderSnapshot,
     chart: &ChartListItem,
     total_notes: u32,
@@ -61,7 +61,7 @@ pub(super) fn apply_chart_metadata_to_snapshot(
     snapshot.projected_best_ex_score = best_ex_score.map(|_| 0);
 }
 
-pub(super) fn course_titles_from_entries<'a>(
+pub(in crate::app) fn course_titles_from_entries<'a>(
     entries: impl IntoIterator<Item = (&'a str, bool)>,
 ) -> [String; 10] {
     let mut titles: [String; 10] = Default::default();
@@ -75,7 +75,7 @@ pub(super) fn course_titles_from_entries<'a>(
     titles
 }
 
-pub(super) fn course_constraint_flags(
+pub(in crate::app) fn course_constraint_flags(
     constraints: &bmz_core::course::CourseConstraints,
 ) -> bmz_render::scene::CourseConstraintFlags {
     use bmz_core::course::{
@@ -101,7 +101,7 @@ pub(super) fn course_constraint_flags(
     }
 }
 
-pub(super) fn moved_select_index(
+pub(in crate::app) fn moved_select_index(
     current_index: usize,
     row_count: usize,
     select_move: SelectMove,
@@ -120,10 +120,11 @@ pub(super) fn moved_select_index(
     }
 }
 
-pub(super) fn select_move_scroll_direction(select_move: SelectMove) -> i32 {
+pub(in crate::app) fn select_move_scroll_direction(select_move: SelectMove) -> i32 {
     match select_move {
         SelectMove::Previous | SelectMove::PagePrevious => -1,
         SelectMove::Next | SelectMove::PageNext => 1,
         SelectMove::First | SelectMove::Last => 0,
     }
 }
+use super::*;

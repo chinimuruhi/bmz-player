@@ -21,9 +21,14 @@ pub enum IrScoreJobStatus {
     Failed,
 }
 
-include!("network_db/model.rs");
-include!("network_db/operations.rs");
-include!("network_db/rows.rs");
+mod model;
+mod operations;
+mod rows;
+
+pub use model::{
+    IrJobKind, IrLocalScoreCleanupReport, IrScoreJobRecord, IrSubmittedScoreLink, NewIrScoreJob,
+    NewIrScoreSubmission,
+};
 
 #[cfg(test)]
 #[path = "network_db/tests.rs"]

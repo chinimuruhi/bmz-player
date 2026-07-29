@@ -1,8 +1,11 @@
+use super::download::now_unix_seconds;
 /// 再import済み Beatoraja 行と照合できる、source_kind 導入前の Local 履歴を整理する。
 ///
 /// IR 本体を先に削除し、成功後にネットワーク台帳と score.db を更新する。中断時は
 /// リモート削除 API の missing 応答を成功として扱うため、同じコマンドを再実行できる。
-async fn cleanup_imported_scores(
+use super::*;
+
+pub(super) async fn cleanup_imported_scores(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     requested_provider: Option<&str>,
@@ -137,7 +140,7 @@ async fn cleanup_imported_scores(
 ///
 /// 対応する local_backfill IR score は先に server API で削除し、成功後に
 /// network.db と score.db を同じ history id で整理する。
-async fn cleanup_duplicate_score_history(
+pub(super) async fn cleanup_duplicate_score_history(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     requested_provider: Option<&str>,

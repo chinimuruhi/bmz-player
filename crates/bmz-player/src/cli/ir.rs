@@ -1,4 +1,6 @@
-fn parse_ir_command(rest: &[String]) -> Result<Command> {
+use super::*;
+
+pub(super) fn parse_ir_command(rest: &[String]) -> Result<Command> {
     match rest.first().map(|s| s.as_str()) {
         Some("login") => {
             let mut email = None;

@@ -28,14 +28,19 @@ use crate::storage::library_db::LibraryDatabase;
 use crate::storage::network_db::{IrJobKind, NetworkDatabase};
 use crate::storage::score_db::ScoreDatabase;
 
-include!("ir_cmd/dispatch.rs");
-include!("ir_cmd/account.rs");
-include!("ir_cmd/auth.rs");
-include!("ir_cmd/ranking.rs");
-include!("ir_cmd/cleanup.rs");
-include!("ir_cmd/upload.rs");
-include!("ir_cmd/jobs.rs");
-include!("ir_cmd/download.rs");
+mod account;
+mod auth;
+mod cleanup;
+mod dispatch;
+mod download;
+mod jobs;
+mod ranking;
+mod upload;
+
+pub use account::sync_ir_rivals_into_profile;
+pub use dispatch::run_ir_command;
+#[cfg(test)]
+use upload::ensure_full_upload_progress;
 
 #[cfg(test)]
 #[path = "ir_cmd/tests.rs"]

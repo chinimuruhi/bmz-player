@@ -83,11 +83,11 @@ impl SceneSkinDefs {
         defs
     }
 
-    fn is_empty(&self) -> bool {
+    pub(super) fn is_empty(&self) -> bool {
         self.property.is_empty() && self.filepath.is_empty() && self.offset.is_empty()
     }
 
-    fn append_play_common_offsets(&mut self) {
+    pub(super) fn append_play_common_offsets(&mut self) {
         // beatoraja はスキン定義との ID 重複を除外せず、共通 offset を定義列の
         // 末尾へ追加する。runtime の ID map では後勝ちになる一方、設定値は名前で
         // 独立して保持される。
@@ -109,7 +109,7 @@ impl SceneSkinDefs {
     }
 }
 
-fn beatoraja_play_common_offsets() -> [SkinOffsetDef; 4] {
+pub(super) fn beatoraja_play_common_offsets() -> [SkinOffsetDef; 4] {
     [
         SkinOffsetDef {
             category: "beatoraja".to_string(),
@@ -158,7 +158,7 @@ fn beatoraja_play_common_offsets() -> [SkinOffsetDef; 4] {
     ]
 }
 
-fn bmz_play_bar_line_offset() -> SkinOffsetDef {
+pub(super) fn bmz_play_bar_line_offset() -> SkinOffsetDef {
     SkinOffsetDef {
         category: "bmz".to_string(),
         name: "Bar Line offset".to_string(),
@@ -316,69 +316,70 @@ pub struct SongScanRequest {
 
 /// egui の状態管理とフレーム構築を担うレイヤ。
 pub struct EguiLayer {
-    ctx: egui::Context,
-    state: egui_winit::State,
+    pub(super) ctx: egui::Context,
+    pub(super) state: egui_winit::State,
     /// egui の未指定テキストで最優先する地域別 CJK coverage。
-    font_coverage: bmz_render::FontCoverage,
+    pub(super) font_coverage: bmz_render::FontCoverage,
     /// OS フォントに依存しない CJK fallback の検索先。
-    font_search_paths: Vec<PathBuf>,
+    pub(super) font_search_paths: Vec<PathBuf>,
     /// メニュー全体の表示状態。F1 でトグルする。
-    visible: bool,
+    pub(super) visible: bool,
     /// デバッグ表示パネルの開閉状態。
-    show_debug: bool,
+    pub(super) show_debug: bool,
     /// 7K RANDOM 固定配置パネルの開閉状態。
-    show_random_trainer: bool,
+    pub(super) show_random_trainer: bool,
     /// デバッグ表示内のログ最低表示レベル。
-    debug_log_filter: DebugLogFilter,
+    pub(super) debug_log_filter: DebugLogFilter,
     /// デバッグ表示内のログを末尾へ追従するか。
-    debug_log_autoscroll: bool,
+    pub(super) debug_log_autoscroll: bool,
     /// 右上 FPS オーバーレイの表示状態。
-    show_fps: bool,
+    pub(super) show_fps: bool,
     /// 本体設定パネルの開閉状態。
-    show_settings: bool,
+    pub(super) show_settings: bool,
     /// プロファイル設定パネルの開閉状態。
-    show_profile_settings: bool,
+    pub(super) show_profile_settings: bool,
     /// スキン設定パネルの開閉状態。
-    show_skin: bool,
+    pub(super) show_skin: bool,
     /// ライセンス / third-party notice 表示パネルの開閉状態。
-    show_license_notice: bool,
+    pub(super) show_license_notice: bool,
     /// ライセンス表示パネルに出す結合済み notice text。
-    license_notice_text: Option<String>,
-    update_dialog_active: bool,
+    pub(super) license_notice_text: Option<String>,
+    pub(super) update_dialog_active: bool,
     /// 本体設定パネル: 曲フォルダ追加用の入力欄。
-    settings_new_root_path: String,
+    pub(super) settings_new_root_path: String,
     /// 本体設定パネル: 曲フォルダ追加の直近エラー。
-    settings_add_root_error: String,
-    settings_new_table_url: String,
-    settings_add_table_error: String,
-    score_import_path: String,
-    score_import_kind: ScoreImportKind,
-    score_import_device_type: InputDeviceKind,
-    score_import_status: String,
-    score_import_error: String,
+    pub(super) settings_add_root_error: String,
+    pub(super) settings_new_table_url: String,
+    pub(super) settings_add_table_error: String,
+    pub(super) score_import_path: String,
+    pub(super) score_import_kind: ScoreImportKind,
+    pub(super) score_import_device_type: InputDeviceKind,
+    pub(super) score_import_status: String,
+    pub(super) score_import_error: String,
     /// 本体設定パネル: 出力デバイス選択用の列挙キャッシュ。
-    audio_device_picker: AudioDevicePickerState,
+    pub(super) audio_device_picker: AudioDevicePickerState,
     /// 本体設定パネル: OBS scene list 取得状態。
-    obs_scene_picker: ObsScenePickerState,
+    pub(super) obs_scene_picker: ObsScenePickerState,
     /// プロファイル設定パネル: IR ログインフォームの状態。
-    ir_login: IrLoginUiState,
+    pub(super) ir_login: IrLoginUiState,
     /// プロファイル設定パネル: IR device key 操作用の状態。
-    ir_device_key: IrDeviceKeyUiState,
+    pub(super) ir_device_key: IrDeviceKeyUiState,
     /// プロファイル設定パネル: profile 作成 / 複製フォームの状態。
-    profile_manager: ProfileManagerUiState,
+    pub(super) profile_manager: ProfileManagerUiState,
     /// BMZ メニュー: OS のファイルマネージャでディレクトリを開いた直近結果。
-    directory_open_status: Option<DirectoryOpenStatus>,
+    pub(super) directory_open_status: Option<DirectoryOpenStatus>,
 }
 
 #[derive(Debug, Clone)]
-struct DirectoryOpenStatus {
-    label: &'static str,
-    path: PathBuf,
-    error: Option<String>,
+pub(super) struct DirectoryOpenStatus {
+    pub(super) label: &'static str,
+    pub(super) path: PathBuf,
+    pub(super) error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct DirectoryOpenTarget<'a> {
-    label: &'static str,
-    path: &'a Path,
+pub(super) struct DirectoryOpenTarget<'a> {
+    pub(super) label: &'static str,
+    pub(super) path: &'a Path,
 }
+use super::*;

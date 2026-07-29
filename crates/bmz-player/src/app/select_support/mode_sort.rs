@@ -1,4 +1,4 @@
-pub(super) fn initial_folder_stack(
+pub(in crate::app) fn initial_folder_stack(
     _app_config: &crate::config::app_config::AppConfig,
 ) -> Vec<String> {
     // 有効な曲フォルダが 1 つだけでも、設定フォルダ等を含む選曲ルートから始める。
@@ -6,7 +6,7 @@ pub(super) fn initial_folder_stack(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SelectModeFilter {
+pub(in crate::app) enum SelectModeFilter {
     All,
     K7,
     K14,
@@ -16,18 +16,18 @@ pub(super) enum SelectModeFilter {
 }
 
 impl SelectModeFilter {
-    pub(super) const ORDER: [Self; 6] =
+    pub(in crate::app) const ORDER: [Self; 6] =
         [Self::All, Self::K7, Self::K14, Self::K9, Self::K5, Self::K10];
 
-    pub(super) fn next(self) -> Self {
+    pub(in crate::app) fn next(self) -> Self {
         cycle_enum(Self::ORDER, self, 1)
     }
 
-    pub(super) fn previous(self) -> Self {
+    pub(in crate::app) fn previous(self) -> Self {
         cycle_enum(Self::ORDER, self, -1)
     }
 
-    pub(super) fn as_str(self) -> &'static str {
+    pub(in crate::app) fn as_str(self) -> &'static str {
         match self {
             Self::All => "ALL",
             Self::K7 => "7K",
@@ -38,7 +38,7 @@ impl SelectModeFilter {
         }
     }
 
-    pub(super) fn key_mode(self) -> Option<KeyMode> {
+    pub(in crate::app) fn key_mode(self) -> Option<KeyMode> {
         match self {
             Self::All => None,
             Self::K7 => Some(KeyMode::K7),
@@ -50,13 +50,13 @@ impl SelectModeFilter {
     }
 
     /// `as_str()` の逆変換。未知の値は `ALL` へフォールバックする。
-    pub(super) fn from_str_or_default(value: &str) -> Self {
+    pub(in crate::app) fn from_str_or_default(value: &str) -> Self {
         Self::ORDER.into_iter().find(|mode| mode.as_str() == value).unwrap_or(Self::All)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SelectSort {
+pub(in crate::app) enum SelectSort {
     Title,
     Artist,
     Bpm,
@@ -68,7 +68,7 @@ pub(super) enum SelectSort {
 }
 
 impl SelectSort {
-    pub(super) const ORDER: [Self; 8] = [
+    pub(in crate::app) const ORDER: [Self; 8] = [
         Self::Title,
         Self::Artist,
         Self::Bpm,
@@ -79,15 +79,15 @@ impl SelectSort {
         Self::Bp,
     ];
 
-    pub(super) fn next(self) -> Self {
+    pub(in crate::app) fn next(self) -> Self {
         cycle_enum(Self::ORDER, self, 1)
     }
 
-    pub(super) fn previous(self) -> Self {
+    pub(in crate::app) fn previous(self) -> Self {
         cycle_enum(Self::ORDER, self, -1)
     }
 
-    pub(super) fn as_str(self) -> &'static str {
+    pub(in crate::app) fn as_str(self) -> &'static str {
         match self {
             Self::Title => "TITLE",
             Self::Artist => "ARTIST",
@@ -101,12 +101,12 @@ impl SelectSort {
     }
 
     /// `as_str()` の逆変換。未知の値は `TITLE` へフォールバックする。
-    pub(super) fn from_str_or_default(value: &str) -> Self {
+    pub(in crate::app) fn from_str_or_default(value: &str) -> Self {
         Self::ORDER.into_iter().find(|sort| sort.as_str() == value).unwrap_or(Self::Title)
     }
 }
 
-pub(super) fn cycle_enum<T: Copy + PartialEq, const N: usize>(
+pub(in crate::app) fn cycle_enum<T: Copy + PartialEq, const N: usize>(
     values: [T; N],
     current: T,
     direction: i32,
@@ -115,3 +115,4 @@ pub(super) fn cycle_enum<T: Copy + PartialEq, const N: usize>(
     let len = values.len();
     if direction >= 0 { values[(index + 1) % len] } else { values[(index + len - 1) % len] }
 }
+use super::*;

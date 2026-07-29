@@ -181,3 +181,10 @@ impl AppOptions {
         Ok(options)
     }
 }
+use super::help::{
+    parse_beatoraja_replay_flag, parse_boot_course_id, parse_boot_course_replay_id,
+    parse_boot_replay_slot, parse_practice_ms, parse_renderer_backend,
+    parse_smoke_exit_after_frames_value, parse_smoke_exit_after_play_frames_value,
+    parse_smoke_exit_after_result_frames_value, parse_smoke_screenshot_path,
+};
+use super::*;

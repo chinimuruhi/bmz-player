@@ -1,4 +1,4 @@
-pub(super) fn apply_pending_play_lane_action_to_state(
+pub(in crate::app) fn apply_pending_play_lane_action_to_state(
     lane: &mut PendingPlayLaneState,
     action: PlayLaneAction,
     profile: &ProfileConfig,
@@ -58,7 +58,7 @@ pub(super) fn apply_pending_play_lane_action_to_state(
     true
 }
 
-pub(super) fn sync_active_play_visual_offset_to_profile(
+pub(in crate::app) fn sync_active_play_visual_offset_to_profile(
     profile: &mut ProfileConfig,
     visual_offset_us: i64,
     auto_adjust_active: bool,
@@ -70,7 +70,7 @@ pub(super) fn sync_active_play_visual_offset_to_profile(
     profile.updated_at = now_unix_seconds();
 }
 
-pub(super) fn apply_hispeed_change_to_session(
+pub(in crate::app) fn apply_hispeed_change_to_session(
     session: &mut bmz_gameplay::session::GameSession,
     change: HispeedChange,
     step: f32,
@@ -78,7 +78,7 @@ pub(super) fn apply_hispeed_change_to_session(
     session.hispeed = adjusted_hispeed(session.hispeed, change, step);
 }
 
-pub(super) fn apply_play_lane_action_to_session(
+pub(in crate::app) fn apply_play_lane_action_to_session(
     session: &mut bmz_gameplay::session::GameSession,
     action: PlayLaneAction,
     speed_locked: bool,
@@ -120,7 +120,7 @@ pub(super) fn apply_play_lane_action_to_session(
 }
 
 #[cfg(test)]
-pub(super) fn apply_play_option_control_to_session(
+pub(in crate::app) fn apply_play_option_control_to_session(
     session: &mut bmz_gameplay::session::GameSession,
     action: PlayOptionControl,
     speed_locked: bool,
@@ -134,7 +134,7 @@ pub(super) fn apply_play_option_control_to_session(
     )
 }
 
-pub(super) fn replay_pending_play_lane_actions(
+pub(in crate::app) fn replay_pending_play_lane_actions(
     session: &mut bmz_gameplay::session::GameSession,
     actions: &[PlayLaneAction],
     profile: &ProfileConfig,
@@ -146,7 +146,7 @@ pub(super) fn replay_pending_play_lane_actions(
     }
 }
 
-pub(super) fn handoff_pending_play_visual_input(
+pub(in crate::app) fn handoff_pending_play_visual_input(
     session: &mut bmz_gameplay::session::GameSession,
     input: &SharedInputBackend,
     visual_input: &PendingPlayVisualInput,
@@ -156,7 +156,7 @@ pub(super) fn handoff_pending_play_visual_input(
     visual_input.clone().apply_to_session(session);
 }
 
-pub(super) fn apply_green_number_step_to_session(
+pub(in crate::app) fn apply_green_number_step_to_session(
     session: &mut bmz_gameplay::session::GameSession,
     delta: i32,
     speed_locked: bool,
@@ -176,7 +176,7 @@ pub(super) fn apply_green_number_step_to_session(
     true
 }
 
-pub(super) fn apply_lane_cover_step_to_session(
+pub(in crate::app) fn apply_lane_cover_step_to_session(
     session: &mut bmz_gameplay::session::GameSession,
     delta: f32,
     speed_locked: bool,
@@ -211,7 +211,7 @@ pub(super) fn apply_lane_cover_step_to_session(
     true
 }
 
-pub(super) fn reset_floating_hispeed_if_enabled(
+pub(in crate::app) fn reset_floating_hispeed_if_enabled(
     session: &mut bmz_gameplay::session::GameSession,
     speed_locked: bool,
 ) {
@@ -227,7 +227,7 @@ pub(super) fn reset_floating_hispeed_if_enabled(
 }
 
 /// Start / E1 の連続押し間隔を判定する。2回目なら true を返しタイムスタンプをクリアする。
-pub(super) fn register_play_start_double_press(
+pub(in crate::app) fn register_play_start_double_press(
     last_press_at: &mut Option<Instant>,
     now: Instant,
 ) -> bool {
@@ -242,7 +242,7 @@ pub(super) fn register_play_start_double_press(
     }
 }
 
-pub(super) fn toggle_lane_cover_visibility(
+pub(in crate::app) fn toggle_lane_cover_visibility(
     session: &mut bmz_gameplay::session::GameSession,
     speed_locked: bool,
 ) {
@@ -252,3 +252,4 @@ pub(super) fn toggle_lane_cover_visibility(
         reset_floating_hispeed_if_enabled(session, speed_locked);
     }
 }
+use super::*;

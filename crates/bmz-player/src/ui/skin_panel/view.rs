@@ -1,5 +1,5 @@
 /// プロファイルのスキン設定 (`SkinConfig`) を編集するパネル。
-pub(super) fn build_skin_panel(
+pub(in crate::ui) fn build_skin_panel(
     ctx: &egui::Context,
     open: &mut bool,
     skin: &mut SkinConfig,
@@ -342,3 +342,4 @@ pub(super) fn build_skin_panel(
     };
     SkinPanelActions { save: save_clicked, reset: reset_clicked, reload }
 }
+use super::*;

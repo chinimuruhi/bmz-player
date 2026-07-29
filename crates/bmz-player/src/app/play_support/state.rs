@@ -1,12 +1,12 @@
 #[derive(Debug, Clone, Copy)]
-pub(super) struct ActiveLaneState {
-    pub(super) lane_cover: f32,
-    pub(super) lift: f32,
-    pub(super) hispeed_mode: HispeedMode,
-    pub(super) target_green_number: u32,
+pub(in crate::app) struct ActiveLaneState {
+    pub(in crate::app) lane_cover: f32,
+    pub(in crate::app) lift: f32,
+    pub(in crate::app) hispeed_mode: HispeedMode,
+    pub(in crate::app) target_green_number: u32,
 }
 
-pub(super) fn profile_lane_settings_changed(
+pub(in crate::app) fn profile_lane_settings_changed(
     before: &LaneViewConfig,
     after: &LaneViewConfig,
 ) -> bool {
@@ -19,7 +19,7 @@ pub(super) fn profile_lane_settings_changed(
         || before.target_green_number != after.target_green_number
 }
 
-pub(super) fn apply_profile_lane_settings_to_session(
+pub(in crate::app) fn apply_profile_lane_settings_to_session(
     session: &mut bmz_gameplay::session::GameSession,
     before: &LaneViewConfig,
     profile: &LaneViewConfig,
@@ -98,7 +98,7 @@ pub(super) fn apply_profile_lane_settings_to_session(
     true
 }
 
-pub(super) fn active_lane_state_for_session(
+pub(in crate::app) fn active_lane_state_for_session(
     session: &bmz_gameplay::session::GameSession,
 ) -> ActiveLaneState {
     ActiveLaneState {
@@ -112,35 +112,35 @@ pub(super) fn active_lane_state_for_session(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct CurrentPlayOptions {
-    pub(super) arrange: ArrangeOption,
-    pub(super) arrange_2p: ArrangeOption,
-    pub(super) target: TargetOption,
-    pub(super) gauge: GaugeTypeConfig,
-    pub(super) gauge_auto_shift: GaugeAutoShiftConfig,
-    pub(super) bottom_shiftable_gauge: BottomShiftableGaugeConfig,
-    pub(super) double_option: DoubleOption,
-    pub(super) hs_fix: HsFixOption,
-    pub(super) session_mode: SessionMode,
+pub(in crate::app) struct CurrentPlayOptions {
+    pub(in crate::app) arrange: ArrangeOption,
+    pub(in crate::app) arrange_2p: ArrangeOption,
+    pub(in crate::app) target: TargetOption,
+    pub(in crate::app) gauge: GaugeTypeConfig,
+    pub(in crate::app) gauge_auto_shift: GaugeAutoShiftConfig,
+    pub(in crate::app) bottom_shiftable_gauge: BottomShiftableGaugeConfig,
+    pub(in crate::app) double_option: DoubleOption,
+    pub(in crate::app) hs_fix: HsFixOption,
+    pub(in crate::app) session_mode: SessionMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct SelectScoreContext {
-    pub(super) rule_mode: RuleMode,
-    pub(super) ln_mode_policy: LnPolicySetting,
+pub(in crate::app) struct SelectScoreContext {
+    pub(in crate::app) rule_mode: RuleMode,
+    pub(in crate::app) ln_mode_policy: LnPolicySetting,
 }
 
 impl SelectScoreContext {
-    pub(super) fn from_profile(profile: &ProfileConfig) -> Self {
+    pub(in crate::app) fn from_profile(profile: &ProfileConfig) -> Self {
         Self::from_play(&profile.play)
     }
 
-    pub(super) fn from_play(play: &PlayDefaultsConfig) -> Self {
+    pub(in crate::app) fn from_play(play: &PlayDefaultsConfig) -> Self {
         Self { rule_mode: play.rule_mode, ln_mode_policy: play.ln_mode_policy }
     }
 }
 
-pub(super) fn session_mode_from_profile(play: &PlayDefaultsConfig) -> SessionMode {
+pub(in crate::app) fn session_mode_from_profile(play: &PlayDefaultsConfig) -> SessionMode {
     play.session_mode.unwrap_or(if play.auto_play {
         SessionMode::Autoplay
     } else {
@@ -148,7 +148,7 @@ pub(super) fn session_mode_from_profile(play: &PlayDefaultsConfig) -> SessionMod
     })
 }
 
-pub(super) fn normalize_session_mode_for_course(options: &mut PlayStartOptions) {
+pub(in crate::app) fn normalize_session_mode_for_course(options: &mut PlayStartOptions) {
     options.session_mode = match options.session_mode {
         SessionMode::Autoplay | SessionMode::AutoplayBattle => SessionMode::Autoplay,
         SessionMode::Normal | SessionMode::GhostBattle => SessionMode::Normal,
@@ -157,7 +157,9 @@ pub(super) fn normalize_session_mode_for_course(options: &mut PlayStartOptions) 
     options.replay_player = None;
 }
 
-pub(super) fn select_play_options_from_profile(play: &PlayDefaultsConfig) -> CurrentPlayOptions {
+pub(in crate::app) fn select_play_options_from_profile(
+    play: &PlayDefaultsConfig,
+) -> CurrentPlayOptions {
     let (gauge, gauge_auto_shift) = if play.gauge == GaugeTypeConfig::AutoShift {
         (GaugeTypeConfig::ExHard, GaugeAutoShiftConfig::BestClear)
     } else {
@@ -180,14 +182,14 @@ pub(super) fn select_play_options_from_profile(play: &PlayDefaultsConfig) -> Cur
 ///
 /// スキンUIのリセットで、同じファイルに保存されているプレイ・入力・UI設定まで
 /// 巻き戻さないため、`ProfileConfig` 全体は差し替えない。
-pub(super) fn replace_skin_config_from_loaded_profile(
+pub(in crate::app) fn replace_skin_config_from_loaded_profile(
     current: &mut ProfileConfig,
     loaded: ProfileConfig,
 ) {
     current.skin = loaded.skin;
 }
 
-pub(super) fn merge_changed_select_play_options_from_profile(
+pub(in crate::app) fn merge_changed_select_play_options_from_profile(
     mut current: CurrentPlayOptions,
     before: &PlayDefaultsConfig,
     after: &PlayDefaultsConfig,
@@ -224,7 +226,7 @@ pub(super) fn merge_changed_select_play_options_from_profile(
     current
 }
 
-pub(super) fn apply_current_play_options_to_profile(
+pub(in crate::app) fn apply_current_play_options_to_profile(
     profile: &mut ProfileConfig,
     hispeed: Option<f32>,
     lane_state: Option<ActiveLaneState>,
@@ -246,7 +248,7 @@ pub(super) fn apply_current_play_options_to_profile(
     profile.updated_at = updated_at;
 }
 
-pub(super) fn apply_lane_state_to_profile(
+pub(in crate::app) fn apply_lane_state_to_profile(
     profile: &mut ProfileConfig,
     hispeed: Option<f32>,
     lane_state: Option<ActiveLaneState>,
@@ -271,7 +273,11 @@ pub(super) fn apply_lane_state_to_profile(
     }
 }
 
-pub(super) fn clamp_hispeed_for_profile(hispeed: f32, mode: HispeedModeConfig, step: f32) -> f32 {
+pub(in crate::app) fn clamp_hispeed_for_profile(
+    hispeed: f32,
+    mode: HispeedModeConfig,
+    step: f32,
+) -> f32 {
     let clamped = hispeed.clamp(0.5, 10.0);
     if mode == HispeedModeConfig::Normal
         && (normalize_hispeed_step(step, default_hispeed_step_nhs()) - 0.25).abs() < f32::EPSILON
@@ -282,14 +288,14 @@ pub(super) fn clamp_hispeed_for_profile(hispeed: f32, mode: HispeedModeConfig, s
     }
 }
 
-pub(super) fn hispeed_mode_to_config(mode: HispeedMode) -> HispeedModeConfig {
+pub(in crate::app) fn hispeed_mode_to_config(mode: HispeedMode) -> HispeedModeConfig {
     match mode {
         HispeedMode::Normal => HispeedModeConfig::Normal,
         HispeedMode::Floating => HispeedModeConfig::Floating,
     }
 }
 
-pub(super) fn update_pre_ready_play_snapshot_options_for_session(
+pub(in crate::app) fn update_pre_ready_play_snapshot_options_for_session(
     ready_sound_started_at: Option<Instant>,
     last_play_snapshot: &mut Option<RenderSnapshot>,
     session: &bmz_gameplay::session::GameSession,
@@ -309,7 +315,7 @@ pub(super) fn update_pre_ready_play_snapshot_options_for_session(
     apply_play_arrange_to_snapshot(snapshot, applied_arrange);
 }
 
-pub(super) fn update_play_exit_hold_started_at(
+pub(in crate::app) fn update_play_exit_hold_started_at(
     started_at: &mut Option<Instant>,
     e1_held: bool,
     e2_held: bool,
@@ -322,10 +328,11 @@ pub(super) fn update_play_exit_hold_started_at(
     }
 }
 
-pub(super) fn play_exit_hold_elapsed(
+pub(in crate::app) fn play_exit_hold_elapsed(
     started_at: Option<Instant>,
     now: Instant,
     duration: Duration,
 ) -> bool {
     started_at.is_some_and(|started_at| now.duration_since(started_at) >= duration)
 }
+use super::*;

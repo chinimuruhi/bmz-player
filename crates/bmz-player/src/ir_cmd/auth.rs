@@ -1,4 +1,7 @@
-async fn login(
+use super::download::{now_unix_seconds, prompt_password};
+use super::*;
+
+pub(super) async fn login(
     profile_paths: &ProfilePaths,
     profile: &mut ProfileConfig,
     provider: &str,
@@ -101,7 +104,7 @@ async fn login(
     Ok(())
 }
 
-async fn logout(
+pub(super) async fn logout(
     profile_paths: &ProfilePaths,
     profile: &mut ProfileConfig,
     provider: &str,
@@ -150,7 +153,7 @@ async fn logout(
     Ok(())
 }
 
-async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {
+pub(super) async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {
     if profile.ir.providers.is_empty() {
         println!(
             "No IR providers configured. Run `bmz ir login --email <EMAIL> --base-url <URL>`."

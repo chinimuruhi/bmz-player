@@ -96,3 +96,4 @@ pub struct IrLocalScoreCleanupReport {
     pub removed_jobs: u32,
     pub removed_submissions: u32,
 }
+use super::*;

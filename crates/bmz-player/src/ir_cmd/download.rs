@@ -1,4 +1,6 @@
-async fn download_scores(
+use super::*;
+
+pub(super) async fn download_scores(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     options: IrScoreDownloadOptions,
@@ -52,11 +54,11 @@ async fn download_scores(
     Ok(())
 }
 
-fn primary_provider(profile: &ProfileConfig) -> Result<&IrProviderConfig> {
+pub(super) fn primary_provider(profile: &ProfileConfig) -> Result<&IrProviderConfig> {
     selected_provider(profile, None)
 }
 
-fn selected_provider<'a>(
+pub(super) fn selected_provider<'a>(
     profile: &'a ProfileConfig,
     requested: Option<&str>,
 ) -> Result<&'a IrProviderConfig> {
@@ -112,7 +114,7 @@ fn selected_provider<'a>(
         .context("no IR provider configured; run `bmz ir login` first")
 }
 
-fn parse_scope(value: &str) -> Result<IrRankingScope> {
+pub(super) fn parse_scope(value: &str) -> Result<IrRankingScope> {
     Ok(match value {
         "global" => IrRankingScope::Global,
         "self_and_rivals" => IrRankingScope::SelfAndRivals,
@@ -123,7 +125,7 @@ fn parse_scope(value: &str) -> Result<IrRankingScope> {
     })
 }
 
-fn prompt_password() -> Result<String> {
+pub(super) fn prompt_password() -> Result<String> {
     print!("password: ");
     std::io::stdout().flush()?;
     let mut line = String::new();
@@ -135,7 +137,7 @@ fn prompt_password() -> Result<String> {
     Ok(password)
 }
 
-fn now_unix_seconds() -> i64 {
+pub(super) fn now_unix_seconds() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

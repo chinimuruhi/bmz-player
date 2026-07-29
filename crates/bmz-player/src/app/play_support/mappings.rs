@@ -1,4 +1,4 @@
-pub(super) fn arrange_option_from_profile(random: RandomOptionConfig) -> ArrangeOption {
+pub(in crate::app) fn arrange_option_from_profile(random: RandomOptionConfig) -> ArrangeOption {
     match random {
         RandomOptionConfig::Mirror => ArrangeOption::Mirror,
         RandomOptionConfig::Random => ArrangeOption::Random,
@@ -15,7 +15,7 @@ pub(super) fn arrange_option_from_profile(random: RandomOptionConfig) -> Arrange
     }
 }
 
-pub(super) fn random_config_from_arrange(arrange: ArrangeOption) -> RandomOptionConfig {
+pub(in crate::app) fn random_config_from_arrange(arrange: ArrangeOption) -> RandomOptionConfig {
     match arrange {
         ArrangeOption::Normal => RandomOptionConfig::Off,
         ArrangeOption::Mirror => RandomOptionConfig::Mirror,
@@ -32,7 +32,9 @@ pub(super) fn random_config_from_arrange(arrange: ArrangeOption) -> RandomOption
     }
 }
 
-pub(super) fn double_option_from_profile(double_option: DoubleOptionConfig) -> DoubleOption {
+pub(in crate::app) fn double_option_from_profile(
+    double_option: DoubleOptionConfig,
+) -> DoubleOption {
     match double_option {
         DoubleOptionConfig::Off => DoubleOption::Off,
         DoubleOptionConfig::Flip => DoubleOption::Flip,
@@ -41,7 +43,7 @@ pub(super) fn double_option_from_profile(double_option: DoubleOptionConfig) -> D
     }
 }
 
-pub(super) fn double_config_from_option(double_option: DoubleOption) -> DoubleOptionConfig {
+pub(in crate::app) fn double_config_from_option(double_option: DoubleOption) -> DoubleOptionConfig {
     match double_option {
         DoubleOption::Off => DoubleOptionConfig::Off,
         DoubleOption::Flip => DoubleOptionConfig::Flip,
@@ -50,7 +52,7 @@ pub(super) fn double_config_from_option(double_option: DoubleOption) -> DoubleOp
     }
 }
 
-pub(super) fn play_skin_key_mode_for_options(
+pub(in crate::app) fn play_skin_key_mode_for_options(
     chart_key_mode: KeyMode,
     double_option: DoubleOption,
     session_mode: SessionMode,
@@ -72,7 +74,7 @@ pub(super) fn play_skin_key_mode_for_options(
     }
 }
 
-pub(super) fn second_player_lane(lane: Lane) -> Option<Lane> {
+pub(in crate::app) fn second_player_lane(lane: Lane) -> Option<Lane> {
     match lane {
         Lane::Scratch => Some(Lane::Scratch2),
         Lane::Key1 => Some(Lane::Key8),
@@ -93,7 +95,7 @@ pub(super) fn second_player_lane(lane: Lane) -> Option<Lane> {
     }
 }
 
-pub(super) fn skin_reload_request_includes_key_mode(
+pub(in crate::app) fn skin_reload_request_includes_key_mode(
     request: SkinReloadRequest,
     key_mode: KeyMode,
 ) -> bool {
@@ -109,7 +111,7 @@ pub(super) fn skin_reload_request_includes_key_mode(
     }
 }
 
-pub(super) fn hs_fix_option_from_profile(hs_fix: HsFixConfig) -> HsFixOption {
+pub(in crate::app) fn hs_fix_option_from_profile(hs_fix: HsFixConfig) -> HsFixOption {
     match hs_fix {
         HsFixConfig::Off => HsFixOption::Off,
         HsFixConfig::StartBpm => HsFixOption::StartBpm,
@@ -119,7 +121,7 @@ pub(super) fn hs_fix_option_from_profile(hs_fix: HsFixConfig) -> HsFixOption {
     }
 }
 
-pub(super) fn hs_fix_config_from_option(hs_fix: HsFixOption) -> HsFixConfig {
+pub(in crate::app) fn hs_fix_config_from_option(hs_fix: HsFixOption) -> HsFixConfig {
     match hs_fix {
         HsFixOption::Off => HsFixConfig::Off,
         HsFixOption::StartBpm => HsFixConfig::StartBpm,
@@ -129,7 +131,7 @@ pub(super) fn hs_fix_config_from_option(hs_fix: HsFixOption) -> HsFixConfig {
     }
 }
 
-pub(super) fn target_option_from_profile(target: TargetOptionConfig) -> TargetOption {
+pub(in crate::app) fn target_option_from_profile(target: TargetOptionConfig) -> TargetOption {
     match target {
         TargetOptionConfig::None => TargetOption::None,
         TargetOptionConfig::RankA => TargetOption::RankA,
@@ -148,7 +150,7 @@ pub(super) fn target_option_from_profile(target: TargetOptionConfig) -> TargetOp
     }
 }
 
-pub(super) fn target_config_from_option(target: TargetOption) -> TargetOptionConfig {
+pub(in crate::app) fn target_config_from_option(target: TargetOption) -> TargetOptionConfig {
     match target {
         TargetOption::None => TargetOptionConfig::None,
         TargetOption::RankA => TargetOptionConfig::RankA,
@@ -166,3 +168,4 @@ pub(super) fn target_config_from_option(target: TargetOption) -> TargetOptionCon
         TargetOption::RivalIndex(index) => TargetOptionConfig::RivalIndex(index),
     }
 }
+use super::*;

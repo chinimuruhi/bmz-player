@@ -1,12 +1,12 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SelectRowClickAction {
+pub(in crate::app) enum SelectRowClickAction {
     Select(usize),
     EnterOrPlay,
     CancelSettingsEdit,
     ExitFolder,
 }
 
-pub(super) fn select_row_click_action(
+pub(in crate::app) fn select_row_click_action(
     row_index: u32,
     button: MouseButton,
     selected_index: usize,
@@ -33,7 +33,7 @@ pub(super) fn select_row_click_action(
     }
 }
 
-pub(super) fn select_scroll_slider_index(value: f32, item_len: usize) -> Option<usize> {
+pub(in crate::app) fn select_scroll_slider_index(value: f32, item_len: usize) -> Option<usize> {
     if item_len == 0 {
         return None;
     }
@@ -44,20 +44,24 @@ pub(super) fn select_scroll_slider_index(value: f32, item_len: usize) -> Option<
     Some((value.clamp(0.0, 1.0) * max_index as f32).round() as usize)
 }
 
-pub(super) fn select_scroll_duration_low_ms(config: &crate::config::app_config::AppConfig) -> u32 {
+pub(in crate::app) fn select_scroll_duration_low_ms(
+    config: &crate::config::app_config::AppConfig,
+) -> u32 {
     config.select.scroll_duration_low_ms.clamp(2, 1000)
 }
 
-pub(super) fn select_scroll_duration_high_ms(config: &crate::config::app_config::AppConfig) -> u32 {
+pub(in crate::app) fn select_scroll_duration_high_ms(
+    config: &crate::config::app_config::AppConfig,
+) -> u32 {
     config.select.scroll_duration_high_ms.clamp(1, 1000)
 }
 
-pub(super) fn select_analog_scroll_duration(mov: i32) -> Duration {
+pub(in crate::app) fn select_analog_scroll_duration(mov: i32) -> Duration {
     let remaining = mov.abs().clamp(1, 2);
     Duration::from_millis((120 / remaining / remaining) as u64)
 }
 
-pub(super) fn log_gamepad_key_config_raw_event(
+pub(in crate::app) fn log_gamepad_key_config_raw_event(
     backend: &str,
     event: &crate::input::gamepad::RawInputEvent,
 ) {
@@ -78,7 +82,7 @@ pub(super) fn log_gamepad_key_config_raw_event(
 }
 
 #[cfg(test)]
-pub(super) fn select_control_action(
+pub(in crate::app) fn select_control_action(
     control: &str,
     bindings: &SelectKeyBindings,
 ) -> Option<SelectAction> {
@@ -86,7 +90,7 @@ pub(super) fn select_control_action(
 }
 
 #[cfg(test)]
-pub(super) fn select_action(
+pub(in crate::app) fn select_action(
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
@@ -95,7 +99,7 @@ pub(super) fn select_action(
     scene_select_action(&ControlInputEvent::keyboard_parts(physical_key, state, repeat), bindings)
 }
 
-pub(super) fn select_wheel_move(delta: MouseScrollDelta) -> Option<SelectMove> {
+pub(in crate::app) fn select_wheel_move(delta: MouseScrollDelta) -> Option<SelectMove> {
     let y = mouse_wheel_y(delta);
 
     if y > 0.0 {
@@ -107,7 +111,7 @@ pub(super) fn select_wheel_move(delta: MouseScrollDelta) -> Option<SelectMove> {
     }
 }
 
-pub(super) fn lane_cover_wheel_change(delta: MouseScrollDelta) -> Option<LaneCoverChange> {
+pub(in crate::app) fn lane_cover_wheel_change(delta: MouseScrollDelta) -> Option<LaneCoverChange> {
     let y = mouse_wheel_y(delta);
     if y > 0.0 {
         Some(LaneCoverChange::Up)
@@ -118,9 +122,10 @@ pub(super) fn lane_cover_wheel_change(delta: MouseScrollDelta) -> Option<LaneCov
     }
 }
 
-pub(super) fn mouse_wheel_y(delta: MouseScrollDelta) -> f32 {
+pub(in crate::app) fn mouse_wheel_y(delta: MouseScrollDelta) -> f32 {
     match delta {
         MouseScrollDelta::LineDelta(_, y) => y,
         MouseScrollDelta::PixelDelta(position) => position.y as f32,
     }
 }
+use super::*;

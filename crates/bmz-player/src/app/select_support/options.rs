@@ -1,4 +1,4 @@
-pub(super) fn cycle_gauge_option(current: GaugeTypeConfig) -> GaugeTypeConfig {
+pub(in crate::app) fn cycle_gauge_option(current: GaugeTypeConfig) -> GaugeTypeConfig {
     match current {
         GaugeTypeConfig::AssistEasy => GaugeTypeConfig::Easy,
         GaugeTypeConfig::Easy => GaugeTypeConfig::Normal,
@@ -9,11 +9,11 @@ pub(super) fn cycle_gauge_option(current: GaugeTypeConfig) -> GaugeTypeConfig {
     }
 }
 
-pub(super) fn cycle_gauge_option_prev(current: GaugeTypeConfig) -> GaugeTypeConfig {
+pub(in crate::app) fn cycle_gauge_option_prev(current: GaugeTypeConfig) -> GaugeTypeConfig {
     cycle_gauge_option_with_direction(current, -1)
 }
 
-pub(super) fn cycle_gauge_option_with_direction(
+pub(in crate::app) fn cycle_gauge_option_with_direction(
     current: GaugeTypeConfig,
     direction: i32,
 ) -> GaugeTypeConfig {
@@ -28,14 +28,14 @@ pub(super) fn cycle_gauge_option_with_direction(
     cycle_enum(VALUES, normalize_gauge_option(current), direction)
 }
 
-pub(super) fn normalize_gauge_option(current: GaugeTypeConfig) -> GaugeTypeConfig {
+pub(in crate::app) fn normalize_gauge_option(current: GaugeTypeConfig) -> GaugeTypeConfig {
     match current {
         GaugeTypeConfig::AutoShift => GaugeTypeConfig::ExHard,
         _ => current,
     }
 }
 
-pub(super) fn gauge_option_as_str(gauge: GaugeTypeConfig) -> &'static str {
+pub(in crate::app) fn gauge_option_as_str(gauge: GaugeTypeConfig) -> &'static str {
     match gauge {
         GaugeTypeConfig::AssistEasy => "A-EASY",
         GaugeTypeConfig::Easy => "EASY",
@@ -47,7 +47,9 @@ pub(super) fn gauge_option_as_str(gauge: GaugeTypeConfig) -> &'static str {
     }
 }
 
-pub(super) fn cycle_gauge_auto_shift_option(current: GaugeAutoShiftConfig) -> GaugeAutoShiftConfig {
+pub(in crate::app) fn cycle_gauge_auto_shift_option(
+    current: GaugeAutoShiftConfig,
+) -> GaugeAutoShiftConfig {
     match current {
         GaugeAutoShiftConfig::Off => GaugeAutoShiftConfig::Continue,
         GaugeAutoShiftConfig::Continue => GaugeAutoShiftConfig::HardToGroove,
@@ -57,7 +59,7 @@ pub(super) fn cycle_gauge_auto_shift_option(current: GaugeAutoShiftConfig) -> Ga
     }
 }
 
-pub(super) fn cycle_gauge_auto_shift_option_with_direction(
+pub(in crate::app) fn cycle_gauge_auto_shift_option_with_direction(
     current: GaugeAutoShiftConfig,
     direction: i32,
 ) -> GaugeAutoShiftConfig {
@@ -71,7 +73,7 @@ pub(super) fn cycle_gauge_auto_shift_option_with_direction(
     cycle_enum(VALUES, current, direction)
 }
 
-pub(super) fn gauge_auto_shift_as_str(mode: GaugeAutoShiftConfig) -> &'static str {
+pub(in crate::app) fn gauge_auto_shift_as_str(mode: GaugeAutoShiftConfig) -> &'static str {
     match mode {
         GaugeAutoShiftConfig::Off => "OFF",
         GaugeAutoShiftConfig::Continue => "CONTINUE",
@@ -81,7 +83,7 @@ pub(super) fn gauge_auto_shift_as_str(mode: GaugeAutoShiftConfig) -> &'static st
     }
 }
 
-pub(super) fn cycle_bottom_shiftable_gauge_with_direction(
+pub(in crate::app) fn cycle_bottom_shiftable_gauge_with_direction(
     current: BottomShiftableGaugeConfig,
     direction: i32,
 ) -> BottomShiftableGaugeConfig {
@@ -93,14 +95,16 @@ pub(super) fn cycle_bottom_shiftable_gauge_with_direction(
     cycle_enum(VALUES, current, direction)
 }
 
-pub(super) fn cycle_judge_algorithm_with_direction(
+pub(in crate::app) fn cycle_judge_algorithm_with_direction(
     current: JudgeAlgorithmConfig,
     direction: i32,
 ) -> JudgeAlgorithmConfig {
     cycle_enum(JudgeAlgorithmConfig::ORDER, current, direction)
 }
 
-pub(super) fn bottom_shiftable_gauge_as_str(gauge: BottomShiftableGaugeConfig) -> &'static str {
+pub(in crate::app) fn bottom_shiftable_gauge_as_str(
+    gauge: BottomShiftableGaugeConfig,
+) -> &'static str {
     match gauge {
         BottomShiftableGaugeConfig::AssistEasy => "A-EASY",
         BottomShiftableGaugeConfig::Easy => "EASY",
@@ -108,7 +112,7 @@ pub(super) fn bottom_shiftable_gauge_as_str(gauge: BottomShiftableGaugeConfig) -
     }
 }
 
-pub(super) fn bga_mode_as_str(bga: BgaModeConfig) -> &'static str {
+pub(in crate::app) fn bga_mode_as_str(bga: BgaModeConfig) -> &'static str {
     match bga {
         BgaModeConfig::On => "ON",
         BgaModeConfig::Auto => "AUTO",
@@ -116,18 +120,18 @@ pub(super) fn bga_mode_as_str(bga: BgaModeConfig) -> &'static str {
     }
 }
 
-pub(super) fn volume_f32_to_unit(value: f32) -> u32 {
+pub(in crate::app) fn volume_f32_to_unit(value: f32) -> u32 {
     (value.clamp(0.0, 1.0) * 100.0).round() as u32
 }
 
-pub(super) fn cycle_arrange_option_with_direction(
+pub(in crate::app) fn cycle_arrange_option_with_direction(
     current: ArrangeOption,
     direction: i32,
 ) -> ArrangeOption {
     cycle_enum(ArrangeOption::VALUES, current, direction)
 }
 
-pub(super) fn cycle_double_option_with_direction(
+pub(in crate::app) fn cycle_double_option_with_direction(
     current: DoubleOption,
     direction: i32,
 ) -> DoubleOption {
@@ -140,7 +144,7 @@ pub(super) fn cycle_double_option_with_direction(
     cycle_enum(VALUES, current, direction)
 }
 
-pub(super) fn cycle_hs_fix_option_with_direction(
+pub(in crate::app) fn cycle_hs_fix_option_with_direction(
     current: HsFixOption,
     direction: i32,
 ) -> HsFixOption {
@@ -154,7 +158,7 @@ pub(super) fn cycle_hs_fix_option_with_direction(
     cycle_enum(VALUES, current, direction)
 }
 
-pub(super) fn cycle_bga_option(current: BgaModeConfig) -> BgaModeConfig {
+pub(in crate::app) fn cycle_bga_option(current: BgaModeConfig) -> BgaModeConfig {
     match current {
         BgaModeConfig::On => BgaModeConfig::Auto,
         BgaModeConfig::Auto => BgaModeConfig::Off,
@@ -162,7 +166,7 @@ pub(super) fn cycle_bga_option(current: BgaModeConfig) -> BgaModeConfig {
     }
 }
 
-pub(super) fn cycle_result_gauge_graph_type(current: i32) -> i32 {
+pub(in crate::app) fn cycle_result_gauge_graph_type(current: i32) -> i32 {
     if (GaugeType::AssistEasy as i32..=GaugeType::Hazard as i32).contains(&current) {
         (current + 1).rem_euclid(6)
     } else {
@@ -170,7 +174,7 @@ pub(super) fn cycle_result_gauge_graph_type(current: i32) -> i32 {
     }
 }
 
-pub(super) fn toggled_select_sudden(current: LaneEffectConfig) -> LaneEffectConfig {
+pub(in crate::app) fn toggled_select_sudden(current: LaneEffectConfig) -> LaneEffectConfig {
     match current {
         LaneEffectConfig::Off => LaneEffectConfig::Sudden,
         LaneEffectConfig::Hidden => LaneEffectConfig::HiddenSudden,
@@ -179,7 +183,7 @@ pub(super) fn toggled_select_sudden(current: LaneEffectConfig) -> LaneEffectConf
     }
 }
 
-pub(super) fn toggled_select_hidden(current: LaneEffectConfig) -> LaneEffectConfig {
+pub(in crate::app) fn toggled_select_hidden(current: LaneEffectConfig) -> LaneEffectConfig {
     match current {
         LaneEffectConfig::Off => LaneEffectConfig::Hidden,
         LaneEffectConfig::Hidden => LaneEffectConfig::Off,
@@ -187,3 +191,4 @@ pub(super) fn toggled_select_hidden(current: LaneEffectConfig) -> LaneEffectConf
         LaneEffectConfig::HiddenSudden => LaneEffectConfig::Sudden,
     }
 }
+use super::*;

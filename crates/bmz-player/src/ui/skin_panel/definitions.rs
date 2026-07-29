@@ -3,7 +3,7 @@
 /// - property: ComboBox で選択肢を選び `options` へ書き込む。
 /// - filepath: `path` グロブにマッチするファイルを ComboBox で選び `files` へ書き込む。
 /// - offset: 宣言された要素ごとに x/y/w/h/r/a を編集し `offsets` (名前単位) へ反映。
-pub(super) fn build_scene_skin_defs(
+pub(in crate::ui) fn build_scene_skin_defs(
     ui: &mut egui::Ui,
     slot: SkinSlot,
     defs: &SceneSkinDefs,
@@ -155,7 +155,7 @@ pub(super) fn build_scene_skin_defs(
 /// 旧設定は名前を持たないため ID で移行する。同じ旧 ID を複数の異なる名前が
 /// 使用する場合は値をそれぞれへ複製し、以後は独立して編集できるようにする。
 /// 同名定義が複数 ID にある場合は、beatoraja と同様に最初の同名設定を共有する。
-pub(super) fn sync_skin_offsets_with_defs(
+pub(in crate::ui) fn sync_skin_offsets_with_defs(
     defs: &[SkinOffsetDef],
     offsets: &mut Vec<SkinOffsetConfig>,
 ) -> bool {
@@ -203,7 +203,7 @@ pub(super) fn sync_skin_offsets_with_defs(
 }
 
 /// 同名 offset の値を全定義へ反映する。ID は各定義のものを維持する。
-pub(super) fn update_skin_offset_value(
+pub(in crate::ui) fn update_skin_offset_value(
     offsets: &mut Vec<SkinOffsetConfig>,
     offset_def: &SkinOffsetDef,
     value: SkinOffsetConfig,
@@ -235,7 +235,7 @@ pub(super) fn update_skin_offset_value(
 }
 
 /// 1 シーン分の options / files / 当該 offset 名をスキン定義の factory default へ戻す。
-pub(super) fn reset_scene_skin_to_defaults(
+pub(in crate::ui) fn reset_scene_skin_to_defaults(
     defs: &SceneSkinDefs,
     skin_root: Option<&Path>,
     options: &mut BTreeMap<String, String>,
@@ -262,7 +262,7 @@ pub(super) fn reset_scene_skin_to_defaults(
     *options != previous_options || *files != previous_files || *offsets != previous_offsets
 }
 
-pub(super) fn fill_missing_skin_defaults(
+pub(in crate::ui) fn fill_missing_skin_defaults(
     defs: &SceneSkinDefs,
     skin_root: Option<&Path>,
     options: &mut BTreeMap<String, String>,
@@ -303,7 +303,7 @@ pub(super) fn fill_missing_skin_defaults(
     changed
 }
 
-pub(super) fn add_offset_drag_values(
+pub(in crate::ui) fn add_offset_drag_values(
     ui: &mut egui::Ui,
     def: &SkinOffsetDef,
     value: &mut SkinOffsetConfig,
@@ -340,3 +340,4 @@ pub(super) fn add_offset_drag_values(
     }
     changed
 }
+use super::*;

@@ -1,14 +1,14 @@
 /// 各サブパネルの開閉を切り替えるメインメニューハブ。
-struct MenuPanelVisibility<'a> {
-    debug: &'a mut bool,
-    random_trainer: &'a mut bool,
-    settings: &'a mut bool,
-    profile_settings: &'a mut bool,
-    skin: &'a mut bool,
-    license_notice: &'a mut bool,
+pub(super) struct MenuPanelVisibility<'a> {
+    pub(super) debug: &'a mut bool,
+    pub(super) random_trainer: &'a mut bool,
+    pub(super) settings: &'a mut bool,
+    pub(super) profile_settings: &'a mut bool,
+    pub(super) skin: &'a mut bool,
+    pub(super) license_notice: &'a mut bool,
 }
 
-fn build_menu(
+pub(super) fn build_menu(
     ctx: &egui::Context,
     visible: &mut bool,
     panels: MenuPanelVisibility<'_>,
@@ -71,11 +71,11 @@ fn build_menu(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RandomTrainerLaneDrag {
-    index: usize,
+pub(super) struct RandomTrainerLaneDrag {
+    pub(super) index: usize,
 }
 
-fn build_random_trainer_panel(
+pub(super) fn build_random_trainer_panel(
     ctx: &egui::Context,
     visible: &mut bool,
     trainer: &mut RandomTrainerState,
@@ -185,3 +185,4 @@ fn build_random_trainer_panel(
             });
         });
 }
+use super::*;

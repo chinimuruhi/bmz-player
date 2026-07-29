@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(super) fn result_action(
+pub(in crate::app) fn result_action(
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
@@ -7,7 +7,7 @@ pub(super) fn result_action(
     scene_result_action(&ControlInputEvent::keyboard_parts(physical_key, state, repeat))
 }
 
-pub(super) fn result_exit_skip_key(
+pub(in crate::app) fn result_exit_skip_key(
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
@@ -18,7 +18,7 @@ pub(super) fn result_exit_skip_key(
     matches!(physical_key, PhysicalKey::Code(KeyCode::Enter | KeyCode::Escape))
 }
 
-pub(super) fn result_exit_transition_ready(
+pub(in crate::app) fn result_exit_transition_ready(
     elapsed: Duration,
     fadeout: Duration,
     animation_duration: Duration,
@@ -30,26 +30,30 @@ pub(super) fn result_exit_transition_ready(
 }
 
 #[cfg(test)]
-pub(super) fn decide_control_action(
+pub(in crate::app) fn decide_control_action(
     control: &str,
     bindings: &SelectKeyBindings,
 ) -> Option<DecideAction> {
     scene_decide_action(&ControlInputEvent::gamepad(DeviceId(1), control, true), bindings)
 }
 
-pub(super) fn decide_cancel_chord_pressed(e1_held: bool, e2_held: bool, e3_held: bool) -> bool {
+pub(in crate::app) fn decide_cancel_chord_pressed(
+    e1_held: bool,
+    e2_held: bool,
+    e3_held: bool,
+) -> bool {
     e2_held && (e1_held || e3_held)
 }
 
-pub(super) fn elapsed_since(started_at: Instant) -> TimeUs {
+pub(in crate::app) fn elapsed_since(started_at: Instant) -> TimeUs {
     TimeUs(started_at.elapsed().as_micros().min(i64::MAX as u128) as i64)
 }
 
-pub(super) fn elapsed_since_ms(started_at: Instant) -> i32 {
+pub(in crate::app) fn elapsed_since_ms(started_at: Instant) -> i32 {
     (started_at.elapsed().as_millis().min(i32::MAX as u128)) as i32
 }
 
-pub(super) fn apply_operating_time_ms_to_scene(
+pub(in crate::app) fn apply_operating_time_ms_to_scene(
     scene: &mut AppSceneSnapshot,
     operating_time_ms: i32,
 ) {
@@ -64,7 +68,7 @@ pub(super) fn apply_operating_time_ms_to_scene(
     }
 }
 
-pub(super) fn apply_skin_runtime_info_to_scene(
+pub(in crate::app) fn apply_skin_runtime_info_to_scene(
     scene: &mut AppSceneSnapshot,
     player_name: &str,
     current_fps: u32,
@@ -85,7 +89,7 @@ pub(super) fn apply_skin_runtime_info_to_scene(
     }
 }
 
-pub(super) fn preloaded_matches_start(
+pub(in crate::app) fn preloaded_matches_start(
     preloaded: &PreloadedInputPlaySession,
     chart_id: i64,
     options: &PlayStartOptions,
@@ -108,3 +112,4 @@ pub(super) fn preloaded_matches_start(
         && preloaded.session_options.initial_gauge_values == options.initial_gauge_values
         && preloaded.session_options.initial_course_combo == options.initial_course_combo
 }
+use super::*;

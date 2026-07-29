@@ -1,4 +1,7 @@
-async fn sync_cli_jobs(
+use super::download::now_unix_seconds;
+use super::*;
+
+pub(super) async fn sync_cli_jobs(
     network_db: &mut NetworkDatabase,
     score_db_path: &Path,
     profile_root: &Path,
@@ -18,7 +21,7 @@ async fn sync_cli_jobs(
     .await
 }
 
-async fn sync_cli_jobs_for_kind(
+pub(super) async fn sync_cli_jobs_for_kind(
     network_db: &mut NetworkDatabase,
     score_db_path: &Path,
     profile_root: &Path,

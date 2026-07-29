@@ -1,5 +1,5 @@
 #[allow(clippy::too_many_arguments)]
-pub(super) fn build_profile_settings_panel(
+pub(in crate::ui) fn build_profile_settings_panel(
     ctx: &egui::Context,
     open: &mut bool,
     profile: &mut ProfileConfig,
@@ -992,3 +992,4 @@ pub(super) fn build_profile_settings_panel(
     }
     ProfileSettingsPanelActions { save: save_clicked, save_app_config }
 }
+use super::*;

@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub(super) fn hispeed_action(
+pub(in crate::app) fn hispeed_action(
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
@@ -10,7 +10,7 @@ pub(super) fn hispeed_action(
     }
 }
 
-pub(super) fn play_option_control_for_input(
+pub(in crate::app) fn play_option_control_for_input(
     device: DeviceId,
     control: &PhysicalControl,
     e1_held: bool,
@@ -74,7 +74,7 @@ pub(super) fn play_option_control_for_input(
     }
 }
 
-pub(super) fn visual_offset_delta_control(
+pub(in crate::app) fn visual_offset_delta_control(
     control: &str,
     bindings: &SelectKeyBindings,
 ) -> Option<i32> {
@@ -87,7 +87,7 @@ pub(super) fn visual_offset_delta_control(
     }
 }
 
-pub(super) fn green_number_delta_control(
+pub(in crate::app) fn green_number_delta_control(
     control: &str,
     bindings: &SelectKeyBindings,
 ) -> Option<i32> {
@@ -101,7 +101,7 @@ pub(super) fn green_number_delta_control(
 }
 
 #[cfg(test)]
-pub(super) fn lane_cover_step(
+pub(in crate::app) fn lane_cover_step(
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
@@ -112,7 +112,7 @@ pub(super) fn lane_cover_step(
     }
 }
 
-pub(super) fn lane_cover_change_step(change: LaneCoverChange) -> f32 {
+pub(in crate::app) fn lane_cover_change_step(change: LaneCoverChange) -> f32 {
     match change {
         LaneCoverChange::Up => LANE_COVER_STEP,
         LaneCoverChange::Down => -LANE_COVER_STEP,
@@ -121,18 +121,18 @@ pub(super) fn lane_cover_change_step(change: LaneCoverChange) -> f32 {
 
 /// アナログスクラッチによる緑数字操作は、レーンカバー操作とは増減方向が逆。
 /// 正の step (Scratch Down) で緑数字を上げ、負の step (Scratch Up) で下げる。
-pub(super) fn green_number_change_from_analog_steps(steps: i32) -> GreenNumberChange {
+pub(in crate::app) fn green_number_change_from_analog_steps(steps: i32) -> GreenNumberChange {
     if steps > 0 { GreenNumberChange::Up } else { GreenNumberChange::Down }
 }
 
-pub(super) fn green_number_change_step(change: GreenNumberChange) -> i32 {
+pub(in crate::app) fn green_number_change_step(change: GreenNumberChange) -> i32 {
     match change {
         GreenNumberChange::Up => 1,
         GreenNumberChange::Down => -1,
     }
 }
 
-pub(super) fn hispeed_step_for_profile(profile: &ProfileConfig, mode: HispeedMode) -> f32 {
+pub(in crate::app) fn hispeed_step_for_profile(profile: &ProfileConfig, mode: HispeedMode) -> f32 {
     match mode {
         HispeedMode::Normal => {
             normalize_hispeed_step(profile.lane.hispeed_step_nhs, default_hispeed_step_nhs())
@@ -143,10 +143,11 @@ pub(super) fn hispeed_step_for_profile(profile: &ProfileConfig, mode: HispeedMod
     }
 }
 
-pub(super) fn adjusted_hispeed(current: f32, change: HispeedChange, step: f32) -> f32 {
+pub(in crate::app) fn adjusted_hispeed(current: f32, change: HispeedChange, step: f32) -> f32 {
     let delta = match change {
         HispeedChange::Down => -step,
         HispeedChange::Up => step,
     };
     (current + delta).clamp(0.5, 10.0)
 }
+use super::*;

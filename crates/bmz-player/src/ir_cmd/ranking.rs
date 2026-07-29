@@ -1,4 +1,8 @@
-async fn ranking(
+use super::download::{now_unix_seconds, parse_scope, primary_provider};
+use super::jobs::{sync_cli_jobs, sync_cli_jobs_for_kind};
+use super::*;
+
+pub(super) async fn ranking(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     sha256: &str,
@@ -93,7 +97,7 @@ fn print_ranking(
     }
 }
 
-async fn sync(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {
+pub(super) async fn sync(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {
     let app_paths = resolve_app_paths()?;
     crate::storage::migration::migrate_score_db(&profile_paths.score_db)?;
     crate::storage::migration::migrate_network_db(&profile_paths.network_db)?;
@@ -114,7 +118,7 @@ async fn sync(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<(
     Ok(())
 }
 
-async fn attest_submitted_scores(
+pub(super) async fn attest_submitted_scores(
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     provider: Option<&str>,

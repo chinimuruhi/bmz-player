@@ -1,4 +1,4 @@
-pub(super) fn select_chart_distribution(
+pub(in crate::app) fn select_chart_distribution(
     distribution: &[ChartDistributionSecond],
 ) -> Vec<SelectChartDistributionSecond> {
     distribution
@@ -15,7 +15,7 @@ pub(super) fn select_chart_distribution(
         .collect()
 }
 
-pub(super) fn select_bpm_graph_segments(
+pub(in crate::app) fn select_bpm_graph_segments(
     speed_changes: &[crate::storage::library_db::ChartSpeedChange],
     length_ms: i64,
 ) -> Vec<bmz_render::chart_graph::BpmGraphSegment> {
@@ -41,7 +41,7 @@ pub(super) fn select_bpm_graph_segments(
     segments
 }
 
-pub(super) fn select_visible_item_indices(
+pub(in crate::app) fn select_visible_item_indices(
     item_len: usize,
     selected_index: usize,
     visible_limit: usize,
@@ -58,7 +58,7 @@ pub(super) fn select_visible_item_indices(
     (0..row_count).map(|offset| (start + offset) % item_len).collect()
 }
 
-pub(super) fn select_snapshot_rows(
+pub(in crate::app) fn select_snapshot_rows(
     items: &[SelectItem],
     selected_index: usize,
     visible_limit: usize,
@@ -651,3 +651,4 @@ pub(super) fn select_snapshot_rows(
         })
         .collect()
 }
+use super::*;

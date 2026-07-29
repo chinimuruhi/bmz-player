@@ -1,4 +1,4 @@
-pub(super) fn build_profile_manager_section(
+pub(in crate::ui) fn build_profile_manager_section(
     ui: &mut egui::Ui,
     app_config: &mut AppConfig,
     profile: &ProfileConfig,
@@ -160,3 +160,4 @@ pub(super) fn build_profile_manager_section(
         });
     save_app_config
 }
+use super::*;

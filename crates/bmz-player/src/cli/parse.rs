@@ -165,3 +165,6 @@ fn parse_profile_name_and_activate_flags(flags: &[String]) -> Result<(Option<Str
     }
     Ok((display_name, activate))
 }
+use super::help::{parse_course_attempt_id, parse_course_history_id, parse_course_history_limit};
+use super::ir::parse_ir_command;
+use super::*;

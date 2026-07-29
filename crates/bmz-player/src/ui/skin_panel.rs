@@ -1,7 +1,13 @@
 use super::*;
 
-include!("skin_panel/slots.rs");
-include!("skin_panel/catalog.rs");
-include!("skin_panel/view.rs");
-include!("skin_panel/definitions.rs");
-include!("skin_panel/paths.rs");
+mod catalog;
+mod definitions;
+mod paths;
+mod slots;
+mod view;
+
+pub(super) use catalog::*;
+pub(super) use definitions::*;
+pub(super) use paths::*;
+pub(super) use slots::*;
+pub(super) use view::*;

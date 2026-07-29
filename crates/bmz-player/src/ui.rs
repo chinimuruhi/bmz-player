@@ -78,10 +78,22 @@ use profile_panel::*;
 use settings_panel::*;
 use skin_panel::*;
 
-include!("ui/model.rs");
-include!("ui/ir_state.rs");
-include!("ui/runtime.rs");
-include!("ui/menu.rs");
+mod ir_state;
+mod menu;
+mod model;
+mod runtime;
+
+use ir_state::*;
+use menu::*;
+use model::*;
+pub use model::{
+    DebugInfo, EguiLayer, EguiOutput, EguiRunContext, SceneSkinDefs, SkinCandidate,
+    SkinCandidateOrigin, SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest,
+    UpdateDialog, UpdateDialogAction,
+};
+use runtime::AudioDevicePickerState;
+#[cfg(test)]
+use runtime::{cjk_font_definitions, egui_frame_needs_full_state};
 
 #[cfg(test)]
 #[path = "ui/tests.rs"]

@@ -59,3 +59,10 @@ pub async fn run_ir_command(cmd: IrCommand) -> Result<()> {
         IrCommand::Replay { score_id } => replay(&profile_paths, &profile, &score_id).await,
     }
 }
+use super::account::{device_key, load_active_profile, replay, rivals};
+use super::auth::{login, logout, status};
+use super::cleanup::{cleanup_duplicate_score_history, cleanup_imported_scores};
+use super::download::download_scores;
+use super::ranking::{attest_submitted_scores, ranking, sync};
+use super::upload::upload_local;
+use super::*;
