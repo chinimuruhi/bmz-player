@@ -39,6 +39,29 @@ beatoraja には対応する skin type が無いため、BMZ 専用 skin とし�
 `Key1..Key8` として扱う。つまり `Scratch -> Key1`, `Key1 -> Key2`, ...,
 `Key7 -> Key8` に正規化してから skin へ渡す。
 
+## Battle Session Skin
+
+`SessionMode::AutoplayBattle` / `GhostBattle` では、5K は skin type `13`、7K は
+skin type `12` の専用スロット (`skin.battle5` / `skin.battle7`) を優先する。
+未設定なら既存の `play10` / `play14` スロットへフォールバックする。
+
+2P側のノート、LN、key-on/off、hold、bomb、HCN、judge は通常の2Pレーン ref/timerで
+公開する。次の対になっているtimerは1P/2Pを別状態として扱う。
+
+| 1P | 2P | meaning |
+| ---: | ---: | --- |
+| 42 | 43 | gauge increase |
+| 44 | 45 | gauge max |
+| 46 | 47 | judge |
+| 446 | 447 | combo |
+| 48 | 49 | full combo |
+| 143 | 144 | end of note |
+
+対戦側の進行中 EX score / max combo / BP / judge counts は、beatoraja の rival number
+ref `271`, `275`, `276`, `280..284` に公開し、judge rate は `285..289` に公開する。
+Ghost Battle の2P判定は
+表示専用で、1P側のスコア、ゲージ、キー音、保存用リプレイには混ぜない。
+
 ## Static Image Sources
 
 beatoraja skin の `source.path` は PNG / BMP / JPEG / GIF / TGA に加え、libGDX

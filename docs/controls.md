@@ -91,7 +91,7 @@ favorite 操作は invisible を使わず、登録済みなら解除、未登録
 | KEY4 | 戻る / 閉じる | GAUGE 前 | - | GREEN NUMBER -1 |
 | KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | ASSIST 次 | VISUAL OFFSET -1 ms |
 | KEY6 | 戻る / 閉じる | DP OPTION 次 | - | GREEN NUMBER +1 |
-| KEY7 | 決定 / 開く / 曲開始 | AUTOPLAY 切替 | - | VISUAL OFFSET +1 ms |
+| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → AUTOPLAY → AUTOPLAY BATTLE → GHOST BATTLE） | - | VISUAL OFFSET +1 ms |
 | 2P KEY1 | 決定 / 開く / 曲開始 | 2P RANDOM 次 | - | BGA 切替 |
 | 2P KEY2 | 戻る / 閉じる | 2P RANDOM 前 | - | GAUGE AUTO SHIFT 切替 |
 | 2P KEY3 | 決定 / 開く / 曲開始 | GAUGE 次 | - | JUDGE AUTO ADJUST 切替 |

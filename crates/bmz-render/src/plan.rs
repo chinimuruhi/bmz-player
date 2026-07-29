@@ -931,11 +931,27 @@ fn plan_play(
         lane_judge,
         judge_ms: judge_region_state.judge_ms,
         full_combo_ms: snapshot.full_combo_elapsed_ms,
+        full_combo_2p_ms: snapshot
+            .opponent
+            .as_ref()
+            .and_then(|opponent| opponent.full_combo_elapsed_ms),
         fadeout_ms: snapshot.fadeout_elapsed_ms,
         failed_ms: snapshot.failed_elapsed_ms,
         music_end_ms: snapshot.music_end_elapsed_ms,
         gauge_increase_ms: snapshot.gauge_increase_elapsed_ms,
+        gauge_increase_2p_ms: snapshot
+            .opponent
+            .as_ref()
+            .and_then(|opponent| opponent.gauge_increase_elapsed_ms),
         gauge_max_ms: snapshot.gauge_max_elapsed_ms,
+        gauge_max_2p_ms: snapshot
+            .opponent
+            .as_ref()
+            .and_then(|opponent| opponent.gauge_max_elapsed_ms),
+        end_of_note_2p_ms: snapshot
+            .opponent
+            .as_ref()
+            .and_then(|opponent| opponent.end_of_note_elapsed_ms),
         judge_index: judge_region_state.judge_index,
         judge_combo: judge_region_state.judge_combo,
         judge_timing_sign: judge_region_state.judge_timing_sign,
@@ -1003,6 +1019,20 @@ fn plan_play(
         replay_playback: snapshot.replay_playback,
         practice_mode: snapshot.practice_mode,
         score_save_enabled: Some(snapshot.score_save_enabled),
+        rival_ex_score: snapshot.opponent.as_ref().map(|opponent| i64::from(opponent.ex_score)),
+        rival_max_combo: snapshot.opponent.as_ref().map(|opponent| i64::from(opponent.max_combo)),
+        rival_bp: snapshot.opponent.as_ref().map(|opponent| {
+            i64::from(opponent.judge_counts.bad.saturating_add(opponent.judge_counts.poor))
+        }),
+        rival_judge_counts: snapshot.opponent.as_ref().map(|opponent| {
+            [
+                opponent.judge_counts.pgreat,
+                opponent.judge_counts.great,
+                opponent.judge_counts.good,
+                opponent.judge_counts.bad,
+                opponent.judge_counts.poor,
+            ]
+        }),
         course_stage: snapshot.course_stage,
         hit_error_ring: snapshot.hit_error_ring.values,
         hit_error_ring_index: snapshot.hit_error_ring.index,

@@ -22,8 +22,8 @@ use bmz_render::plan::CHART_BGA_TEXTURE_BASE;
 use bmz_render::skin_offset::{SkinOffsetValue, SkinOffsetValues};
 use bmz_render::snapshot::{
     DisplayBgaFrame, DisplayInput, DisplayJudgeCounts, DisplayJudgement, LongBodyState,
-    NoteVisualKind, OverlaySnapshot, RenderSnapshot, ResultGaugeGraphPoint, VisibleBarLine,
-    VisibleLongNote, VisibleMine, VisibleNote,
+    NoteVisualKind, OpponentRenderSnapshot, OverlaySnapshot, RenderSnapshot, ResultGaugeGraphPoint,
+    VisibleBarLine, VisibleLongNote, VisibleMine, VisibleNote,
 };
 
 pub(crate) const BEATORAJA_DURATION_BPM_FACTOR_MS: f32 = 240_000.0;
@@ -533,6 +533,34 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             gauge_type: gauge.definition.gauge_type as i32,
         })
         .collect();
+    let opponent = session.opponent_score.as_ref().zip(session.opponent_gauge.as_ref()).map(
+        |(score, gauge)| OpponentRenderSnapshot {
+            combo: score.combo,
+            max_combo: score.max_combo,
+            ex_score: score.ex_score(),
+            total_notes: session.scored_total_notes,
+            past_notes: score.past_notes,
+            judge_counts: display_judge_counts_for_score(score),
+            gauge: gauge.current().value,
+            gauge_type: gauge.current().definition.gauge_type as i32,
+            gauge_max: gauge.current().definition.max,
+            gauge_border: gauge.current().definition.border,
+            full_combo_elapsed_ms: session.opponent_full_combo_started_at.and_then(|started_at| {
+                (chart_now.0 >= started_at.0).then_some(
+                    ((chart_now.0 - started_at.0) / 1_000).clamp(0, i32::MAX as i64) as i32,
+                )
+            }),
+            end_of_note_elapsed_ms: end_of_note_elapsed_ms(chart_now, cache.end_of_note_time),
+            gauge_increase_elapsed_ms: optional_skin_timer_elapsed_ms(
+                chart_now,
+                session.opponent_gauge_increase_started_at,
+            ),
+            gauge_max_elapsed_ms: optional_skin_timer_elapsed_ms(
+                chart_now,
+                session.opponent_gauge_max_started_at,
+            ),
+        },
+    );
     let mut snapshot = RenderSnapshot {
         time: chart_now,
         player_name: String::new(),
@@ -584,6 +612,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         gauge_auto_shift: session.gauge.auto_shift,
         gauge_max: session.gauge.current().definition.max,
         gauge_border: session.gauge.current().definition.border,
+        opponent,
         hispeed: session.hispeed,
         hispeed_mode_index: hispeed_mode_index(session.hispeed_mode),
         target_green_number: session.target_green_number,
@@ -641,7 +670,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         hsfix_index: session.hsfix_index,
         fs_threshold_ms: rm_skin_fs_threshold_ms(
             session.chart.metadata.judge_rank,
-            session.chart.metadata.key_mode,
+            session.primary_key_mode,
         ),
         adjusted_cover_progress,
         adjusted_rate,
@@ -649,10 +678,10 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         judge_graph_density: Arc::clone(&cache.judge_graph_density),
         bpm_graph_segments: Arc::clone(&cache.bpm_graph_segments),
         autoplay: session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full()),
-        replay_playback: session.replay_player.is_some(),
+        replay_playback: session.replay_player.is_some() && session.replay_lane_mask.is_none(),
         practice_mode: false,
         score_save_enabled: !session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full())
-            && session.replay_player.is_none(),
+            && !(session.replay_player.is_some() && session.replay_lane_mask.is_none()),
         course_stage: None,
         course_titles: Default::default(),
         table_text_primary: String::new(),
@@ -668,7 +697,14 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             .collect(),
         recent_judgements: recent_judgements
             .iter()
-            .map(|event| display_judgement(event, session.display_combo()))
+            .map(|event| {
+                let combo = if session.display_only_lane_mask[event.lane.index()] {
+                    session.opponent_score.as_ref().map_or(0, |score| score.combo)
+                } else {
+                    session.display_combo()
+                };
+                display_judgement(event, combo)
+            })
             .collect(),
         skin_events: Vec::new(),
         hit_error_ring: bmz_render::snapshot::HitErrorRingSnapshot {
@@ -1450,7 +1486,11 @@ fn interpolate_speed(prev: Option<(f64, f64)>, next: Option<(f64, f64)>, tick: f
 }
 
 fn display_judge_counts(session: &GameSession) -> DisplayJudgeCounts {
-    let judges = &session.score.judges;
+    display_judge_counts_for_score(&session.score)
+}
+
+fn display_judge_counts_for_score(score: &bmz_gameplay::score::ScoreState) -> DisplayJudgeCounts {
+    let judges = &score.judges;
     DisplayJudgeCounts {
         pgreat: judges.fast_pgreat + judges.slow_pgreat,
         great: judges.fast_great + judges.slow_great,

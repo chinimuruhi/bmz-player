@@ -152,7 +152,7 @@ use crate::screens::settings_model::{
     in_settings_stack, load_settings_items_for_locale, settings_breadcrumb_for_locale,
     settings_root_item_for_locale,
 };
-use crate::select_options::{ArrangeOption, AssistOption, DoubleOption, HsFixOption, TargetOption};
+use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
 use crate::skin_loader::{
     DecodedSkin, PreparedSource, SharedSkinDocumentCache, SharedSkinFontCache,
     SharedSkinGpuTextureCache, SharedSkinSourceAssetCache, SkinFontCacheKey, SkinKind,
@@ -161,8 +161,8 @@ use crate::skin_loader::{
     default_play_skin_document_path_from_paths, default_skin_document_path_from_paths,
     enabled_options_from_selections, install_decoded_font, install_decoded_skin,
     is_decodable_skin_path, is_json_skin_path, is_lr2_skin_path, is_lua_skin_path,
-    load_default_skin_into_renderer_from_paths, play_skin_selection_for, set_decoded_skin_context,
-    upload_decoded_skin_with_texture_cache,
+    load_default_skin_into_renderer_from_paths, play_skin_selection_for_session,
+    set_decoded_skin_context, upload_decoded_skin_with_texture_cache,
 };
 use crate::song_download::{
     ChartDownloadRequest, ChartDownloadResult, MissingChartAction, choose_missing_chart_action,
@@ -514,7 +514,7 @@ struct WinitApp {
     bottom_shiftable_gauge_option: BottomShiftableGaugeConfig,
     double_option: DoubleOption,
     hs_fix_option: HsFixOption,
-    assist_option: AssistOption,
+    session_mode: SessionMode,
     select_mode_filter: SelectModeFilter,
     select_sort: SelectSort,
     select_keys: SelectKeyBindings,
@@ -1635,10 +1635,10 @@ impl WinitApp {
         let boot_chart_id = resolve_boot_chart_id(&boot.library_db, &options);
         log_startup_options(&options);
 
-        let assist_option = if options.autoplay_on_start || boot.profile_config.play.auto_play {
-            AssistOption::Autoplay
+        let session_mode = if options.autoplay_on_start {
+            SessionMode::Autoplay
         } else {
-            AssistOption::Normal
+            session_mode_from_profile(&boot.profile_config.play)
         };
         let gauge_option = if boot.profile_config.play.gauge == GaugeTypeConfig::AutoShift {
             GaugeTypeConfig::ExHard
@@ -1843,7 +1843,7 @@ impl WinitApp {
             bottom_shiftable_gauge_option,
             double_option,
             hs_fix_option,
-            assist_option,
+            session_mode,
             select_mode_filter,
             select_sort,
             select_keys,
@@ -2518,14 +2518,10 @@ impl WinitApp {
                         .is_some_and(|autoplay| autoplay.is_full())
                 })
                 .or_else(|| {
-                    self.pending_play_start
-                        .as_ref()
-                        .map(|_| self.assist_option == AssistOption::Autoplay)
+                    self.pending_play_start.as_ref().map(|_| self.session_mode.primary_autoplay())
                 })
                 .unwrap_or(self.last_play_was_autoplay),
-            AppViewState::Select | AppViewState::Decide => {
-                self.assist_option == AssistOption::Autoplay
-            }
+            AppViewState::Select | AppViewState::Decide => self.session_mode.primary_autoplay(),
         }
     }
 
@@ -2737,7 +2733,7 @@ impl WinitApp {
             .to_string(),
             double_option: self.double_option.as_str().to_string(),
             hs_fix: self.hs_fix_option.as_str().to_string(),
-            assist: self.assist_option.as_str().to_string(),
+            assist: self.session_mode.as_str().to_string(),
             select_mode: self.select_mode_filter.as_str().to_string(),
             select_sort: self.select_sort.as_str().to_string(),
             select_ln_mode: self
@@ -3835,7 +3831,7 @@ impl WinitApp {
             bottom_shiftable_gauge: self.bottom_shiftable_gauge_option,
             double_option: self.double_option,
             hs_fix: self.hs_fix_option,
-            assist: self.assist_option,
+            session_mode: self.session_mode,
         }
     }
 
@@ -3848,7 +3844,7 @@ impl WinitApp {
         self.bottom_shiftable_gauge_option = options.bottom_shiftable_gauge;
         self.double_option = options.double_option;
         self.hs_fix_option = options.hs_fix;
-        self.assist_option = options.assist;
+        self.session_mode = options.session_mode;
     }
 
     fn route_settings_control(&mut self, control: &str) -> bool {
@@ -3988,8 +3984,8 @@ impl WinitApp {
             tracing::info!(double_option = self.double_option.as_str(), "double option changed");
             true
         } else if self.select_keys.is_ui_key7(control) {
-            self.set_assist_option(self.assist_option.cycle());
-            tracing::info!(assist = self.assist_option.as_str(), "assist option changed");
+            self.set_session_mode(self.session_mode.cycle());
+            tracing::info!(session_mode = self.session_mode.as_str(), "session mode changed");
             true
         } else {
             false
@@ -4032,9 +4028,10 @@ impl WinitApp {
         }
     }
 
-    fn set_assist_option(&mut self, assist: AssistOption) {
-        self.assist_option = assist;
-        self.boot.profile_config.play.auto_play = assist == AssistOption::Autoplay;
+    fn set_session_mode(&mut self, session_mode: SessionMode) {
+        self.session_mode = session_mode;
+        self.boot.profile_config.play.session_mode = Some(session_mode);
+        self.boot.profile_config.play.auto_play = session_mode.primary_autoplay();
     }
 
     fn apply_target_option_cycle(&mut self, cycle: TargetCycle) {
@@ -5662,11 +5659,11 @@ impl WinitApp {
             SKIN_EVENT_DAILY_STATISTICS_RESET => self.reset_daily_statistics(),
             // beatoraja EventFactory: play / autoplay / practice.
             15 => {
-                self.set_assist_option(AssistOption::Normal);
+                self.set_session_mode(SessionMode::Normal);
                 self.enter_or_play_selected();
             }
             16 => {
-                self.set_assist_option(AssistOption::Autoplay);
+                self.set_session_mode(SessionMode::Autoplay);
                 self.enter_or_play_selected();
             }
             315 => {
@@ -6207,6 +6204,7 @@ impl WinitApp {
         self.clear_active_course_state();
         self.autoplay_folder = Some(AutoplayFolderSession { chart_ids, next_index: 1 });
         let mut options = self.play_start_options();
+        options.session_mode = SessionMode::Autoplay;
         options.autoplay = true;
         self.begin_decide_for_chart(first_chart_id, options);
         self.show_left_overlay_toast(text.text("toast-folder-autoplay-started"));
@@ -6760,8 +6758,104 @@ impl WinitApp {
 
     fn start_chart(&mut self, chart_id: i64) {
         self.autoplay_folder = None;
-        let options = self.play_start_options();
+        let mut options = self.play_start_options();
+        if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
+            return;
+        }
         self.begin_decide_for_chart(chart_id, options);
+    }
+
+    fn prepare_session_mode_or_show_error(
+        &mut self,
+        chart_id: i64,
+        options: &mut PlayStartOptions,
+    ) -> bool {
+        if let Err(error) = self.prepare_session_mode_for_chart(chart_id, options) {
+            tracing::warn!(
+                chart_id,
+                session_mode = options.session_mode.as_str(),
+                error = %format_error_chain(&error),
+                "session mode is unavailable for selected chart"
+            );
+            let text = Localizer::new(self.boot.profile_config.ui.locale());
+            self.show_left_overlay_toast(text.text("toast-session-mode-unavailable"));
+            false
+        } else {
+            true
+        }
+    }
+
+    fn prepare_session_mode_for_chart(
+        &self,
+        chart_id: i64,
+        options: &mut PlayStartOptions,
+    ) -> Result<()> {
+        if !options.session_mode.is_battle() {
+            return Ok(());
+        }
+        let chart = crate::screens::play_session::load_source_chart_for_chart(
+            &self.boot.library_db,
+            chart_id,
+            None,
+        )?;
+        if !matches!(chart.metadata.key_mode, KeyMode::K5 | KeyMode::K7) {
+            anyhow::bail!("battle session currently supports only 5K and 7K charts");
+        }
+        // SessionMode の battle 表示は通常の譜面オプション BATTLE と独立させる。
+        // スコアキーは 1P の OFF bucket を使い、2P側だけを表示専用にする。
+        options.double_option = DoubleOption::Off;
+        if options.session_mode == SessionMode::AutoplayBattle {
+            options.autoplay = true;
+            return Ok(());
+        }
+
+        let score_key = crate::storage::score_db::ScoreKey::with_options(
+            chart.identity.file_sha256,
+            crate::ln_policy::score_ln_policy_for_chart(
+                self.boot.profile_config.play.ln_mode_policy,
+                &chart,
+            ),
+            crate::select_options::DoubleOptionScoreBucket::Off,
+            self.boot.profile_config.play.rule_mode,
+        );
+        let best = self
+            .boot
+            .score_db
+            .best_scores_for_charts(&[score_key])?
+            .into_iter()
+            .next()
+            .context("self-best score is not available")?;
+        if best.replay_path.is_empty() {
+            anyhow::bail!("self-best score has no full replay");
+        }
+        let replay_path = self.boot.profile_paths.root_dir.join(&best.replay_path);
+        let replay = load_replay_for_chart_policy_and_double_option(
+            &replay_path,
+            chart.identity.file_sha256,
+            best.ln_policy,
+            crate::select_options::DoubleOptionScoreBucket::Off,
+        )?;
+        if replay.uses_legacy_seed_scheme() {
+            anyhow::bail!("legacy replay seed scheme is not supported by ghost battle");
+        }
+        if replay.events.is_empty() {
+            anyhow::bail!("self-best score has no full input replay");
+        }
+        let events = replay
+            .events
+            .iter()
+            .filter_map(|event| {
+                second_player_lane(event.lane)
+                    .map(|lane| bmz_core::replay::ReplayEvent { lane, ..*event })
+            })
+            .collect();
+        options.autoplay = false;
+        options.replay_player = Some(bmz_gameplay::replay::ReplayPlayer { events, next_index: 0 });
+        options.arrange_2p = replay.arrange_option();
+        options.arrange_seed_2p = replay.arrange_seed;
+        options.bms_random_seed = None;
+        options.bms_random_choices = replay.bms_random_choices;
+        Ok(())
     }
 
     fn enter_practice(&mut self, chart_id: i64, cli: PracticeCliOverrides) {
@@ -7072,6 +7166,7 @@ impl WinitApp {
         let mut entry_start_options = Vec::with_capacity(definition.entries.len());
         for index in 0..definition.entries.len() {
             let mut options = self.play_start_options();
+            normalize_session_mode_for_course(&mut options);
             apply_course_constraints(&mut options, &definition.constraints);
             // Reapply each chart's recorded arrange after constraints so the
             // constraint clamp doesn't overwrite it (same ordering as replay).
@@ -7207,6 +7302,8 @@ impl WinitApp {
         let mut entry_start_options = Vec::with_capacity(definition.entries.len());
         for (index, entry) in definition.entries.iter().enumerate() {
             let mut options = self.play_start_options();
+            options.session_mode = SessionMode::Normal;
+            options.autoplay = false;
             apply_course_constraints(&mut options, &definition.constraints);
             if let Some(replay) = queued.get(index)
                 && entry.chart_id == Some(replay.chart_id)
@@ -7313,6 +7410,7 @@ impl WinitApp {
         self.result_key5_held = false;
         self.result_key7_held = false;
         let mut options = self.play_start_options();
+        options.session_mode = SessionMode::Autoplay;
         options.autoplay = true;
         self.start_chart_with_options(chart_id, options);
         tracing::info!(chart_id, "advanced folder autoplay");
@@ -8162,7 +8260,11 @@ impl WinitApp {
     }
 
     fn play_skin_key_mode_for_chart(&self, chart_id: i64, options: &PlayStartOptions) -> KeyMode {
-        play_skin_key_mode_for_options(self.key_mode_for_chart(chart_id), options.double_option)
+        play_skin_key_mode_for_options(
+            self.key_mode_for_chart(chart_id),
+            options.double_option,
+            options.session_mode,
+        )
     }
 
     fn open_prepared_winit_play_session(
@@ -9143,7 +9245,8 @@ impl WinitApp {
         let option_seeds = crate::random_option_seed::RandomOptionSeeds::fresh(true);
         let random_trainer_seed = self.random_trainer.arrange_seed(option_seeds.p1);
         PlayStartOptions {
-            autoplay: self.assist_option == AssistOption::Autoplay,
+            session_mode: self.session_mode,
+            autoplay: self.session_mode.primary_autoplay(),
             gauge: Some(self.gauge_option),
             gauge_auto_shift: self.gauge_auto_shift_option,
             bottom_shiftable_gauge: self.bottom_shiftable_gauge_option,
@@ -9238,6 +9341,7 @@ impl WinitApp {
             next_index: 0,
         };
         let options = PlayStartOptions {
+            session_mode: SessionMode::Normal,
             autoplay: false,
             practice_mode: false,
             replay_player: Some(player),
@@ -9327,6 +9431,7 @@ impl WinitApp {
             next_index: 0,
         };
         let options = PlayStartOptions {
+            session_mode: SessionMode::Normal,
             autoplay: false,
             practice_mode: false,
             replay_player: Some(player),
@@ -9451,6 +9556,9 @@ impl WinitApp {
             ResultRetryMode::SameArrange => self.result_retry_same_arrange_options(),
             ResultRetryMode::DifferentArrange => self.result_retry_different_arrange_options(),
         };
+        if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
+            return;
+        }
         if options.chart_zero_time == TimeUs(0) {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }
@@ -9920,6 +10028,9 @@ impl WinitApp {
             return;
         };
         let mut options = self.active_play_retry_options(mode);
+        if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
+            return;
+        }
         if options.chart_zero_time == TimeUs(0) {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }
@@ -12921,6 +13032,8 @@ impl WinitApp {
         let play9_path = self.boot.profile_config.skin.play9.clone();
         let play10_path = self.boot.profile_config.skin.play10.clone();
         let play14_path = self.boot.profile_config.skin.play14.clone();
+        let battle5_path = self.boot.profile_config.skin.battle5.clone();
+        let battle7_path = self.boot.profile_config.skin.battle7.clone();
         let course_result_path = self.boot.profile_config.skin.course_result.clone();
         let play4_defs = self.play_skin_defs_for_path(&play4_path);
         let play5_defs = self.play_skin_defs_for_path(&play5_path);
@@ -12930,6 +13043,8 @@ impl WinitApp {
         let play9_defs = self.play_skin_defs_for_path(&play9_path);
         let play10_defs = self.play_skin_defs_for_path(&play10_path);
         let play14_defs = self.play_skin_defs_for_path(&play14_path);
+        let battle5_defs = self.play_skin_defs_for_path(&battle5_path);
+        let battle7_defs = self.play_skin_defs_for_path(&battle7_path);
         let course_result_defs = self.play_skin_defs_for_path(&course_result_path);
         let skin_meta = SkinConfigMeta {
             select: SceneSkinDefs::from_document(self.renderer.select_skin_document()),
@@ -12942,6 +13057,8 @@ impl WinitApp {
             play9: play9_defs,
             play10: play10_defs,
             play14: play14_defs,
+            battle5: battle5_defs,
+            battle7: battle7_defs,
             result: SceneSkinDefs::from_document(self.renderer.result_skin_document()),
             course_result: course_result_defs,
         };
@@ -13378,19 +13495,23 @@ impl WinitApp {
         else {
             return;
         };
-        let offsets = play_skin_selection_for(&self.boot.profile_config.skin, key_mode)
-            .offsets
-            .iter()
-            .map(|offset| PlaySkinOffset {
-                id: offset.id,
-                x: offset.x,
-                y: offset.y,
-                w: offset.w,
-                h: offset.h,
-                r: offset.r,
-                a: offset.a,
-            })
-            .collect();
+        let offsets = play_skin_selection_for_session(
+            &self.boot.profile_config.skin,
+            key_mode,
+            self.session_mode,
+        )
+        .offsets
+        .iter()
+        .map(|offset| PlaySkinOffset {
+            id: offset.id,
+            x: offset.x,
+            y: offset.y,
+            w: offset.w,
+            h: offset.h,
+            r: offset.r,
+            a: offset.a,
+        })
+        .collect();
         if let Some(active_play) = &mut self.active_play {
             active_play.running.session.skin_offsets = offsets;
         }
@@ -13451,7 +13572,7 @@ impl WinitApp {
             self.last_play_skin_signature.clone()
             && skin_reload_request_includes_key_mode(request, key_mode)
         {
-            let selection = play_skin_selection_for(&skin, key_mode);
+            let selection = play_skin_selection_for_session(&skin, key_mode, self.session_mode);
             let play_options_only = self.active_play.is_some()
                 && old_path == selection.path.trim()
                 && old_files == *selection.files
@@ -13552,7 +13673,11 @@ impl WinitApp {
         key_mode: KeyMode,
         mut runtime_state: bmz_skin::LuaLoadRuntimeState,
     ) {
-        let selection = play_skin_selection_for(&self.boot.profile_config.skin, key_mode);
+        let selection = play_skin_selection_for_session(
+            &self.boot.profile_config.skin,
+            key_mode,
+            self.session_mode,
+        );
         runtime_state.offset_values.clear();
         runtime_state.offset_id_values.clear();
         apply_skin_offsets_to_lua_runtime_state(&mut runtime_state, selection.offsets);
@@ -15738,6 +15863,8 @@ fn push_skin_candidate(catalog: &mut SkinCatalog, skin_type: i32, candidate: Ski
         2 => catalog.play14.push(candidate),
         3 => catalog.play10.push(candidate),
         4 => catalog.play9.push(candidate),
+        12 => catalog.battle7.push(candidate),
+        13 => catalog.battle5.push(candidate),
         5 => catalog.select.push(candidate),
         6 => catalog.decide.push(candidate),
         7 => catalog.result.push(candidate),
@@ -15762,6 +15889,8 @@ fn sort_skin_catalog(catalog: &mut SkinCatalog) {
         &mut catalog.play9,
         &mut catalog.play10,
         &mut catalog.play14,
+        &mut catalog.battle5,
+        &mut catalog.battle7,
         &mut catalog.result,
         &mut catalog.course_result,
     ] {
@@ -18280,7 +18409,18 @@ fn double_config_from_option(double_option: DoubleOption) -> DoubleOptionConfig 
     }
 }
 
-fn play_skin_key_mode_for_options(chart_key_mode: KeyMode, double_option: DoubleOption) -> KeyMode {
+fn play_skin_key_mode_for_options(
+    chart_key_mode: KeyMode,
+    double_option: DoubleOption,
+    session_mode: SessionMode,
+) -> KeyMode {
+    if session_mode.is_battle() {
+        return match chart_key_mode {
+            KeyMode::K5 => KeyMode::K10,
+            KeyMode::K7 => KeyMode::K14,
+            _ => chart_key_mode,
+        };
+    }
     match double_option.normalize_for_key_mode(chart_key_mode) {
         DoubleOption::Battle | DoubleOption::BattleAutoScratch => match chart_key_mode {
             KeyMode::K5 => KeyMode::K10,
@@ -18288,6 +18428,27 @@ fn play_skin_key_mode_for_options(chart_key_mode: KeyMode, double_option: Double
             _ => chart_key_mode,
         },
         DoubleOption::Off | DoubleOption::Flip => chart_key_mode,
+    }
+}
+
+fn second_player_lane(lane: Lane) -> Option<Lane> {
+    match lane {
+        Lane::Scratch => Some(Lane::Scratch2),
+        Lane::Key1 => Some(Lane::Key8),
+        Lane::Key2 => Some(Lane::Key9),
+        Lane::Key3 => Some(Lane::Key10),
+        Lane::Key4 => Some(Lane::Key11),
+        Lane::Key5 => Some(Lane::Key12),
+        Lane::Key6 => Some(Lane::Key13),
+        Lane::Key7 => Some(Lane::Key14),
+        Lane::Key8
+        | Lane::Key9
+        | Lane::Key10
+        | Lane::Key11
+        | Lane::Key12
+        | Lane::Key13
+        | Lane::Key14
+        | Lane::Scratch2 => None,
     }
 }
 
@@ -18480,7 +18641,7 @@ struct CurrentPlayOptions {
     bottom_shiftable_gauge: BottomShiftableGaugeConfig,
     double_option: DoubleOption,
     hs_fix: HsFixOption,
-    assist: AssistOption,
+    session_mode: SessionMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18499,6 +18660,23 @@ impl SelectScoreContext {
     }
 }
 
+fn session_mode_from_profile(play: &PlayDefaultsConfig) -> SessionMode {
+    play.session_mode.unwrap_or(if play.auto_play {
+        SessionMode::Autoplay
+    } else {
+        SessionMode::Normal
+    })
+}
+
+fn normalize_session_mode_for_course(options: &mut PlayStartOptions) {
+    options.session_mode = match options.session_mode {
+        SessionMode::Autoplay | SessionMode::AutoplayBattle => SessionMode::Autoplay,
+        SessionMode::Normal | SessionMode::GhostBattle => SessionMode::Normal,
+    };
+    options.autoplay = options.session_mode.primary_autoplay();
+    options.replay_player = None;
+}
+
 fn select_play_options_from_profile(play: &PlayDefaultsConfig) -> CurrentPlayOptions {
     let (gauge, gauge_auto_shift) = if play.gauge == GaugeTypeConfig::AutoShift {
         (GaugeTypeConfig::ExHard, GaugeAutoShiftConfig::BestClear)
@@ -18514,7 +18692,7 @@ fn select_play_options_from_profile(play: &PlayDefaultsConfig) -> CurrentPlayOpt
         bottom_shiftable_gauge: play.bottom_shiftable_gauge,
         double_option: double_option_from_profile(play.double_option),
         hs_fix: hs_fix_option_from_profile(play.hs_fix),
-        assist: if play.auto_play { AssistOption::Autoplay } else { AssistOption::Normal },
+        session_mode: session_mode_from_profile(play),
     }
 }
 
@@ -18554,8 +18732,11 @@ fn merge_changed_select_play_options_from_profile(
     if before.hs_fix != after.hs_fix {
         current.hs_fix = profile.hs_fix;
     }
-    if before.auto_play != after.auto_play {
-        current.assist = profile.assist;
+    if before.session_mode != after.session_mode {
+        current.session_mode = profile.session_mode;
+    } else if before.auto_play != after.auto_play {
+        current.session_mode =
+            if after.auto_play { SessionMode::Autoplay } else { SessionMode::Normal };
     }
     current
 }
@@ -18576,7 +18757,8 @@ fn apply_current_play_options_to_profile(
     profile.play.bottom_shiftable_gauge = options.bottom_shiftable_gauge;
     profile.play.double_option = double_config_from_option(options.double_option);
     profile.play.hs_fix = hs_fix_config_from_option(options.hs_fix);
-    profile.play.auto_play = options.assist == AssistOption::Autoplay;
+    profile.play.session_mode = Some(options.session_mode);
+    profile.play.auto_play = options.session_mode.primary_autoplay();
     profile.play.assist = AssistOptionConfig::None;
     profile.updated_at = updated_at;
 }
@@ -22491,6 +22673,24 @@ mod tests {
         );
         push_skin_candidate(
             &mut catalog,
+            12,
+            SkinCandidate {
+                name: "Battle Seven".to_string(),
+                path: "data/skins/example/battle7.lr2skin".to_string(),
+                origin: SkinCandidateOrigin::User,
+            },
+        );
+        push_skin_candidate(
+            &mut catalog,
+            13,
+            SkinCandidate {
+                name: "Battle Five".to_string(),
+                path: "data/skins/example/battle5.lr2skin".to_string(),
+                origin: SkinCandidateOrigin::User,
+            },
+        );
+        push_skin_candidate(
+            &mut catalog,
             15,
             SkinCandidate {
                 name: "Course Result".to_string(),
@@ -22507,6 +22707,8 @@ mod tests {
         assert_eq!(catalog.play9.len(), 1);
         assert_eq!(catalog.play10.len(), 1);
         assert_eq!(catalog.play14.len(), 1);
+        assert_eq!(catalog.battle5.len(), 1);
+        assert_eq!(catalog.battle7.len(), 1);
         assert_eq!(catalog.result.len(), 0);
         assert_eq!(catalog.course_result.len(), 1);
         assert_eq!(catalog.play4[0].path, "data/skins/example/play4.luaskin");
@@ -22517,6 +22719,8 @@ mod tests {
         assert_eq!(catalog.play9[0].path, "data/skins/example/play9.luaskin");
         assert_eq!(catalog.play10[0].path, "data/skins/example/play10.luaskin");
         assert_eq!(catalog.play14[0].path, "data/skins/example/play14.luaskin");
+        assert_eq!(catalog.battle5[0].path, "data/skins/example/battle5.lr2skin");
+        assert_eq!(catalog.battle7[0].path, "data/skins/example/battle7.lr2skin");
         assert_eq!(catalog.course_result[0].path, "data/skins/example/course-result.luaskin");
     }
 
@@ -26005,7 +26209,7 @@ mod tests {
                 bottom_shiftable_gauge: BottomShiftableGaugeConfig::Easy,
                 double_option: DoubleOption::Off,
                 hs_fix: HsFixOption::Off,
-                assist: AssistOption::Normal,
+                session_mode: SessionMode::Normal,
             },
             42,
         );
@@ -26063,7 +26267,7 @@ mod tests {
                 bottom_shiftable_gauge: BottomShiftableGaugeConfig::Normal,
                 double_option: DoubleOption::Flip,
                 hs_fix: HsFixOption::MainBpm,
-                assist: AssistOption::Autoplay,
+                session_mode: SessionMode::Autoplay,
             },
             42,
         );
@@ -26091,6 +26295,7 @@ mod tests {
         let mut profile = ProfileConfig::new_default("default", "Default", 1);
         profile.play.random = RandomOptionConfig::Random;
         profile.play.random2 = RandomOptionConfig::Mirror;
+        profile.play.session_mode = None;
         profile.play.auto_play = true;
         let before = profile.play.clone();
         let current = select_play_options_from_profile(&before);
@@ -26103,7 +26308,7 @@ mod tests {
 
         assert_eq!(synced.arrange, ArrangeOption::Normal);
         assert_eq!(synced.arrange_2p, ArrangeOption::Normal);
-        assert_eq!(synced.assist, AssistOption::Normal);
+        assert_eq!(synced.session_mode, SessionMode::Normal);
 
         apply_current_play_options_to_profile(&mut profile, None, None, synced, 42);
         assert_eq!(profile.play.random, RandomOptionConfig::Off);
@@ -26112,18 +26317,59 @@ mod tests {
     }
 
     #[test]
+    fn session_mode_profile_migrates_legacy_autoplay_and_persists_battle() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 1);
+        profile.play.session_mode = None;
+        profile.play.auto_play = true;
+        assert_eq!(session_mode_from_profile(&profile.play), SessionMode::Autoplay);
+
+        let mut options = select_play_options_from_profile(&profile.play);
+        options.session_mode = SessionMode::GhostBattle;
+        apply_current_play_options_to_profile(&mut profile, None, None, options, 2);
+
+        assert_eq!(profile.play.session_mode, Some(SessionMode::GhostBattle));
+        assert!(!profile.play.auto_play);
+        let serialized = toml::to_string(&profile).unwrap();
+        assert!(serialized.contains(r#"session_mode = "GhostBattle""#));
+    }
+
+    #[test]
+    fn course_normalizes_battle_session_modes() {
+        let mut autoplay_battle = PlayStartOptions {
+            session_mode: SessionMode::AutoplayBattle,
+            autoplay: true,
+            replay_player: Some(bmz_gameplay::replay::ReplayPlayer::default()),
+            ..PlayStartOptions::default()
+        };
+        normalize_session_mode_for_course(&mut autoplay_battle);
+        assert_eq!(autoplay_battle.session_mode, SessionMode::Autoplay);
+        assert!(autoplay_battle.autoplay);
+        assert!(autoplay_battle.replay_player.is_none());
+
+        let mut ghost_battle = PlayStartOptions {
+            session_mode: SessionMode::GhostBattle,
+            replay_player: Some(bmz_gameplay::replay::ReplayPlayer::default()),
+            ..PlayStartOptions::default()
+        };
+        normalize_session_mode_for_course(&mut ghost_battle);
+        assert_eq!(ghost_battle.session_mode, SessionMode::Normal);
+        assert!(!ghost_battle.autoplay);
+        assert!(ghost_battle.replay_player.is_none());
+    }
+
+    #[test]
     fn profile_random_change_preserves_cli_autoplay_runtime_option() {
         let profile = ProfileConfig::new_default("default", "Default", 1);
         let before = profile.play.clone();
         let mut current = select_play_options_from_profile(&before);
-        current.assist = AssistOption::Autoplay;
+        current.session_mode = SessionMode::Autoplay;
 
         let mut after = before.clone();
         after.random = RandomOptionConfig::Mirror;
         let synced = merge_changed_select_play_options_from_profile(current, &before, &after);
 
         assert_eq!(synced.arrange, ArrangeOption::Mirror);
-        assert_eq!(synced.assist, AssistOption::Autoplay);
+        assert_eq!(synced.session_mode, SessionMode::Autoplay);
     }
 
     #[test]
@@ -26152,7 +26398,7 @@ mod tests {
         assert_eq!(synced.double_option, DoubleOption::Flip);
         assert_eq!(synced.hs_fix, HsFixOption::MainBpm);
         assert_eq!(synced.target, TargetOption::RankAaa);
-        assert_eq!(synced.assist, AssistOption::Autoplay);
+        assert_eq!(synced.session_mode, SessionMode::Autoplay);
     }
 
     #[test]
@@ -26964,15 +27210,36 @@ mod tests {
 
     #[test]
     fn play_skin_key_mode_uses_battle_double_mode() {
-        assert_eq!(play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Battle), KeyMode::K14);
         assert_eq!(
-            play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::BattleAutoScratch),
+            play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Battle, SessionMode::Normal,),
             KeyMode::K14
         );
-        assert_eq!(play_skin_key_mode_for_options(KeyMode::K5, DoubleOption::Battle), KeyMode::K10);
-        assert_eq!(play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Flip), KeyMode::K7);
         assert_eq!(
-            play_skin_key_mode_for_options(KeyMode::K14, DoubleOption::Battle),
+            play_skin_key_mode_for_options(
+                KeyMode::K7,
+                DoubleOption::BattleAutoScratch,
+                SessionMode::Normal,
+            ),
+            KeyMode::K14
+        );
+        assert_eq!(
+            play_skin_key_mode_for_options(KeyMode::K5, DoubleOption::Battle, SessionMode::Normal,),
+            KeyMode::K10
+        );
+        assert_eq!(
+            play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Flip, SessionMode::Normal,),
+            KeyMode::K7
+        );
+        assert_eq!(
+            play_skin_key_mode_for_options(KeyMode::K14, DoubleOption::Battle, SessionMode::Normal,),
+            KeyMode::K14
+        );
+        assert_eq!(
+            play_skin_key_mode_for_options(
+                KeyMode::K7,
+                DoubleOption::Off,
+                SessionMode::GhostBattle,
+            ),
             KeyMode::K14
         );
     }

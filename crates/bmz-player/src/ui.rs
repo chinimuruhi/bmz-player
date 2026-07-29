@@ -44,6 +44,7 @@ use crate::profile_cmd;
 use crate::random_trainer::RandomTrainerState;
 use crate::screens::course_session::CourseResultSummary;
 use crate::screens::select_model::SelectCourseRow;
+use crate::select_options::SessionMode;
 use crate::skin_loader::RANDOM_FILE_SELECTION;
 use crate::songs_cmd::add_song_root_entry;
 use crate::storage::difficulty_table_db::DifficultyTableRecord;
@@ -254,6 +255,8 @@ pub struct SkinConfigMeta {
     pub play9: SceneSkinDefs,
     pub play10: SceneSkinDefs,
     pub play14: SceneSkinDefs,
+    pub battle5: SceneSkinDefs,
+    pub battle7: SceneSkinDefs,
     pub result: SceneSkinDefs,
     pub course_result: SceneSkinDefs,
 }
@@ -270,6 +273,8 @@ pub struct SkinCatalog {
     pub play9: Vec<SkinCandidate>,
     pub play10: Vec<SkinCandidate>,
     pub play14: Vec<SkinCandidate>,
+    pub battle5: Vec<SkinCandidate>,
+    pub battle7: Vec<SkinCandidate>,
     pub result: Vec<SkinCandidate>,
     pub course_result: Vec<SkinCandidate>,
 }
@@ -4459,7 +4464,24 @@ fn build_profile_settings_panel(
                             ui.selectable_value(&mut profile.play.bga_expand, value, label);
                         }
                     });
-                    ui.checkbox(&mut profile.play.auto_play, tr!(text, "profile-play-autoplay"));
+                    let mut session_mode =
+                        profile.play.session_mode.unwrap_or(if profile.play.auto_play {
+                            SessionMode::Autoplay
+                        } else {
+                            SessionMode::Normal
+                        });
+                    egui::ComboBox::new(
+                        "profile_session_mode",
+                        tr!(text, "profile-play-session-mode"),
+                    )
+                    .selected_text(session_mode.as_str())
+                    .show_ui(ui, |ui| {
+                        for value in SessionMode::VALUES {
+                            ui.selectable_value(&mut session_mode, value, value.as_str());
+                        }
+                    });
+                    profile.play.session_mode = Some(session_mode);
+                    profile.play.auto_play = session_mode.primary_autoplay();
                     ui.checkbox(
                         &mut profile.play.show_ln_tail_cap,
                         tr!(text, "profile-play-ln-tail-cap"),
@@ -5610,6 +5632,8 @@ enum SkinSlot {
     Play9,
     Play10,
     Play14,
+    Battle5,
+    Battle7,
     Result,
     CourseResult,
 }
@@ -5629,6 +5653,8 @@ impl SkinSlot {
             Self::Play9 => "プレイ (9K)",
             Self::Play10 => "プレイ (10K)",
             Self::Play14 => "プレイ (14K)",
+            Self::Battle5 => "プレイ (5K BATTLE)",
+            Self::Battle7 => "プレイ (7K BATTLE)",
             Self::Result => "リザルト",
             Self::CourseResult => "コースリザルト",
         }
@@ -5646,6 +5672,8 @@ impl SkinSlot {
             Self::Play9 => "プレイスキン (9K)",
             Self::Play10 => "プレイスキン (10K)",
             Self::Play14 => "プレイスキン (14K)",
+            Self::Battle5 => "プレイスキン (5K BATTLE)",
+            Self::Battle7 => "プレイスキン (7K BATTLE)",
             Self::Result => "リザルトスキン",
             Self::CourseResult => "コースリザルトスキン",
         }
@@ -5664,6 +5692,8 @@ fn skin_scene_label(slot: SkinSlot, text: Localizer) -> String {
         SkinSlot::Play9 => tr!(text, "skin-scene-play", "keys" => "9K"),
         SkinSlot::Play10 => tr!(text, "skin-scene-play", "keys" => "10K"),
         SkinSlot::Play14 => tr!(text, "skin-scene-play", "keys" => "14K"),
+        SkinSlot::Battle5 => tr!(text, "skin-scene-play", "keys" => "5K BATTLE"),
+        SkinSlot::Battle7 => tr!(text, "skin-scene-play", "keys" => "7K BATTLE"),
         SkinSlot::Result => tr!(text, "skin-scene-result"),
         SkinSlot::CourseResult => tr!(text, "skin-scene-course-result"),
     }
@@ -5685,6 +5715,8 @@ fn skin_reload_request_from_diff(before: &SkinConfig, after: &SkinConfig) -> Ski
     let play9_offsets_changed = before.play9_offsets != after.play9_offsets;
     let play10_offsets_changed = before.play10_offsets != after.play10_offsets;
     let play14_offsets_changed = before.play14_offsets != after.play14_offsets;
+    let battle5_offsets_changed = before.battle5_offsets != after.battle5_offsets;
+    let battle7_offsets_changed = before.battle7_offsets != after.battle7_offsets;
     let result_offsets_changed = before.result_offsets != after.result_offsets;
     let course_result_offsets_changed = before.course_result_offsets != after.course_result_offsets;
     if before.select != after.select
@@ -5757,6 +5789,20 @@ fn skin_reload_request_from_diff(before: &SkinConfig, after: &SkinConfig) -> Ski
     {
         request.play14 = true;
     }
+    if before.battle5 != after.battle5
+        || before.battle5_options != after.battle5_options
+        || before.battle5_files != after.battle5_files
+        || battle5_offsets_changed
+    {
+        request.play10 = true;
+    }
+    if before.battle7 != after.battle7
+        || before.battle7_options != after.battle7_options
+        || before.battle7_files != after.battle7_files
+        || battle7_offsets_changed
+    {
+        request.play14 = true;
+    }
     if before.result != after.result
         || before.result_options != after.result_options
         || before.result_files != after.result_files
@@ -5781,6 +5827,8 @@ fn skin_reload_request_from_diff(before: &SkinConfig, after: &SkinConfig) -> Ski
         || play9_offsets_changed
         || play10_offsets_changed
         || play14_offsets_changed
+        || battle5_offsets_changed
+        || battle7_offsets_changed
         || result_offsets_changed
         || course_result_offsets_changed;
     request
@@ -5890,7 +5938,7 @@ fn show_bundled_skin_origin(app_paths: &AppPaths, skin_catalog: &SkinCatalog) ->
 }
 
 fn skin_catalog_has_non_bundled_candidate(skin_catalog: &SkinCatalog) -> bool {
-    let groups: [&[SkinCandidate]; 12] = [
+    let groups: [&[SkinCandidate]; 14] = [
         &skin_catalog.select,
         &skin_catalog.decide,
         &skin_catalog.play4,
@@ -5901,6 +5949,8 @@ fn skin_catalog_has_non_bundled_candidate(skin_catalog: &SkinCatalog) -> bool {
         &skin_catalog.play9,
         &skin_catalog.play10,
         &skin_catalog.play14,
+        &skin_catalog.battle5,
+        &skin_catalog.battle7,
         &skin_catalog.result,
         &skin_catalog.course_result,
     ];
@@ -5921,6 +5971,8 @@ fn skin_slot_path(skin: &SkinConfig, slot: SkinSlot) -> &str {
         SkinSlot::Play9 => &skin.play9,
         SkinSlot::Play10 => &skin.play10,
         SkinSlot::Play14 => &skin.play14,
+        SkinSlot::Battle5 => &skin.battle5,
+        SkinSlot::Battle7 => &skin.battle7,
         SkinSlot::Result => &skin.result,
         SkinSlot::CourseResult => &skin.course_result,
     }
@@ -5938,6 +5990,8 @@ fn skin_slot_path_mut(skin: &mut SkinConfig, slot: SkinSlot) -> &mut String {
         SkinSlot::Play9 => &mut skin.play9,
         SkinSlot::Play10 => &mut skin.play10,
         SkinSlot::Play14 => &mut skin.play14,
+        SkinSlot::Battle5 => &mut skin.battle5,
+        SkinSlot::Battle7 => &mut skin.battle7,
         SkinSlot::Result => &mut skin.result,
         SkinSlot::CourseResult => &mut skin.course_result,
     }
@@ -5955,6 +6009,8 @@ fn skin_slot_options_mut(skin: &mut SkinConfig, slot: SkinSlot) -> &mut BTreeMap
         SkinSlot::Play9 => &mut skin.play9_options,
         SkinSlot::Play10 => &mut skin.play10_options,
         SkinSlot::Play14 => &mut skin.play14_options,
+        SkinSlot::Battle5 => &mut skin.battle5_options,
+        SkinSlot::Battle7 => &mut skin.battle7_options,
         SkinSlot::Result => &mut skin.result_options,
         SkinSlot::CourseResult => &mut skin.course_result_options,
     }
@@ -5972,6 +6028,8 @@ fn skin_slot_files_mut(skin: &mut SkinConfig, slot: SkinSlot) -> &mut BTreeMap<S
         SkinSlot::Play9 => &mut skin.play9_files,
         SkinSlot::Play10 => &mut skin.play10_files,
         SkinSlot::Play14 => &mut skin.play14_files,
+        SkinSlot::Battle5 => &mut skin.battle5_files,
+        SkinSlot::Battle7 => &mut skin.battle7_files,
         SkinSlot::Result => &mut skin.result_files,
         SkinSlot::CourseResult => &mut skin.course_result_files,
     }
@@ -5989,6 +6047,8 @@ fn skin_slot_offsets_mut(skin: &mut SkinConfig, slot: SkinSlot) -> &mut Vec<Skin
         SkinSlot::Play9 => &mut skin.play9_offsets,
         SkinSlot::Play10 => &mut skin.play10_offsets,
         SkinSlot::Play14 => &mut skin.play14_offsets,
+        SkinSlot::Battle5 => &mut skin.battle5_offsets,
+        SkinSlot::Battle7 => &mut skin.battle7_offsets,
         SkinSlot::Result => &mut skin.result_offsets,
         SkinSlot::CourseResult => &mut skin.course_result_offsets,
     }
@@ -6006,6 +6066,8 @@ fn skin_slot_history_key(slot: SkinSlot, path: &str) -> String {
         SkinSlot::Play9 => "play9",
         SkinSlot::Play10 => "play10",
         SkinSlot::Play14 => "play14",
+        SkinSlot::Battle5 => "battle5",
+        SkinSlot::Battle7 => "battle7",
         SkinSlot::Result => "result",
         SkinSlot::CourseResult => "course_result",
     };
@@ -6174,6 +6236,26 @@ fn build_skin_panel(
                 changed |= skin_path_combo(
                     ui,
                     skin,
+                    SkinSlot::Battle5,
+                    &skin_scene_label(SkinSlot::Battle5, text),
+                    &skin_catalog.battle5,
+                    show_bundled_origin,
+                    text,
+                );
+                ui.end_row();
+                changed |= skin_path_combo(
+                    ui,
+                    skin,
+                    SkinSlot::Battle7,
+                    &skin_scene_label(SkinSlot::Battle7, text),
+                    &skin_catalog.battle7,
+                    show_bundled_origin,
+                    text,
+                );
+                ui.end_row();
+                changed |= skin_path_combo(
+                    ui,
+                    skin,
                     SkinSlot::Result,
                     &skin_scene_label(SkinSlot::Result, text),
                     &skin_catalog.result,
@@ -6204,6 +6286,8 @@ fn build_skin_panel(
             let play9_root = skin_root_path(app_paths, &skin.play9);
             let play10_root = skin_root_path(app_paths, &skin.play10);
             let play14_root = skin_root_path(app_paths, &skin.play14);
+            let battle5_root = skin_root_path(app_paths, &skin.battle5);
+            let battle7_root = skin_root_path(app_paths, &skin.battle7);
             let result_root = skin_root_path(app_paths, &skin.result);
             let course_result_root = skin_root_path(app_paths, &skin.course_result);
             changed |= build_scene_skin_defs(
@@ -6304,6 +6388,26 @@ fn build_skin_panel(
                 &mut skin.play14_options,
                 &mut skin.play14_files,
                 &mut skin.play14_offsets,
+                text,
+            );
+            changed |= build_scene_skin_defs(
+                ui,
+                SkinSlot::Battle5,
+                &skin_meta.battle5,
+                battle5_root.as_deref(),
+                &mut skin.battle5_options,
+                &mut skin.battle5_files,
+                &mut skin.battle5_offsets,
+                text,
+            );
+            changed |= build_scene_skin_defs(
+                ui,
+                SkinSlot::Battle7,
+                &skin_meta.battle7,
+                battle7_root.as_deref(),
+                &mut skin.battle7_options,
+                &mut skin.battle7_files,
+                &mut skin.battle7_offsets,
                 text,
             );
             changed |= build_scene_skin_defs(

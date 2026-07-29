@@ -55,14 +55,15 @@ use crate::random_option_seed::{JavaRandom, RandomOptionSeed, RandomOptionSeeds}
 use crate::screens::practice::{
     PracticeProperty, apply_practice_property, apply_practice_start_gauge,
 };
-use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, TargetOption};
-use crate::skin_loader::play_skin_selection_for;
+use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
+use crate::skin_loader::play_skin_selection_for_session;
 use crate::storage::library_db::ChartNormalizationAnalysis;
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::score_db::ScoreKey;
 
 #[derive(Debug, Clone)]
 pub struct PlaySessionOptions {
+    pub session_mode: SessionMode,
     pub autoplay: bool,
     /// Practice section play: no score / replay persistence (like autoplay).
     pub practice_mode: bool,
@@ -179,6 +180,7 @@ pub struct PreloadedPlaySession {
 impl Default for PlaySessionOptions {
     fn default() -> Self {
         Self {
+            session_mode: SessionMode::Normal,
             autoplay: false,
             practice_mode: false,
             replay_player: None,
@@ -305,12 +307,17 @@ pub fn apply_placeholder_session_visuals(
     snapshot.judge_timing_offset_ms =
         (play_offsets_from_profile(profile).visual_offset_us / 1_000) as i32;
     snapshot.judge_timing_auto_adjust = profile.judge.visual_offset_auto_adjust;
-    let replay_playback = options.replay_player.is_some();
-    snapshot.autoplay = !replay_playback && (profile.play.auto_play || options.autoplay);
+    let replay_playback =
+        options.replay_player.is_some() && options.session_mode != SessionMode::GhostBattle;
+    snapshot.autoplay = !replay_playback
+        && options.session_mode != SessionMode::GhostBattle
+        && (options.session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     snapshot.replay_playback = replay_playback;
     snapshot.practice_mode = options.practice_mode;
-    snapshot.score_save_enabled =
-        !snapshot.autoplay && !snapshot.replay_playback && !snapshot.practice_mode;
+    snapshot.score_save_enabled = options.session_mode.score_save_enabled()
+        && !snapshot.autoplay
+        && !snapshot.replay_playback
+        && !snapshot.practice_mode;
     snapshot.bga_enabled =
         bga_enabled_from_profile(profile, snapshot.autoplay, snapshot.replay_playback);
     snapshot.bga_stretch = bga_stretch_from_profile(profile);
@@ -352,7 +359,7 @@ pub fn apply_placeholder_session_visuals(
     // プロファイルのスキンオフセット (位置調整)。スクラッチ回転角は session が
     // 必要なので install 後の refresh に任せる。
     let mut offsets = bmz_render::skin_offset::SkinOffsetValues::default();
-    for offset in skin_offsets_from_profile(profile, key_mode) {
+    for offset in skin_offsets_from_profile(profile, key_mode, options.session_mode) {
         offsets.set(
             offset.id,
             bmz_render::skin_offset::SkinOffsetValue {
@@ -382,6 +389,20 @@ pub fn build_game_session_with_input_backend(
     options: PlaySessionOptions,
     input_backend: Box<dyn InputBackend>,
 ) -> GameSession {
+    let session_mode = options.session_mode;
+    let chart_key_mode = chart.metadata.key_mode;
+    let primary_key_mode = if session_mode.is_battle() {
+        match chart_key_mode {
+            KeyMode::K10 => KeyMode::K5,
+            KeyMode::K14 => KeyMode::K7,
+            _ => chart_key_mode,
+        }
+    } else {
+        chart_key_mode
+    };
+    let display_only_lane_mask =
+        if session_mode.is_battle() { second_player_lane_mask() } else { [false; LANE_COUNT] };
+    let replay_lane_mask = (session_mode == SessionMode::GhostBattle).then(second_player_lane_mask);
     let gauge_type =
         options.gauge_override.unwrap_or_else(|| gauge_type_from_config(profile.play.gauge));
     let gauge_auto_shift = if options.gauge_auto_shift != GaugeAutoShiftMode::Off {
@@ -401,7 +422,10 @@ pub fn build_game_session_with_input_backend(
     let initial_course_combo = options.initial_course_combo.unwrap_or(0);
     let replay_player = options.replay_player;
     let is_replay = replay_player.is_some();
-    let autoplay_enabled = !is_replay && (profile.play.auto_play || options.autoplay);
+    let is_full_replay = is_replay && replay_lane_mask.is_none();
+    let autoplay_enabled = !is_replay
+        && session_mode != SessionMode::GhostBattle
+        && (session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     let autoplay = if autoplay_enabled {
         Some(AutoplayController::default())
     } else if options.double_option == DoubleOption::BattleAutoScratch {
@@ -411,7 +435,7 @@ pub fn build_game_session_with_input_backend(
     };
     let input_offset_auto_adjust_enabled = profile.judge.visual_offset_auto_adjust;
     let input_offset_auto_adjust =
-        if input_offset_auto_adjust_enabled && !autoplay_enabled && !is_replay {
+        if input_offset_auto_adjust_enabled && !autoplay_enabled && !is_full_replay {
             Some(InputOffsetAutoAdjustState::default())
         } else {
             None
@@ -420,7 +444,11 @@ pub fn build_game_session_with_input_backend(
     // `chart` is built from the source file and already has the selected LN
     // policy, course override, and double option applied.  Derive the gameplay
     // denominator here instead of using the policy-independent library count.
-    let scored_total_notes = scored_note_count(&chart);
+    let scored_total_notes = if session_mode.is_battle() {
+        scored_note_count(&chart) / 2
+    } else {
+        scored_note_count(&chart)
+    };
     let rule_mode = profile.play.rule_mode;
     let input_system = InputSystem {
         backend: input_backend,
@@ -460,7 +488,7 @@ pub fn build_game_session_with_input_backend(
     // great_us and good_us.  Mirrors beatoraja JudgeManager's *JudgeWindowRate
     // = 0 path.
     let base_judge_windows = apply_judge_constraint_to_windows(
-        judge_windows_for_keymode_and_rule_mode(chart.metadata.key_mode, rule_mode),
+        judge_windows_for_keymode_and_rule_mode(primary_key_mode, rule_mode),
         options.judge_constraint,
     );
     let base_judge_window = base_judge_windows.note;
@@ -473,9 +501,8 @@ pub fn build_game_session_with_input_backend(
         );
         // 単曲時はチャートのキーモードから GaugeProperty を導出、コース時は
         // `apply_course_constraints` が CourseGaugeConstraint から決めた値を使う。
-        let gauge_property = options
-            .gauge_property
-            .unwrap_or_else(|| GaugeProperty::from_keymode(chart.metadata.key_mode));
+        let gauge_property =
+            options.gauge_property.unwrap_or_else(|| GaugeProperty::from_keymode(primary_key_mode));
         if gauge_auto_shift != GaugeAutoShiftMode::Off {
             let mut gauge = GaugeState::new_with_auto_shift_property_and_rule_mode_and_keymode(
                 gauge_type,
@@ -484,7 +511,7 @@ pub fn build_game_session_with_input_backend(
                 scored_total_notes,
                 gauge_property,
                 rule_mode,
-                chart.metadata.key_mode,
+                primary_key_mode,
             );
             gauge.set_bottom_shiftable_gauge(bottom_shiftable_gauge);
             gauge
@@ -495,7 +522,7 @@ pub fn build_game_session_with_input_backend(
                 scored_total_notes,
                 gauge_property,
                 rule_mode,
-                chart.metadata.key_mode,
+                primary_key_mode,
             )
         }
     };
@@ -506,9 +533,13 @@ pub fn build_game_session_with_input_backend(
     } else if let Some(initial) = initial_gauge_value {
         gauge.set_initial_value(initial);
     }
+    let opponent_gauge = session_mode.is_battle().then(|| gauge.clone());
+    let opponent_score =
+        session_mode.is_battle().then(|| ScoreState::for_rule_mode(primary_key_mode, rule_mode));
 
     GameSession {
         gauge,
+        opponent_gauge,
         judge: JudgeEngine::new_with_window_set_algorithm_and_keymode(
             judge_windows_for_rule_mode_and_keymode(
                 base_judge_windows,
@@ -516,30 +547,34 @@ pub fn build_game_session_with_input_backend(
                     chart.metadata.judge_rank_spec,
                     &chart.judge_rank_events,
                     TimeUs(0),
-                    chart.metadata.key_mode,
+                    primary_key_mode,
                     rule_mode,
                 ),
                 rule_mode,
-                chart.metadata.key_mode,
+                primary_key_mode,
             ),
             rule_mode,
             judge_algorithm_from_config(profile.judge.judge_algorithm),
-            chart.metadata.key_mode,
+            primary_key_mode,
         ),
         base_judge_window,
         base_judge_windows,
         rule_mode,
         audio_clock: AudioClock::stopped(options.sample_rate),
         chart,
+        primary_key_mode,
         scored_total_notes,
         timing_map,
         input_system,
-        score: ScoreState::for_rule_mode(key_mode, rule_mode),
+        score: ScoreState::for_rule_mode(primary_key_mode, rule_mode),
+        opponent_score,
         course_combo_carry: initial_course_combo,
         course_combo_carry_active: initial_course_combo > 0,
         course_max_combo: initial_course_combo,
         replay_recorder: ReplayRecorder::default(),
         replay_player,
+        replay_lane_mask,
+        display_only_lane_mask,
         autoplay,
         recent_inputs: Vec::new(),
         lane_keyon_started_at: Default::default(),
@@ -556,8 +591,11 @@ pub fn build_game_session_with_input_backend(
         input_offset_auto_adjust_enabled,
         input_offset_auto_adjust,
         gauge_increase_started_at: None,
+        opponent_gauge_increase_started_at: None,
         gauge_max_started_at: None,
+        opponent_gauge_max_started_at: None,
         full_combo_started_at: None,
+        opponent_full_combo_started_at: None,
         bgm_scheduler: BgmScheduler::default(),
         offsets: play_offsets_from_profile(profile),
         audio_mix: audio_mix_from_profile(profile),
@@ -574,7 +612,7 @@ pub fn build_game_session_with_input_backend(
         hidden_enabled: hidden_enabled_from_profile(profile),
         hispeed_auto_adjust: profile.lane.hispeed_auto_adjust,
         hidden_cover: hidden_cover_from_profile(profile),
-        skin_offsets: skin_offsets_from_profile(profile, key_mode),
+        skin_offsets: skin_offsets_from_profile(profile, key_mode, session_mode),
         bga_enabled: bga_enabled_from_profile(profile, autoplay_enabled, is_replay),
         poor_bga_duration_us: poor_bga_duration_us_from_profile(profile),
         bga_stretch: bga_stretch_from_profile(profile),
@@ -824,10 +862,14 @@ fn bga_enabled_from_profile(profile: &ProfileConfig, autoplay: bool, replay: boo
     }
 }
 
-fn skin_offsets_from_profile(profile: &ProfileConfig, key_mode: KeyMode) -> Vec<PlaySkinOffset> {
+fn skin_offsets_from_profile(
+    profile: &ProfileConfig,
+    key_mode: KeyMode,
+    session_mode: SessionMode,
+) -> Vec<PlaySkinOffset> {
     // 各 key mode のアクティブな編集値だけを使う。`skin.history` はスキン切替時に
     // このスロットへ復元するためのキャッシュであり、実行時に直接参照しない。
-    play_skin_selection_for(&profile.skin, key_mode)
+    play_skin_selection_for_session(&profile.skin, key_mode, session_mode)
         .offsets
         .iter()
         .map(|offset| PlaySkinOffset {
@@ -1071,8 +1113,14 @@ fn load_transformed_chart_for_play(
     // beatoraja BMSModelUtils.setStartNoteTime(model, 1000) 相当。
     // LN / arrange より前に適用し、practice 切出しもシフト後時刻を使う。
     apply_start_note_margin(&mut chart);
-    let applied_double_option =
-        options.double_option.normalize_for_key_mode(chart.metadata.key_mode);
+    let source_key_mode = chart.metadata.key_mode;
+    // SessionMode の battle は表示用に2P側を作るが、通常の BATTLE 譜面オプションとは
+    // 異なり、1P側のスコアキーと保存可否を維持する。
+    let applied_double_option = if options.session_mode.is_battle() {
+        DoubleOption::Off
+    } else {
+        options.double_option.normalize_for_key_mode(source_key_mode)
+    };
     let score_key = ScoreKey::with_options(
         chart.identity.file_sha256,
         score_ln_policy_for_chart(options.ln_policy_setting, &chart),
@@ -1086,6 +1134,9 @@ fn load_transformed_chart_for_play(
         force_ln_mode_for_chart(ln_mode, &mut chart);
     }
     apply_double_option(&mut chart, applied_double_option);
+    if options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7) {
+        apply_battle_double_option(&mut chart);
+    }
     let arrange_seed = effective_arrange_seed(
         chart.metadata.key_mode,
         options.arrange,
@@ -1547,6 +1598,23 @@ fn apply_battle_double_option(chart: &mut PlayableChart) {
     chart.long_notes.extend(cloned_long_notes);
     chart.total_notes = chart.total_notes.saturating_mul(2);
     chart.metadata.key_mode = next_mode;
+}
+
+fn second_player_lane_mask() -> [bool; LANE_COUNT] {
+    let mut mask = [false; LANE_COUNT];
+    for lane in [
+        Lane::Key8,
+        Lane::Key9,
+        Lane::Key10,
+        Lane::Key11,
+        Lane::Key12,
+        Lane::Key13,
+        Lane::Key14,
+        Lane::Scratch2,
+    ] {
+        mask[lane.index()] = true;
+    }
+    mask
 }
 
 fn next_note_id(chart: &PlayableChart) -> NoteId {
@@ -2344,6 +2412,27 @@ mod tests {
     }
 
     #[test]
+    fn ghost_battle_keeps_primary_input_offset_auto_adjust_enabled() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 1);
+        profile.judge.visual_offset_auto_adjust = true;
+        let mut battle_chart = chart();
+        battle_chart.metadata.key_mode = KeyMode::K14;
+        let session = build_game_session(
+            Arc::new(battle_chart),
+            &profile,
+            PlaySessionOptions {
+                session_mode: SessionMode::GhostBattle,
+                replay_player: Some(ReplayPlayer::default()),
+                ..PlaySessionOptions::default()
+            },
+        );
+
+        assert!(session.input_offset_auto_adjust.is_some());
+        assert!(session.replay_lane_mask.is_some());
+        assert_eq!(session.primary_key_mode, KeyMode::K7);
+    }
+
+    #[test]
     fn build_game_session_uses_release_bounce_settings_from_profile() {
         let mut profile = ProfileConfig::new_default("default", "Default", 1);
         profile.input.keyboard_release_bounce_ms = 3;
@@ -2501,6 +2590,20 @@ mod tests {
             assert_eq!(snapshot.replay_playback, replay);
             assert_eq!(snapshot.practice_mode, practice);
         }
+
+        let mut ghost_snapshot = bmz_render::snapshot::RenderSnapshot::default();
+        apply_placeholder_session_visuals(
+            &mut ghost_snapshot,
+            &profile,
+            KeyMode::K7,
+            &PlaySessionOptions {
+                session_mode: SessionMode::GhostBattle,
+                replay_player: Some(ReplayPlayer::default()),
+                ..PlaySessionOptions::default()
+            },
+        );
+        assert!(!ghost_snapshot.replay_playback);
+        assert!(ghost_snapshot.score_save_enabled);
     }
 
     #[test]

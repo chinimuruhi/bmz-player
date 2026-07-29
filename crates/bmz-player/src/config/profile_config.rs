@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::i18n::AppLocale;
 use crate::ln_policy::LnPolicySetting;
+use crate::select_options::SessionMode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileConfig {
@@ -96,6 +97,14 @@ pub struct PlayDefaultsConfig {
     pub grade_diff_display: ResultGradeDiffDisplay,
     pub lane_effect: LaneEffectConfig,
     pub assist: AssistOptionConfig,
+    /// 選曲画面で選んだセッション全体のモード。
+    ///
+    /// 旧 profile の `auto_play` を読み込めるよう Option とし、None の場合だけ
+    /// `auto_play` から Normal / Autoplay を復元する。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_mode: Option<SessionMode>,
+    /// v0.1 系 profile / 設定 UI との互換用ミラー。
+    /// 新規保存では `session_mode.primary_autoplay()` と同期する。
     pub auto_play: bool,
     #[serde(default = "default_bga_mode")]
     pub bga: BgaModeConfig,
@@ -883,6 +892,12 @@ pub struct SkinConfig {
     /// 14K プレイ画面スキンのパス。フォーマットは [`play5`] と同じ。
     #[serde(default)]
     pub play14: String,
+    /// 5K Battle (beatoraja skin type 13) のプレイ画面スキン。
+    #[serde(default)]
+    pub battle5: String,
+    /// 7K Battle (beatoraja skin type 12) のプレイ画面スキン。
+    #[serde(default)]
+    pub battle7: String,
     /// 9K プレイ画面スキンのパス (PMS / Pop'n)。フォーマットは [`play5`] と同じ。
     /// 空文字列なら内蔵デフォルトスキンを使用。
     #[serde(default)]
@@ -927,6 +942,10 @@ pub struct SkinConfig {
     /// 14K プレイスキンのオフセット設定。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play14_offsets: Vec<SkinOffsetConfig>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub battle5_offsets: Vec<SkinOffsetConfig>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub battle7_offsets: Vec<SkinOffsetConfig>,
     /// リザルトスキンのオフセット設定。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub result_offsets: Vec<SkinOffsetConfig>,
@@ -963,6 +982,10 @@ pub struct SkinConfig {
     /// 14K プレイスキンのカスタマイズオプション選択。
     #[serde(default)]
     pub play14_options: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle5_options: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle7_options: BTreeMap<String, String>,
     /// 9K プレイスキンのカスタマイズオプション選択。
     #[serde(default)]
     pub play9_options: BTreeMap<String, String>,
@@ -999,6 +1022,10 @@ pub struct SkinConfig {
     /// 14K プレイスキンのファイル選択。
     #[serde(default)]
     pub play14_files: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle5_files: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle7_files: BTreeMap<String, String>,
     /// 9K プレイスキンのファイル選択。
     #[serde(default)]
     pub play9_files: BTreeMap<String, String>,
@@ -1035,6 +1062,8 @@ impl SkinConfig {
             &mut self.play9_offsets,
             &mut self.play10_offsets,
             &mut self.play14_offsets,
+            &mut self.battle5_offsets,
+            &mut self.battle7_offsets,
             &mut self.result_offsets,
             &mut self.course_result_offsets,
         ] {
@@ -1185,6 +1214,7 @@ impl ProfileConfig {
                 grade_diff_display: ResultGradeDiffDisplay::default(),
                 lane_effect: LaneEffectConfig::Off,
                 assist: AssistOptionConfig::None,
+                session_mode: Some(SessionMode::Normal),
                 auto_play: false,
                 bga: default_bga_mode(),
                 bga_expand: default_bga_expand(),

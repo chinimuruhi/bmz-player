@@ -8,7 +8,7 @@ use bmz_chart::timing::TimingMap;
 use bmz_core::ids::{NoteId, SoundId};
 use bmz_core::input::{InputEvent, InputKind, InputSource, ScratchDirection};
 use bmz_core::judge::{Judge, TimingSide};
-use bmz_core::lane::{LANE_COUNT, Lane};
+use bmz_core::lane::{KeyMode, LANE_COUNT, Lane};
 use bmz_core::time::TimeUs;
 
 use crate::autoplay::AutoplayController;
@@ -116,6 +116,9 @@ pub struct BgmScheduler {
 
 pub struct GameSession {
     pub chart: Arc<PlayableChart>,
+    /// 判定窓・スコア・ゲージ規則に使う元譜面側のキーモード。
+    /// battle 表示では `chart.metadata.key_mode` が K10/K14 でも K5/K7 を保持する。
+    pub primary_key_mode: KeyMode,
     /// LN policy / course override 適用後の譜面で実際にスコア対象となるノート数。
     /// Tap と LongStart に加えて、CN / HCN の LongEnd を数える。
     pub scored_total_notes: u32,
@@ -130,14 +133,24 @@ pub struct GameSession {
     pub base_judge_windows: JudgeWindows,
     pub rule_mode: RuleMode,
     pub score: ScoreState,
+    /// display-only 2P opponent score. None outside battle sessions.
+    pub opponent_score: Option<ScoreState>,
     /// Course-mode display combo carry. ScoreState remains per-chart for
     /// storage; these fields only affect the rendered combo/max combo.
     pub course_combo_carry: u32,
     pub course_combo_carry_active: bool,
     pub course_max_combo: u32,
     pub gauge: GaugeState,
+    /// display-only 2P opponent gauge. None outside battle sessions.
+    pub opponent_gauge: Option<GaugeState>,
     pub replay_recorder: ReplayRecorder,
     pub replay_player: Option<ReplayPlayer>,
+    /// Some の場合、リプレイが担当するレーンだけ true。
+    /// 通常リプレイの None は従来通り全レーンをリプレイが占有する。
+    pub replay_lane_mask: Option<[bool; LANE_COUNT]>,
+    /// 対戦ゴーストなど、描画・判定は行うが主プレイヤーのスコア／ゲージ／音声へ
+    /// 反映しないレーン。
+    pub display_only_lane_mask: [bool; LANE_COUNT],
     pub autoplay: Option<AutoplayController>,
     pub recent_inputs: Vec<InputEvent>,
     /// 各レーンのキー押下開始時刻。押下中のみ Some。skin の keyon タイマー(100..=107)。
@@ -166,11 +179,14 @@ pub struct GameSession {
     pub hit_error_ring: HitErrorRing,
     /// Gauge increase animation start time. Skin timer 42/43 uses elapsed time from here.
     pub gauge_increase_started_at: Option<TimeUs>,
+    pub opponent_gauge_increase_started_at: Option<TimeUs>,
     /// Gauge max animation start time. Skin timer 44/45 is active while the current gauge is maxed.
     pub gauge_max_started_at: Option<TimeUs>,
+    pub opponent_gauge_max_started_at: Option<TimeUs>,
     /// Full combo animation start time. Set once when all notes have been judged
     /// and the combo still matches the total note count.
     pub full_combo_started_at: Option<TimeUs>,
+    pub opponent_full_combo_started_at: Option<TimeUs>,
     pub bgm_scheduler: BgmScheduler,
     pub offsets: PlayOffsets,
     pub input_offset_auto_adjust_enabled: bool,
@@ -321,8 +337,49 @@ pub fn compute_frame_times(session: &GameSession) -> FrameTimes {
 
 pub fn apply_judge_outcome(
     session: &mut GameSession,
-    outcome: JudgeOutcome,
+    mut outcome: JudgeOutcome,
 ) -> Vec<JudgementEvent> {
+    let has_display_only_event =
+        outcome.events.iter().any(|event| session.display_only_lane_mask[event.lane.index()]);
+    for event in &mut outcome.events {
+        if session.display_only_lane_mask[event.lane.index()] {
+            if event.affects_score {
+                if let Some(score) = &mut session.opponent_score {
+                    score.apply(event);
+                }
+                if let Some(gauge) = &mut session.opponent_gauge {
+                    let previous_gauge = gauge.current().value;
+                    gauge.apply_judge(event.judge, 1.0);
+                    if gauge.current().value > previous_gauge + f32::EPSILON {
+                        session.opponent_gauge_increase_started_at =
+                            Some(TimeUs(event.time.0.max(0)));
+                    }
+                }
+            }
+            event.affects_score = false;
+        }
+    }
+    outcome.mine_hits.retain(|hit| {
+        if session.display_only_lane_mask[hit.lane.index()] {
+            if let Some(gauge) = &mut session.opponent_gauge {
+                gauge.apply_mine(hit.damage);
+            }
+            false
+        } else {
+            true
+        }
+    });
+    if has_display_only_event {
+        // HCN の早離しに伴う音量変更も共有 sound id へ作用するため、表示専用の
+        // opponent レーンから発生したものは primary の音声へ反映しない。
+        outcome.keysound_volumes.clear();
+    }
+    outcome.keysounds.retain(|keysound| {
+        session
+            .chart
+            .note_by_id(keysound.note_id)
+            .is_none_or(|note| !session.display_only_lane_mask[note.lane.index()])
+    });
     let mut events = Vec::with_capacity(outcome.events.len());
     for event in outcome.events {
         if event.affects_score {
@@ -417,6 +474,15 @@ fn update_gauge_max_timer(session: &mut GameSession, now: TimeUs) {
         (false, Some(_)) => session.gauge_max_started_at = None,
         _ => {}
     }
+    if let Some(opponent_gauge) = &session.opponent_gauge {
+        let is_max =
+            opponent_gauge.current().value >= opponent_gauge.current().definition.max.max(1.0);
+        match (is_max, session.opponent_gauge_max_started_at) {
+            (true, None) => session.opponent_gauge_max_started_at = Some(TimeUs(now.0.max(0))),
+            (false, Some(_)) => session.opponent_gauge_max_started_at = None,
+            _ => {}
+        }
+    }
 }
 
 pub fn schedule_keysounds(session: &mut GameSession, audio: &mut dyn AudioScheduler) {
@@ -496,7 +562,14 @@ pub fn update_recent_judgements(session: &mut GameSession, events: &[JudgementEv
         }
         session.hit_error_ring.push_judgement(event.judge, event.delta.0);
     }
-    session.recent_judgements.extend(events.iter().filter(|event| event.affects_score).cloned());
+    session.recent_judgements.extend(
+        events
+            .iter()
+            .filter(|event| {
+                event.affects_score || session.display_only_lane_mask[event.lane.index()]
+            })
+            .cloned(),
+    );
     session.recent_judgements.retain(|event| now.0 <= event.time.0 + JUDGEMENT_DISPLAY_US);
 }
 
@@ -576,6 +649,9 @@ pub fn process_human_inputs(session: &mut GameSession) -> Vec<JudgementEvent> {
     let mut inputs = session.input_system.collect_game_inputs(&ctx);
     if let Some(autoplay) = &session.autoplay {
         inputs.retain(|input| !autoplay.is_lane_enabled(input.lane));
+    }
+    if let Some(replay_lane_mask) = &session.replay_lane_mask {
+        inputs.retain(|input| !replay_lane_mask[input.lane.index()]);
     }
     update_recent_inputs(session, &inputs, session.audio_clock.now());
     update_lane_key_states(session, &inputs);
@@ -709,7 +785,10 @@ pub fn process_replay_inputs(session: &mut GameSession, audio_now: TimeUs) -> Ve
         return Vec::new();
     };
 
-    let inputs = player.poll_until(audio_now);
+    let mut inputs = player.poll_until(audio_now);
+    if let Some(replay_lane_mask) = &session.replay_lane_mask {
+        inputs.retain(|input| replay_lane_mask[input.lane.index()]);
+    }
     update_lane_key_states(session, &inputs);
     let mut judgements = Vec::new();
     for input in inputs {
@@ -879,7 +958,9 @@ pub fn update_hcn_lane_timers(session: &mut GameSession, audio_now: TimeUs) {
             && let Some(sound_id) = pair.sound
         {
             let muted = !inclease;
-            if session.lane_hcn_keysound_muted[idx] != Some(muted) {
+            if !session.display_only_lane_mask[idx]
+                && session.lane_hcn_keysound_muted[idx] != Some(muted)
+            {
                 let volume = if muted {
                     0.0
                 } else {
@@ -932,15 +1013,31 @@ pub fn apply_hcn_gauge(session: &mut GameSession, audio_now: TimeUs) {
         if timer.inclease {
             timer.passing_count_us += delta_us;
             while timer.passing_count_us > HCN_UPDATE_US {
-                let previous_gauge = session.gauge.current().value;
-                session.gauge.apply_hcn_hold();
-                update_gauge_increase_timer(session, previous_gauge, audio_now);
+                if session.display_only_lane_mask[idx] {
+                    if let Some(gauge) = &mut session.opponent_gauge {
+                        let previous_gauge = gauge.current().value;
+                        gauge.apply_hcn_hold();
+                        if gauge.current().value > previous_gauge + f32::EPSILON {
+                            session.opponent_gauge_increase_started_at = Some(audio_now);
+                        }
+                    }
+                } else {
+                    let previous_gauge = session.gauge.current().value;
+                    session.gauge.apply_hcn_hold();
+                    update_gauge_increase_timer(session, previous_gauge, audio_now);
+                }
                 timer.passing_count_us -= HCN_UPDATE_US;
             }
         } else {
             timer.passing_count_us -= delta_us;
             while timer.passing_count_us < -HCN_UPDATE_US {
-                session.gauge.apply_hcn_drain();
+                if session.display_only_lane_mask[idx] {
+                    if let Some(gauge) = &mut session.opponent_gauge {
+                        gauge.apply_hcn_drain();
+                    }
+                } else {
+                    session.gauge.apply_hcn_drain();
+                }
                 timer.passing_count_us += HCN_UPDATE_US;
             }
         }
@@ -953,14 +1050,14 @@ pub fn sync_judge_windows(session: &mut GameSession, now: TimeUs) {
         session.chart.metadata.judge_rank_spec,
         &session.chart.judge_rank_events,
         now,
-        session.chart.metadata.key_mode,
+        session.primary_key_mode,
         session.rule_mode,
     );
     session.judge.set_window_set(judge_windows_for_rule_mode_and_keymode(
         session.base_judge_windows,
         percent,
         session.rule_mode,
-        session.chart.metadata.key_mode,
+        session.primary_key_mode,
     ));
 }
 
@@ -1005,7 +1102,7 @@ pub fn advance_session_frame(
     if session.state == PlayState::Playing {
         sync_judge_windows(session, times.audio_now);
 
-        if session.replay_player.is_some() {
+        if session.replay_player.is_some() && session.replay_lane_mask.is_none() {
             drain_human_inputs(session);
             judgements.extend(process_replay_inputs(session, times.audio_now));
         } else {
@@ -1016,6 +1113,9 @@ pub fn advance_session_frame(
                 discard_human_inputs(session);
             } else {
                 judgements.extend(process_human_inputs(session));
+            }
+            if session.replay_player.is_some() {
+                judgements.extend(process_replay_inputs(session, times.audio_now));
             }
             judgements.extend(process_autoplay_inputs(session, times.audio_now));
             if session.autoplay.is_some() {
@@ -1051,6 +1151,7 @@ pub fn advance_session_frame(
 }
 
 fn update_full_combo_timer(session: &mut GameSession, judgements: &[JudgementEvent]) {
+    update_opponent_full_combo_timer(session, judgements);
     if session.full_combo_started_at.is_some()
         || session.scored_total_notes == 0
         || session.score.past_notes < session.scored_total_notes
@@ -1062,6 +1163,25 @@ fn update_full_combo_timer(session: &mut GameSession, judgements: &[JudgementEve
         .iter()
         .rev()
         .find(|event| event.affects_score && event.note_id.is_some())
+        .map(|event| event.time)
+        .or_else(|| Some(session.audio_clock.now()));
+}
+
+fn update_opponent_full_combo_timer(session: &mut GameSession, judgements: &[JudgementEvent]) {
+    let Some(score) = &session.opponent_score else {
+        return;
+    };
+    if session.opponent_full_combo_started_at.is_some()
+        || session.scored_total_notes == 0
+        || score.past_notes < session.scored_total_notes
+        || score.combo < session.scored_total_notes
+    {
+        return;
+    }
+    session.opponent_full_combo_started_at = judgements
+        .iter()
+        .rev()
+        .find(|event| session.display_only_lane_mask[event.lane.index()] && event.note_id.is_some())
         .map(|event| event.time)
         .or_else(|| Some(session.audio_clock.now()));
 }
@@ -1121,6 +1241,61 @@ mod tests {
         assert_eq!(mix.chart_normalization_gain, 0.25);
         mix.normalize_chart_volume = true;
         assert_eq!(mix.effective_normalization_gain(), 0.25);
+    }
+
+    #[test]
+    fn display_only_opponent_judgement_does_not_change_primary_score_or_gauge() {
+        let mut session = session_with_autoplay(chart_with_keysound());
+        session.autoplay = None;
+        session.display_only_lane_mask[Lane::Key8.index()] = true;
+        session.opponent_score = Some(ScoreState::default());
+        session.opponent_gauge = Some(session.gauge.clone());
+        let primary_gauge = session.gauge.current().value;
+
+        let events = apply_judge_outcome(
+            &mut session,
+            JudgeOutcome {
+                events: vec![JudgementEvent {
+                    note_id: Some(NoteId(1)),
+                    lane: Lane::Key8,
+                    judge: Judge::PGreat,
+                    side: TimingSide::Fast,
+                    delta: TimeUs(0),
+                    time: TimeUs(1_000_000),
+                    affects_score: true,
+                }],
+                keysound_volumes: vec![(SoundId(7), 0.0)],
+                ..JudgeOutcome::default()
+            },
+        );
+
+        assert_eq!(session.score.ex_score(), 0);
+        assert_eq!(session.score.past_notes, 0);
+        assert_eq!(session.gauge.current().value, primary_gauge);
+        assert_eq!(session.opponent_score.as_ref().unwrap().ex_score(), 2);
+        assert_eq!(session.opponent_score.as_ref().unwrap().past_notes, 1);
+        assert!(session.pending_keysound_volumes.is_empty());
+        assert!(!events[0].affects_score);
+
+        update_recent_judgements(&mut session, &events, TimeUs(1_000_000));
+        assert_eq!(session.recent_judgements, events);
+    }
+
+    #[test]
+    fn display_only_opponent_hcn_updates_only_opponent_gauge() {
+        let mut session = session_with_autoplay(chart_with_keysound());
+        session.gauge.set_initial_value(50.0);
+        session.opponent_gauge = Some(session.gauge.clone());
+        session.display_only_lane_mask[Lane::Key8.index()] = true;
+        session.lane_hcn_timer[Lane::Key8.index()] =
+            Some(HcnLaneTimer { inclease: true, since: TimeUs(0), passing_count_us: 0 });
+        session.last_hcn_gauge_at = Some(TimeUs(0));
+
+        apply_hcn_gauge(&mut session, TimeUs(500_000));
+
+        assert_eq!(session.gauge.current().value, 50.0);
+        assert!(session.opponent_gauge.as_ref().unwrap().current().value > 50.0);
+        assert_eq!(session.opponent_gauge_increase_started_at, Some(TimeUs(500_000)));
     }
 
     #[test]
@@ -2359,6 +2534,7 @@ mod tests {
             TimingMap::from_chart_timing_events(chart.metadata.initial_bpm, &chart.timing_events);
         GameSession {
             chart: Arc::clone(&chart),
+            primary_key_mode: chart.metadata.key_mode,
             scored_total_notes: scored_note_count(&chart),
             timing_map,
             audio_clock: AudioClock {
@@ -2386,12 +2562,16 @@ mod tests {
             )),
             rule_mode: RuleMode::Beatoraja,
             score: ScoreState::default(),
+            opponent_score: None,
             course_combo_carry: 0,
             course_combo_carry_active: false,
             course_max_combo: 0,
             gauge: GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, chart.total_notes),
+            opponent_gauge: None,
             replay_recorder: ReplayRecorder::default(),
             replay_player: None,
+            replay_lane_mask: None,
+            display_only_lane_mask: [false; LANE_COUNT],
             autoplay: Some(AutoplayController::default()),
             recent_inputs: Vec::new(),
             lane_keyon_started_at: Default::default(),
@@ -2406,8 +2586,11 @@ mod tests {
             result_judgements: Default::default(),
             hit_error_ring: HitErrorRing::default(),
             gauge_increase_started_at: None,
+            opponent_gauge_increase_started_at: None,
             gauge_max_started_at: None,
+            opponent_gauge_max_started_at: None,
             full_combo_started_at: None,
+            opponent_full_combo_started_at: None,
             bgm_scheduler: BgmScheduler::default(),
             offsets: PlayOffsets { input_offset_us: 0, visual_offset_us: 0 },
             input_offset_auto_adjust_enabled: false,

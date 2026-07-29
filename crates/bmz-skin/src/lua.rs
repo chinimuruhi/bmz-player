@@ -3219,7 +3219,7 @@ fn skin_offset_definitions_from_header(header: &JsonValue) -> Vec<(String, i32)>
     }
 
     let skin_type = header.get("type").and_then(json_integer).and_then(|id| i32::try_from(id).ok());
-    if matches!(skin_type, Some(0 | 1 | 2 | 3 | 4 | 16 | 17 | 21 | 22 | 23 | 24)) {
+    if matches!(skin_type, Some(0 | 1 | 2 | 3 | 4 | 12 | 13 | 16 | 17 | 21 | 22 | 23 | 24)) {
         // JSONSkinLoader appends these after custom definitions before
         // SkinLuaAccessor exports skin_config. BMZ offset 34 is intentionally
         // renderer-only and is not part of beatoraja's Lua configuration.
@@ -8301,6 +8301,19 @@ fn lua_key_to_json_key(key: Value, path: &str, warnings: &mut Vec<String>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn battle_skin_headers_receive_standard_play_offsets() {
+        for skin_type in [12, 13] {
+            let offsets =
+                skin_offset_definitions_from_header(&serde_json::json!({ "type": skin_type }));
+
+            assert!(offsets.iter().any(|(_, id)| *id == 10));
+            assert!(offsets.iter().any(|(_, id)| *id == 30));
+            assert!(offsets.iter().any(|(_, id)| *id == 32));
+            assert!(offsets.iter().any(|(_, id)| *id == 33));
+        }
+    }
 
     #[test]
     fn infers_select_score_availability_from_luxe_global_guard() {

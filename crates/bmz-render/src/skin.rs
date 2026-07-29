@@ -1230,11 +1230,15 @@ pub struct SkinDrawState {
     pub judge_ms: [Option<i32>; MAX_JUDGE_REGIONS],
     /// Full combo timer elapsed ms (TIMER_FULLCOMBO_1P/2P=48/49)。Noneなら非アクティブ。
     pub full_combo_ms: Option<i32>,
+    pub full_combo_2p_ms: Option<i32>,
     pub music_end_ms: Option<i32>,
     /// Gauge increase timer elapsed ms (TIMER_GAUGE_INCLEASE_1P/2P=42/43)。
     pub gauge_increase_ms: Option<i32>,
+    pub gauge_increase_2p_ms: Option<i32>,
     /// Gauge max timer elapsed ms (TIMER_GAUGE_MAX_1P/2P=44/45)。
     pub gauge_max_ms: Option<i32>,
+    pub gauge_max_2p_ms: Option<i32>,
+    pub end_of_note_2p_ms: Option<i32>,
     /// 領域別の判定画像インデックス (0=PGREAT,1=GREAT,2=GOOD,3=BAD,4=POOR,5=MISS)。
     pub judge_index: [Option<usize>; MAX_JUDGE_REGIONS],
     /// 領域別の判定表示用 combo。beatoraja `JudgeManager.judgecombo` 相当。
@@ -1590,9 +1594,13 @@ impl Default for SkinDrawState {
             lane_judge: [None; LANE_COUNT],
             judge_ms: [None; MAX_JUDGE_REGIONS],
             full_combo_ms: None,
+            full_combo_2p_ms: None,
             music_end_ms: None,
             gauge_increase_ms: None,
+            gauge_increase_2p_ms: None,
             gauge_max_ms: None,
+            gauge_max_2p_ms: None,
+            end_of_note_2p_ms: None,
             judge_index: [None; MAX_JUDGE_REGIONS],
             judge_combo: [0; MAX_JUDGE_REGIONS],
             judge_timing_sign: [None; MAX_JUDGE_REGIONS],
@@ -10504,8 +10512,10 @@ fn skin_timer_elapsed_ms(timer: Option<i32>, state: &SkinDrawState) -> Option<i3
         Some(40) => state.ready_timer_ms,
         Some(41) => state.play_timer_ms,
         Some(140) => state.rhythm_timer_ms,
-        Some(42 | 43) => state.gauge_increase_ms,
-        Some(44 | 45) => state.gauge_max_ms,
+        Some(42) => state.gauge_increase_ms,
+        Some(43) => state.gauge_increase_2p_ms,
+        Some(44) => state.gauge_max_ms,
+        Some(45) => state.gauge_max_2p_ms,
         Some(11) => Some(state.select_bar_elapsed_ms),
         Some(21..=26) => (state.select_option_panel == (timer.unwrap() - 20) as u8)
             .then_some(state.select_option_panel_elapsed_ms),
@@ -10514,7 +10524,11 @@ fn skin_timer_elapsed_ms(timer: Option<i32>, state: &SkinDrawState) -> Option<i3
         Some(46) => state.judge_ms[0],
         Some(47) => state.judge_ms[1],
         Some(247) => state.judge_ms[2],
-        Some(48 | 49) => state.full_combo_ms,
+        Some(446) => state.judge_ms[0],
+        Some(447) => state.judge_ms[1],
+        Some(448) => state.judge_ms[2],
+        Some(48) => state.full_combo_ms,
+        Some(49) => state.full_combo_2p_ms,
         Some(908) => state.music_end_ms,
         Some(50..=57) => state.bomb_ms[(timer.unwrap() - 50) as usize],
         Some(58..=59) => state.bomb_ms[Lane::Key8.index() + (timer.unwrap() - 58) as usize],
@@ -10537,7 +10551,8 @@ fn skin_timer_elapsed_ms(timer: Option<i32>, state: &SkinDrawState) -> Option<i3
         // 2P keyoff: timer 130=Scratch2, 131-137=Key8-14
         Some(130) => state.keyoff_ms[Lane::Scratch2.index()],
         Some(131..=137) => state.keyoff_ms[Lane::Key8.index() + (timer.unwrap() - 131) as usize],
-        Some(143 | 144) => state.end_of_note_ms,
+        Some(143) => state.end_of_note_ms,
+        Some(144) => state.end_of_note_2p_ms,
         // 1P HCN active: timer 250=Scratch, 251-257=Key1-7
         Some(250..=257) => state.hcn_active_ms[(timer.unwrap() - 250) as usize],
         Some(258..=259) => {
@@ -12917,7 +12932,7 @@ fn select_bga_index(bga: &str) -> usize {
 
 fn select_assist_index(assist: &str) -> usize {
     match assist {
-        "AUTOPLAY" => 1,
+        "AUTOPLAY" | "AUTOPLAY BATTLE" => 1,
         _ => 0,
     }
 }
@@ -22970,10 +22985,11 @@ mod tests {
             elapsed_ms: 5_000,
             end_of_note: true,
             end_of_note_ms: Some(250),
+            end_of_note_2p_ms: Some(325),
             ..SkinDrawState::default()
         };
         assert_eq!(skin_timer_elapsed_ms(Some(143), &active), Some(250));
-        assert_eq!(skin_timer_elapsed_ms(Some(144), &active), Some(250));
+        assert_eq!(skin_timer_elapsed_ms(Some(144), &active), Some(325));
     }
 
     #[test]
@@ -23073,13 +23089,15 @@ mod tests {
 
         let active = SkinDrawState {
             gauge_increase_ms: Some(75),
+            gauge_increase_2p_ms: Some(125),
             gauge_max_ms: Some(1_700),
+            gauge_max_2p_ms: Some(1_900),
             ..SkinDrawState::default()
         };
         assert_eq!(skin_timer_elapsed_ms(Some(42), &active), Some(75));
-        assert_eq!(skin_timer_elapsed_ms(Some(43), &active), Some(75));
+        assert_eq!(skin_timer_elapsed_ms(Some(43), &active), Some(125));
         assert_eq!(skin_timer_elapsed_ms(Some(44), &active), Some(1_700));
-        assert_eq!(skin_timer_elapsed_ms(Some(45), &active), Some(1_700));
+        assert_eq!(skin_timer_elapsed_ms(Some(45), &active), Some(1_900));
     }
 
     #[test]

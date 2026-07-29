@@ -52,6 +52,27 @@ pub struct SkinLogicalInputSnapshot {
     pub held: [bool; bmz_skin_document::SKIN_BMZ_INPUT_COUNT],
 }
 
+/// Battle session の表示専用2P状態。
+///
+/// 主プレイヤーの保存スコアとは分離し、beatoraja の rival ref と2P timerへ公開する。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OpponentRenderSnapshot {
+    pub combo: u32,
+    pub max_combo: u32,
+    pub ex_score: u32,
+    pub total_notes: u32,
+    pub past_notes: u32,
+    pub judge_counts: DisplayJudgeCounts,
+    pub gauge: f32,
+    pub gauge_type: i32,
+    pub gauge_max: f32,
+    pub gauge_border: f32,
+    pub full_combo_elapsed_ms: Option<i32>,
+    pub end_of_note_elapsed_ms: Option<i32>,
+    pub gauge_increase_elapsed_ms: Option<i32>,
+    pub gauge_max_elapsed_ms: Option<i32>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RenderSnapshot {
     /// 表示オフセットを含まない譜面時刻。判定演出・BGA・skin timer の基準に使う。
@@ -117,6 +138,7 @@ pub struct RenderSnapshot {
     pub gauge_max: f32,
     /// 現在ゲージの合格ライン (beatoraja `GaugeElementProperty.border`)。
     pub gauge_border: f32,
+    pub opponent: Option<OpponentRenderSnapshot>,
     pub hispeed: f32,
     /// BMZ extension: current hispeed mode for play skin refs. 0=NHS, 1=FHS.
     pub hispeed_mode_index: i32,

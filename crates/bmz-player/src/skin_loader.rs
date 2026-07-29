@@ -27,6 +27,7 @@ use rayon::prelude::*;
 
 use crate::config::profile_config::{SkinConfig, SkinOffsetConfig};
 use crate::paths::{AppPaths, resolve_app_paths};
+use crate::select_options::SessionMode;
 
 /// `SkinConfig` から key_mode に対応するプレイスキン path / options / files / offsets を借用する。
 pub struct PlaySkinSelection<'a> {
@@ -96,6 +97,35 @@ pub fn play_skin_selection_for(skin: &SkinConfig, key_mode: KeyMode) -> PlaySkin
             files: &skin.play9_files,
             offsets: &skin.play9_offsets,
         },
+    }
+}
+
+/// Battle SessionMode 専用スロットを優先し、未設定なら従来の10K/14Kスロットへ
+/// フォールバックする。
+pub fn play_skin_selection_for_session(
+    skin: &SkinConfig,
+    key_mode: KeyMode,
+    session_mode: SessionMode,
+) -> PlaySkinSelection<'_> {
+    if !session_mode.is_battle() {
+        return play_skin_selection_for(skin, key_mode);
+    }
+    match key_mode {
+        KeyMode::K10 if !skin.battle5.trim().is_empty() => PlaySkinSelection {
+            key_mode,
+            path: skin.battle5.as_str(),
+            options: &skin.battle5_options,
+            files: &skin.battle5_files,
+            offsets: &skin.battle5_offsets,
+        },
+        KeyMode::K14 if !skin.battle7.trim().is_empty() => PlaySkinSelection {
+            key_mode,
+            path: skin.battle7.as_str(),
+            options: &skin.battle7_options,
+            files: &skin.battle7_files,
+            offsets: &skin.battle7_offsets,
+        },
+        _ => play_skin_selection_for(skin, key_mode),
     }
 }
 
@@ -5141,6 +5171,8 @@ mod tests {
             play9: "skin9.json".to_string(),
             play10: "skin10.json".to_string(),
             play14: "skin14.json".to_string(),
+            battle5: "battle5.json".to_string(),
+            battle7: "battle7.json".to_string(),
             ..SkinConfig::default()
         };
         skin.play4_options.insert("g".to_string(), "r".to_string());
@@ -5187,6 +5219,17 @@ mod tests {
         assert_eq!(s14.path, "skin14.json");
         assert!(s14.files.contains_key("d"));
         assert_eq!(s14.offsets[0].h, 14);
+
+        let battle5 =
+            play_skin_selection_for_session(&skin, KeyMode::K10, SessionMode::AutoplayBattle);
+        assert_eq!(battle5.path, "battle5.json");
+        let battle7 =
+            play_skin_selection_for_session(&skin, KeyMode::K14, SessionMode::GhostBattle);
+        assert_eq!(battle7.path, "battle7.json");
+        assert_eq!(
+            play_skin_selection_for_session(&skin, KeyMode::K14, SessionMode::Normal).path,
+            "skin14.json"
+        );
     }
 
     #[test]

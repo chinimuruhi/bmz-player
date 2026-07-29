@@ -255,11 +255,18 @@ fn rank_threshold(max_ex_score: u32, eighteenths: u32) -> u32 {
     max_ex_score.saturating_mul(eighteenths).div_ceil(18)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AssistOption {
+/// 1曲のプレイセッション全体を決めるモード。
+///
+/// `AUTOPLAY` のような入力補助だけでなく、2P側の表示主体やスコア保存可否まで
+/// 含むため、従来の `AssistOption` とは分けて扱う。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum SessionMode {
     #[default]
     Normal,
     Autoplay,
+    AutoplayBattle,
+    GhostBattle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -520,13 +527,29 @@ mod tests {
         assert_eq!(HsFixOption::MainBpm.cycle(), HsFixOption::MinBpm);
         assert_eq!(HsFixOption::MinBpm.cycle(), HsFixOption::Off);
     }
+
+    #[test]
+    fn session_mode_cycles_in_select_order() {
+        assert_eq!(SessionMode::Normal.cycle(), SessionMode::Autoplay);
+        assert_eq!(SessionMode::Autoplay.cycle(), SessionMode::AutoplayBattle);
+        assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::GhostBattle);
+        assert_eq!(SessionMode::GhostBattle.cycle(), SessionMode::Normal);
+        assert!(SessionMode::AutoplayBattle.primary_autoplay());
+        assert!(SessionMode::GhostBattle.score_save_enabled());
+        assert!(!SessionMode::AutoplayBattle.score_save_enabled());
+    }
 }
 
-impl AssistOption {
+impl SessionMode {
+    pub const VALUES: [Self; 4] =
+        [Self::Normal, Self::Autoplay, Self::AutoplayBattle, Self::GhostBattle];
+
     pub fn cycle(self) -> Self {
         match self {
             Self::Normal => Self::Autoplay,
-            Self::Autoplay => Self::Normal,
+            Self::Autoplay => Self::AutoplayBattle,
+            Self::AutoplayBattle => Self::GhostBattle,
+            Self::GhostBattle => Self::Normal,
         }
     }
 
@@ -534,6 +557,20 @@ impl AssistOption {
         match self {
             Self::Normal => "NORMAL",
             Self::Autoplay => "AUTOPLAY",
+            Self::AutoplayBattle => "AUTOPLAY BATTLE",
+            Self::GhostBattle => "GHOST BATTLE",
         }
+    }
+
+    pub const fn primary_autoplay(self) -> bool {
+        matches!(self, Self::Autoplay | Self::AutoplayBattle)
+    }
+
+    pub const fn is_battle(self) -> bool {
+        matches!(self, Self::AutoplayBattle | Self::GhostBattle)
+    }
+
+    pub const fn score_save_enabled(self) -> bool {
+        matches!(self, Self::Normal | Self::GhostBattle)
     }
 }

@@ -123,7 +123,7 @@ pub fn finish_session_result(
     ensure_storable_state(session.state)?;
     let result = play_result_from_session(session);
     let summary_clear_type = finish_mode.summary_clear_type(result.clear_type);
-    let replay_playback = session.replay_player.is_some();
+    let replay_playback = session.replay_player.is_some() && session.replay_lane_mask.is_none();
     let previous_best =
         score_db.best_scores_for_charts(&[score_key]).ok().and_then(|mut bests| bests.pop());
     // オートプレイ / リプレイ再生 / プラクティス時はスコア・リプレイをDBに保存しない
@@ -141,7 +141,7 @@ pub fn finish_session_result(
     } else {
         let arrange = applied_arrange.arrange;
         let arrange_seed = applied_arrange.seed;
-        let random_seed = applied_arrange.packed_beatoraja_seed(session.chart.metadata.key_mode);
+        let random_seed = applied_arrange.packed_beatoraja_seed(session.primary_key_mode);
         let arrange_pattern = applied_arrange.pattern.clone();
         store_play_result(
             score_db,
@@ -175,6 +175,7 @@ pub fn finish_session_result(
         )?
     };
     let mut summary = ResultSummary::from_play_result(&result, &stored, &session.chart);
+    summary.key_mode = session.primary_key_mode;
     summary.clear_type = summary_clear_type;
     summary.arrange = applied_arrange.arrange.as_str().to_string();
     summary.arrange_2p = applied_arrange.arrange_2p.as_str().to_string();
@@ -277,7 +278,9 @@ fn enqueue_ir_jobs(
     summary: &mut ResultSummary,
     previous_best: Option<&crate::storage::score_db::BestScoreSummary>,
 ) {
-    if stored.score_history_id <= 0 {
+    // Ghost Battle はローカルの1Pスコアとして保存するが、表示用に複製した
+    // K10/K14 chart を外部IRへ通常譜面として送信しない。
+    if stored.score_history_id <= 0 || session.replay_lane_mask.is_some() {
         return;
     }
     let enabled: Vec<_> = ir_config
@@ -311,8 +314,8 @@ fn enqueue_ir_jobs(
             arrange_2p: applied_arrange.arrange_2p,
             double_option: score_key.double_option,
             applied_double_option: applied_arrange.double_option,
-            arrange_seed: applied_arrange.packed_beatoraja_seed(session.chart.metadata.key_mode),
-            random_seed: applied_arrange.packed_beatoraja_seed(session.chart.metadata.key_mode),
+            arrange_seed: applied_arrange.packed_beatoraja_seed(session.primary_key_mode),
+            random_seed: applied_arrange.packed_beatoraja_seed(session.primary_key_mode),
             seed_scheme: if applied_arrange.legacy_seed {
                 crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3.to_string()
             } else {
@@ -1057,6 +1060,7 @@ mod tests {
         );
         GameSession {
             chart: Arc::clone(&chart),
+            primary_key_mode: chart.metadata.key_mode,
             scored_total_notes: bmz_gameplay::score::scored_note_count(&chart),
             timing_map,
             audio_clock: bmz_audio::clock::AudioClock::stopped(48_000),
@@ -1072,6 +1076,7 @@ mod tests {
             base_judge_windows: JudgeWindows::uniform(DEFAULT_JUDGE_WINDOW),
             rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
             score: Default::default(),
+            opponent_score: None,
             course_combo_carry: 0,
             course_combo_carry_active: false,
             course_max_combo: 0,
@@ -1080,8 +1085,11 @@ mod tests {
                 160.0,
                 chart.total_notes,
             ),
+            opponent_gauge: None,
             replay_recorder: ReplayRecorder::default(),
             replay_player: None,
+            replay_lane_mask: None,
+            display_only_lane_mask: [false; bmz_core::lane::LANE_COUNT],
             autoplay: None,
             recent_inputs: Vec::new(),
             lane_keyon_started_at: Default::default(),
@@ -1096,8 +1104,11 @@ mod tests {
             result_judgements: Default::default(),
             hit_error_ring: bmz_gameplay::hit_error::HitErrorRing::default(),
             gauge_increase_started_at: None,
+            opponent_gauge_increase_started_at: None,
             gauge_max_started_at: None,
+            opponent_gauge_max_started_at: None,
             full_combo_started_at: None,
+            opponent_full_combo_started_at: None,
             bgm_scheduler: BgmScheduler::default(),
             offsets: PlayOffsets { input_offset_us: 0, visual_offset_us: 0 },
             input_offset_auto_adjust_enabled: false,

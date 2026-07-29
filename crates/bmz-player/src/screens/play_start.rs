@@ -23,12 +23,13 @@ use crate::screens::play_session::{
     build_prepared_play_session_from_preloaded,
     load_prepared_play_session_for_chart_with_input_backend,
 };
-use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, TargetOption};
+use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::score_db::ScoreDatabase;
 
 #[derive(Debug, Clone, Default)]
 pub struct PlayStartOptions {
+    pub session_mode: SessionMode,
     pub autoplay: bool,
     /// Practice mode: section play without result DB update (CLI entry only for now).
     pub practice_mode: bool,
@@ -108,6 +109,7 @@ pub fn play_session_options_from_start(
         .unwrap_or_default();
 
     PlaySessionOptions {
+        session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
         practice_mode: start_options.practice_mode,
         replay_player: start_options.replay_player,
