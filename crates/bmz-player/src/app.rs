@@ -202,8 +202,8 @@ mod frame_runtime;
 mod result_runtime;
 
 use frame_runtime::{
-    FramePacer, FrameProfileKind, PlayLoopFrameTimings, SceneFrameProfileSample,
-    SceneFrameProfiler, SkinFpsCounter, SkinVideoFrameProfile, fps_overlay_text,
+    FrameProfileKind, FrameRuntime, FrameSchedule, PlayLoopFrameTimings, SceneFrameProfileSample,
+    SkinVideoFrameProfile,
 };
 use result_runtime::{
     course_result_skin_snapshot, course_result_summary_for_skin, debug_boot_finished_play_session,
@@ -717,13 +717,8 @@ struct WinitApp {
     focused: bool,
     /// フォーカス復帰直後の gamepad poll を状態再同期だけに使う。
     discard_gamepad_output_until_resynced: bool,
-    /// 次の描画開始 deadline を管理するフレームペーサー。
-    frame_pacer: FramePacer,
-    /// Worker から取り込んだスキンを次の redraw で即表示するため、
-    /// 1 フレーム分だけ frame pacing sleep をスキップする。
-    skip_next_frame_pace: bool,
-    /// skin の NUMBER_CURRENT_FPS (20) と右上表示へ渡す秒単位の確定 FPS。
-    skin_fps: SkinFpsCounter,
+    /// frame pacing、確定FPS、scene別profile集計をまとめた描画runtime。
+    frame: FrameRuntime,
     /// 設定画面で編集中の項目。`None` なら一覧操作モード。
     settings_edit: Option<SettingsEditSession>,
     /// キー設定の待ち受け状態。
@@ -763,9 +758,6 @@ struct WinitApp {
     practice_session: Option<PracticeSession>,
     /// 次の `RunningPlaySession::start` で使う chart zero（区間先頭の 1 秒前）。
     practice_chart_zero_time: Option<TimeUs>,
-    select_frame_profiler: SceneFrameProfiler,
-    play_frame_profiler: SceneFrameProfiler,
-    result_frame_profiler: SceneFrameProfiler,
     /// 直近のマウスカーソル移動 / 操作時刻。カーソル非表示判定に使う。
     last_cursor_action_at: Instant,
     /// 現在マウスカーソルが表示されているか。
@@ -2449,9 +2441,7 @@ impl WinitApp {
             applied_window_mode: initial_window_mode,
             focused: true,
             discard_gamepad_output_until_resynced: false,
-            frame_pacer: FramePacer::default(),
-            skip_next_frame_pace: false,
-            skin_fps: SkinFpsCounter::new(now),
+            frame: FrameRuntime::new(now),
             settings_edit: None,
             key_config_edit: None,
             result_exit: None,
@@ -2471,9 +2461,6 @@ impl WinitApp {
             search_message: None,
             practice_session: None,
             practice_chart_zero_time: None,
-            select_frame_profiler: SceneFrameProfiler::default(),
-            play_frame_profiler: SceneFrameProfiler::default(),
-            result_frame_profiler: SceneFrameProfiler::default(),
             last_cursor_action_at: now,
             cursor_visible: true,
         };
@@ -2998,7 +2985,7 @@ impl WinitApp {
         apply_skin_runtime_info_to_scene(
             scene,
             &self.boot.profile_config.display_name,
-            self.skin_fps.current(),
+            self.frame.current_fps(),
         );
     }
 
@@ -3042,9 +3029,8 @@ impl WinitApp {
     }
 
     fn skin_fps_overlay_text(&self) -> String {
-        fps_overlay_text(
+        self.frame.overlay_text(
             self.boot.profile_config.ui.show_fps,
-            self.skin_fps.current(),
             Localizer::new(self.boot.profile_config.ui.locale()),
         )
     }
@@ -12817,7 +12803,7 @@ impl WinitApp {
         );
         self.pending_skin_render_probe =
             Some(PendingSkinRenderProbe { kind, generation, applied_at: Instant::now() });
-        self.skip_next_frame_pace = true;
+        self.frame.request_immediate_frame();
         tracing::debug!(
             path = %path.display(),
             kind = ?kind,
@@ -13598,17 +13584,14 @@ impl WinitApp {
     /// sleep させないため、待機中も keyboard/device event を遅延なく受け取れる。
     fn begin_scheduled_frame(&mut self, event_loop: &ActiveEventLoop) -> bool {
         let fps = self.current_frame_limit();
-        let skip_wait = self.skip_next_frame_pace;
         let now = Instant::now();
-        if let Some(deadline) = self.frame_pacer.next_deadline(now, fps, skip_wait) {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
-            return false;
+        match self.frame.begin_scheduled_frame(now, fps) {
+            FrameSchedule::Start => true,
+            FrameSchedule::WaitUntil(deadline) => {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                false
+            }
         }
-
-        self.skip_next_frame_pace = false;
-        self.frame_pacer.record_frame_started(now, fps, skip_wait);
-        self.skin_fps.record_frame(now);
-        true
     }
 
     /// 次の frame deadline まで winit に待機させ、到達時に redraw を要求する。
@@ -13616,8 +13599,7 @@ impl WinitApp {
     fn schedule_next_frame(&self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         let fps = self.current_frame_limit();
-        if let Some(deadline) = self.frame_pacer.next_deadline(now, fps, self.skip_next_frame_pace)
-        {
+        if let Some(deadline) = self.frame.next_deadline(now, fps) {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
             return;
         }
@@ -13666,7 +13648,7 @@ impl WinitApp {
         let presentation = self.renderer.surface_presentation_status();
         let info = DebugInfo {
             scene,
-            current_fps: self.skin_fps.current(),
+            current_fps: self.frame.current_fps(),
             width: size.width,
             height: size.height,
             effective_present_mode: presentation.map(|status| status.effective_mode),
@@ -14241,7 +14223,7 @@ impl WinitApp {
         let pending_after_reload = self.has_pending_skin_reload();
         tracing::info!(?request, "skin reload queued from egui skin panel");
         if pending_after_reload {
-            self.skip_next_frame_pace = true;
+            self.frame.request_immediate_frame();
             let _ = self.drain_pending_skins();
             self.request_redraw();
         }
@@ -17251,35 +17233,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                             advance_active_play_us,
                             post_scene_us,
                         });
-                    match sample.kind {
-                        FrameProfileKind::Select => self.select_frame_profiler.record(
-                            sample.kind,
-                            sample.video_us,
-                            sample.video_profile,
-                            sample.snapshot_us,
-                            sample.render_us,
-                            sample.render_timings,
-                            play_loop,
-                        ),
-                        FrameProfileKind::Play => self.play_frame_profiler.record(
-                            sample.kind,
-                            sample.video_us,
-                            sample.video_profile,
-                            sample.snapshot_us,
-                            sample.render_us,
-                            sample.render_timings,
-                            play_loop,
-                        ),
-                        FrameProfileKind::Result => self.result_frame_profiler.record(
-                            sample.kind,
-                            sample.video_us,
-                            sample.video_profile,
-                            sample.snapshot_us,
-                            sample.render_us,
-                            sample.render_timings,
-                            play_loop,
-                        ),
-                    }
+                    self.frame.record_profile(sample, play_loop);
                 }
                 let pending_skin_after = self.has_pending_skin_reload();
                 if skin_drain_stats.received_count > 0

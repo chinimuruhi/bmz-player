@@ -4,20 +4,96 @@ use bmz_render::renderer::RenderFrameTimings;
 
 use crate::i18n::{FluentArgs, Localizer};
 
+pub(super) struct FrameRuntime {
+    pacer: FramePacer,
+    skip_next_pace: bool,
+    fps: SkinFpsCounter,
+    select_profiler: SceneFrameProfiler,
+    play_profiler: SceneFrameProfiler,
+    result_profiler: SceneFrameProfiler,
+}
+
+pub(super) enum FrameSchedule {
+    Start,
+    WaitUntil(Instant),
+}
+
+impl FrameRuntime {
+    pub(super) fn new(now: Instant) -> Self {
+        Self {
+            pacer: FramePacer::default(),
+            skip_next_pace: false,
+            fps: SkinFpsCounter::new(now),
+            select_profiler: SceneFrameProfiler::default(),
+            play_profiler: SceneFrameProfiler::default(),
+            result_profiler: SceneFrameProfiler::default(),
+        }
+    }
+
+    pub(super) fn request_immediate_frame(&mut self) {
+        self.skip_next_pace = true;
+    }
+
+    pub(super) fn begin_scheduled_frame(&mut self, now: Instant, fps: u32) -> FrameSchedule {
+        let skip_wait = self.skip_next_pace;
+        if let Some(deadline) = self.pacer.next_deadline(now, fps, skip_wait) {
+            return FrameSchedule::WaitUntil(deadline);
+        }
+
+        self.skip_next_pace = false;
+        self.pacer.record_frame_started(now, fps, skip_wait);
+        self.fps.record_frame(now);
+        FrameSchedule::Start
+    }
+
+    pub(super) fn next_deadline(&self, now: Instant, fps: u32) -> Option<Instant> {
+        self.pacer.next_deadline(now, fps, self.skip_next_pace)
+    }
+
+    pub(super) fn current_fps(&self) -> u32 {
+        self.fps.current()
+    }
+
+    pub(super) fn overlay_text(&self, show_fps: bool, text: Localizer) -> String {
+        fps_overlay_text(show_fps, self.current_fps(), text)
+    }
+
+    pub(super) fn record_profile(
+        &mut self,
+        sample: SceneFrameProfileSample,
+        play_loop: Option<PlayLoopFrameTimings>,
+    ) {
+        let profiler = match sample.kind {
+            FrameProfileKind::Select => &mut self.select_profiler,
+            FrameProfileKind::Play => &mut self.play_profiler,
+            FrameProfileKind::Result => &mut self.result_profiler,
+        };
+        profiler.record(
+            sample.kind,
+            sample.video_us,
+            sample.video_profile,
+            sample.snapshot_us,
+            sample.render_us,
+            sample.render_timings,
+            play_loop,
+        );
+    }
+}
+
 /// beatoraja の `Gdx.graphics.getFramesPerSecond()` と同様、1 秒ごとに
 /// 確定したフレーム数を skin の NUMBER_CURRENT_FPS (20) と右上表示へ渡す。
-pub(super) struct SkinFpsCounter {
+struct SkinFpsCounter {
     window_started_at: Instant,
     frames: u32,
     current: u32,
 }
 
 impl SkinFpsCounter {
-    pub(super) fn new(now: Instant) -> Self {
+    fn new(now: Instant) -> Self {
         Self { window_started_at: now, frames: 0, current: 0 }
     }
 
-    pub(super) fn record_frame(&mut self, now: Instant) {
+    fn record_frame(&mut self, now: Instant) {
         self.frames = self.frames.saturating_add(1);
         if now.duration_since(self.window_started_at) >= Duration::from_secs(1) {
             self.current = self.frames;
@@ -26,19 +102,19 @@ impl SkinFpsCounter {
         }
     }
 
-    pub(super) fn current(&self) -> u32 {
+    fn current(&self) -> u32 {
         self.current
     }
 }
 
 #[derive(Debug, Default)]
-pub(super) struct FramePacer {
+struct FramePacer {
     next_frame_at: Option<Instant>,
     fps: Option<u32>,
 }
 
 impl FramePacer {
-    pub(super) fn delay(&self, now: Instant, fps: u32, skip_wait: bool) -> Duration {
+    fn delay(&self, now: Instant, fps: u32, skip_wait: bool) -> Duration {
         if skip_wait || fps == 0 || self.fps != Some(fps) {
             return Duration::ZERO;
         }
@@ -47,7 +123,7 @@ impl FramePacer {
             .unwrap_or_default()
     }
 
-    pub(super) fn record_frame_started(&mut self, now: Instant, fps: u32, rebase: bool) {
+    fn record_frame_started(&mut self, now: Instant, fps: u32, rebase: bool) {
         if fps == 0 {
             self.next_frame_at = None;
             self.fps = None;
@@ -68,7 +144,7 @@ impl FramePacer {
         self.fps = Some(fps);
     }
 
-    pub(super) fn next_deadline(&self, now: Instant, fps: u32, skip_wait: bool) -> Option<Instant> {
+    fn next_deadline(&self, now: Instant, fps: u32, skip_wait: bool) -> Option<Instant> {
         let delay = self.delay(now, fps, skip_wait);
         if delay.is_zero() { None } else { now.checked_add(delay) }
     }
@@ -79,7 +155,7 @@ fn frame_budget(fps: u32) -> Duration {
     Duration::from_secs_f64(1.0 / f64::from(fps)).max(Duration::from_nanos(1))
 }
 
-pub(super) fn fps_overlay_text(show_fps: bool, current_fps: u32, text: Localizer) -> String {
+fn fps_overlay_text(show_fps: bool, current_fps: u32, text: Localizer) -> String {
     if !show_fps || current_fps == 0 {
         return String::new();
     }
@@ -99,7 +175,7 @@ pub(super) struct SkinVideoFrameProfile {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct SceneFrameProfiler {
+struct SceneFrameProfiler {
     frames: u32,
     video_us: u128,
     video_poll_us: u128,
@@ -172,7 +248,7 @@ pub(super) enum FrameProfileKind {
 impl SceneFrameProfiler {
     const LOG_EVERY_FRAMES: u32 = 120;
 
-    pub(super) fn record(
+    fn record(
         &mut self,
         profile: FrameProfileKind,
         video_us: u128,
@@ -493,6 +569,26 @@ mod tests {
         assert_eq!(pacer.next_deadline(started_at + budget, 120, false), None);
         assert_eq!(pacer.next_deadline(started_at + work, 120, true), None);
         assert_eq!(pacer.next_deadline(started_at + work, 0, false), None);
+    }
+
+    #[test]
+    fn frame_runtime_waits_until_deadline_and_honors_immediate_request() {
+        let started_at = Instant::now();
+        let work = Duration::from_micros(500);
+        let mut runtime = FrameRuntime::new(started_at);
+
+        assert!(matches!(runtime.begin_scheduled_frame(started_at, 120), FrameSchedule::Start));
+        assert!(matches!(
+            runtime.begin_scheduled_frame(started_at + work, 120),
+            FrameSchedule::WaitUntil(deadline) if deadline == started_at + frame_budget(120)
+        ));
+
+        runtime.request_immediate_frame();
+        assert!(matches!(
+            runtime.begin_scheduled_frame(started_at + work, 120),
+            FrameSchedule::Start
+        ));
+        assert_eq!(runtime.current_fps(), 0);
     }
 
     #[test]
