@@ -13,7 +13,7 @@ use bmz_audio::ffmpeg_loader::FfmpegSampleLoader;
 use bmz_audio::loader::SampleLoader;
 use bmz_audio::loudness::analyze_preview_loudness;
 use bmz_audio::sample::DecodedSample;
-use bmz_chart::model::{BgaAssetId, BgaAssetRef, PlayableChart};
+use bmz_chart::model::{BgaAssetRef, PlayableChart};
 use bmz_core::clear::{ClearType, GaugeType};
 use bmz_core::input::{InputKind, ScratchDirection};
 use bmz_core::lane::{KeyMode, LANE_COUNT, Lane};
@@ -31,7 +31,7 @@ use bmz_render::assets::{RgbaImageAsset, load_chart_bga_image, load_static_rgba_
 use bmz_render::plan::{
     PLAY_BACKBMP_TEXTURE, Rect, SELECT_BANNER_TEXTURE, SELECT_STAGE_TEXTURE, TextureId,
 };
-use bmz_render::renderer::{PreparedTexture, RenderSurfaceStatus, Renderer, SurfaceSize};
+use bmz_render::renderer::{RenderSurfaceStatus, Renderer, SurfaceSize};
 use bmz_render::scene::{
     AppSceneSnapshot, DailyPlayerStatsSnapshot, PlayerStatsSnapshot, ResultSnapshot,
     SelectChartDistributionSecond, SelectRowSnapshot, SelectSnapshot,
@@ -197,11 +197,17 @@ use bmz_render::skin::{
     SkinDocumentTexture, SkinDstEntry, SkinManifest, SkinSliderHit,
 };
 
+mod bga_runtime;
 mod frame_runtime;
 mod result_runtime;
 mod select_assets;
 mod select_folder_summary;
 
+use bga_runtime::{
+    BgaImageLoadStatus, BgaPreloadRuntime, PendingBgaImageResult, RESOURCE_LOAD_PROGRESS_SCALE,
+    combined_resource_load_progress, load_worker as chart_bga_texture_load_worker,
+    preload_worker as chart_bga_texture_preload_worker, resource_load_progress_units,
+};
 use frame_runtime::{
     FrameProfileKind, FrameRuntime, FrameSchedule, PlayLoopFrameTimings, SceneFrameProfileSample,
     SkinVideoFrameProfile,
@@ -626,14 +632,7 @@ struct WinitApp {
     skin_gpu_texture_cache: SharedSkinGpuTextureCache,
     /// worker 完了時に main thread の redraw を起こすための winit user event proxy。
     event_proxy: EventLoopProxy<AppUserEvent>,
-    bga_load_generation: u64,
-    bga_load_chart_id: Option<i64>,
-    bga_load_rx: Option<Receiver<PendingBgaImageResult>>,
-    bga_load_status: BgaImageLoadStatus,
-    bga_load_completed_assets: u32,
-    bga_load_total_assets: u32,
-    bga_preload_frames: BgaFrameCatalog,
-    bga_preload_assets: Option<Vec<BgaAssetRef>>,
+    bga_preload: BgaPreloadRuntime,
     skin_video_sources: HashMap<SkinKind, Vec<ActiveSkinVideoSource>>,
     pending_select_skin: bool,
     pending_decide_skin: bool,
@@ -1389,8 +1388,6 @@ const LANE_COVER_REPEAT_STEP: f32 = 0.01;
 /// beatoraja の `getAnalogDiffAndReset(i, 200)` の tolerance に相当。
 const SELECT_ANALOG_SCROLL_TOLERANCE_MS: u64 = 200;
 const SKIN_RELOAD_REDRAW_PROFILE_THRESHOLD: Duration = Duration::from_millis(8);
-const RESOURCE_LOAD_PROGRESS_SCALE: u32 = 1_000_000;
-
 /// GPU texture の登録を伴う完了結果は、通常描画を止めないよう少量ずつ処理する。
 /// BGA worker 側も同じ数で backpressure を掛け、先行した `Queue::write_texture` が
 /// GPU queue を埋め続けないようにする。
@@ -1434,110 +1431,6 @@ struct SkinDrainStats {
     received_count: usize,
     applied_count: usize,
     max_upload_wait_us: u64,
-}
-
-struct PendingBgaImage {
-    generation: u64,
-    asset_id: BgaAssetId,
-    texture_id: TextureId,
-    path: PathBuf,
-    width: u32,
-    height: u32,
-    file_bytes: u64,
-    rgba_bytes: u64,
-    decode_us: u128,
-    upload_us: u128,
-    prepared: PreparedTexture,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct BgaImageLoadStats {
-    chart_bga_assets: u32,
-    static_assets: u32,
-    skipped_non_static: u32,
-    loaded_assets: u32,
-    failed_assets: u32,
-    total_file_bytes: u64,
-    loaded_file_bytes: u64,
-    rgba_bytes: u64,
-    decode_us: u128,
-    upload_us: u128,
-    total_us: u128,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum BgaImageLoadStatus {
-    #[default]
-    Idle,
-    Loading {
-        generation: u64,
-        chart_id: i64,
-    },
-    Ready {
-        generation: u64,
-        chart_id: i64,
-    },
-    Failed {
-        generation: u64,
-        chart_id: i64,
-    },
-    Skipped {
-        generation: u64,
-        chart_id: i64,
-    },
-}
-
-impl BgaImageLoadStatus {
-    fn loading(generation: u64, chart_id: i64) -> Self {
-        Self::Loading { generation, chart_id }
-    }
-
-    fn ready(generation: u64, chart_id: i64) -> Self {
-        Self::Ready { generation, chart_id }
-    }
-
-    fn failed(generation: u64, chart_id: i64) -> Self {
-        Self::Failed { generation, chart_id }
-    }
-
-    fn skipped(generation: u64, chart_id: i64) -> Self {
-        Self::Skipped { generation, chart_id }
-    }
-
-    fn is_ready_for(self, generation: u64, chart_id: i64) -> bool {
-        matches!(
-            self,
-            Self::Ready { generation: ready_generation, chart_id: ready_chart_id }
-                | Self::Failed { generation: ready_generation, chart_id: ready_chart_id }
-                | Self::Skipped { generation: ready_generation, chart_id: ready_chart_id }
-                if ready_generation == generation && ready_chart_id == chart_id
-        )
-    }
-}
-
-enum PendingBgaImageResult {
-    Manifest {
-        generation: u64,
-        assets: Vec<BgaAssetRef>,
-    },
-    Loaded(PendingBgaImage),
-    PreloadFailed {
-        generation: u64,
-        chart_id: i64,
-        error: String,
-    },
-    Failed {
-        generation: u64,
-        asset_id: BgaAssetId,
-        path: PathBuf,
-        file_bytes: u64,
-        decode_us: u128,
-        error: String,
-    },
-    Finished {
-        generation: u64,
-        stats: BgaImageLoadStats,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2120,14 +2013,7 @@ impl WinitApp {
             skin_installed_font_cache: HashMap::new(),
             skin_gpu_texture_cache,
             event_proxy,
-            bga_load_generation: 0,
-            bga_load_chart_id: None,
-            bga_load_rx: None,
-            bga_load_status: BgaImageLoadStatus::default(),
-            bga_load_completed_assets: 0,
-            bga_load_total_assets: 0,
-            bga_preload_frames: BgaFrameCatalog::new(),
-            bga_preload_assets: None,
+            bga_preload: BgaPreloadRuntime::default(),
             skin_video_sources: initial_skin_video_sources,
             pending_select_skin,
             pending_decide_skin,
@@ -8958,21 +8844,18 @@ impl WinitApp {
         }
         active_play.running.session.lane_cover_changing = self.play_lane_value_changing();
         let active_bga_assets = &active_play.running.session.chart.bga_assets;
-        let preload_matches_active_chart = self.bga_load_chart_id == Some(chart_id)
-            && self
-                .bga_preload_assets
-                .as_deref()
-                .is_some_and(|preloaded| bga_asset_manifests_match(preloaded, active_bga_assets));
-        if self.bga_load_chart_id == Some(chart_id) && !preload_matches_active_chart {
+        let preload_matches_active_chart =
+            self.bga_preload.matches_chart(chart_id, active_bga_assets);
+        if self.bga_preload.chart_id == Some(chart_id) && !preload_matches_active_chart {
             tracing::warn!(
                 chart_id,
-                preloaded_assets = self.bga_preload_assets.as_ref().map_or(0, Vec::len),
+                preloaded_assets = self.bga_preload.assets.as_ref().map_or(0, Vec::len),
                 active_assets = active_bga_assets.len(),
                 "discarding BGA preload because its asset manifest does not match the active chart"
             );
         }
         active_play.running.bga_frames = if preload_matches_active_chart {
-            self.bga_preload_frames.clone()
+            self.bga_preload.frames.clone()
         } else {
             self.start_chart_bga_texture_load_for_chart(
                 chart_id,
@@ -9037,18 +8920,10 @@ impl WinitApp {
     }
 
     fn start_chart_bga_texture_preload(&mut self, chart_id: i64, options: PlayStartOptions) {
-        self.bga_load_generation = self.bga_load_generation.wrapping_add(1);
-        self.bga_load_chart_id = Some(chart_id);
-        self.bga_load_rx = None;
-        self.bga_preload_frames.clear();
-        self.bga_preload_assets = None;
-        self.bga_load_completed_assets = 0;
-        self.bga_load_total_assets = 0;
-        let generation = self.bga_load_generation;
-        self.bga_load_status = BgaImageLoadStatus::loading(generation, chart_id);
+        let generation = self.bga_preload.begin_unresolved(chart_id);
         let Some(uploader) = self.renderer.gpu_uploader() else {
             tracing::warn!(chart_id, "skipping BGA preload because GPU uploader is unavailable");
-            self.bga_load_status = BgaImageLoadStatus::skipped(generation, chart_id);
+            self.bga_preload.status = BgaImageLoadStatus::skipped(generation, chart_id);
             return;
         };
 
@@ -9058,7 +8933,7 @@ impl WinitApp {
             .name(format!("bga-image-load-{chart_id}"))
             .spawn({
                 let (tx, rx) = bounded_gpu_upload_channel(MAX_PENDING_BGA_TEXTURE_UPLOADS);
-                self.bga_load_rx = Some(rx);
+                self.bga_preload.rx = Some(rx);
                 move || {
                     let session_options =
                         crate::screens::play_start::play_session_options_from_start(
@@ -9082,14 +8957,7 @@ impl WinitApp {
     }
 
     fn invalidate_chart_bga_texture_preload(&mut self) {
-        self.bga_load_generation = self.bga_load_generation.wrapping_add(1);
-        self.bga_load_chart_id = None;
-        self.bga_load_rx = None;
-        self.bga_load_status = BgaImageLoadStatus::default();
-        self.bga_load_completed_assets = 0;
-        self.bga_load_total_assets = 0;
-        self.bga_preload_frames.clear();
-        self.bga_preload_assets = None;
+        self.bga_preload.invalidate();
     }
 
     fn start_chart_bga_texture_load_for_chart(
@@ -9097,29 +8965,21 @@ impl WinitApp {
         chart_id: i64,
         chart: &PlayableChart,
     ) -> BgaFrameCatalog {
-        self.bga_load_generation = self.bga_load_generation.wrapping_add(1);
-        self.bga_load_chart_id = Some(chart_id);
-        self.bga_load_rx = None;
-        self.bga_preload_frames.clear();
-        self.bga_preload_assets = Some(chart.bga_assets.clone());
-        self.bga_load_completed_assets = 0;
-        let generation = self.bga_load_generation;
-        self.bga_load_status = BgaImageLoadStatus::loading(generation, chart_id);
+        let generation = self.bga_preload.begin_chart(chart_id, chart.bga_assets.clone());
         let static_asset_count = chart
             .bga_assets
             .iter()
             .filter(|asset| asset.kind == bmz_chart::model::BgaAssetKind::Static)
             .count();
-        self.bga_load_total_assets = static_asset_count.min(u32::MAX as usize) as u32;
         if static_asset_count == 0 {
-            self.bga_load_status = BgaImageLoadStatus::ready(generation, chart_id);
+            self.bga_preload.status = BgaImageLoadStatus::ready(generation, chart_id);
             return BgaFrameCatalog::new();
         }
         let Some(uploader) = self.renderer.gpu_uploader() else {
             tracing::warn!("loading BGA images synchronously because GPU uploader is unavailable");
             let frames = load_chart_bga_textures(&mut self.renderer, chart);
-            self.bga_load_completed_assets = self.bga_load_total_assets;
-            self.bga_load_status = BgaImageLoadStatus::ready(generation, chart_id);
+            self.bga_preload.completed_assets = self.bga_preload.total_assets;
+            self.bga_preload.status = BgaImageLoadStatus::ready(generation, chart_id);
             return frames;
         };
 
@@ -9129,39 +8989,39 @@ impl WinitApp {
             .name("bga-image-load".to_string())
             .spawn(move || chart_bga_texture_load_worker(generation, assets, tx, uploader))
             .expect("failed to spawn BGA image load thread");
-        self.bga_load_rx = Some(rx);
+        self.bga_preload.rx = Some(rx);
         tracing::info!(chart_id, generation, "BGA image preload started");
         BgaFrameCatalog::new()
     }
 
     fn poll_chart_bga_texture_load(&mut self) {
-        let Some(rx) = self.bga_load_rx.take() else {
+        let Some(rx) = self.bga_preload.rx.take() else {
             return;
         };
         let mut keep_rx = true;
         for _ in 0..MAX_BGA_TEXTURE_RESULTS_PER_REDRAW {
             match rx.try_recv() {
                 Ok(PendingBgaImageResult::Manifest { generation, assets }) => {
-                    if generation != self.bga_load_generation {
+                    if generation != self.bga_preload.generation {
                         continue;
                     }
-                    self.bga_load_total_assets = assets
+                    self.bga_preload.total_assets = assets
                         .iter()
                         .filter(|asset| asset.kind == bmz_chart::model::BgaAssetKind::Static)
                         .count()
                         .min(u32::MAX as usize)
                         as u32;
-                    self.bga_load_completed_assets = 0;
-                    self.bga_preload_assets = Some(assets);
+                    self.bga_preload.completed_assets = 0;
+                    self.bga_preload.assets = Some(assets);
                 }
                 Ok(PendingBgaImageResult::Loaded(image)) => {
-                    if image.generation != self.bga_load_generation {
+                    if image.generation != self.bga_preload.generation {
                         continue;
                     }
-                    self.bga_load_completed_assets =
-                        self.bga_load_completed_assets.saturating_add(1);
+                    self.bga_preload.completed_assets =
+                        self.bga_preload.completed_assets.saturating_add(1);
                     self.renderer.insert_prepared_texture(image.texture_id, image.prepared);
-                    self.bga_preload_frames.insert(
+                    self.bga_preload.frames.insert(
                         image.asset_id,
                         display_bga_frame(image.asset_id, image.width, image.height),
                     );
@@ -9193,11 +9053,11 @@ impl WinitApp {
                     decode_us,
                     error,
                 }) => {
-                    if generation != self.bga_load_generation {
+                    if generation != self.bga_preload.generation {
                         continue;
                     }
-                    self.bga_load_completed_assets =
-                        self.bga_load_completed_assets.saturating_add(1);
+                    self.bga_preload.completed_assets =
+                        self.bga_preload.completed_assets.saturating_add(1);
                     tracing::warn!(
                         asset_id = asset_id.0,
                         file_bytes,
@@ -9209,19 +9069,20 @@ impl WinitApp {
                     );
                 }
                 Ok(PendingBgaImageResult::PreloadFailed { generation, chart_id, error }) => {
-                    if generation != self.bga_load_generation {
+                    if generation != self.bga_preload.generation {
                         continue;
                     }
-                    self.bga_load_status = BgaImageLoadStatus::failed(generation, chart_id);
+                    self.bga_preload.status = BgaImageLoadStatus::failed(generation, chart_id);
                     tracing::warn!(chart_id, error, "BGA image preload failed");
                     keep_rx = false;
                     break;
                 }
                 Ok(PendingBgaImageResult::Finished { generation, stats }) => {
-                    if generation == self.bga_load_generation {
-                        self.bga_load_completed_assets = self.bga_load_total_assets;
-                        if let Some(chart_id) = self.bga_load_chart_id {
-                            self.bga_load_status = BgaImageLoadStatus::ready(generation, chart_id);
+                    if generation == self.bga_preload.generation {
+                        self.bga_preload.completed_assets = self.bga_preload.total_assets;
+                        if let Some(chart_id) = self.bga_preload.chart_id {
+                            self.bga_preload.status =
+                                BgaImageLoadStatus::ready(generation, chart_id);
                         }
                         tracing::info!(
                             chart_bga_assets = stats.chart_bga_assets,
@@ -9244,9 +9105,9 @@ impl WinitApp {
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    if let Some(chart_id) = self.bga_load_chart_id {
-                        self.bga_load_status =
-                            BgaImageLoadStatus::failed(self.bga_load_generation, chart_id);
+                    if let Some(chart_id) = self.bga_preload.chart_id {
+                        self.bga_preload.status =
+                            BgaImageLoadStatus::failed(self.bga_preload.generation, chart_id);
                     }
                     keep_rx = false;
                     break;
@@ -9254,7 +9115,7 @@ impl WinitApp {
             }
         }
         if keep_rx {
-            self.bga_load_rx = Some(rx);
+            self.bga_preload.rx = Some(rx);
         }
     }
 
@@ -9899,32 +9760,14 @@ impl WinitApp {
         });
     }
 
-    fn reused_bga_load_state(current_generation: u64, chart_id: i64) -> (u64, BgaImageLoadStatus) {
-        let generation = current_generation.wrapping_add(1);
-        (generation, BgaImageLoadStatus::ready(generation, chart_id))
-    }
-
     fn apply_reused_bga_preload(
         &mut self,
         chart_id: i64,
         bga_frames: BgaFrameCatalog,
         bga_assets: Vec<BgaAssetRef>,
     ) {
-        let (bga_generation, bga_load_status) =
-            Self::reused_bga_load_state(self.bga_load_generation, chart_id);
-        self.bga_load_generation = bga_generation;
-        self.bga_load_chart_id = Some(chart_id);
-        self.bga_load_rx = None;
-        self.bga_load_status = bga_load_status;
         let bga_frame_count = bga_frames.len();
-        self.bga_preload_frames = bga_frames;
-        self.bga_load_total_assets = bga_assets
-            .iter()
-            .filter(|asset| asset.kind == bmz_chart::model::BgaAssetKind::Static)
-            .count()
-            .min(u32::MAX as usize) as u32;
-        self.bga_load_completed_assets = self.bga_load_total_assets;
-        self.bga_preload_assets = Some(bga_assets);
+        let bga_generation = self.bga_preload.apply_reused(chart_id, bga_frames, bga_assets);
         tracing::info!(
             chart_id,
             bga_generation,
@@ -12648,12 +12491,7 @@ impl WinitApp {
         let Some(active_play) = &self.active_play else {
             return;
         };
-        if !bga_images_ready_for_ready_phase(
-            self.bga_load_status,
-            self.bga_load_generation,
-            chart_id,
-            active_play.running.session.bga_enabled,
-        ) {
+        if !self.bga_preload.ready_for(chart_id, active_play.running.session.bga_enabled) {
             return;
         }
         let chart_zero_time = self
@@ -12760,14 +12598,7 @@ impl WinitApp {
                     0.0
                 }
             });
-        let bga_progress = bga_resource_load_progress(
-            self.bga_load_status,
-            self.bga_load_generation,
-            self.bga_load_chart_id,
-            chart_id,
-            self.bga_load_completed_assets,
-            self.bga_load_total_assets,
-        );
+        let bga_progress = self.bga_preload.progress(chart_id);
         let bga_enabled =
             self.last_play_snapshot.as_ref().is_some_and(|snapshot| snapshot.bga_enabled);
         combined_resource_load_progress(audio_progress, bga_progress, bga_enabled)
@@ -16218,109 +16049,6 @@ fn load_chart_bga_textures(renderer: &mut Renderer, chart: &PlayableChart) -> Bg
         "chart BGA image load timing"
     );
     frames
-}
-
-fn chart_bga_texture_preload_worker(
-    generation: u64,
-    chart_id: i64,
-    assets: Result<Vec<bmz_chart::model::BgaAssetRef>>,
-    tx: mpsc::SyncSender<PendingBgaImageResult>,
-    uploader: bmz_render::renderer::GpuUploader,
-) {
-    match assets {
-        Ok(assets) => {
-            if tx
-                .send(PendingBgaImageResult::Manifest { generation, assets: assets.clone() })
-                .is_err()
-            {
-                return;
-            }
-            chart_bga_texture_load_worker(generation, assets, tx, uploader);
-        }
-        Err(error) => {
-            let _ = tx.send(PendingBgaImageResult::PreloadFailed {
-                generation,
-                chart_id,
-                error: error.to_string(),
-            });
-        }
-    }
-}
-
-fn chart_bga_texture_load_worker(
-    generation: u64,
-    assets: Vec<bmz_chart::model::BgaAssetRef>,
-    tx: mpsc::SyncSender<PendingBgaImageResult>,
-    uploader: bmz_render::renderer::GpuUploader,
-) {
-    use bmz_chart::model::BgaAssetKind;
-
-    let total_start = Instant::now();
-    let mut stats = BgaImageLoadStats::default();
-    for asset in assets {
-        stats.chart_bga_assets += 1;
-        let path = asset.path;
-        let file_bytes = std::fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
-        stats.total_file_bytes = stats.total_file_bytes.saturating_add(file_bytes);
-        if asset.kind != BgaAssetKind::Static {
-            stats.skipped_non_static += 1;
-            continue;
-        }
-        stats.static_assets += 1;
-
-        let decode_start = Instant::now();
-        match load_chart_bga_image(&path) {
-            Ok(image) => {
-                let image_decode_us = decode_start.elapsed().as_micros();
-                stats.decode_us += image_decode_us;
-                let texture_id = TextureId(bga_texture_id(asset.id));
-                let image_rgba_bytes = image.pixels.len() as u64;
-                let upload_start = Instant::now();
-                let prepared = uploader.upload(image.width, image.height, &image.pixels);
-                let image_upload_us = upload_start.elapsed().as_micros();
-                stats.upload_us += image_upload_us;
-                stats.loaded_assets += 1;
-                stats.loaded_file_bytes = stats.loaded_file_bytes.saturating_add(file_bytes);
-                stats.rgba_bytes = stats.rgba_bytes.saturating_add(image_rgba_bytes);
-                let result = PendingBgaImageResult::Loaded(PendingBgaImage {
-                    generation,
-                    asset_id: asset.id,
-                    texture_id,
-                    path,
-                    width: image.width,
-                    height: image.height,
-                    file_bytes,
-                    rgba_bytes: image_rgba_bytes,
-                    decode_us: image_decode_us,
-                    upload_us: image_upload_us,
-                    prepared,
-                });
-                if tx.send(result).is_err() {
-                    return;
-                }
-            }
-            Err(error) => {
-                let image_decode_us = decode_start.elapsed().as_micros();
-                stats.decode_us += image_decode_us;
-                stats.failed_assets += 1;
-                if tx
-                    .send(PendingBgaImageResult::Failed {
-                        generation,
-                        asset_id: asset.id,
-                        path,
-                        file_bytes,
-                        decode_us: image_decode_us,
-                        error: error.to_string(),
-                    })
-                    .is_err()
-                {
-                    return;
-                }
-            }
-        }
-    }
-    stats.total_us = total_start.elapsed().as_micros();
-    let _ = tx.send(PendingBgaImageResult::Finished { generation, stats });
 }
 
 fn format_error_chain(error: &anyhow::Error) -> String {
@@ -20770,73 +20498,6 @@ fn preloaded_matches_start(
         && preloaded.session_options.initial_course_combo == options.initial_course_combo
 }
 
-fn bga_images_ready_for_ready_phase(
-    status: BgaImageLoadStatus,
-    generation: u64,
-    chart_id: Option<i64>,
-    bga_enabled: bool,
-) -> bool {
-    if !bga_enabled {
-        return true;
-    }
-    let Some(chart_id) = chart_id else {
-        return true;
-    };
-    status.is_ready_for(generation, chart_id)
-}
-
-fn resource_load_progress_units(loaded: usize, total: usize) -> u32 {
-    if total == 0 {
-        return RESOURCE_LOAD_PROGRESS_SCALE;
-    }
-    let loaded = loaded.min(total) as u64;
-    ((loaded * u64::from(RESOURCE_LOAD_PROGRESS_SCALE)) / total as u64) as u32
-}
-
-fn bga_resource_load_progress(
-    status: BgaImageLoadStatus,
-    generation: u64,
-    load_chart_id: Option<i64>,
-    active_chart_id: Option<i64>,
-    completed: u32,
-    total: u32,
-) -> f32 {
-    if load_chart_id != active_chart_id || active_chart_id.is_none() {
-        return 0.0;
-    }
-    match status {
-        BgaImageLoadStatus::Loading { generation: load_generation, chart_id }
-            if load_generation == generation && Some(chart_id) == active_chart_id =>
-        {
-            if total == 0 {
-                0.0
-            } else {
-                completed.min(total) as f32 / total as f32
-            }
-        }
-        status if status.is_ready_for(generation, active_chart_id.unwrap_or_default()) => 1.0,
-        _ => 0.0,
-    }
-}
-
-fn combined_resource_load_progress(audio: f32, bga: f32, bga_enabled: bool) -> f32 {
-    let audio = audio.clamp(0.0, 1.0);
-    if bga_enabled { (audio + bga.clamp(0.0, 1.0)) / 2.0 } else { audio }
-}
-
-fn bga_asset_manifests_match(preloaded: &[BgaAssetRef], active: &[BgaAssetRef]) -> bool {
-    if preloaded.len() != active.len() {
-        return false;
-    }
-    let mut preloaded = preloaded.iter().collect::<Vec<_>>();
-    let mut active = active.iter().collect::<Vec<_>>();
-    preloaded.sort_by_key(|asset| asset.id);
-    active.sort_by_key(|asset| asset.id);
-    preloaded.iter().zip(active).all(|(preloaded, active)| {
-        preloaded.id == active.id && preloaded.path == active.path && preloaded.kind == active.kind
-    })
-}
-
 fn skin_duration_ms(ms: i32) -> Duration {
     Duration::from_millis(ms.max(0) as u64)
 }
@@ -22244,160 +21905,6 @@ mod tests {
             total_notes: 0,
             end_time: TimeUs(0),
         }
-    }
-
-    fn app_test_bga_asset(
-        id: u32,
-        path: &str,
-        kind: bmz_chart::model::BgaAssetKind,
-    ) -> BgaAssetRef {
-        BgaAssetRef { id: BgaAssetId(id), path: path.into(), kind }
-    }
-
-    #[test]
-    fn bga_asset_manifest_matches_id_path_and_kind_regardless_of_order() {
-        use bmz_chart::model::BgaAssetKind::{Static, Video};
-
-        let preloaded = vec![
-            app_test_bga_asset(0, "base.png", Static),
-            app_test_bga_asset(1, "layer.mp4", Video),
-        ];
-        let active = vec![
-            app_test_bga_asset(1, "layer.mp4", Video),
-            app_test_bga_asset(0, "base.png", Static),
-        ];
-
-        assert!(bga_asset_manifests_match(&preloaded, &active));
-    }
-
-    #[test]
-    fn bga_asset_manifest_rejects_changed_id_path_or_kind() {
-        use bmz_chart::model::BgaAssetKind::{Static, Video};
-
-        let preloaded = vec![app_test_bga_asset(0, "base.png", Static)];
-
-        assert!(!bga_asset_manifests_match(
-            &preloaded,
-            &[app_test_bga_asset(1, "base.png", Static)],
-        ));
-        assert!(!bga_asset_manifests_match(
-            &preloaded,
-            &[app_test_bga_asset(0, "poor.png", Static)],
-        ));
-        assert!(!bga_asset_manifests_match(
-            &preloaded,
-            &[app_test_bga_asset(0, "base.png", Video)],
-        ));
-    }
-
-    #[test]
-    fn bga_images_ready_gate_waits_for_current_terminal_load() {
-        assert!(!bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::loading(7, 42),
-            7,
-            Some(42),
-            true,
-        ));
-        assert!(bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::ready(7, 42),
-            7,
-            Some(42),
-            true,
-        ));
-        assert!(bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::failed(7, 42),
-            7,
-            Some(42),
-            true,
-        ));
-        assert!(bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::skipped(7, 42),
-            7,
-            Some(42),
-            true,
-        ));
-
-        let (reused_generation, reused_status) = WinitApp::reused_bga_load_state(7, 42);
-        assert_eq!(reused_generation, 8);
-        assert!(
-            bga_images_ready_for_ready_phase(reused_status, reused_generation, Some(42), true,)
-        );
-    }
-
-    #[test]
-    fn bga_images_ready_gate_ignores_disabled_or_unknown_loads() {
-        assert!(bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::loading(7, 42),
-            7,
-            Some(42),
-            false,
-        ));
-        assert!(bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::loading(7, 42),
-            7,
-            None,
-            true,
-        ));
-        assert!(!bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::ready(6, 42),
-            7,
-            Some(42),
-            true,
-        ));
-        assert!(!bga_images_ready_for_ready_phase(
-            BgaImageLoadStatus::ready(7, 41),
-            7,
-            Some(42),
-            true,
-        ));
-    }
-
-    #[test]
-    fn resource_load_progress_combines_audio_and_enabled_bga_like_beatoraja() {
-        assert_eq!(resource_load_progress_units(0, 4), 0);
-        assert_eq!(resource_load_progress_units(1, 4), 250_000);
-        assert_eq!(resource_load_progress_units(4, 4), RESOURCE_LOAD_PROGRESS_SCALE);
-        assert_eq!(resource_load_progress_units(0, 0), RESOURCE_LOAD_PROGRESS_SCALE);
-
-        assert!((combined_resource_load_progress(0.25, 0.75, true) - 0.5).abs() < f32::EPSILON);
-        assert!((combined_resource_load_progress(0.25, 0.75, false) - 0.25).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn bga_resource_load_progress_tracks_current_manifest() {
-        assert_eq!(
-            bga_resource_load_progress(
-                BgaImageLoadStatus::loading(7, 42),
-                7,
-                Some(42),
-                Some(42),
-                1,
-                4,
-            ),
-            0.25
-        );
-        assert_eq!(
-            bga_resource_load_progress(
-                BgaImageLoadStatus::ready(7, 42),
-                7,
-                Some(42),
-                Some(42),
-                0,
-                0,
-            ),
-            1.0
-        );
-        assert_eq!(
-            bga_resource_load_progress(
-                BgaImageLoadStatus::ready(6, 42),
-                7,
-                Some(42),
-                Some(42),
-                4,
-                4,
-            ),
-            0.0
-        );
     }
 
     #[test]
