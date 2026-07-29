@@ -1,0 +1,466 @@
+use super::*;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ConnectionAction {
+    Continue,
+    Reconnect,
+    Shutdown,
+    Pause { kind: ObsConnectionStatusKind, detail: String },
+}
+
+pub async fn load_scenes(config: ObsConfig) -> Result<ObsSceneList> {
+    let url = obs_ws_url(&config);
+    let timeout = tokio::time::sleep(LOAD_SCENES_TIMEOUT);
+    tokio::pin!(timeout);
+    let (ws, _) = tokio::select! {
+        _ = &mut timeout => bail!("OBS scene load timed out"),
+        result = connect_async(&url) => result.with_context(|| format!("failed to connect {url}"))?,
+    };
+    let (mut sink, mut stream) = ws.split();
+    let mut state = ObsConnectionState::new(config);
+    let mut version = None;
+    let mut scenes = None;
+    let mut recording_active = None;
+
+    loop {
+        tokio::select! {
+            _ = &mut timeout => bail!("OBS scene load timed out"),
+            message = stream.next() => {
+                let Some(message) = message else {
+                    bail!("OBS connection closed before scene list was received");
+                };
+                let message = message.context("failed to read OBS WebSocket message")?;
+                match message {
+                    Message::Text(text) => {
+                        let value: Value = serde_json::from_str(text.as_ref())
+                            .context("failed to parse OBS WebSocket message")?;
+                        match value.get("op").and_then(Value::as_i64).unwrap_or(-1) {
+                            0 => {
+                                let hello = value.get("d").unwrap_or(&Value::Null);
+                                send_json(&mut sink, identify_message(&state.config, hello)).await?;
+                            }
+                            2 => {
+                                state.send_request(&mut sink, "GetVersion", None).await?;
+                                state.send_request(&mut sink, "GetSceneList", None).await?;
+                                state.send_request(&mut sink, "GetRecordStatus", None).await?;
+                            }
+                            7 => {
+                                let data = value.get("d").unwrap_or(&Value::Null);
+                                let request_type = data
+                                    .get("requestType")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default();
+                                let status = data.get("requestStatus").unwrap_or(&Value::Null);
+                                if !status.get("result").and_then(Value::as_bool).unwrap_or(false) {
+                                    let comment = status
+                                        .get("comment")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("OBS request failed");
+                                    bail!("{request_type}: {comment}");
+                                }
+                                let response_data = data.get("responseData").unwrap_or(&Value::Null);
+                                match request_type {
+                                    "GetVersion" => {
+                                        let obs_version = response_data
+                                            .get("obsVersion")
+                                            .and_then(Value::as_str)
+                                            .unwrap_or_default();
+                                        let ws_version = response_data
+                                            .get("obsWebSocketVersion")
+                                            .and_then(Value::as_str)
+                                            .unwrap_or_default();
+                                        version = Some(if ws_version.is_empty() {
+                                            obs_version.to_string()
+                                        } else if obs_version.is_empty() {
+                                            ws_version.to_string()
+                                        } else {
+                                            format!("{obs_version} / obs-websocket {ws_version}")
+                                        });
+                                    }
+                                    "GetSceneList" => scenes = Some(parse_scene_names(response_data)),
+                                    "GetRecordStatus" => {
+                                        recording_active = Some(response_data
+                                            .get("outputActive")
+                                            .and_then(Value::as_bool)
+                                            .unwrap_or(false));
+                                    }
+                                    _ => {}
+                                }
+                                if let (Some(version), Some(scenes), Some(recording_active)) =
+                                    (version.clone(), scenes.clone(), recording_active)
+                                {
+                                    return Ok(ObsSceneList { version, scenes, recording_active });
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Message::Ping(payload) => sink.send(Message::Pong(payload)).await?,
+                    Message::Close(_) => bail!("OBS closed the WebSocket connection"),
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+pub(super) async fn run_obs_client(
+    config: ObsConfig,
+    mut rx: mpsc::UnboundedReceiver<ObsCommand>,
+    tx: mpsc::UnboundedSender<ObsCommand>,
+    status_tx: watch::Sender<ObsConnectionStatus>,
+) {
+    let mut reconnect_delay = INITIAL_RECONNECT_DELAY;
+    // Keep recording retention and queued app events across WebSocket reconnects.
+    let mut state = ObsConnectionState::new(config);
+    let mut pending_commands = VecDeque::new();
+    let mut last_reported_issue = None;
+    loop {
+        let url = obs_ws_url(&state.config);
+        publish_status(
+            &status_tx,
+            ObsConnectionStatus::new(
+                ObsConnectionStatusKind::Connecting,
+                Some("OBS WebSocket へ接続しています。".to_string()),
+                None,
+                None,
+            ),
+        );
+        match connect_with_pending_commands(&url, &mut rx, &mut pending_commands).await {
+            Ok(Some(ws)) => {
+                state.begin_connection();
+                tracing::debug!(url, "OBS WebSocket transport connected");
+                match run_connected(
+                    &mut state,
+                    ws,
+                    &mut rx,
+                    tx.clone(),
+                    &mut pending_commands,
+                    &status_tx,
+                )
+                .await
+                {
+                    Ok(ConnectionAction::Shutdown) => break,
+                    Ok(ConnectionAction::Pause { kind, detail }) => {
+                        pause_reconnect(&status_tx, kind, &url, detail, state.was_identified);
+                        wait_for_shutdown(&mut rx).await;
+                        break;
+                    }
+                    Ok(ConnectionAction::Reconnect | ConnectionAction::Continue) => {
+                        if state.identified_this_connection {
+                            reconnect_delay = INITIAL_RECONNECT_DELAY;
+                            last_reported_issue = None;
+                        }
+                        let disconnect = state.last_disconnect.take().unwrap_or(ObsDisconnect {
+                            detail: "OBS WebSocket 接続が終了しました。".to_string(),
+                            expected: false,
+                        });
+                        report_disconnect(
+                            &status_tx,
+                            &mut last_reported_issue,
+                            &url,
+                            &disconnect,
+                            reconnect_delay,
+                            state.was_identified,
+                        );
+                    }
+                    Err(error) => {
+                        if state.identified_this_connection {
+                            reconnect_delay = INITIAL_RECONNECT_DELAY;
+                            last_reported_issue = None;
+                        }
+                        state.set_disconnect(
+                            format!("OBS WebSocket 接続中にエラーが発生しました: {error}"),
+                            false,
+                        );
+                        let disconnect = state.last_disconnect.take().expect("disconnect was set");
+                        report_disconnect(
+                            &status_tx,
+                            &mut last_reported_issue,
+                            &url,
+                            &disconnect,
+                            reconnect_delay,
+                            state.was_identified,
+                        );
+                    }
+                }
+            }
+            Ok(None) => break,
+            Err(error) => {
+                if report_connect_failure(
+                    &status_tx,
+                    &mut last_reported_issue,
+                    &url,
+                    &error,
+                    reconnect_delay,
+                    state.was_identified,
+                ) {
+                    wait_for_shutdown(&mut rx).await;
+                    break;
+                }
+            }
+        }
+
+        let should_shutdown =
+            wait_for_reconnect_or_shutdown(&mut rx, &mut pending_commands, reconnect_delay).await;
+        if should_shutdown {
+            break;
+        }
+        reconnect_delay = next_reconnect_delay(reconnect_delay);
+    }
+}
+
+pub(super) async fn connect_with_pending_commands(
+    url: &str,
+    rx: &mut mpsc::UnboundedReceiver<ObsCommand>,
+    pending_commands: &mut VecDeque<ObsCommand>,
+) -> std::result::Result<Option<ObsWebSocket>, TungsteniteError> {
+    let connection = connect_async(url);
+    tokio::pin!(connection);
+    loop {
+        tokio::select! {
+            result = &mut connection => {
+                return result.map(|(ws, _)| Some(ws));
+            }
+            command = rx.recv() => {
+                match command {
+                    Some(ObsCommand::Shutdown) | None => return Ok(None),
+                    Some(command) => pending_commands.push_back(command),
+                }
+            }
+        }
+    }
+}
+
+pub(super) async fn run_connected(
+    state: &mut ObsConnectionState,
+    ws: ObsWebSocket,
+    rx: &mut mpsc::UnboundedReceiver<ObsCommand>,
+    tx: mpsc::UnboundedSender<ObsCommand>,
+    pending_commands: &mut VecDeque<ObsCommand>,
+    status_tx: &watch::Sender<ObsConnectionStatus>,
+) -> Result<ConnectionAction> {
+    let (mut sink, mut stream) = ws.split();
+    match wait_for_identified(state, &mut sink, &mut stream, rx, pending_commands, status_tx)
+        .await?
+    {
+        ConnectionAction::Continue => {}
+        action => return Ok(action),
+    }
+    match flush_pending_commands(state, &mut sink, tx.clone(), pending_commands).await? {
+        ConnectionAction::Continue => {}
+        action => {
+            let _ = sink.send(Message::Close(None)).await;
+            return Ok(action);
+        }
+    }
+    loop {
+        if let Some(deadline) = state.pending_stop_deadline {
+            tokio::select! {
+                _ = tokio::time::sleep_until(deadline) => {
+                    state.flush_pending_stop(&mut sink).await?;
+                }
+                command = rx.recv() => {
+                    if matches!(handle_command(state, &mut sink, tx.clone(), command).await?, ConnectionAction::Shutdown) {
+                        let _ = sink.send(Message::Close(None)).await;
+                        return Ok(ConnectionAction::Shutdown);
+                    }
+                }
+                message = stream.next() => {
+                    match handle_stream_message(state, &mut sink, message, status_tx, tx.clone()).await? {
+                        ConnectionAction::Continue => {}
+                        action => return Ok(action),
+                    }
+                }
+            }
+        } else {
+            tokio::select! {
+                command = rx.recv() => {
+                    if matches!(handle_command(state, &mut sink, tx.clone(), command).await?, ConnectionAction::Shutdown) {
+                        let _ = sink.send(Message::Close(None)).await;
+                        return Ok(ConnectionAction::Shutdown);
+                    }
+                }
+                message = stream.next() => {
+                    match handle_stream_message(state, &mut sink, message, status_tx, tx.clone()).await? {
+                        ConnectionAction::Continue => {}
+                        action => return Ok(action),
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub(super) async fn wait_for_identified(
+    state: &mut ObsConnectionState,
+    sink: &mut ObsSink,
+    stream: &mut futures_util::stream::SplitStream<ObsWebSocket>,
+    rx: &mut mpsc::UnboundedReceiver<ObsCommand>,
+    pending_commands: &mut VecDeque<ObsCommand>,
+    status_tx: &watch::Sender<ObsConnectionStatus>,
+) -> Result<ConnectionAction> {
+    loop {
+        tokio::select! {
+            command = rx.recv() => {
+                match command {
+                    Some(ObsCommand::Shutdown) | None => return Ok(ConnectionAction::Shutdown),
+                    Some(command) => pending_commands.push_back(command),
+                }
+            }
+            message = stream.next() => {
+                let Some(message) = message else {
+                    state.set_disconnect("OBS WebSocket が識別前に切断されました。", false);
+                    return Ok(ConnectionAction::Reconnect);
+                };
+                match message? {
+                    Message::Text(text) => {
+                        let value: Value = serde_json::from_str(text.as_ref())
+                            .context("failed to parse OBS message")?;
+                        let data = value.get("d").unwrap_or(&Value::Null);
+                        match value.get("op").and_then(Value::as_i64).unwrap_or(-1) {
+                            0 => send_json(sink, identify_message(&state.config, data)).await?,
+                            2 => {
+                                state.mark_identified();
+                                publish_status(
+                                    status_tx,
+                                    ObsConnectionStatus::new(
+                                        ObsConnectionStatusKind::Connected,
+                                        Some("OBS WebSocket に接続しました。".to_string()),
+                                        None,
+                                        None,
+                                    ),
+                                );
+                                state.send_request(sink, "GetVersion", None).await?;
+                                state.send_request(sink, "GetSceneList", None).await?;
+                                state.send_request(sink, "GetRecordStatus", None).await?;
+                                return Ok(ConnectionAction::Continue);
+                            }
+                            _ => {}
+                        }
+                    }
+                    Message::Ping(payload) => sink.send(Message::Pong(payload)).await?,
+                    Message::Close(close) => return Ok(connection_action_for_close(state, close)),
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+pub(super) async fn flush_pending_commands(
+    state: &mut ObsConnectionState,
+    sink: &mut ObsSink,
+    tx: mpsc::UnboundedSender<ObsCommand>,
+    pending_commands: &mut VecDeque<ObsCommand>,
+) -> Result<ConnectionAction> {
+    while let Some(command) = pending_commands.pop_front() {
+        let action = handle_command(state, sink, tx.clone(), Some(command)).await?;
+        if !matches!(action, ConnectionAction::Continue) {
+            return Ok(action);
+        }
+    }
+    Ok(ConnectionAction::Continue)
+}
+
+pub(super) async fn handle_command(
+    state: &mut ObsConnectionState,
+    sink: &mut ObsSink,
+    tx: mpsc::UnboundedSender<ObsCommand>,
+    command: Option<ObsCommand>,
+) -> Result<ConnectionAction> {
+    let Some(command) = command else {
+        return Ok(ConnectionAction::Shutdown);
+    };
+    match command {
+        ObsCommand::ApplyEvent(key) => state.apply_event(sink, key).await?,
+        ObsCommand::RetryScene { key, retry_count, generation } => {
+            state.retry_scene(sink, key, retry_count, generation).await?
+        }
+        ObsCommand::RetryPlay => state.retry_play(sink, tx).await?,
+        ObsCommand::SaveLastRecording(reason) => state.save_last_recording(reason),
+        ObsCommand::Shutdown => return Ok(ConnectionAction::Shutdown),
+    }
+    Ok(ConnectionAction::Continue)
+}
+
+pub(super) async fn handle_stream_message(
+    state: &mut ObsConnectionState,
+    sink: &mut ObsSink,
+    message: Option<Result<Message, tokio_tungstenite::tungstenite::Error>>,
+    status_tx: &watch::Sender<ObsConnectionStatus>,
+    tx: mpsc::UnboundedSender<ObsCommand>,
+) -> Result<ConnectionAction> {
+    let Some(message) = message else {
+        state.set_disconnect("OBS WebSocket が切断されました。", false);
+        return Ok(ConnectionAction::Reconnect);
+    };
+    match message? {
+        Message::Text(text) => handle_text_message(state, sink, text.as_ref(), status_tx, tx).await,
+        Message::Ping(payload) => {
+            sink.send(Message::Pong(payload)).await?;
+            Ok(ConnectionAction::Continue)
+        }
+        Message::Close(close) => Ok(connection_action_for_close(state, close)),
+        _ => Ok(ConnectionAction::Continue),
+    }
+}
+
+pub(super) async fn handle_text_message(
+    state: &mut ObsConnectionState,
+    sink: &mut ObsSink,
+    text: &str,
+    status_tx: &watch::Sender<ObsConnectionStatus>,
+    tx: mpsc::UnboundedSender<ObsCommand>,
+) -> Result<ConnectionAction> {
+    let value: Value = serde_json::from_str(text).context("failed to parse OBS message")?;
+    let data = value.get("d").unwrap_or(&Value::Null);
+    match value.get("op").and_then(Value::as_i64).unwrap_or(-1) {
+        0 => {
+            send_json(sink, identify_message(&state.config, data)).await?;
+            Ok(ConnectionAction::Continue)
+        }
+        2 => {
+            state.mark_identified();
+            publish_status(
+                status_tx,
+                ObsConnectionStatus::new(
+                    ObsConnectionStatusKind::Connected,
+                    Some("OBS WebSocket に接続しました。".to_string()),
+                    None,
+                    None,
+                ),
+            );
+            state.send_request(sink, "GetVersion", None).await?;
+            state.send_request(sink, "GetSceneList", None).await?;
+            state.send_request(sink, "GetRecordStatus", None).await?;
+            Ok(ConnectionAction::Continue)
+        }
+        5 => state.handle_event(sink, data).await,
+        7 => {
+            state.handle_response(sink, data, status_tx, tx).await?;
+            Ok(ConnectionAction::Continue)
+        }
+        _ => Ok(ConnectionAction::Continue),
+    }
+}
+
+pub(super) async fn wait_for_reconnect_or_shutdown(
+    rx: &mut mpsc::UnboundedReceiver<ObsCommand>,
+    pending_commands: &mut VecDeque<ObsCommand>,
+    delay: Duration,
+) -> bool {
+    let sleep = tokio::time::sleep(delay);
+    tokio::pin!(sleep);
+    loop {
+        tokio::select! {
+            _ = &mut sleep => return false,
+            command = rx.recv() => {
+                match command {
+                    Some(ObsCommand::Shutdown) | None => return true,
+                    Some(command) => pending_commands.push_back(command),
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,419 @@
+use super::schema::default_hispeed_mode;
+use super::*;
+
+/// スキン設定。スキンはプロファイルごとに切り替えられる。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SkinConfig {
+    /// 選曲画面スキンのパス。
+    /// 空文字列なら bmz の固定描画を使用。
+    /// `.json` / `.lr2skin` で終わるパスは beatoraja スキンとして扱う。
+    #[serde(default)]
+    pub select: String,
+    /// 決定画面スキンのパス。
+    /// 空文字列ならプレイ開始前もプレイスキン側の描画を使用。
+    /// `.json` / `.luaskin` / `.lua` / `.lr2skin` で終わるパスは beatoraja スキンとして扱う。
+    #[serde(default)]
+    pub decide: String,
+    /// 5K プレイ画面スキンのパス。
+    /// 空文字列なら内蔵デフォルトスキンを使用。
+    /// `.json` / `.luaskin` / `.lua` / `.lr2skin` で終わるパスは beatoraja スキンとして扱う。
+    #[serde(default)]
+    pub play5: String,
+    /// 4K プレイ画面スキンのパス。フォーマットは [`play5`] と同じ。
+    #[serde(default)]
+    pub play4: String,
+    /// 6K プレイ画面スキンのパス。フォーマットは [`play5`] と同じ。
+    #[serde(default)]
+    pub play6: String,
+    /// 7K プレイ画面スキンのパス。フォーマットは [`play5`] と同じ。
+    #[serde(default)]
+    pub play7: String,
+    /// 8K プレイ画面スキンのパス。フォーマットは [`play5`] と同じ。
+    #[serde(default)]
+    pub play8: String,
+    /// 10K プレイ画面スキンのパス。フォーマットは [`play5`] と同じ。
+    #[serde(default)]
+    pub play10: String,
+    /// 14K プレイ画面スキンのパス。フォーマットは [`play5`] と同じ。
+    #[serde(default)]
+    pub play14: String,
+    /// 5K Battle (beatoraja skin type 13) のプレイ画面スキン。
+    #[serde(default)]
+    pub battle5: String,
+    /// 7K Battle (beatoraja skin type 12) のプレイ画面スキン。
+    #[serde(default)]
+    pub battle7: String,
+    /// 9K プレイ画面スキンのパス (PMS / Pop'n)。フォーマットは [`play5`] と同じ。
+    /// 空文字列なら内蔵デフォルトスキンを使用。
+    #[serde(default)]
+    pub play9: String,
+    /// リザルト画面スキンのパス。
+    /// 空文字列なら bmz の固定描画を使用。
+    /// `.json` / `.lr2skin` で終わるパスは beatoraja スキンとして扱う。
+    #[serde(default)]
+    pub result: String,
+    /// コース最終リザルト画面スキンのパス。
+    /// 空文字列なら bmz の固定描画を使用。
+    /// `.json` / `.lr2skin` で終わるパスは beatoraja スキンとして扱う。
+    #[serde(default)]
+    pub course_result: String,
+    /// 選曲スキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub select_offsets: Vec<SkinOffsetConfig>,
+    /// 決定スキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decide_offsets: Vec<SkinOffsetConfig>,
+    /// 4K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play4_offsets: Vec<SkinOffsetConfig>,
+    /// 5K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play5_offsets: Vec<SkinOffsetConfig>,
+    /// 6K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play6_offsets: Vec<SkinOffsetConfig>,
+    /// 7K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play7_offsets: Vec<SkinOffsetConfig>,
+    /// 8K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play8_offsets: Vec<SkinOffsetConfig>,
+    /// 9K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play9_offsets: Vec<SkinOffsetConfig>,
+    /// 10K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play10_offsets: Vec<SkinOffsetConfig>,
+    /// 14K プレイスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play14_offsets: Vec<SkinOffsetConfig>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub battle5_offsets: Vec<SkinOffsetConfig>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub battle7_offsets: Vec<SkinOffsetConfig>,
+    /// リザルトスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub result_offsets: Vec<SkinOffsetConfig>,
+    /// コースリザルトスキンのオフセット設定。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub course_result_offsets: Vec<SkinOffsetConfig>,
+    /// v0.1.9 以前の全スロット共通オフセット。ロード時に各スロットへ移行する。
+    #[serde(rename = "offsets", default, skip_serializing)]
+    pub(crate) legacy_offsets: Vec<SkinOffsetConfig>,
+    /// 選曲スキンのカスタマイズオプション選択 (オプション名 -> 選択肢名)。
+    #[serde(default)]
+    pub select_options: BTreeMap<String, String>,
+    /// 決定スキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub decide_options: BTreeMap<String, String>,
+    /// 5K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play5_options: BTreeMap<String, String>,
+    /// 4K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play4_options: BTreeMap<String, String>,
+    /// 6K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play6_options: BTreeMap<String, String>,
+    /// 7K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play7_options: BTreeMap<String, String>,
+    /// 8K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play8_options: BTreeMap<String, String>,
+    /// 10K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play10_options: BTreeMap<String, String>,
+    /// 14K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play14_options: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle5_options: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle7_options: BTreeMap<String, String>,
+    /// 9K プレイスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub play9_options: BTreeMap<String, String>,
+    /// リザルトスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub result_options: BTreeMap<String, String>,
+    /// コースリザルトスキンのカスタマイズオプション選択。
+    #[serde(default)]
+    pub course_result_options: BTreeMap<String, String>,
+    /// 選曲スキンのファイル選択 (filepath 定義名 -> 選択ファイルの相対パス)。
+    #[serde(default)]
+    pub select_files: BTreeMap<String, String>,
+    /// 決定スキンのファイル選択。
+    #[serde(default)]
+    pub decide_files: BTreeMap<String, String>,
+    /// 5K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play5_files: BTreeMap<String, String>,
+    /// 4K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play4_files: BTreeMap<String, String>,
+    /// 6K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play6_files: BTreeMap<String, String>,
+    /// 7K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play7_files: BTreeMap<String, String>,
+    /// 8K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play8_files: BTreeMap<String, String>,
+    /// 10K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play10_files: BTreeMap<String, String>,
+    /// 14K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play14_files: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle5_files: BTreeMap<String, String>,
+    #[serde(default)]
+    pub battle7_files: BTreeMap<String, String>,
+    /// 9K プレイスキンのファイル選択。
+    #[serde(default)]
+    pub play9_files: BTreeMap<String, String>,
+    /// リザルトスキンのファイル選択。
+    #[serde(default)]
+    pub result_files: BTreeMap<String, String>,
+    /// コースリザルトスキンのファイル選択。
+    #[serde(default)]
+    pub course_result_files: BTreeMap<String, String>,
+    /// スキンスロットとファイル path ごとのカスタマイズ履歴。
+    ///
+    /// beatoraja の `skinHistory` 相当。スキンを切り替えても、各スキンの
+    /// option / filepath / offset を前回値へ戻せるように保持する。
+    #[serde(default)]
+    pub history: BTreeMap<String, SkinHistoryEntryConfig>,
+}
+
+impl SkinConfig {
+    /// 旧形式の共通オフセットを、まだ個別設定がない全スロットへ引き継ぐ。
+    pub fn migrate_legacy_offsets(&mut self) {
+        let legacy_offsets = std::mem::take(&mut self.legacy_offsets);
+        if legacy_offsets.is_empty() {
+            return;
+        }
+
+        for offsets in [
+            &mut self.select_offsets,
+            &mut self.decide_offsets,
+            &mut self.play4_offsets,
+            &mut self.play5_offsets,
+            &mut self.play6_offsets,
+            &mut self.play7_offsets,
+            &mut self.play8_offsets,
+            &mut self.play9_offsets,
+            &mut self.play10_offsets,
+            &mut self.play14_offsets,
+            &mut self.battle5_offsets,
+            &mut self.battle7_offsets,
+            &mut self.result_offsets,
+            &mut self.course_result_offsets,
+        ] {
+            if offsets.is_empty() {
+                *offsets = legacy_offsets.clone();
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct SkinHistoryEntryConfig {
+    #[serde(default)]
+    pub options: BTreeMap<String, String>,
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
+    #[serde(default)]
+    pub offsets: Vec<SkinOffsetConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct SkinOffsetConfig {
+    /// スキンが宣言した offset 名。
+    ///
+    /// beatoraja は設定値を ID ではなく名前で対応付ける。旧プロファイルには
+    /// このフィールドが無いため、`None` の場合だけ ID を移行用 fallback とする。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub id: i32,
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
+    #[serde(default)]
+    pub w: i32,
+    #[serde(default)]
+    pub h: i32,
+    #[serde(default)]
+    pub r: i32,
+    #[serde(default)]
+    pub a: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IrConfig {
+    #[serde(default)]
+    pub primary_provider: String,
+    /// 秘密情報 (refresh token / device key) の保存先。
+    /// 開発時の Keychain 許可ダイアログを避けるため既定はファイル保存。
+    #[serde(default)]
+    pub credential_store: IrCredentialStoreConfig,
+    #[serde(default)]
+    pub providers: Vec<IrProviderConfig>,
+    #[serde(default = "default_true")]
+    pub prefetch_global_ranking_on_score_submit: bool,
+    #[serde(default = "default_true")]
+    pub prefetch_rival_ranking_on_score_submit: bool,
+}
+
+pub(super) fn default_true() -> bool {
+    true
+}
+
+impl Default for IrConfig {
+    fn default() -> Self {
+        Self {
+            primary_provider: String::new(),
+            credential_store: IrCredentialStoreConfig::default(),
+            providers: Vec::new(),
+            prefetch_global_ranking_on_score_submit: true,
+            prefetch_rival_ranking_on_score_submit: true,
+        }
+    }
+}
+
+/// IR 秘密情報の保存先。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub enum IrCredentialStoreConfig {
+    /// プロファイル配下の JSON ファイル (unix では 0600)。
+    #[default]
+    File,
+    /// OS credential store (Keychain / Credential Manager / Secret Service)。
+    Os,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IrProviderConfig {
+    pub provider: String,
+    /// IR サーバーが返す provider key。credentials / device key / queued job の識別に使う。
+    #[serde(default)]
+    pub provider_key: String,
+    /// IR サーバーの base URL (例: `https://ir.example.com`)。
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub account_display_name: String,
+    #[serde(default)]
+    pub account_id: String,
+    #[serde(default)]
+    pub send_policy: IrSendPolicyConfig,
+    #[serde(default)]
+    pub role: IrProviderRoleConfig,
+    #[serde(default)]
+    pub last_login_at: Option<i64>,
+    #[serde(default)]
+    pub last_success_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IrSendPolicyConfig {
+    UpdateScore,
+    #[default]
+    Always,
+    CompleteSong,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IrProviderRoleConfig {
+    #[default]
+    SubmitOnly,
+    Primary,
+}
+
+impl ProfileConfig {
+    pub fn new_default(id: &str, display_name: &str, now: i64) -> Self {
+        Self {
+            version: 1,
+            id: id.to_string(),
+            display_name: display_name.to_string(),
+            created_at: now,
+            updated_at: now,
+            play: PlayDefaultsConfig {
+                rule_mode: RuleMode::Beatoraja,
+                ln_mode_policy: LnPolicySetting::AutoLn,
+                gauge: GaugeTypeConfig::Normal,
+                gauge_auto_shift: GaugeAutoShiftConfig::Off,
+                bottom_shiftable_gauge: BottomShiftableGaugeConfig::AssistEasy,
+                random: RandomOptionConfig::Off,
+                random2: RandomOptionConfig::Off,
+                double_option: DoubleOptionConfig::Off,
+                hs_fix: HsFixConfig::Off,
+                target: TargetOptionConfig::None,
+                grade_diff_display: ResultGradeDiffDisplay::default(),
+                lane_effect: LaneEffectConfig::Off,
+                assist: AssistOptionConfig::None,
+                session_mode: Some(SessionMode::Normal),
+                auto_play: false,
+                bga: default_bga_mode(),
+                bga_expand: default_bga_expand(),
+                misslayer_duration_ms: default_misslayer_duration_ms(),
+                play_exit_hold_ms: default_play_exit_hold_ms(),
+                show_ln_tail_cap: false,
+            },
+            judge: JudgeConfig {
+                input_offset_us: 0,
+                visual_offset_us: 0,
+                visual_offset_auto_adjust: false,
+                judge_algorithm: JudgeAlgorithmConfig::Combo,
+                fast_slow_display_threshold_ms: 0,
+                fast_slow_display_scope: FastSlowDisplayScope::Auto,
+            },
+            lane: LaneViewConfig {
+                hispeed: 2.0,
+                hispeed_mode: default_hispeed_mode(),
+                hispeed_step_nhs: default_hispeed_step_nhs(),
+                hispeed_step_fhs: default_hispeed_step_fhs(),
+                sudden: 0,
+                lift: 0,
+                lift_enabled: true,
+                hispeed_auto_adjust: true,
+                hidden: 0,
+                target_green_number: 300,
+            },
+            input: crate::config::play_input::default_profile_input(),
+            rival: RivalConfig { active_rival: String::new(), entries: Vec::new() },
+            replay: ReplayConfig {
+                auto_save: true,
+                compress: false,
+                slot_rules: default_slot_rules(),
+            },
+            ir: IrConfig::default(),
+            ui: UiConfig {
+                language: "ja".to_string(),
+                theme: "default".to_string(),
+                show_fps: false,
+                confirm_on_exit: false,
+            },
+            audio_mix: AudioMixConfig {
+                normalize_chart_volume: true,
+                master_volume: 50,
+                key_volume: 50,
+                bgm_volume: 50,
+                preview_volume: 50,
+                system_bgm_volume: default_system_bgm_volume(),
+                system_se_volume: default_system_se_volume(),
+            },
+            system_sound: SystemSoundConfig::default(),
+            skin: SkinConfig::default(),
+            select: SelectStateConfig::default(),
+            statistics: StatisticsConfig::default(),
+        }
+    }
+}

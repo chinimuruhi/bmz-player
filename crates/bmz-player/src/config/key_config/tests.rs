@@ -1,0 +1,646 @@
+use super::*;
+use crate::config::profile_config::ProfileConfig;
+
+fn key_target(lane: LaneConfig, slot: KeyBindingSlot) -> KeyBindingTarget {
+    KeyBindingTarget::Key { lane, slot }
+}
+
+fn scratch_target(
+    lane: LaneConfig,
+    direction: ScratchDirection,
+    slot: KeyBindingSlot,
+) -> KeyBindingTarget {
+    KeyBindingTarget::Scratch { lane, direction, slot }
+}
+
+fn action_target(action: InputActionConfig, slot: KeyBindingSlot) -> KeyBindingTarget {
+    KeyBindingTarget::Action { action, slot }
+}
+
+#[test]
+fn lane_label_names_double_play_keys_by_side() {
+    assert_eq!(lane_label(LaneConfig::Key1), "KEY 1");
+    assert_eq!(lane_label(LaneConfig::Key7), "KEY 7");
+    assert_eq!(lane_label(LaneConfig::Key8), "2P KEY 1");
+    assert_eq!(lane_label(LaneConfig::Key14), "2P KEY 7");
+}
+
+#[test]
+fn lane_label_for_key_mode_names_pms_extra_keys() {
+    assert_eq!(lane_label_for_key_mode(KeyMode::K8, LaneConfig::Key8), "KEY 8");
+    assert_eq!(lane_label_for_key_mode(KeyMode::K9, LaneConfig::Key8), "KEY 8");
+    assert_eq!(lane_label_for_key_mode(KeyMode::K9, LaneConfig::Key9), "KEY 9");
+    assert_eq!(lane_label_for_key_mode(KeyMode::K14, LaneConfig::Key8), "2P KEY 1");
+}
+
+#[test]
+fn lane_entries_follow_active_lanes() {
+    assert_eq!(lane_entries_for_key_mode(KeyMode::K7).len(), 8);
+    assert_eq!(scratch_lanes_for_key_mode(KeyMode::K7).len(), 1);
+    assert_eq!(key_lanes_for_key_mode(KeyMode::K7).len(), 7);
+    assert_eq!(scratch_lanes_for_key_mode(KeyMode::K14).len(), 2);
+}
+
+#[test]
+fn apply_play_binding_keeps_primary_and_secondary_separate() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        "Z",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary),
+        "Q",
+    )
+    .unwrap();
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        ),
+        "Z"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary),
+        ),
+        "Q"
+    );
+}
+
+#[test]
+fn secondary_binding_survives_without_primary_and_toml_roundtrip() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    let primary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary);
+    let secondary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary);
+    clear_play_binding(&mut profile.input, KeyMode::K7, primary).unwrap();
+    apply_play_binding(&mut profile.input, KeyMode::K7, secondary, "Q").unwrap();
+
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, primary), "(none)");
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, secondary), "Q");
+    assert!(profile.input.play["7k"].bindings.iter().any(|entry| {
+        entry.device == "keyboard"
+            && entry.control == "Q"
+            && entry.lane == Some(LaneConfig::Key1)
+            && entry.keyboard_slot == Some(KeyboardBindingSlotConfig::Secondary)
+    }));
+
+    let serialized = toml::to_string(&profile).unwrap();
+    let restored: ProfileConfig = toml::from_str(&serialized).unwrap();
+    assert_eq!(format_play_binding(&restored, KeyMode::K7, primary), "(none)");
+    assert_eq!(format_play_binding(&restored, KeyMode::K7, secondary), "Q");
+
+    let runtime =
+        crate::config::play_input::lane_binding_for_key_mode(&restored.input, KeyMode::K7).unwrap();
+    assert_eq!(
+        runtime.resolve(
+            bmz_gameplay::input::backend::DeviceId(0),
+            &bmz_gameplay::input::backend::PhysicalControl::KeyboardKey("Q".to_string()),
+        ),
+        Some(bmz_core::lane::Lane::Key1),
+    );
+}
+
+#[test]
+fn explicit_keyboard_slots_ignore_binding_entry_order() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    let primary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary);
+    let secondary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary);
+    apply_play_binding(&mut profile.input, KeyMode::K7, primary, "A").unwrap();
+    apply_play_binding(&mut profile.input, KeyMode::K7, secondary, "Q").unwrap();
+    profile.input.play.get_mut("7k").unwrap().bindings.reverse();
+
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, primary), "A");
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, secondary), "Q");
+}
+
+#[test]
+fn secondary_binding_is_preserved_in_every_key_config_mode() {
+    for &key_mode in KEY_CONFIG_MODES {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        let primary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary);
+        let secondary = key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary);
+        apply_play_binding(&mut profile.input, key_mode, secondary, "Q").unwrap();
+
+        assert_eq!(
+            format_play_binding(&profile, key_mode, primary),
+            "Z",
+            "{} primary",
+            key_mode.as_str(),
+        );
+        assert_eq!(
+            format_play_binding(&profile, key_mode, secondary),
+            "Q",
+            "{} secondary",
+            key_mode.as_str(),
+        );
+        let controller =
+            key_target(LaneConfig::Key1, controller_slot_for_lane(key_mode, LaneConfig::Key1));
+        let expected_controller =
+            if matches!(key_mode, KeyMode::K8 | KeyMode::K9) { "(none)" } else { "Button1" };
+        assert_eq!(
+            format_play_binding(&profile, key_mode, controller),
+            expected_controller,
+            "{} controller",
+            key_mode.as_str(),
+        );
+    }
+}
+
+#[test]
+fn action_secondary_survives_without_primary() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    let primary = action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardPrimary);
+    let secondary = action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardSecondary);
+    clear_play_binding(&mut profile.input, KeyMode::K7, primary).unwrap();
+    apply_play_binding(&mut profile.input, KeyMode::K7, secondary, "T").unwrap();
+
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, primary), "(none)");
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, secondary), "T");
+    assert!(profile.input.ui.bindings.iter().any(|entry| {
+        entry.control == "T"
+            && entry.action == Some(InputActionConfig::E4)
+            && entry.keyboard_slot == Some(KeyboardBindingSlotConfig::Secondary)
+    }));
+}
+
+#[test]
+fn scratch_secondary_directions_survive_without_primary() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    for direction in [ScratchDirection::Up, ScratchDirection::Down] {
+        clear_play_binding(
+            &mut profile.input,
+            KeyMode::K7,
+            scratch_target(LaneConfig::Scratch, direction, KeyBindingSlot::KeyboardPrimary),
+        )
+        .unwrap();
+    }
+    let up_secondary = scratch_target(
+        LaneConfig::Scratch,
+        ScratchDirection::Up,
+        KeyBindingSlot::KeyboardSecondary,
+    );
+    let down_secondary = scratch_target(
+        LaneConfig::Scratch,
+        ScratchDirection::Down,
+        KeyBindingSlot::KeyboardSecondary,
+    );
+    apply_play_binding(&mut profile.input, KeyMode::K7, up_secondary, "Q").unwrap();
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, down_secondary), "(none)");
+    apply_play_binding(&mut profile.input, KeyMode::K7, down_secondary, "W").unwrap();
+
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, up_secondary), "Q");
+    assert_eq!(format_play_binding(&profile, KeyMode::K7, down_secondary), "W");
+    for direction in [ScratchDirection::Up, ScratchDirection::Down] {
+        assert_eq!(
+            format_play_binding(
+                &profile,
+                KeyMode::K7,
+                scratch_target(LaneConfig::Scratch, direction, KeyBindingSlot::KeyboardPrimary,),
+            ),
+            "(none)",
+        );
+    }
+}
+
+#[test]
+fn apply_play_binding_moves_duplicate_keyboard_key() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        "Q",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key2, KeyBindingSlot::KeyboardPrimary),
+        "Q",
+    )
+    .unwrap();
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        ),
+        "(none)"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key2, KeyBindingSlot::KeyboardPrimary),
+        ),
+        "Q"
+    );
+}
+
+#[test]
+fn apply_play_binding_sets_controller_without_touching_keyboard() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key1, KeyBindingSlot::Controller),
+        "Button9",
+    )
+    .unwrap();
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key1, KeyBindingSlot::Controller),
+        ),
+        "Button9"
+    );
+    assert_ne!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        ),
+        "(none)"
+    );
+}
+
+#[test]
+fn apply_action_binding_keeps_primary_secondary_and_controller_separate() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardPrimary),
+        "R",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardSecondary),
+        "T",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        action_target(InputActionConfig::E4, KeyBindingSlot::Controller),
+        "Button10",
+    )
+    .unwrap();
+
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardPrimary),
+        ),
+        "R"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardSecondary),
+        ),
+        "T"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            action_target(InputActionConfig::E4, KeyBindingSlot::Controller),
+        ),
+        "Button10"
+    );
+}
+
+#[test]
+fn clear_action_binding_removes_selected_slot_only() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardPrimary),
+        "R",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardSecondary),
+        "T",
+    )
+    .unwrap();
+
+    clear_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardSecondary),
+    )
+    .unwrap();
+
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardPrimary),
+        ),
+        "R"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            action_target(InputActionConfig::E4, KeyBindingSlot::KeyboardSecondary),
+        ),
+        "(none)"
+    );
+}
+
+#[test]
+fn clear_play_binding_removes_selected_slot_only() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        "Z",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary),
+        "Q",
+    )
+    .unwrap();
+    clear_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary),
+    )
+    .unwrap();
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        ),
+        "Z"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardSecondary),
+        ),
+        "(none)"
+    );
+}
+
+#[test]
+fn scratch_keyboard_up_and_down_are_independent() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        scratch_target(LaneConfig::Scratch, ScratchDirection::Up, KeyBindingSlot::KeyboardPrimary),
+        "Q",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        scratch_target(
+            LaneConfig::Scratch,
+            ScratchDirection::Down,
+            KeyBindingSlot::KeyboardPrimary,
+        ),
+        "W",
+    )
+    .unwrap();
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(
+                LaneConfig::Scratch,
+                ScratchDirection::Up,
+                KeyBindingSlot::KeyboardPrimary,
+            ),
+        ),
+        "Q"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(
+                LaneConfig::Scratch,
+                ScratchDirection::Down,
+                KeyBindingSlot::KeyboardPrimary,
+            ),
+        ),
+        "W"
+    );
+    let bindings = resolve_play_bindings(&profile.input, KeyMode::K7).unwrap();
+    assert!(bindings.iter().any(|entry| {
+        entry.control == "Q" && entry.scratch == Some(ScratchDirectionConfig::Up)
+    }));
+    assert!(bindings.iter().any(|entry| {
+        entry.control == "W" && entry.scratch == Some(ScratchDirectionConfig::Down)
+    }));
+}
+
+#[test]
+fn scratch_controller_up_and_down_are_independent() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        scratch_target(LaneConfig::Scratch, ScratchDirection::Up, KeyBindingSlot::Controller),
+        "Axis1-",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        scratch_target(LaneConfig::Scratch, ScratchDirection::Down, KeyBindingSlot::Controller),
+        "Axis1+",
+    )
+    .unwrap();
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(LaneConfig::Scratch, ScratchDirection::Up, KeyBindingSlot::Controller,),
+        ),
+        "Axis1-"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(LaneConfig::Scratch, ScratchDirection::Down, KeyBindingSlot::Controller,),
+        ),
+        "Axis1+"
+    );
+}
+
+#[test]
+fn scratch_controller_keeps_both_directions_with_reversed_axis_polarity() {
+    // 軸極性が逆のデバイス: UP に '+'、DOWN に '-' を割り当てても
+    // 名前推測で再分類されず、両方向が保持される。
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        scratch_target(LaneConfig::Scratch, ScratchDirection::Up, KeyBindingSlot::Controller),
+        "Axis5+",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K7,
+        scratch_target(LaneConfig::Scratch, ScratchDirection::Down, KeyBindingSlot::Controller),
+        "Axis5-",
+    )
+    .unwrap();
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(LaneConfig::Scratch, ScratchDirection::Up, KeyBindingSlot::Controller,),
+        ),
+        "Axis5+"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(LaneConfig::Scratch, ScratchDirection::Down, KeyBindingSlot::Controller,),
+        ),
+        "Axis5-"
+    );
+}
+
+#[test]
+fn default_scratch_keyboard_shows_separate_keys_for_up_and_down() {
+    let profile = ProfileConfig::new_default("default", "Default", 0);
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(
+                LaneConfig::Scratch,
+                ScratchDirection::Up,
+                KeyBindingSlot::KeyboardPrimary,
+            ),
+        ),
+        "LShift"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K7,
+            scratch_target(
+                LaneConfig::Scratch,
+                ScratchDirection::Down,
+                KeyBindingSlot::KeyboardPrimary,
+            ),
+        ),
+        "LControl"
+    );
+}
+
+#[test]
+fn fourteen_k_controller_slots_preserve_numbered_devices() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K14,
+        key_target(LaneConfig::Key1, KeyBindingSlot::Controller1P),
+        "Button1",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K14,
+        key_target(LaneConfig::Key8, KeyBindingSlot::Controller2P),
+        "Button1",
+    )
+    .unwrap();
+
+    // Editing keyboard must not collapse gamepad1/2 into wildcard.
+    apply_play_binding(
+        &mut profile.input,
+        KeyMode::K14,
+        key_target(LaneConfig::Key1, KeyBindingSlot::KeyboardPrimary),
+        "Z",
+    )
+    .unwrap();
+
+    let bindings =
+        crate::config::play_input::resolve_play_bindings(&profile.input, KeyMode::K14).unwrap();
+    assert!(bindings.iter().any(|entry| {
+        entry.device == "gamepad1"
+            && entry.control == "Button1"
+            && entry.lane == Some(LaneConfig::Key1)
+    }));
+    assert!(bindings.iter().any(|entry| {
+        entry.device == "gamepad2"
+            && entry.control == "Button1"
+            && entry.lane == Some(LaneConfig::Key8)
+    }));
+    assert!(!bindings.iter().any(|entry| {
+        entry.device == "gamepad"
+            && entry.lane == Some(LaneConfig::Key1)
+            && entry.control == "Button1"
+    }));
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K14,
+            key_target(LaneConfig::Key1, KeyBindingSlot::Controller1P),
+        ),
+        "Button1"
+    );
+    assert_eq!(
+        format_play_binding(
+            &profile,
+            KeyMode::K14,
+            key_target(LaneConfig::Key8, KeyBindingSlot::Controller2P),
+        ),
+        "Button1"
+    );
+}
+
+#[test]
+fn controller_slot_for_lane_splits_double_play_sides() {
+    assert_eq!(
+        controller_slot_for_lane(KeyMode::K14, LaneConfig::Key1),
+        KeyBindingSlot::Controller1P
+    );
+    assert_eq!(
+        controller_slot_for_lane(KeyMode::K14, LaneConfig::Scratch2),
+        KeyBindingSlot::Controller2P
+    );
+    assert_eq!(
+        controller_slot_for_lane(KeyMode::K10, LaneConfig::Key8),
+        KeyBindingSlot::Controller2P
+    );
+    assert_eq!(controller_slot_for_lane(KeyMode::K7, LaneConfig::Key1), KeyBindingSlot::Controller);
+    assert_eq!(controller_slot_for_lane(KeyMode::K9, LaneConfig::Key8), KeyBindingSlot::Controller);
+}

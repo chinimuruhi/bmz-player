@@ -35,6 +35,12 @@ mod gpu;
 mod pipeline;
 mod screenshot;
 mod text;
+#[path = "renderer/text/cached_builder.rs"]
+mod text_cached_builder;
+#[path = "renderer/text/layout.rs"]
+mod text_layout;
+#[path = "renderer/text/raster_builder.rs"]
+mod text_raster_builder;
 
 #[cfg(test)]
 use font::load_default_font;
@@ -48,6 +54,9 @@ pub use pipeline::GpuUploader;
 use pipeline::*;
 use screenshot::*;
 use text::*;
+use text_cached_builder::*;
+use text_layout::*;
+use text_raster_builder::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WgpuBackend {
