@@ -198,6 +198,7 @@ use bmz_render::skin::{
 
 mod bga_runtime;
 mod frame_runtime;
+mod input_runtime;
 mod result_runtime;
 mod select_assets;
 mod select_folder_summary;
@@ -214,6 +215,7 @@ use frame_runtime::{
     FrameProfileKind, FrameRuntime, FrameSchedule, PlayLoopFrameTimings, SceneFrameProfileSample,
     SkinVideoFrameProfile,
 };
+use input_runtime::{AppInputRuntime, ControlInputEvent};
 use result_runtime::{
     course_result_skin_snapshot, course_result_summary_for_skin, debug_boot_finished_play_session,
     mark_course_replay_slot_saved, result_main_bpm, result_max_bpm, result_min_bpm,
@@ -497,15 +499,8 @@ struct WinitApp {
     discord_presence: Option<DiscordPresenceHandle>,
     discord_presence_config: Option<DiscordPresenceConfig>,
     last_obs_event_key: Option<crate::obs::ObsEventKey>,
-    start_held: bool,
-    select_held: bool,
-    select_e_action_holds: HashSet<InputActionConfig>,
-    pressed_controls: HashSet<String>,
-    pressed_play_inputs: HashSet<(DeviceId, PhysicalControl)>,
-    raw_input_pressed_keys: HashSet<PhysicalKey>,
-    window_input_pressed_keys: HashSet<PhysicalKey>,
-    app_input_bounce_filter: InputBounceFilter,
-    raw_input_bounce_filter: InputBounceFilter,
+    /// device共通の押下集合とkeyboard bounce状態。
+    input: AppInputRuntime,
     arrange_option: ArrangeOption,
     arrange_option_2p: ArrangeOption,
     /// Endless Dream 互換の7K RANDOM固定配置。profileへは保存しない。
@@ -1814,15 +1809,7 @@ impl WinitApp {
             discord_presence: None,
             discord_presence_config: None,
             last_obs_event_key: None,
-            start_held: false,
-            select_held: false,
-            select_e_action_holds: HashSet::new(),
-            pressed_controls: HashSet::new(),
-            pressed_play_inputs: HashSet::new(),
-            raw_input_pressed_keys: HashSet::new(),
-            window_input_pressed_keys: HashSet::new(),
-            app_input_bounce_filter: InputBounceFilter::default(),
-            raw_input_bounce_filter: InputBounceFilter::default(),
+            input: AppInputRuntime::default(),
             arrange_option,
             arrange_option_2p,
             random_trainer: RandomTrainerState::default(),
@@ -1989,8 +1976,8 @@ impl WinitApp {
 
     fn filter_app_input_bounce(&mut self, event: DeviceInputEvent) -> Option<DeviceInputEvent> {
         let config = input_bounce_config_from_profile(&self.boot.profile_config.input);
-        self.app_input_bounce_filter.set_config(config);
-        self.app_input_bounce_filter.accept(event)
+        self.input.app_bounce_filter.set_config(config);
+        self.input.app_bounce_filter.accept(event)
     }
 
     fn route_play_device_input(&mut self, event: DeviceInputEvent) {
@@ -2039,16 +2026,16 @@ impl WinitApp {
         }
         if self.play_input_backend().is_none() {
             if state == ElementState::Released {
-                self.raw_input_pressed_keys.remove(&physical_key);
+                self.input.raw_input_pressed_keys.remove(&physical_key);
             }
-            self.raw_input_bounce_filter.clear();
+            self.input.raw_bounce_filter.clear();
             return;
         }
         let config = input_bounce_config_from_profile(&self.boot.profile_config.input);
         let gameplay_blocked = self.raw_input_gameplay_blocked();
         if let Some(event) = filtered_raw_input_transition(
-            &mut self.raw_input_pressed_keys,
-            &mut self.raw_input_bounce_filter,
+            &mut self.input.raw_input_pressed_keys,
+            &mut self.input.raw_bounce_filter,
             config,
             physical_key,
             state,
@@ -2059,19 +2046,19 @@ impl WinitApp {
     }
 
     fn release_raw_input_pressed_keys(&mut self) {
-        let events = raw_input_release_events(&mut self.raw_input_pressed_keys);
+        let events = raw_input_release_events(&mut self.input.raw_input_pressed_keys);
         for event in events {
             self.route_play_device_input(event);
         }
-        self.raw_input_bounce_filter.clear();
+        self.input.raw_bounce_filter.clear();
     }
 
     fn release_window_input_pressed_keys(&mut self) {
-        let events = raw_input_release_events(&mut self.window_input_pressed_keys);
+        let events = raw_input_release_events(&mut self.input.window_input_pressed_keys);
         for event in events {
             self.route_play_device_input(event);
         }
-        self.app_input_bounce_filter.clear();
+        self.input.app_bounce_filter.clear();
     }
 
     fn ensure_window(&mut self, event_loop: &ActiveEventLoop) {
@@ -2413,7 +2400,7 @@ impl WinitApp {
         apply_skin_logical_input_to_scene(
             &mut scene,
             skin_logical_input_snapshot_from_pressed_controls(
-                &self.pressed_controls,
+                &self.input.pressed_controls,
                 &self.select_keys,
             ),
         );
@@ -3446,45 +3433,25 @@ impl WinitApp {
     }
 
     fn set_start_held(&mut self, held: bool) {
-        if self.start_held != held {
-            self.start_held = held;
+        if self.input.start_held != held {
+            self.input.start_held = held;
             self.update_select_option_panel();
         }
     }
 
     fn set_select_held(&mut self, held: bool) {
-        if self.select_held != held {
-            self.select_held = held;
+        if self.input.select_held != held {
+            self.input.select_held = held;
             self.update_select_option_panel();
         }
     }
 
-    fn update_pressed_control(&mut self, control: &str, pressed: bool) {
-        if pressed {
-            self.pressed_controls.insert(control.to_string());
-        } else {
-            self.pressed_controls.remove(control);
-        }
-    }
-
-    fn update_pressed_play_input(
-        &mut self,
-        device: DeviceId,
-        control: &PhysicalControl,
-        pressed: bool,
-    ) {
-        let input = (device, control.clone());
-        if pressed {
-            self.pressed_play_inputs.insert(input);
-        } else {
-            self.pressed_play_inputs.remove(&input);
-        }
-    }
-
     fn sync_select_holds_from_pressed_controls(&mut self) {
-        let (start_held, select_held, e_action_holds) =
-            select_hold_state_from_pressed_controls(&self.pressed_controls, &self.select_keys);
-        self.select_e_action_holds = e_action_holds;
+        let (start_held, select_held, e_action_holds) = select_hold_state_from_pressed_controls(
+            &self.input.pressed_controls,
+            &self.select_keys,
+        );
+        self.input.select_e_action_holds = e_action_holds;
         self.set_start_held(start_held);
         self.set_select_held(select_held);
     }
@@ -3494,21 +3461,21 @@ impl WinitApp {
             return;
         };
         if held {
-            self.select_e_action_holds.insert(action);
+            self.input.select_e_action_holds.insert(action);
         } else {
-            self.select_e_action_holds.remove(&action);
+            self.input.select_e_action_holds.remove(&action);
         }
     }
 
     fn select_e_action_held(&self) -> bool {
-        !self.select_e_action_holds.is_empty()
+        self.input.select_e_action_held()
     }
 
     fn update_select_option_panel(&mut self) {
         let panel = if in_settings_stack(&self.folder_stack) {
             0
         } else {
-            select_option_panel_for_holds(self.start_held, self.select_held)
+            select_option_panel_for_holds(self.input.start_held, self.input.select_held)
         };
         let previous_panel = self.select_option_panel;
         let now = Instant::now();
@@ -4054,30 +4021,25 @@ impl WinitApp {
         {
             return;
         }
-        let play_control = (!event.repeat).then(|| physical_key_name(event.physical_key)).flatten();
-        let play_physical_control = physical_key_to_control(event.physical_key);
-        if let Some(control) = play_control.as_deref() {
-            self.update_pressed_control(control, event.state == ElementState::Pressed);
-        }
-        if let Some(control) = play_physical_control.as_ref() {
-            self.update_pressed_play_input(
-                W_KEYBOARD_DEVICE_ID,
-                control,
-                event.state == ElementState::Pressed,
-            );
-        }
+        let control_event = ControlInputEvent::keyboard(
+            event,
+            (!event.repeat).then(|| physical_key_name(event.physical_key)).flatten(),
+        );
+        self.input.track_control(&control_event);
+        let play_control = control_event.name.as_deref();
+        let play_physical_control = control_event.physical.as_ref();
         let has_play_control_context =
             self.active_play.is_some() || self.pending_play_start.is_some();
-        if event.state == ElementState::Pressed
-            && !event.repeat
-            && let Some(control) = play_control.as_deref()
+        if control_event.pressed
+            && !control_event.repeat
+            && let Some(control) = play_control
             && self.handle_quick_retry_control(control)
         {
             return;
         }
-        if event.state == ElementState::Pressed
-            && !event.repeat
-            && let Some(control) = play_control.as_deref()
+        if control_event.pressed
+            && !control_event.repeat
+            && let Some(control) = play_control
             && self.begin_play_fadeout_after_final_notes_control(control)
         {
             return;
@@ -4103,10 +4065,10 @@ impl WinitApp {
         if window_keyboard_gameplay_enabled && !event.repeat {
             match event.state {
                 ElementState::Pressed if has_play_control_context => {
-                    self.window_input_pressed_keys.insert(event.physical_key);
+                    self.input.window_input_pressed_keys.insert(event.physical_key);
                 }
                 ElementState::Released => {
-                    self.window_input_pressed_keys.remove(&event.physical_key);
+                    self.input.window_input_pressed_keys.remove(&event.physical_key);
                 }
                 ElementState::Pressed => {}
             }
@@ -4292,7 +4254,7 @@ impl WinitApp {
             }
             if event.state == ElementState::Pressed
                 && !event.repeat
-                && let Some(control) = play_control.as_deref()
+                && let Some(control) = play_control
                 && self.select_keys.is_start(control)
             {
                 self.handle_play_start_double_press();
@@ -4589,8 +4551,8 @@ impl WinitApp {
             && let Some(control) = physical_key_name(event.physical_key)
             && should_toggle_select_judge_auto_adjust(
                 &control,
-                self.start_held,
-                self.select_held,
+                self.input.start_held,
+                self.input.select_held,
                 &self.select_keys,
             )
         {
@@ -4607,8 +4569,8 @@ impl WinitApp {
             && let Some(control) = physical_key_name(event.physical_key)
             && should_toggle_select_gauge_auto_shift(
                 &control,
-                self.start_held,
-                self.select_held,
+                self.input.start_held,
+                self.input.select_held,
                 &self.select_keys,
             )
         {
@@ -4977,9 +4939,10 @@ impl WinitApp {
     }
 
     fn route_gamepad_button(&mut self, device: DeviceId, button: &str, pressed: bool) {
-        let physical_control = PhysicalControl::GamepadButton(button.to_string());
-        self.update_pressed_control(button, pressed);
-        self.update_pressed_play_input(device, &physical_control, pressed);
+        let control_event = ControlInputEvent::gamepad(device, button, pressed);
+        self.input.track_control(&control_event);
+        let physical_control =
+            control_event.physical.as_ref().expect("gamepad control always has a physical value");
         let has_play_control_context =
             self.active_play.is_some() || self.pending_play_start.is_some();
         if pressed && self.handle_quick_retry_control(button) {
@@ -4989,16 +4952,16 @@ impl WinitApp {
             return;
         }
         let play_e1_control = has_play_control_context
-            && self.update_play_e1_control_state(device, &physical_control, pressed);
+            && self.update_play_e1_control_state(device, physical_control, pressed);
         if has_play_control_context
-            && self.update_play_exit_control_state(device, &physical_control, pressed)
+            && self.update_play_exit_control_state(device, physical_control, pressed)
         {
             return;
         }
         let play_option_control = pressed.then(|| {
             play_option_control_for_input(
                 device,
-                &physical_control,
+                physical_control,
                 self.play_e1_held,
                 self.play_e2_held,
                 self.play_option_input.as_ref(),
@@ -5192,8 +5155,8 @@ impl WinitApp {
 
         if should_toggle_select_gauge_auto_shift(
             button,
-            self.start_held,
-            self.select_held,
+            self.input.start_held,
+            self.input.select_held,
             &self.select_keys,
         ) {
             self.toggle_gauge_auto_shift();
@@ -5206,8 +5169,8 @@ impl WinitApp {
 
         if should_toggle_select_judge_auto_adjust(
             button,
-            self.start_held,
-            self.select_held,
+            self.input.start_held,
+            self.input.select_held,
             &self.select_keys,
         ) {
             self.toggle_visual_offset_auto_adjust();
@@ -5978,12 +5941,12 @@ impl WinitApp {
     }
 
     fn handle_select_f3_action(&mut self) {
-        let e1_held = self.select_e_action_holds.contains(&InputActionConfig::E1);
-        let e2_held = self.select_e_action_holds.contains(&InputActionConfig::E2);
-        let ctrl_held = self.pressed_controls.iter().any(|control| {
+        let e1_held = self.input.select_e_action_holds.contains(&InputActionConfig::E1);
+        let e2_held = self.input.select_e_action_holds.contains(&InputActionConfig::E2);
+        let ctrl_held = self.input.pressed_controls.iter().any(|control| {
             matches!(control.as_str(), "LControl" | "RControl" | "ControlLeft" | "ControlRight")
         });
-        let shift_held = self.pressed_controls.iter().any(|control| {
+        let shift_held = self.input.pressed_controls.iter().any(|control| {
             matches!(control.as_str(), "LShift" | "RShift" | "ShiftLeft" | "ShiftRight")
         });
 
@@ -12559,7 +12522,7 @@ impl WinitApp {
             .play_option_input
             .as_ref()
             .map(|input| {
-                play_control_hold_state_from_pressed_inputs(&self.pressed_play_inputs, input)
+                play_control_hold_state_from_pressed_inputs(&self.input.pressed_play_inputs, input)
             })
             .unwrap_or((false, false, false));
         let was_ready_blocked =
@@ -16256,8 +16219,8 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.focused = focused;
                 if !focused {
                     self.discard_gamepad_output_until_resynced = true;
-                    self.pressed_controls.clear();
-                    self.pressed_play_inputs.clear();
+                    self.input.pressed_controls.clear();
+                    self.input.pressed_play_inputs.clear();
                     self.release_raw_input_pressed_keys();
                     self.release_window_input_pressed_keys();
                     self.sync_select_holds_from_pressed_controls();
