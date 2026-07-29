@@ -184,8 +184,16 @@ fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
 
     let s = &report.summary;
     println!(
-        "Done: {} imported, {} skipped, {} failed ({} warnings) across {} file(s) in {} root(s)",
-        s.imported, s.skipped, s.failed, s.warnings, s.files_seen, s.roots_seen
+        "Done: {} imported, {} skipped, {} failed ({} warnings), {} filesystem path(s) skipped \
+         across {} file(s) in {} root(s) ({} unreadable)",
+        s.imported,
+        s.skipped,
+        s.failed,
+        s.warnings,
+        s.discovery_skipped,
+        s.files_seen,
+        s.roots_seen,
+        s.roots_unreadable
     );
 
     let t = &report.timing;
@@ -194,8 +202,19 @@ fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
         t.total_ms, t.discovery_ms, t.fingerprint_ms, t.skip_check_ms, t.parse_ms, t.write_ms
     );
 
+    for issue in &report.discovery_issues {
+        println!(
+            "  SKIP FS: {} — operation={} kind={:?} os_error={:?}: {}",
+            issue.path.display(),
+            issue.operation.as_str(),
+            issue.error_kind,
+            issue.raw_os_error,
+            issue.message
+        );
+    }
+
     for failure in &report.failures {
-        println!("  FAIL: {} — {}", failure.path.display(), failure.message);
+        println!("  FAIL BMS: {} — {}", failure.path.display(), failure.message);
     }
 
     Ok(())

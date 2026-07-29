@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, OnceLock};
 use std::thread;
@@ -479,7 +479,7 @@ struct WinitApp {
     skin_defs_cache: BTreeMap<String, SceneSkinDefs>,
     /// 通常表・rianIR表の取得channel、queue、progress、世代状態。
     table_fetch: TableFetchRuntime,
-    pending_song_scan: Option<Receiver<SongScanEvent>>,
+    pending_song_scan: Option<PendingSongScan>,
     pending_chart_download: Option<Receiver<Result<ChartDownloadResult>>>,
     queued_download_scan: Option<(PathBuf, String)>,
     song_scan_progress: Option<ScanProgress>,
@@ -1180,9 +1180,9 @@ struct PlayMediaCache {
     video_bga_decoders: crate::video_bga::VideoBgaDecoderMap,
 }
 
-enum SongScanEvent {
-    Progress(ScanProgress),
-    Finished(Result<ScanReport>),
+struct PendingSongScan {
+    finished: Receiver<Result<ScanReport>>,
+    progress: Arc<AtomicU64>,
 }
 
 struct PracticeChartDefaults {
@@ -11002,6 +11002,8 @@ impl WinitApp {
         let library_db_path = self.boot.app_paths.library_db.clone();
         let scan_config = self.boot.app_config.scan.clone();
         let (tx, rx) = mpsc::channel();
+        let progress = Arc::new(AtomicU64::new(pack_scan_progress(ScanProgress::default())));
+        let worker_progress = Arc::clone(&progress);
         self.song_scan_progress = Some(ScanProgress::default());
         thread::Builder::new()
             .name("song-scan".to_string())
@@ -11016,32 +11018,33 @@ impl WinitApp {
                         now_unix_seconds(),
                         force,
                         |progress| {
-                            let _ = tx.send(SongScanEvent::Progress(progress));
+                            worker_progress.store(pack_scan_progress(progress), Ordering::Relaxed);
                         },
                     )
                 })();
-                let _ = tx.send(SongScanEvent::Finished(result));
+                let _ = tx.send(result);
             })
             .expect("failed to spawn song scan thread");
-        self.pending_song_scan = Some(rx);
+        self.pending_song_scan = Some(PendingSongScan { finished: rx, progress });
         tracing::info!(%label, force, "started song scan");
     }
 
     fn poll_pending_song_scan(&mut self) {
-        let Some(rx) = self.pending_song_scan.take() else {
+        let Some(pending) = self.pending_song_scan.take() else {
             return;
         };
+        self.song_scan_progress =
+            Some(unpack_scan_progress(pending.progress.load(Ordering::Relaxed)));
         let mut keep_pending = true;
-        loop {
-            match rx.try_recv() {
-                Ok(SongScanEvent::Progress(progress)) => {
-                    self.song_scan_progress = Some(progress);
-                }
-                Ok(SongScanEvent::Finished(Ok(report))) => {
+        match pending.finished.try_recv() {
+            Ok(Ok(report)) => {
+                if report.discovery_issues.is_empty() {
                     tracing::info!(
                         imported = report.summary.imported,
                         skipped = report.summary.skipped,
                         failed = report.summary.failed,
+                        discovery_skipped = report.summary.discovery_skipped,
+                        roots_unreadable = report.summary.roots_unreadable,
                         total_ms = report.timing.total_ms,
                         discovery_ms = report.timing.discovery_ms,
                         fingerprint_ms = report.timing.fingerprint_ms,
@@ -11050,29 +11053,41 @@ impl WinitApp {
                         write_ms = report.timing.write_ms,
                         "song scan complete"
                     );
-                    self.song_scan_progress = None;
-                    self.invalidate_select_folder_summaries();
-                    self.reload_select_items();
-                    keep_pending = false;
-                    break;
+                } else {
+                    tracing::warn!(
+                        imported = report.summary.imported,
+                        skipped = report.summary.skipped,
+                        failed = report.summary.failed,
+                        discovery_skipped = report.summary.discovery_skipped,
+                        roots_unreadable = report.summary.roots_unreadable,
+                        total_ms = report.timing.total_ms,
+                        discovery_ms = report.timing.discovery_ms,
+                        fingerprint_ms = report.timing.fingerprint_ms,
+                        skip_check_ms = report.timing.skip_check_ms,
+                        parse_ms = report.timing.parse_ms,
+                        write_ms = report.timing.write_ms,
+                        "song scan complete with skipped paths"
+                    );
                 }
-                Ok(SongScanEvent::Finished(Err(error))) => {
-                    tracing::error!(%error, "song scan failed");
-                    self.song_scan_progress = None;
-                    keep_pending = false;
-                    break;
-                }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    tracing::warn!("song scan worker disconnected");
-                    self.song_scan_progress = None;
-                    keep_pending = false;
-                    break;
-                }
+                self.song_scan_progress = None;
+                self.invalidate_select_folder_summaries();
+                self.reload_select_items();
+                keep_pending = false;
+            }
+            Ok(Err(error)) => {
+                tracing::error!(%error, "song scan failed");
+                self.song_scan_progress = None;
+                keep_pending = false;
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => {
+                tracing::warn!("song scan worker disconnected");
+                self.song_scan_progress = None;
+                keep_pending = false;
             }
         }
         if keep_pending {
-            self.pending_song_scan = Some(rx);
+            self.pending_song_scan = Some(pending);
         } else if let Some((root, label)) = self.queued_download_scan.take() {
             self.spawn_song_scan(
                 vec![PathEntry {
@@ -16588,6 +16603,14 @@ fn resolve_left_overlay_text(
         return message.to_string();
     }
     fallback.to_string()
+}
+
+fn pack_scan_progress(progress: ScanProgress) -> u64 {
+    (u64::from(progress.done) << 32) | u64::from(progress.total)
+}
+
+fn unpack_scan_progress(packed: u64) -> ScanProgress {
+    ScanProgress { done: (packed >> 32) as u32, total: packed as u32 }
 }
 
 fn screenshot_dir(config_dir: &str, data_dir: &Path) -> PathBuf {
@@ -26543,6 +26566,13 @@ mod tests {
             resolve_left_overlay_text(false, toast, "SCAN 1 / 2"),
             "スクリーンショットを保存しました"
         );
+    }
+
+    #[test]
+    fn song_scan_progress_atomic_value_roundtrips() {
+        let progress = ScanProgress { done: 123, total: 456 };
+
+        assert_eq!(unpack_scan_progress(pack_scan_progress(progress)), progress);
     }
 
     #[test]

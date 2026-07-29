@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, UNIX_EPOCH};
@@ -16,7 +17,9 @@ use super::library_db::{CHART_IMPORT_VERSION, ChartImportRecord, LibraryDatabase
 #[derive(Debug, Clone, Default)]
 pub struct ScanSummary {
     pub roots_seen: u32,
+    pub roots_unreadable: u32,
     pub files_seen: u32,
+    pub discovery_skipped: u32,
     pub imported: u32,
     pub failed: u32,
     pub skipped: u32,
@@ -29,11 +32,41 @@ pub struct ScanFailure {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanDiscoveryOperation {
+    OpenDirectory,
+    ReadEntry,
+    ReadFileType,
+    ReadMetadata,
+}
+
+impl ScanDiscoveryOperation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenDirectory => "open_directory",
+            Self::ReadEntry => "read_entry",
+            Self::ReadFileType => "read_file_type",
+            Self::ReadMetadata => "read_metadata",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScanDiscoveryIssue {
+    pub root: PathBuf,
+    pub path: PathBuf,
+    pub operation: ScanDiscoveryOperation,
+    pub error_kind: io::ErrorKind,
+    pub raw_os_error: Option<i32>,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ScanReport {
     pub summary: ScanSummary,
     pub timing: ScanTiming,
     pub failures: Vec<ScanFailure>,
+    pub discovery_issues: Vec<ScanDiscoveryIssue>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -73,17 +106,96 @@ pub fn scan_song_roots_with_progress(
     force: bool,
     mut on_progress: impl FnMut(ScanProgress),
 ) -> Result<ScanReport> {
+    struct DiscoveredRoot {
+        root_path: PathBuf,
+        root_id: i64,
+        root_num: usize,
+        entries: Vec<ChartFileEntry>,
+        discovery_complete: bool,
+        root_readable: bool,
+    }
+
+    struct FileTodo {
+        path: PathBuf,
+        file_size: u64,
+        modified_at: i64,
+    }
+
+    struct ParsedFile {
+        path: PathBuf,
+        file_size: u64,
+        modified_at: i64,
+        result: Result<ImportResult, ImportError>,
+    }
+
     let total_start = Instant::now();
     let mut report = ScanReport::default();
     let enabled_roots: Vec<&PathEntry> = roots.iter().filter(|r| r.enabled).collect();
     let root_count = enabled_roots.len();
+    let mut discovered_roots = Vec::with_capacity(root_count);
+    let mut files_total = 0_u32;
 
+    // Discovery runs across every root before fingerprinting/importing so the
+    // progress denominator can grow in real time without resetting per root.
+    on_progress(ScanProgress::default());
     for (root_index, root) in enabled_roots.into_iter().enumerate() {
-        report.summary.roots_seen += 1;
+        report.summary.roots_seen = report.summary.roots_seen.saturating_add(1);
         let root_path = Path::new(&root.path);
         let root_id = db.upsert_root(root_path, root.enabled, root.recursive)?;
         let discovery_start = Instant::now();
-        let entries = discover_chart_files(root_path, root.recursive, scan)?;
+        let files_before_root = files_total;
+        let discovery =
+            discover_chart_files_with_progress(root_path, root.recursive, scan, |root_total| {
+                on_progress(ScanProgress {
+                    done: 0,
+                    total: files_before_root.saturating_add(root_total),
+                });
+            });
+        let discovery_ms = discovery_start.elapsed().as_millis();
+        report.timing.discovery_ms += discovery_ms;
+        let root_files = usize_to_u32(discovery.entries.len());
+        files_total = files_total.saturating_add(root_files);
+        report.summary.files_seen = files_total;
+        report.summary.discovery_skipped =
+            report.summary.discovery_skipped.saturating_add(usize_to_u32(discovery.issues.len()));
+        if !discovery.root_readable {
+            report.summary.roots_unreadable = report.summary.roots_unreadable.saturating_add(1);
+        }
+
+        tracing::info!(
+            root = %root_path.display(),
+            root_num = root_index + 1,
+            root_count,
+            files = root_files,
+            discovery_issues = discovery.issues.len(),
+            discovery_ms,
+            "song root discovery complete"
+        );
+
+        report.discovery_issues.extend(discovery.issues);
+        discovered_roots.push(DiscoveredRoot {
+            root_path: root_path.to_path_buf(),
+            root_id,
+            root_num: root_index + 1,
+            entries: discovery.entries,
+            discovery_complete: discovery.complete,
+            root_readable: discovery.root_readable,
+        });
+    }
+    on_progress(ScanProgress { done: 0, total: files_total });
+
+    let mut progress_done = 0_u32;
+    for root in discovered_roots {
+        if !root.root_readable {
+            continue;
+        }
+
+        let root_path = root.root_path.as_path();
+        let entries = root.entries;
+        let root_files_total = usize_to_u32(entries.len());
+        let root_skipped_start = report.summary.skipped;
+        let root_imported_start = report.summary.imported;
+        let root_failed_start = report.summary.failed;
         let folder_document_flags: Vec<(PathBuf, bool)> = entries
             .iter()
             .filter_map(|entry| {
@@ -92,37 +204,16 @@ pub fn scan_song_roots_with_progress(
             .collect::<HashMap<_, _>>()
             .into_iter()
             .collect();
-        let discovery_ms = discovery_start.elapsed().as_millis();
-        report.timing.discovery_ms += discovery_ms;
-        let files_total = entries.len();
-        let root_skipped_start = report.summary.skipped;
-        let root_imported_start = report.summary.imported;
-        let root_failed_start = report.summary.failed;
 
-        tracing::info!(
-            root = %root_path.display(),
-            root_num = root_index + 1,
-            root_count,
-            files = files_total,
-            discovery_ms,
-            "scanning root"
-        );
-
-        // Phase 1: skip判定（1クエリでrootの全fingerprintsをロードしてHashMap lookup）
-        struct FileTodo {
-            path: PathBuf,
-            file_size: u64,
-            modified_at: i64,
-        }
-        on_progress(ScanProgress { done: 0, total: files_total as u32 });
+        // Phase 2: skip判定（1クエリでrootの全fingerprintsをロードしてHashMap lookup）
         let fingerprint_start = Instant::now();
-        let fingerprints = db.load_fingerprints_for_root(root_id)?;
+        let fingerprints = db.load_fingerprints_for_root(root.root_id)?;
         let fingerprint_ms = fingerprint_start.elapsed().as_millis();
         report.timing.fingerprint_ms += fingerprint_ms;
         let skip_start = Instant::now();
         let mut to_import: Vec<FileTodo> = Vec::new();
+        let mut unchanged_count = 0_u32;
         for entry in &entries {
-            report.summary.files_seen += 1;
             let key = entry.path.to_string_lossy();
             let unchanged = !force
                 && fingerprints.get(key.as_ref()).is_some_and(|fp| {
@@ -131,7 +222,8 @@ pub fn scan_song_roots_with_progress(
                         && fp.import_version == CHART_IMPORT_VERSION
                 });
             if unchanged {
-                report.summary.skipped += 1;
+                report.summary.skipped = report.summary.skipped.saturating_add(1);
+                unchanged_count = unchanged_count.saturating_add(1);
             } else {
                 to_import.push(FileTodo {
                     path: entry.path.clone(),
@@ -142,29 +234,20 @@ pub fn scan_song_roots_with_progress(
         }
         let skip_check_ms = skip_start.elapsed().as_millis();
         report.timing.skip_check_ms += skip_check_ms;
-        on_progress(ScanProgress {
-            done: report.summary.skipped.saturating_sub(root_skipped_start).min(files_total as u32),
-            total: files_total as u32,
-        });
+        progress_done = progress_done.saturating_add(unchanged_count).min(files_total);
+        on_progress(ScanProgress { done: progress_done, total: files_total });
 
         let new_total = to_import.len();
         tracing::info!(
             new_files = new_total,
-            skipped = report.summary.skipped,
+            skipped = unchanged_count,
             fingerprint_ms,
             skip_check_ms,
             root = %root_path.display(),
             "skip check complete"
         );
 
-        // Phase 2+3: バッチごとに並列パース → 1トランザクションでまとめて書き込み
-        struct ParsedFile {
-            path: PathBuf,
-            file_size: u64,
-            modified_at: i64,
-            result: Result<ImportResult, ImportError>,
-        }
-
+        // Phase 3+4: バッチごとに並列パース → 1トランザクションでまとめて書き込み
         let mut last_log = std::time::Instant::now();
         let log_interval = std::time::Duration::from_secs(2);
 
@@ -205,7 +288,7 @@ pub fn scan_song_roots_with_progress(
                     match &p.result {
                         Ok(import_result) => {
                             let record = ChartImportRecord {
-                                root_id: Some(root_id),
+                                root_id: Some(root.root_id),
                                 file_path: &p.path,
                                 file_size: p.file_size,
                                 modified_at: p.modified_at,
@@ -227,7 +310,7 @@ pub fn scan_song_roots_with_progress(
                             let message = error.to_string();
                             LibraryDatabase::write_failed_chart(
                                 &tx,
-                                Some(root_id),
+                                Some(root.root_id),
                                 &p.path,
                                 p.file_size,
                                 p.modified_at,
@@ -252,13 +335,9 @@ pub fn scan_song_roots_with_progress(
                 root = %root_path.display(),
                 "batch timing"
             );
-            on_progress(ScanProgress {
-                done: (report.summary.skipped.saturating_sub(root_skipped_start)
-                    + report.summary.imported.saturating_sub(root_imported_start)
-                    + report.summary.failed.saturating_sub(root_failed_start))
-                .min(files_total as u32),
-                total: files_total as u32,
-            });
+            progress_done =
+                progress_done.saturating_add(usize_to_u32(parsed.len())).min(files_total);
+            on_progress(ScanProgress { done: progress_done, total: files_total });
         }
 
         // Discovery already enumerated every song directory. Persist the shared
@@ -266,16 +345,27 @@ pub fn scan_song_roots_with_progress(
         db.update_folder_document_flags(&folder_document_flags)?;
 
         tracing::info!(
-            imported = report.summary.imported,
-            skipped = report.summary.skipped,
-            failed = report.summary.failed,
+            root_num = root.root_num,
+            root_count,
+            files = root_files_total,
+            imported = report.summary.imported.saturating_sub(root_imported_start),
+            skipped = report.summary.skipped.saturating_sub(root_skipped_start),
+            failed = report.summary.failed.saturating_sub(root_failed_start),
             root = %root_path.display(),
             "root scan complete"
         );
 
-        db.update_root_scanned_at(root_id, scanned_at)?;
+        if root.discovery_complete {
+            db.update_root_scanned_at(root.root_id, scanned_at)?;
+        } else {
+            tracing::warn!(
+                root = %root_path.display(),
+                "song root discovery was incomplete; last_scan_at was not updated"
+            );
+        }
     }
 
+    on_progress(ScanProgress { done: files_total, total: files_total });
     report.timing.total_ms = total_start.elapsed().as_millis();
     Ok(report)
 }
@@ -311,76 +401,187 @@ pub struct ChartFileEntry {
     pub has_document: bool,
 }
 
+#[derive(Debug, Default)]
+struct ChartDiscovery {
+    entries: Vec<ChartFileEntry>,
+    issues: Vec<ScanDiscoveryIssue>,
+    complete: bool,
+    root_readable: bool,
+}
+
 pub fn discover_chart_files(
     root: &Path,
     recursive: bool,
     scan: &ScanConfig,
 ) -> Result<Vec<ChartFileEntry>> {
-    let mut out = Vec::new();
-    discover_into(root, recursive, scan, &mut out)?;
-    Ok(out)
+    Ok(discover_chart_files_with_progress(root, recursive, scan, |_| {}).entries)
 }
 
-fn discover_into(
-    dir: &Path,
+fn discover_chart_files_with_progress(
+    root: &Path,
     recursive: bool,
     scan: &ScanConfig,
-    out: &mut Vec<ChartFileEntry>,
-) -> Result<()> {
-    let mut dirs = vec![dir.to_path_buf()];
+    mut on_discovered: impl FnMut(u32),
+) -> ChartDiscovery {
+    let mut discovery = ChartDiscovery { complete: true, ..Default::default() };
+    let mut dirs = vec![root.to_path_buf()];
+    let mut discovered_count = 0_u32;
+
     while let Some(dir) = dirs.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => {
+                if dir == root {
+                    discovery.root_readable = true;
+                }
+                entries
+            }
+            Err(error) => {
+                discovery.complete = false;
+                record_discovery_issue(
+                    &mut discovery.issues,
+                    root,
+                    &dir,
+                    ScanDiscoveryOperation::OpenDirectory,
+                    error,
+                );
+                continue;
+            }
+        };
         let mut charts_in_dir = Vec::new();
         let mut has_document = false;
-        for entry in std::fs::read_dir(&dir)? {
-            let entry = entry?;
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    discovery.complete = false;
+                    record_discovery_issue(
+                        &mut discovery.issues,
+                        root,
+                        &dir,
+                        ScanDiscoveryOperation::ReadEntry,
+                        error,
+                    );
+                    continue;
+                }
+            };
             let file_name = entry.file_name();
+            if scan.skip_hidden && is_hidden_name(&file_name) {
+                continue;
+            }
+            let path = entry.path();
 
             let (file_type, meta_opt) = if scan.follow_symlinks {
-                let meta = entry.metadata()?;
+                let meta = match entry.metadata() {
+                    Ok(meta) => meta,
+                    Err(error) => {
+                        discovery.complete = false;
+                        record_discovery_issue(
+                            &mut discovery.issues,
+                            root,
+                            &path,
+                            ScanDiscoveryOperation::ReadMetadata,
+                            error,
+                        );
+                        continue;
+                    }
+                };
                 let ft = meta.file_type();
                 (ft, Some(meta))
             } else {
-                (entry.file_type()?, None)
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(error) => {
+                        discovery.complete = false;
+                        record_discovery_issue(
+                            &mut discovery.issues,
+                            root,
+                            &path,
+                            ScanDiscoveryOperation::ReadFileType,
+                            error,
+                        );
+                        continue;
+                    }
+                };
+                (file_type, None)
             };
 
             if file_type.is_file() && is_document_file_name(&file_name) {
                 has_document = true;
             }
-            if scan.skip_hidden && is_hidden_name(&file_name) {
-                continue;
-            }
 
             if file_type.is_dir() {
                 if recursive {
-                    dirs.push(entry.path());
+                    dirs.push(path);
                 }
             } else if file_type.is_file() && is_chart_file_name(&file_name) {
-                let path = entry.path();
-                let (file_size, modified_at) = meta_opt
-                    .or_else(|| entry.metadata().ok())
-                    .map(|m| {
-                        let mtime = m
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as i64)
-                            .unwrap_or(0);
-                        (m.len(), mtime)
-                    })
-                    .unwrap_or((0, 0));
+                let metadata = match meta_opt {
+                    Some(metadata) => metadata,
+                    None => match entry.metadata() {
+                        Ok(metadata) => metadata,
+                        Err(error) => {
+                            discovery.complete = false;
+                            record_discovery_issue(
+                                &mut discovery.issues,
+                                root,
+                                &path,
+                                ScanDiscoveryOperation::ReadMetadata,
+                                error,
+                            );
+                            continue;
+                        }
+                    },
+                };
+                let modified_at = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
                 charts_in_dir.push(ChartFileEntry {
                     path,
-                    file_size,
+                    file_size: metadata.len(),
                     modified_at,
                     has_document: false,
                 });
+                discovered_count = discovered_count.saturating_add(1);
+                on_discovered(discovered_count);
             }
         }
         charts_in_dir.iter_mut().for_each(|entry| entry.has_document = has_document);
-        out.extend(charts_in_dir);
+        discovery.entries.extend(charts_in_dir);
     }
 
-    Ok(())
+    discovery
+}
+
+fn record_discovery_issue(
+    issues: &mut Vec<ScanDiscoveryIssue>,
+    root: &Path,
+    path: &Path,
+    operation: ScanDiscoveryOperation,
+    error: io::Error,
+) {
+    tracing::warn!(
+        root = %root.display(),
+        path = %path.display(),
+        operation = operation.as_str(),
+        error_kind = ?error.kind(),
+        raw_os_error = ?error.raw_os_error(),
+        error = %error,
+        "skipping inaccessible song scan path"
+    );
+    issues.push(ScanDiscoveryIssue {
+        root: root.to_path_buf(),
+        path: path.to_path_buf(),
+        operation,
+        error_kind: error.kind(),
+        raw_os_error: error.raw_os_error(),
+        message: error.to_string(),
+    });
+}
+
+fn usize_to_u32(value: usize) -> u32 {
+    value.min(u32::MAX as usize) as u32
 }
 
 fn is_document_file_name(name: &std::ffi::OsStr) -> bool {
@@ -560,8 +761,124 @@ mod tests {
         .unwrap();
 
         assert_eq!(report.summary.imported, 2);
-        assert_eq!(progress.first(), Some(&ScanProgress { done: 0, total: 2 }));
+        assert_eq!(progress.first(), Some(&ScanProgress { done: 0, total: 0 }));
+        assert!(progress.contains(&ScanProgress { done: 0, total: 1 }));
+        assert!(progress.contains(&ScanProgress { done: 0, total: 2 }));
         assert_eq!(progress.last(), Some(&ScanProgress { done: 2, total: 2 }));
+        assert!(progress.windows(2).all(|pair| pair[0].done <= pair[1].done));
+        assert!(progress.windows(2).all(|pair| pair[0].total <= pair[1].total));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn scan_song_roots_skips_unreadable_root_and_continues_with_global_progress() {
+        let valid_root = make_temp_dir("scan-after-unreadable");
+        let missing_root = valid_root.join("missing-external-volume");
+        write_file(&valid_root.join("song.bms"), "#TITLE Available\n#BPM 120\n#00011:01\n");
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure_connection(&conn).unwrap();
+        run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+        let mut db = LibraryDatabase::from_connection(conn);
+        let roots = vec![
+            PathEntry {
+                path: missing_root.to_string_lossy().into_owned(),
+                enabled: true,
+                recursive: true,
+            },
+            PathEntry {
+                path: valid_root.to_string_lossy().into_owned(),
+                enabled: true,
+                recursive: true,
+            },
+        ];
+        let mut progress = Vec::new();
+
+        let report = scan_song_roots_with_progress(
+            &mut db,
+            &roots,
+            &scan_config(),
+            1_700_000_040,
+            false,
+            |value| progress.push(value),
+        )
+        .unwrap();
+
+        assert_eq!(report.summary.roots_seen, 2);
+        assert_eq!(report.summary.roots_unreadable, 1);
+        assert_eq!(report.summary.discovery_skipped, 1);
+        assert_eq!(report.summary.files_seen, 1);
+        assert_eq!(report.summary.imported, 1);
+        assert_eq!(report.discovery_issues.len(), 1);
+        assert_eq!(report.discovery_issues[0].root, missing_root);
+        assert_eq!(report.discovery_issues[0].path, missing_root);
+        assert_eq!(report.discovery_issues[0].operation, ScanDiscoveryOperation::OpenDirectory);
+        assert_eq!(report.discovery_issues[0].error_kind, io::ErrorKind::NotFound);
+        assert!(progress.contains(&ScanProgress { done: 0, total: 1 }));
+        assert_eq!(progress.last(), Some(&ScanProgress { done: 1, total: 1 }));
+        assert!(progress.windows(2).all(|pair| pair[0].total <= pair[1].total));
+
+        let missing_last_scan: Option<i64> = db
+            .conn()
+            .query_row(
+                "SELECT last_scan_at FROM roots WHERE path = ?1",
+                [missing_root.to_string_lossy().as_ref()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let valid_last_scan: Option<i64> = db
+            .conn()
+            .query_row(
+                "SELECT last_scan_at FROM roots WHERE path = ?1",
+                [valid_root.to_string_lossy().as_ref()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(missing_last_scan, None);
+        assert_eq!(valid_last_scan, Some(1_700_000_040));
+
+        std::fs::remove_dir_all(valid_root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_song_roots_skips_unreadable_subdirectory_and_keeps_accessible_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = make_temp_dir("scan-unreadable-subdirectory");
+        let unreadable = root.join("unreadable");
+        std::fs::create_dir_all(&unreadable).unwrap();
+        write_file(&root.join("available.bms"), "#TITLE Available\n#BPM 120\n#00011:01\n");
+        write_file(&unreadable.join("hidden.bms"), "#TITLE Hidden\n#BPM 120\n#00011:01\n");
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure_connection(&conn).unwrap();
+        run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+        let mut db = LibraryDatabase::from_connection(conn);
+        let roots = vec![PathEntry {
+            path: root.to_string_lossy().into_owned(),
+            enabled: true,
+            recursive: true,
+        }];
+
+        let result = scan_song_roots(&mut db, &roots, &scan_config(), 1_700_000_041, false);
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let report = result.unwrap();
+
+        assert_eq!(report.summary.roots_unreadable, 0);
+        assert_eq!(report.summary.discovery_skipped, 1);
+        assert_eq!(report.summary.files_seen, 1);
+        assert_eq!(report.summary.imported, 1);
+        assert_eq!(report.discovery_issues.len(), 1);
+        assert_eq!(report.discovery_issues[0].path, unreadable);
+        assert_eq!(report.discovery_issues[0].operation, ScanDiscoveryOperation::OpenDirectory);
+        assert_eq!(report.discovery_issues[0].error_kind, io::ErrorKind::PermissionDenied);
+
+        let last_scan_at: Option<i64> =
+            db.conn().query_row("SELECT last_scan_at FROM roots", [], |row| row.get(0)).unwrap();
+        assert_eq!(last_scan_at, None);
 
         std::fs::remove_dir_all(root).unwrap();
     }
