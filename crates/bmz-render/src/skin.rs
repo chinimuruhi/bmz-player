@@ -40,8 +40,8 @@ use condition::*;
 pub use document_render::SkinDocumentRenderExt;
 use runtime::*;
 pub use runtime::{
-    DynamicTimerRuntime, JudgeRegionState, SkinClickHit, SkinClickTarget, SkinContext,
-    SkinDrawState, SkinLuaDrawRuntime, SkinLuaRuntimeContext, SkinSliderHit,
+    DynamicTimerRuntime, JudgeRegionState, MAX_JUDGE_REGIONS, SkinClickHit, SkinClickTarget,
+    SkinContext, SkinDrawState, SkinLuaDrawRuntime, SkinLuaRuntimeContext, SkinSliderHit,
     build_judge_region_state, lane_judge_region,
 };
 use select_state::*;
