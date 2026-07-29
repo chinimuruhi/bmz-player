@@ -1,0 +1,253 @@
+use super::*;
+
+#[test]
+fn moved_select_index_handles_empty_rows() {
+    assert_eq!(moved_select_index(9, 0, SelectMove::Last), 0);
+}
+
+#[test]
+fn select_scroll_duration_config_uses_beatoraja_bounds() {
+    let mut config = AppConfig::default();
+    config.select.scroll_duration_low_ms = 0;
+    config.select.scroll_duration_high_ms = 0;
+    assert_eq!(select_scroll_duration_low_ms(&config), 2);
+    assert_eq!(select_scroll_duration_high_ms(&config), 1);
+
+    config.select.scroll_duration_low_ms = 5_000;
+    config.select.scroll_duration_high_ms = 5_000;
+    assert_eq!(select_scroll_duration_low_ms(&config), 1000);
+    assert_eq!(select_scroll_duration_high_ms(&config), 1000);
+}
+
+#[test]
+fn select_move_scroll_direction_matches_row_movement() {
+    assert_eq!(select_move_scroll_direction(SelectMove::Previous), -1);
+    assert_eq!(select_move_scroll_direction(SelectMove::Next), 1);
+    assert_eq!(select_move_scroll_direction(SelectMove::PagePrevious), -1);
+    assert_eq!(select_move_scroll_direction(SelectMove::PageNext), 1);
+    assert_eq!(select_move_scroll_direction(SelectMove::First), 0);
+    assert_eq!(select_move_scroll_direction(SelectMove::Last), 0);
+}
+
+#[test]
+fn select_skin_event_state_cycles_supported_mode_filters() {
+    assert_eq!(SelectModeFilter::All.next(), SelectModeFilter::K7);
+    assert_eq!(SelectModeFilter::All.previous(), SelectModeFilter::K10);
+    assert_eq!(SelectSort::Title.next(), SelectSort::Artist);
+    assert_eq!(SelectSort::Title.previous(), SelectSort::Bp);
+    assert_eq!(
+        crate::ln_policy::LnPolicySetting::AutoLn.next(),
+        crate::ln_policy::LnPolicySetting::AutoCn
+    );
+    assert_eq!(
+        crate::ln_policy::LnPolicySetting::AutoLn.previous(),
+        crate::ln_policy::LnPolicySetting::ForceHcn
+    );
+    assert_eq!(crate::ln_policy::LnPolicySetting::ForceHcn.display_label(), "FORCE(HCN)");
+    assert_eq!(
+        cycle_gauge_option_with_direction(GaugeTypeConfig::Normal, 1),
+        GaugeTypeConfig::Hard
+    );
+    assert_eq!(
+        cycle_gauge_option_with_direction(GaugeTypeConfig::Normal, -1),
+        GaugeTypeConfig::Easy
+    );
+    assert_eq!(
+        cycle_arrange_option_with_direction(ArrangeOption::Normal, -1),
+        ArrangeOption::MFRandom
+    );
+    assert_eq!(
+        cycle_double_option_with_direction(DoubleOption::Off, -1),
+        DoubleOption::BattleAutoScratch
+    );
+    assert_eq!(cycle_hs_fix_option_with_direction(HsFixOption::Off, 1), HsFixOption::StartBpm);
+    assert_eq!(cycle_hs_fix_option_with_direction(HsFixOption::StartBpm, 1), HsFixOption::MaxBpm);
+    assert_eq!(cycle_hs_fix_option_with_direction(HsFixOption::MaxBpm, 1), HsFixOption::MainBpm);
+    assert_eq!(cycle_hs_fix_option_with_direction(HsFixOption::MainBpm, 1), HsFixOption::MinBpm);
+    assert_eq!(cycle_hs_fix_option_with_direction(HsFixOption::Off, -1), HsFixOption::MinBpm);
+    assert_eq!(cycle_bga_option_with_direction(BgaModeConfig::On, -1), BgaModeConfig::Off);
+    assert_eq!(
+        cycle_bga_expand_with_direction(BgaExpandConfig::KeepAspect, 1),
+        BgaExpandConfig::Full
+    );
+    assert_eq!(
+        cycle_gauge_auto_shift_option_with_direction(GaugeAutoShiftConfig::Off, -1),
+        GaugeAutoShiftConfig::SelectToUnder
+    );
+    assert_eq!(
+        cycle_judge_algorithm_with_direction(JudgeAlgorithmConfig::Combo, 1),
+        JudgeAlgorithmConfig::Duration
+    );
+    assert_eq!(
+        cycle_judge_algorithm_with_direction(JudgeAlgorithmConfig::Combo, -1),
+        JudgeAlgorithmConfig::Lowest
+    );
+}
+
+#[test]
+fn select_ir_context_separates_source_resolved_score_keys() {
+    let auto_ln = select_ir_cache_context(
+        crate::ln_policy::LnPolicySetting::AutoLn,
+        crate::ln_policy::LnScorePolicy::AutoLn,
+        crate::select_options::DoubleOptionScoreBucket::Off,
+        bmz_gameplay::rule::RuleMode::Beatoraja,
+    );
+    let auto_cn = select_ir_cache_context(
+        crate::ln_policy::LnPolicySetting::AutoLn,
+        crate::ln_policy::LnScorePolicy::AutoCn,
+        crate::select_options::DoubleOptionScoreBucket::Off,
+        bmz_gameplay::rule::RuleMode::Beatoraja,
+    );
+
+    assert_ne!(auto_ln, auto_cn);
+}
+
+#[test]
+fn select_mode_filter_keeps_matching_chart_rows() {
+    let mut k7 = select_chart_row(1);
+    k7.chart.as_mut().unwrap().mode = "7K".to_string();
+    let mut k14 = select_chart_row(2);
+    k14.chart.as_mut().unwrap().mode = "14K".to_string();
+    let mut items = vec![
+        SelectItem::Folder {
+            path: "folder".to_string(),
+            name: "folder".to_string(),
+            kind: SelectRowKind::Folder,
+            summary: None,
+        },
+        SelectItem::Chart(k7),
+        SelectItem::Chart(k14),
+    ];
+
+    apply_select_mode_filter(&mut items, SelectModeFilter::K14);
+
+    assert_eq!(items.len(), 2);
+    assert!(matches!(items[0], SelectItem::Folder { .. }));
+    assert_eq!(items[1].display_name(), "Title 2");
+}
+
+#[test]
+fn resolve_mode_filter_keeps_mode_with_matching_charts() {
+    let items = vec![chart_row_with_mode(1, "7K"), chart_row_with_mode(2, "5K")];
+    // 7K のチャートがあるので据え置く。
+    assert_eq!(resolve_non_empty_mode_filter(&items, SelectModeFilter::K7), SelectModeFilter::K7);
+}
+
+#[test]
+fn resolve_mode_filter_advances_when_all_charts_mismatch() {
+    // 5K しか無いフォルダで 7K フィルターを掛けると全消えになるため、
+    // beatoraja 同様に前方向 (K7 -> K14 -> K9 -> K5) へ送って K5 で止まる。
+    let items = vec![chart_row_with_mode(1, "5K"), chart_row_with_mode(2, "5K")];
+    assert_eq!(resolve_non_empty_mode_filter(&items, SelectModeFilter::K7), SelectModeFilter::K5);
+}
+
+#[test]
+fn resolve_mode_filter_does_not_advance_when_folder_remains() {
+    // フォルダ行が残るなら全消えにはならないので据え置く（beatoraja 準拠）。
+    let items = vec![
+        SelectItem::Folder {
+            path: "folder".to_string(),
+            name: "folder".to_string(),
+            kind: SelectRowKind::Folder,
+            summary: None,
+        },
+        chart_row_with_mode(1, "5K"),
+    ];
+    assert_eq!(resolve_non_empty_mode_filter(&items, SelectModeFilter::K7), SelectModeFilter::K7);
+}
+
+#[test]
+fn resolve_mode_filter_keeps_all_filter() {
+    let items = vec![chart_row_with_mode(1, "5K")];
+    assert_eq!(resolve_non_empty_mode_filter(&items, SelectModeFilter::All), SelectModeFilter::All);
+}
+
+#[test]
+fn select_mode_filter_roundtrips_through_str() {
+    for mode in SelectModeFilter::ORDER {
+        assert_eq!(SelectModeFilter::from_str_or_default(mode.as_str()), mode);
+    }
+    assert_eq!(SelectModeFilter::from_str_or_default("24K"), SelectModeFilter::All);
+    assert_eq!(SelectModeFilter::from_str_or_default("24K_DOUBLE"), SelectModeFilter::All);
+    assert_eq!(SelectModeFilter::from_str_or_default("unknown"), SelectModeFilter::All);
+}
+
+#[test]
+fn select_sort_roundtrips_through_str() {
+    for sort in SelectSort::ORDER {
+        assert_eq!(SelectSort::from_str_or_default(sort.as_str()), sort);
+    }
+    assert_eq!(SelectSort::from_str_or_default("unknown"), SelectSort::Title);
+}
+
+#[test]
+fn select_sort_orders_chart_rows_without_moving_folders() {
+    let mut slow = select_chart_row(1);
+    slow.chart.as_mut().unwrap().title = "Slow".to_string();
+    slow.chart.as_mut().unwrap().initial_bpm = 100.0;
+    let mut fast = select_chart_row(2);
+    fast.chart.as_mut().unwrap().title = "Fast".to_string();
+    fast.chart.as_mut().unwrap().initial_bpm = 200.0;
+    let mut items = vec![
+        SelectItem::Folder {
+            path: "folder".to_string(),
+            name: "folder".to_string(),
+            kind: SelectRowKind::Folder,
+            summary: None,
+        },
+        SelectItem::Chart(fast),
+        SelectItem::Chart(slow),
+    ];
+
+    apply_select_sort(&mut items, SelectSort::Bpm);
+
+    assert!(matches!(items[0], SelectItem::Folder { .. }));
+    assert_eq!(items[1].display_name(), "Slow");
+    assert_eq!(items[2].display_name(), "Fast");
+}
+
+#[test]
+fn restored_select_index_keeps_chart_when_clear_sort_moves_after_score_update() {
+    let mut played = select_chart_row(1);
+    played.chart.as_mut().unwrap().title = "Played".to_string();
+    let mut other = select_chart_row(2);
+    other.chart.as_mut().unwrap().title = "Other".to_string();
+    let old_items = [SelectItem::Chart(played.clone()), SelectItem::Chart(other.clone())];
+    let selected_key = select_item_key(&old_items[0]);
+
+    played.best_score = Some(BestScoreSummary {
+        clear_type: "Hard".to_string(),
+        ..best_score_with_replay(100, "played.json")
+    });
+    let mut new_items = vec![SelectItem::Chart(played), SelectItem::Chart(other)];
+    apply_select_sort(&mut new_items, SelectSort::Clear);
+
+    assert_eq!(restored_select_index(&new_items, Some(&selected_key), 0), 1);
+    assert_eq!(new_items[1].display_name(), "Played");
+}
+
+#[test]
+fn select_item_key_uses_typed_settings_identity() {
+    let config = SelectItem::Config(crate::screens::settings_model::ConfigSelectRow {
+        entry_id: SettingsEntryId::MasterVolume,
+    });
+    assert_eq!(select_item_key(&config), SelectItemKey::Config(SettingsEntryId::MasterVolume));
+
+    let binding = SelectItem::KeyBinding(crate::screens::settings_model::KeyBindingSelectRow {
+        key_mode: KeyMode::K7,
+        target: KeyBindingTarget::Action {
+            action: InputActionConfig::E1,
+            slot: KeyBindingSlot::KeyboardPrimary,
+        },
+    });
+    assert_eq!(
+        select_item_key(&binding),
+        SelectItemKey::KeyBinding {
+            key_mode: KeyMode::K7,
+            target: KeyBindingTarget::Action {
+                action: InputActionConfig::E1,
+                slot: KeyBindingSlot::KeyboardPrimary,
+            },
+        }
+    );
+}

@@ -1,0 +1,491 @@
+use super::*;
+
+#[test]
+fn build_game_session_maps_profile_bga_expand() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+
+    profile.play.bga_expand = BgaExpandConfig::Full;
+    let full = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    profile.play.bga_expand = BgaExpandConfig::KeepAspect;
+    let keep = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    profile.play.bga_expand = BgaExpandConfig::Off;
+    let off = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+
+    assert_eq!(full.bga_stretch, 0);
+    assert_eq!(keep.bga_stretch, 1);
+    assert_eq!(off.bga_stretch, 8);
+}
+
+#[test]
+fn build_game_session_maps_profile_bga_mode() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+
+    profile.play.bga = BgaModeConfig::Off;
+    let off = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+
+    profile.play.bga = BgaModeConfig::Auto;
+    let auto_human = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    let auto_autoplay = build_game_session(
+        Arc::new(chart()),
+        &profile,
+        PlaySessionOptions { autoplay: true, ..PlaySessionOptions::default() },
+    );
+    let auto_replay = build_game_session(
+        Arc::new(chart()),
+        &profile,
+        PlaySessionOptions {
+            replay_player: Some(ReplayPlayer::default()),
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert!(!off.bga_enabled);
+    assert!(!auto_human.bga_enabled);
+    assert!(auto_autoplay.bga_enabled);
+    assert!(auto_replay.bga_enabled);
+}
+
+#[test]
+fn build_game_session_copies_selected_play_slot_offsets() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.skin.play7_offsets.push(crate::config::profile_config::SkinOffsetConfig {
+        name: None,
+        id: 42,
+        x: 1,
+        y: 2,
+        w: 3,
+        h: 4,
+        r: 5,
+        a: -6,
+    });
+    profile.skin.play14_offsets.push(crate::config::profile_config::SkinOffsetConfig {
+        name: None,
+        id: 42,
+        h: 99,
+        ..Default::default()
+    });
+
+    let session = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+
+    assert_eq!(
+        session.skin_offsets,
+        vec![PlaySkinOffset { id: 42, x: 1, y: 2, w: 3, h: 4, r: 5, a: -6 }]
+    );
+}
+
+#[test]
+fn build_game_session_uses_active_offsets_instead_of_skin_history() {
+    use crate::config::profile_config::{SkinHistoryEntryConfig, SkinOffsetConfig};
+
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.skin.play7 = "data/skins/ECFN/play/play7.luaskin".to_string();
+    profile.skin.play7_offsets = vec![SkinOffsetConfig { id: 30, h: 12, ..Default::default() }];
+    profile.skin.history.insert(
+        profile.skin.play7.clone(),
+        SkinHistoryEntryConfig {
+            offsets: vec![SkinOffsetConfig { id: 30, h: 48, ..Default::default() }],
+            ..Default::default()
+        },
+    );
+
+    let session = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+
+    assert_eq!(
+        session.skin_offsets,
+        vec![PlaySkinOffset { id: 30, x: 0, y: 0, w: 0, h: 12, r: 0, a: 0 }]
+    );
+}
+
+#[test]
+fn build_game_session_keeps_active_offsets_with_empty_skin_history() {
+    use crate::config::profile_config::{SkinHistoryEntryConfig, SkinOffsetConfig};
+
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.skin.play7 = "resource:skins/ECFN/play/play7.luaskin".to_string();
+    profile.skin.play7_offsets = vec![
+        SkinOffsetConfig { id: 43, a: 180, ..Default::default() },
+        SkinOffsetConfig { id: 44, a: 110, ..Default::default() },
+    ];
+    profile.skin.history.insert(profile.skin.play7.clone(), SkinHistoryEntryConfig::default());
+
+    let session = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+
+    assert_eq!(
+        session.skin_offsets,
+        vec![
+            PlaySkinOffset { id: 43, x: 0, y: 0, w: 0, h: 0, r: 0, a: 180 },
+            PlaySkinOffset { id: 44, x: 0, y: 0, w: 0, h: 0, r: 0, a: 110 },
+        ]
+    );
+}
+
+#[test]
+fn build_game_session_clamps_profile_hispeed() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.hispeed = 11.0;
+    let high = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    profile.lane.hispeed = 0.25;
+    let low = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+
+    assert_eq!(high.hispeed, 10.0);
+    assert_eq!(low.hispeed, 0.5);
+}
+
+#[test]
+fn build_game_session_initializes_floating_hispeed_for_chart_bpm() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.target_green_number = 300;
+    // Stale value from a 120 BPM chart with green number 300.
+    profile.lane.hispeed = 4.0;
+    let mut fast_chart = chart();
+    fast_chart.metadata.initial_bpm = 240.0;
+
+    let session = build_game_session(
+        Arc::new(fast_chart),
+        &profile,
+        PlaySessionOptions { hs_fix: HsFixOption::StartBpm, ..PlaySessionOptions::default() },
+    );
+
+    assert_eq!(session.hispeed_mode, HispeedMode::Floating);
+    assert_eq!(session.target_green_number, 300);
+    assert!((session.hispeed - 2.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn build_game_session_uses_hsfix_to_select_hispeed_mode() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.hispeed = 4.0;
+    profile.lane.target_green_number = 300;
+    let normal = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    assert_eq!(normal.hispeed_mode, HispeedMode::Normal);
+    assert_eq!(normal.hispeed, 4.0);
+
+    profile.lane.hispeed_mode = HispeedModeConfig::Normal;
+    let floating = build_game_session(
+        Arc::new(chart()),
+        &profile,
+        PlaySessionOptions { hs_fix: HsFixOption::StartBpm, ..PlaySessionOptions::default() },
+    );
+    assert_eq!(floating.hispeed_mode, HispeedMode::Floating);
+    assert!((floating.hispeed - 4.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn build_game_session_initializes_floating_hispeed_for_hsfix_base_bpm() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.target_green_number = 300;
+    let mut bpm_chart = chart();
+    bpm_chart.metadata.initial_bpm = 120.0;
+    bpm_chart.timing_events.push(bmz_chart::model::TimingEvent {
+        tick: bmz_core::time::ChartTick(48),
+        time: TimeUs(1_000_000),
+        kind: TimingEventKind::BpmChange { bpm: 240.0 },
+    });
+
+    let session = build_game_session(
+        Arc::new(bpm_chart),
+        &profile,
+        PlaySessionOptions { hs_fix: HsFixOption::MaxBpm, ..PlaySessionOptions::default() },
+    );
+
+    assert_eq!(session.hsfix_base_bpm, 240.0);
+    assert_eq!(session.hsfix_index, 2);
+    assert!((session.hispeed - 2.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn main_bpm_uses_bpm_with_most_notes() {
+    let mut bpm_chart = chart();
+    bpm_chart.timing_events.push(bmz_chart::model::TimingEvent {
+        tick: bmz_core::time::ChartTick(48),
+        time: TimeUs(1_000_000),
+        kind: TimingEventKind::BpmChange { bpm: 180.0 },
+    });
+    bpm_chart.lane_notes[Lane::Key1.index()].push(note(1, Lane::Key1, 0));
+    bpm_chart.lane_notes[Lane::Key2.index()].push(note(2, Lane::Key2, 1_100_000));
+    bpm_chart.lane_notes[Lane::Key3.index()].push(note(3, Lane::Key3, 1_200_000));
+    let timing_map = bmz_chart::timing::TimingMap::from_chart_timing_events(
+        bpm_chart.metadata.initial_bpm,
+        &bpm_chart.timing_events,
+    );
+
+    assert_eq!(hsfix_base_bpm_for_chart(&bpm_chart, &timing_map, HsFixOption::MainBpm), 180.0);
+}
+
+#[test]
+fn build_game_session_accepts_custom_input_backend() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut backend = BufferedInputBackend::default();
+    backend.push(DeviceInputEvent {
+        device: DeviceId(1),
+        control: PhysicalControl::KeyboardKey("Z".to_string()),
+        kind: InputKind::Press,
+        timestamp: DeviceTimestamp::Unknown,
+        bounce_policy: Default::default(),
+    });
+    let chart = Arc::new(chart());
+    let mut session = build_game_session_with_input_backend(
+        chart,
+        &profile,
+        PlaySessionOptions::default(),
+        Box::new(backend),
+    );
+    let ctx = InputTimingContext {
+        audio_clock: &session.audio_clock,
+        offsets: session.offsets,
+        timestamp_anchor: None,
+    };
+
+    let inputs = session.input_system.collect_game_inputs(&ctx);
+
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(inputs[0].lane, Lane::Key1);
+}
+
+#[test]
+fn load_game_session_for_chart_imports_linked_file() {
+    let path = write_temp_bms(
+        "\
+#TITLE Linked
+#BPM 120
+#00011:01
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+
+    let session =
+        load_game_session_for_chart(&library_db, chart_id, &profile, PlaySessionOptions::default())
+            .unwrap();
+
+    assert_eq!(session.chart.metadata.title, "Linked");
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn load_transformed_chart_applies_start_note_margin() {
+    let path = write_temp_bms(
+        "\
+#TITLE Early Note
+#BPM 120
+#00011:01
+#00201:01
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    let source_first =
+        imported.chart.lane_notes.iter().flatten().map(|note| note.time.0).min().unwrap();
+    assert_eq!(source_first, 0);
+
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+
+    let transformed =
+        load_transformed_chart_for_play(&library_db, chart_id, &PlaySessionOptions::default())
+            .unwrap();
+    let play_first =
+        transformed.chart.lane_notes.iter().flatten().map(|note| note.time.0).min().unwrap();
+    assert_eq!(play_first, 1_000_000);
+
+    let source = load_source_chart_for_chart(&library_db, chart_id, None).unwrap();
+    let source_first_again =
+        source.lane_notes.iter().flatten().map(|note| note.time.0).min().unwrap();
+    assert_eq!(source_first_again, 0, "source chart must stay unshifted");
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn load_game_session_counts_cn_ends_from_source_chart() {
+    let path = write_temp_bms(
+        "\
+#TITLE Source CN
+#BPM 120
+#LNMODE 2
+#LNOBJ ZZ
+#00011:01ZZ
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    assert_eq!(imported.chart.total_notes, 1);
+    assert_eq!(imported.chart.long_notes.len(), 1);
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+    let stored = library_db.list_charts_by_ids(&[chart_id]).unwrap().remove(0);
+    assert_eq!(stored.total_notes, 1);
+    assert_eq!(stored.ln_counts.defined_cn_pairs, 1);
+    assert_eq!(stored.scored_total_notes_for_setting(LnPolicySetting::AutoLn), 2);
+    library_db
+        .conn()
+        .execute(
+            "UPDATE charts SET total_notes = 999, mode = '14K' WHERE id = ?1",
+            rusqlite::params![chart_id],
+        )
+        .unwrap();
+    let source_chart = load_source_chart_for_chart(&library_db, chart_id, None).unwrap();
+    assert_eq!(source_chart.metadata.key_mode, KeyMode::K5);
+    assert_eq!(source_chart.identity.file_sha256, imported.chart.identity.file_sha256);
+    assert_eq!(
+        scored_note_count_for_chart(&library_db, chart_id, &PlaySessionOptions::default()).unwrap(),
+        2,
+        "course pre-count must ignore stale library totals"
+    );
+    let force_ln = PlaySessionOptions {
+        ln_mode_override: Some(bmz_chart::model::LongNoteMode::Ln),
+        ..Default::default()
+    };
+    assert_eq!(scored_note_count_for_chart(&library_db, chart_id, &force_ln).unwrap(), 1);
+    let battle = PlaySessionOptions { double_option: DoubleOption::Battle, ..Default::default() };
+    assert_eq!(scored_note_count_for_chart(&library_db, chart_id, &battle).unwrap(), 4);
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+
+    let session =
+        load_game_session_for_chart(&library_db, chart_id, &profile, PlaySessionOptions::default())
+            .unwrap();
+
+    assert_eq!(session.chart.total_notes, 1);
+    assert_eq!(session.scored_total_notes, 2);
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn load_prepared_play_session_for_chart_loads_audio_samples() {
+    let (path, wav_path) = write_temp_bms_with_wav(
+        "\
+#TITLE Prepared
+#BPM 120
+#WAV01 test.wav
+#00011:01
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+
+    let prepared = load_prepared_play_session_for_chart(
+        &library_db,
+        chart_id,
+        &profile,
+        PlaySessionOptions::default(),
+    )
+    .unwrap();
+
+    assert_eq!(prepared.session.chart.metadata.title, "Prepared");
+    assert_eq!(prepared.audio.mixer.output_sample_rate, 48_000);
+    assert!(matches!(prepared.sample_report[0].status, LoadedSampleStatus::Loaded));
+    assert!(prepared.audio.samples.get(SoundId(0)).is_some());
+
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_file(wav_path).unwrap();
+}
+
+#[test]
+fn preload_reports_applied_arrange_before_audio_progress() {
+    let (path, wav_path) = write_temp_bms_with_wav(
+        "\
+#TITLE Arrange preview
+#BPM 120
+#WAV01 test.wav
+#00011:01
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+    let reported_arrange = RefCell::new(None);
+
+    let preloaded = preload_play_session_for_chart_with_callbacks(
+        &library_db,
+        chart_id,
+        PlaySessionOptions {
+            arrange: ArrangeOption::Random,
+            arrange_seed: Some(42),
+            ..Default::default()
+        },
+        |arrange| {
+            *reported_arrange.borrow_mut() = Some(arrange.clone());
+        },
+        |_, _| {
+            assert!(
+                reported_arrange.borrow().is_some(),
+                "arrange must be available before WAV progress"
+            );
+        },
+    )
+    .unwrap();
+
+    let reported_arrange = reported_arrange.into_inner().expect("reported arrange");
+    assert_eq!(reported_arrange.pattern, preloaded.applied_arrange.pattern);
+    assert_eq!(reported_arrange.arrange, ArrangeOption::Random);
+
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_file(wav_path).unwrap();
+}

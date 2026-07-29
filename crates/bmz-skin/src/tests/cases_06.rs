@@ -1,0 +1,594 @@
+use super::*;
+
+#[test]
+fn rmz_skin_play6_decodes_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rmz-skin/play6main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &BTreeMap::new(), &BTreeMap::new())
+        .expect("Rmz-skin play6 should decode");
+    assert_eq!(loaded.document.skin_type, 23);
+    assert!(!loaded.document.destination.is_empty());
+    let fast_slow_draws = loaded
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id == "fast" || destination.id == "slow" =>
+            {
+                Some((destination.id.as_str(), destination.draw.as_str()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        fast_slow_draws.contains(&("fast", "option(1242) && number(525) != 0")),
+        "Rmz play6 FAST draw should remain runtime-gated: {fast_slow_draws:?}"
+    );
+    assert!(
+        fast_slow_draws.contains(&("slow", "option(1243) && number(525) != 0")),
+        "Rmz play6 SLOW draw should remain runtime-gated: {fast_slow_draws:?}"
+    );
+    for (id, label, draw) in [
+        ("lane-op-fran-tx", "F-RANDOM", "event_index(344) == 10"),
+        ("lane-op-mfran-tx", "MF-RANDOM", "event_index(344) == 11"),
+    ] {
+        let text = loaded
+            .document
+            .text
+            .iter()
+            .find(|text| text.id == id && text.constant_text == label)
+            .unwrap_or_else(|| panic!("Rmz play6 should decode {id} text"));
+        assert_eq!(text.size, 30, "Rmz play6 {id} should match the sprite text height");
+        assert_eq!(text.align, 1);
+        let draws = loaded
+            .document
+            .destination
+            .iter()
+            .filter_map(|entry| match entry {
+                bmz_skin_document::DestinationListEntry::Single(destination)
+                    if destination.id == id =>
+                {
+                    Some(destination.draw.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(draws.contains(&draw), "Rmz play6 {id} should use {draw}, got {draws:?}");
+    }
+    let destination_frame = |id: &str| {
+        loaded.document.destination.iter().find_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id == id =>
+            {
+                destination.dst.first().and_then(|entry| match entry {
+                    bmz_skin_document::SkinDstEntry::Frame(frame) => Some(*frame),
+                    bmz_skin_document::SkinDstEntry::Conditional { .. } => None,
+                })
+            }
+            _ => None,
+        })
+    };
+    let sprite_frame = destination_frame("lane-op-tx").expect("Rmz arrange sprite destination");
+    for id in ["lane-op-fran-tx", "lane-op-mfran-tx"] {
+        let frame = destination_frame(id).unwrap_or_else(|| panic!("Rmz {id} destination"));
+        assert_eq!(frame.x, sprite_frame.x.zip(sprite_frame.w).map(|(x, w)| x + w / 2));
+        assert_eq!(frame.w, sprite_frame.w);
+        assert_eq!(frame.h, sprite_frame.h);
+    }
+    let random_draw = (0..10)
+        .map(|value| format!("event_index(344) == {value}"))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    assert!(loaded.document.destination.iter().any(|entry| matches!(
+        entry,
+        bmz_skin_document::DestinationListEntry::Single(destination)
+            if destination.id == "lane-op-tx" && destination.draw == random_draw
+    )));
+    let eon_shadow_draw = "timer(143) == timer_off and number(106)-number(110)-number(111)-number(112)-number(113)-number(114) == 0";
+    let eon_destinations = loaded
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id == "eon" =>
+            {
+                Some((destination.timer, destination.draw.as_str()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        eon_destinations.iter().any(|(timer, _)| *timer == Some(143)),
+        "Rmz play6 END_OF_NOTES animation should use timer 143: {eon_destinations:?}"
+    );
+    assert!(
+        eon_destinations.iter().any(|(timer, draw)| timer.is_none() && *draw == eon_shadow_draw),
+        "Rmz play6 END_OF_NOTES shadow should stay gated by remaining playable notes: {eon_destinations:?}"
+    );
+    let note = loaded.document.note.expect("play6 note definition");
+    assert_eq!(note.note.len(), 6);
+    assert_eq!(note.dst.len(), 6);
+}
+
+#[test]
+fn rmz_skin_play5_keeps_default_lane_colors_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rmz-skin/play5main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &BTreeMap::new(), &BTreeMap::new())
+        .expect("Rmz-skin play5 should decode");
+    assert_eq!(loaded.document.skin_type, 1);
+    assert!(
+        loaded.document.property.iter().any(|property| property.name == "Notes 5Key Color"),
+        "play5 should expose the lane color option"
+    );
+    let note = loaded.document.note.expect("play5 note definition");
+    assert_eq!(note.note, vec!["note-Wh", "note-Bl", "note-Ye", "note-Bl", "note-Wh", "note-Sc"]);
+    assert_eq!(note.dst.len(), 6);
+}
+
+#[test]
+fn rmz_skin_play5_6key_like_colors_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rmz-skin/play5main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let options = BTreeMap::from([("Notes 5Key Color".to_string(), "6Key-like".to_string())]);
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &options, &BTreeMap::new())
+        .expect("Rmz-skin play5 6Key-like colors should decode");
+    let note = loaded.document.note.expect("play5 note definition");
+    assert_eq!(note.note, vec!["note-Bl", "note-Wh", "note-Wh", "note-Bl", "note-Wh", "note-Wh"]);
+    assert_eq!(note.dst.len(), 6);
+
+    let options = BTreeMap::from([
+        ("Scratch Side".to_string(), "Right".to_string()),
+        ("Notes 5Key Color".to_string(), "6Key-like".to_string()),
+    ]);
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &options, &BTreeMap::new())
+        .expect("Rmz-skin play5 6Key-like right scratch colors should decode");
+    let note = loaded.document.note.expect("play5 note definition");
+    assert_eq!(note.note, vec!["note-Wh", "note-Bl", "note-Wh", "note-Wh", "note-Bl", "note-Wh"]);
+    assert_eq!(note.dst.len(), 6);
+}
+
+#[test]
+fn rmz_skin_play6_enlarge_uses_wide_note_lanes_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rmz-skin/play6main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let options = BTreeMap::from([("Notes 6Key Align".to_string(), "Enlarge".to_string())]);
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &options, &BTreeMap::new())
+        .expect("Rmz-skin play6 enlarge should decode");
+    let note = loaded.document.note.expect("play6 note definition");
+    let widths: Vec<_> = note
+        .dst
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::SkinDstEntry::Frame(frame) => frame.w,
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(widths, vec![132; 6]);
+}
+
+#[test]
+fn rmz_skin_play4_decodes_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rmz-skin/play4main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &BTreeMap::new(), &BTreeMap::new())
+        .expect("Rmz-skin play4 should decode");
+    assert_eq!(loaded.document.skin_type, 22);
+    assert!(!loaded.document.destination.is_empty());
+    let note = loaded.document.note.expect("play4 note definition");
+    assert_eq!(note.note, vec!["note-Wh", "note-Bl", "note-Bl", "note-Wh"]);
+    assert_eq!(note.dst.len(), 4);
+}
+
+#[test]
+fn rmz_skin_play4_enlarge_uses_wide_note_lanes_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rmz-skin/play4main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let options = BTreeMap::from([("Notes 4Key Align".to_string(), "Enlarge".to_string())]);
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &options, &BTreeMap::new())
+        .expect("Rmz-skin play4 enlarge should decode");
+    let note = loaded.document.note.expect("play4 note definition");
+    let widths: Vec<_> = note
+        .dst
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::SkinDstEntry::Frame(frame) => frame.w,
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(widths, vec![132; 4]);
+}
+
+#[test]
+fn peaceful_play_integral_property_ops_are_selectable_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/PeacefulPlay/play9.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let loaded = load_lua_skin(&skin_path, SkinKind::Play, &BTreeMap::new(), &BTreeMap::new())
+        .expect("PeacefulPlay play9 should decode");
+    let property_warnings = loaded
+        .warnings
+        .iter()
+        .filter(|warning| warning.message.contains("has no selectable op"))
+        .map(|warning| warning.message.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        property_warnings.is_empty(),
+        "PeacefulPlay properties should accept integral Lua-number ops: {property_warnings:?}"
+    );
+    let duration_info = loaded
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if matches!(
+                    destination.id.as_str(),
+                    "val-duration" | "val-lanecover-amount" | "val-duration-green"
+                ) =>
+            {
+                Some(destination)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(duration_info.len(), 3);
+    assert!(
+        duration_info.iter().all(|destination| {
+            destination.draw == "option(80) or option(81) and timer(40) == timer_off"
+        }),
+        "duration info: {duration_info:?}"
+    );
+    assert_eq!(
+        loaded
+            .document
+            .value
+            .iter()
+            .find(|value| value.id == "val-hits-per-sec")
+            .map(|value| value.value_expr.as_str()),
+        Some("bmz:keylogger_nps")
+    );
+    let keylogger_graphs = loaded
+        .document
+        .graph
+        .iter()
+        .filter(|graph| graph.id.starts_with("keylogger-graph-"))
+        .collect::<Vec<_>>();
+    assert!(!keylogger_graphs.is_empty());
+    assert!(
+        keylogger_graphs
+            .iter()
+            .all(|graph| { graph.value_expr.starts_with("bmz:keylogger_graph:") })
+    );
+    let judge_color = load_lua_skin(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::from([("ノーツ色 Note Color".to_string(), "JUDGE".to_string())]),
+        &BTreeMap::new(),
+    )
+    .expect("PeacefulPlay judge-color key logger should decode");
+    let keylogger_notes = judge_color
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id.starts_with("keylogger-note-judge-") =>
+            {
+                Some(destination)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(!keylogger_notes.is_empty());
+    assert!(keylogger_notes.iter().all(|destination| {
+        destination.timer_expr.starts_with("bmz:keylogger_event:")
+            && destination.draw.starts_with("keylogger_judge(")
+    }));
+    let keybeams = loaded
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id.starts_with("key-beam-") =>
+            {
+                Some(destination)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(keybeams.len(), 9 * 4 * 2);
+    for pair in keybeams.chunks_exact(2) {
+        assert!(pair[0].timer.is_none());
+        assert!(pair[0].draw.starts_with("keybeam_hold("), "hold: {:?}", pair[0]);
+        assert!(matches!(pair[1].timer, Some(120..=129)));
+        assert!(pair[1].draw.starts_with("keybeam_fade("), "fade: {:?}", pair[1]);
+    }
+    assert_eq!(loaded.warnings.len(), 8, "warnings: {:?}", loaded.warnings);
+    assert!(loaded.warnings.iter().all(|warning| {
+        warning.message.starts_with("skipping unsupported custom timer function id 1190")
+    }));
+    let gauge_lead_glow = loaded
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id.starts_with("gauge-lead-glow-") =>
+            {
+                Some(destination)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(gauge_lead_glow.len(), 216);
+    assert!(
+        gauge_lead_glow
+            .iter()
+            .all(|destination| { destination.draw.starts_with("gauge_lead_glow(") }),
+        "unexpected gauge predicates: {:?}",
+        gauge_lead_glow
+            .iter()
+            .filter(|destination| !destination.draw.starts_with("gauge_lead_glow("))
+            .map(|destination| (&destination.id, &destination.draw))
+            .collect::<Vec<_>>()
+    );
+    let sevenkeys_path = skin_path.with_file_name("play7_9lane.luaskin");
+    let sevenkeys =
+        load_lua_skin(&sevenkeys_path, SkinKind::Play, &BTreeMap::new(), &BTreeMap::new())
+            .expect("PeacefulPlay play7_9lane should decode");
+    assert!(sevenkeys.document.destination.iter().any(|entry| matches!(
+        entry,
+        bmz_skin_document::DestinationListEntry::Single(destination)
+            if destination.id == "gauge-lead-glow-groove-below"
+                && destination.draw.starts_with("gauge_lead_glow(groove,")
+    )));
+    assert_eq!(
+        loaded.document.fixed_delay_timers,
+        vec![bmz_skin_document::SkinFixedDelayTimerDef {
+            id: 11900,
+            source_timer: 143,
+            delay_ms: 2000,
+        }],
+        "only PeacefulPlay's end-of-note fixed-delay timer should be inferred"
+    );
+}
+
+#[test]
+fn peaceful_play_gauge_overlay_keeps_one_destination_per_integer_width() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/PeacefulPlay/play9.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    for (display, mode, integer_id) in [
+        ("%", "percent", "val-gauge-percent-integer"),
+        ("Value", "amount", "val-gauge-amount-integer"),
+    ] {
+        let properties = BTreeMap::from([
+            ("ゲージ量オーバーレイ Gauge Value Overlay".to_string(), "ON(100%)".to_string()),
+            ("ゲージ量表示方式 Gauge Value Display Mode".to_string(), display.to_string()),
+        ]);
+        let loaded = load_lua_skin(&skin_path, SkinKind::Play, &properties, &BTreeMap::new())
+            .expect("PeacefulPlay gauge overlay should decode");
+        assert_eq!(loaded.warnings.len(), 8, "{display} overlay warnings: {:?}", loaded.warnings);
+        assert!(loaded.warnings.iter().all(|warning| {
+            warning.message.starts_with("skipping unsupported custom timer function id 1190")
+        }));
+        let predicates = loaded
+            .document
+            .destination
+            .iter()
+            .filter_map(|entry| match entry {
+                bmz_skin_document::DestinationListEntry::Single(destination)
+                    if destination.id == integer_id =>
+                {
+                    Some(destination.draw.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            predicates,
+            (1..=3)
+                .map(|digits| format!("gauge_value_digits({mode},{digits})"))
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn lua_static_boolean_draw_stays_static() {
+    let loaded = load_runtime_draw_fixture("bmz-skin-static-bool-draw", "local draw = true");
+    assert_eq!(only_destination_draw(&loaded), "number(0) >= 0");
+    assert!(loaded.lua_runtime.is_none());
+}
+
+#[test]
+fn lua_inferable_draw_keeps_compiled_path() {
+    let loaded = load_runtime_draw_fixture(
+        "bmz-skin-compiled-draw",
+        "local draw = function() return main_state.option(46) end",
+    );
+    assert_eq!(only_destination_draw(&loaded), "option(46)");
+    assert!(loaded.lua_runtime.is_none());
+}
+
+#[test]
+fn lua_stateful_draw_uses_clean_runtime_vm_and_runs_each_call() {
+    let mut loaded = load_runtime_draw_fixture(
+        "bmz-skin-stateful-runtime-draw",
+        r#"
+            local count = 0
+            local draw = function()
+                count = count + 1
+                return count % 2 == 0
+            end
+            "#,
+    );
+    assert_eq!(only_destination_draw(&loaded), "bmz:lua_draw_callback:0");
+    let runtime = loaded.lua_runtime.as_mut().expect("runtime fallback");
+    let state = TestLuaMainState::default();
+    // Inference invoked its own closure repeatedly. Runtime must still begin
+    // at the untouched count=0 state and must not cache between calls.
+    assert!(!runtime.evaluate_draw(0, &state));
+    assert!(runtime.evaluate_draw(0, &state));
+    assert!(!runtime.evaluate_draw(0, &state));
+}
+
+#[test]
+fn lua_runtime_draw_reads_updated_main_state_each_call() {
+    let mut loaded = load_runtime_draw_fixture(
+        "bmz-skin-runtime-current-state",
+        r#"
+            local draw = function()
+                if main_state.number(999) == 0 then
+                    error("analysis values are intentionally unsupported")
+                end
+                return main_state.option(46)
+                    and main_state.number(71) == 5
+                    and main_state.float(72) > 1.5
+                    and main_state.text(10) == "updated"
+                    and main_state.timer(2) == 123
+            end
+            "#,
+    );
+    assert_eq!(only_destination_draw(&loaded), "bmz:lua_draw_callback:0");
+    let runtime = loaded.lua_runtime.as_mut().expect("runtime fallback");
+    let mut state = TestLuaMainState::default();
+    state.numbers.insert(999, 1);
+    assert!(!runtime.evaluate_draw(0, &state));
+    state.options.insert(46, true);
+    state.numbers.insert(71, 5);
+    state.floats.insert(72, 2.0);
+    state.texts.insert(10, "updated".to_string());
+    state.timers.insert(2, 123);
+    assert!(runtime.evaluate_draw(0, &state));
+    state.texts.insert(10, "changed".to_string());
+    assert!(!runtime.evaluate_draw(0, &state));
+}
+
+#[test]
+fn lua_runtime_draw_reads_updated_main_state_offset_each_call() {
+    let mut loaded = load_runtime_draw_fixture(
+        "bmz-skin-runtime-current-offset",
+        r#"
+            local draw = function()
+                if main_state.number(999) == 0 then
+                    error("analysis values are intentionally unsupported")
+                end
+                local offset = main_state.offset(45)
+                return offset.x == 1
+                    and offset.y == 2
+                    and offset.w == 3
+                    and offset.h == 4
+                    and offset.r == 5
+                    and offset.a == -6
+            end
+            "#,
+    );
+    assert_eq!(only_destination_draw(&loaded), "bmz:lua_draw_callback:0");
+    let runtime = loaded.lua_runtime.as_mut().expect("runtime fallback");
+    let mut state = TestLuaMainState::default();
+    state.numbers.insert(999, 1);
+    assert!(!runtime.evaluate_draw(0, &state));
+    state.offsets.insert(45, LuaSkinOffsetValue { x: 1, y: 2, w: 3, h: 4, r: 5, a: -6 });
+    assert!(runtime.evaluate_draw(0, &state));
+    state.offsets.get_mut(&45).unwrap().a = 0;
+    assert!(!runtime.evaluate_draw(0, &state));
+}
+
+#[test]
+fn lua_runtime_draw_errors_and_invalid_values_are_log_once_false() {
+    for (name, source) in [
+        ("bmz-skin-runtime-error", "local draw = function() error('expected test error') end"),
+        ("bmz-skin-runtime-invalid-return", "local draw = function() return 'not boolean' end"),
+        ("bmz-skin-runtime-nil-return", "local draw = function() return nil end"),
+        (
+            "bmz-skin-runtime-missing-main-state-api",
+            "local draw = function() return main_state.missing_api() end",
+        ),
+    ] {
+        let mut loaded = load_runtime_draw_fixture(name, source);
+        let runtime = loaded.lua_runtime.as_mut().expect("runtime fallback");
+        let state = TestLuaMainState::default();
+        assert!(!runtime.evaluate_draw(0, &state));
+        assert!(!runtime.evaluate_draw(0, &state));
+        assert_eq!(runtime.failure_log_count(), 1);
+    }
+}
+
+#[test]
+fn lua_runtime_draw_instruction_limit_falls_back_to_false() {
+    let mut loaded = load_runtime_draw_fixture(
+        "bmz-skin-runtime-instruction-limit",
+        "local draw = function() while true do end end",
+    );
+    let runtime = loaded.lua_runtime.as_mut().expect("runtime fallback");
+    assert!(!runtime.evaluate_draw(0, &TestLuaMainState::default()));
+    assert_eq!(runtime.failure_log_count(), 1);
+}
+
+#[test]
+fn lua_to_json_rejects_runtime_draw_callbacks() {
+    let root = unique_test_dir("bmz-skin-runtime-json-convert");
+    fs::create_dir_all(&root).unwrap();
+    let input = root.join("skin.luaskin");
+    let output = root.join("skin.json");
+    fs::write(
+        &input,
+        r#"
+            local count = 0
+            return {
+                destination = {{
+                    id = "runtime",
+                    draw = function()
+                        count = count + 1
+                        return count % 2 == 0
+                    end,
+                    dst = {{ x = 0, y = 0, w = 1, h = 1 }}
+                }}
+            }
+            "#,
+    )
+    .unwrap();
+    let error = convert_lua_skin_to_json_file(&input, &output, &BTreeMap::new(), &BTreeMap::new())
+        .unwrap_err();
+    assert!(error.to_string().contains("cannot serialize runtime draw callbacks"));
+    assert!(error.to_string().contains("$.destination[1].draw"));
+    assert!(!output.exists());
+}

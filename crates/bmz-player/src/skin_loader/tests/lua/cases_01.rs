@@ -1,0 +1,736 @@
+use super::*;
+
+#[test]
+fn render_lua_main_state_reads_current_frame_skin_offset() {
+    let mut state = SkinDrawState::default();
+    state
+        .skin_offsets
+        .set(45, bmz_render::skin_offset::SkinOffsetValue { x: 1, y: 2, w: 3, h: 4, r: 5, a: -6 });
+    let text_values = BTreeMap::new();
+    let provider =
+        RenderLuaMainState { state: &state, enabled_options: &[], text_values: &text_values };
+
+    assert_eq!(
+        provider.offset(45),
+        bmz_skin::LuaSkinOffsetValue { x: 1, y: 2, w: 3, h: 4, r: 5, a: -6 }
+    );
+    assert_eq!(provider.offset(46), bmz_skin::LuaSkinOffsetValue::default());
+}
+
+#[test]
+fn lua_compat_virtual_io_contains_only_sanitized_beatoraja_config() {
+    let files = lua_compat_virtual_io_files();
+    assert_eq!(files.len(), 2);
+
+    let system: serde_json::Value =
+        serde_json::from_str(&files["config_sys.json"]).expect("system config should be JSON");
+    assert_eq!(system, serde_json::json!({ "playername": "bmz" }));
+
+    let player: serde_json::Value = serde_json::from_str(&files["player/bmz/config_player.json"])
+        .expect("player config should be JSON");
+    let player = player.as_object().expect("player config should be an object");
+    assert_eq!(
+        player.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        BTreeSet::from(["mode5", "mode7", "mode9", "mode10", "mode14", "mode24", "mode24double"])
+    );
+    for mode in player.values() {
+        assert_eq!(mode["keyboard"], serde_json::json!({}));
+        assert_eq!(mode["controller"], serde_json::json!([]));
+        assert_eq!(mode["midi"], serde_json::json!({}));
+    }
+}
+
+#[test]
+fn modern_chic_result_bakes_runtime_song_label_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/ModernChic/result.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+    let runtime_state = LuaLoadRuntimeState {
+        text_values: BTreeMap::from([
+            (10, "Song".to_string()),
+            (11, "Subtitle".to_string()),
+            (12, "Song Subtitle".to_string()),
+            (13, "Genre".to_string()),
+            (14, "Artist".to_string()),
+            (1003, "Table ★12".to_string()),
+        ]),
+        ..LuaLoadRuntimeState::default()
+    };
+    let loaded = load_skin_document_uncached(
+        &skin_path,
+        SkinKind::Result,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &runtime_state,
+    )
+    .expect("unmodified ModernChic result should decode with runtime song text");
+    let bottom = loaded
+        .document
+        .text
+        .iter()
+        .find(|text| text.id == "bottomResult")
+        .expect("ModernChic bottomResult text");
+    assert_eq!(bottom.constant_text, "Song Subtitle / Artist / Genre / Table ★12");
+}
+
+#[test]
+fn luxe_flat_result_decodes_local_panel_state_and_tab_actions() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/Luxez-Flat/result/result.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let runtime_state = LuaLoadRuntimeState {
+        option_values: BTreeMap::from([(50, false), (51, true)]),
+        ..LuaLoadRuntimeState::default()
+    };
+    let loaded = load_skin_document_uncached(
+        &skin_path,
+        SkinKind::Result,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &runtime_state,
+    )
+    .expect("unmodified Luxe Flat result should decode through the BMZ loader");
+
+    assert_eq!(loaded.document.result_panel_default, Some(2));
+    assert_eq!(
+        loaded
+            .document
+            .image
+            .iter()
+            .find(|image| image.id == "result_modeselect_graph_data_off")
+            .and_then(|image| image.act),
+        Some(bmz_render::skin::SKIN_EVENT_RESULT_PANEL_GRAPH)
+    );
+    assert_eq!(
+        loaded
+            .document
+            .image
+            .iter()
+            .find(|image| image.id == "result_modeselect_ir_ranking_off")
+            .and_then(|image| image.act),
+        Some(bmz_render::skin::SKIN_EVENT_RESULT_PANEL_IR)
+    );
+    assert!(loaded.document.destination.iter().any(|entry| matches!(
+        entry,
+        DestinationListEntry::Single(destination)
+            if destination.draw.contains("result_panel(1)")
+    )));
+    assert!(loaded.document.destination.iter().any(|entry| matches!(
+        entry,
+        DestinationListEntry::Single(destination)
+            if destination.draw.contains("result_panel(2)")
+    )));
+    assert_eq!(
+        loaded
+            .document
+            .value
+            .iter()
+            .find(|value| value.id == "rank_diff_count")
+            .map(|value| value.value_expr.as_str()),
+        Some("bmz:nearest_rank_diff_abs")
+    );
+    assert_eq!(
+        loaded
+            .document
+            .value
+            .iter()
+            .find(|value| value.id == "ir_scorerate1")
+            .map(|value| value.value_expr.as_str()),
+        Some("bmz:ir_score_rate_integer:1")
+    );
+    assert_eq!(
+        loaded
+            .document
+            .value
+            .iter()
+            .find(|value| value.id == "ir_scorerate_dot1")
+            .map(|value| value.value_expr.as_str()),
+        Some("bmz:ir_score_rate_fraction:1")
+    );
+    assert!(loaded.document.destination.iter().any(|entry| matches!(
+        entry,
+        DestinationListEntry::Single(destination)
+            if destination.id == "rank_diff_aaa_plus"
+                && destination.draw.contains("nearest_rank(AAA,plus)")
+    )));
+}
+
+#[test]
+fn luxe_flat_result_displays_extended_arrange_labels_and_lane_pattern() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/Luxez-Flat/result/result.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+    let runtime_state = LuaLoadRuntimeState {
+        event_index_values: BTreeMap::from([(42, 2), (43, 2), (344, 10), (345, 11)]),
+        option_values: BTreeMap::from([(163, true)]),
+        ..LuaLoadRuntimeState::default()
+    };
+    let loaded = load_skin_document_uncached(
+        &skin_path,
+        SkinKind::Result,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &runtime_state,
+    )
+    .expect("Luxe Flat result should decode extended arrange labels");
+
+    assert_eq!(
+        loaded
+            .document
+            .text
+            .iter()
+            .find(|text| text.id == "lane_option")
+            .map(|text| text.constant_text.as_str()),
+        Some("F-RANDOM / MF-RANDOM")
+    );
+    assert!(loaded.document.destination.iter().any(|entry| matches!(
+        entry,
+        DestinationListEntry::Single(destination)
+            if destination.id == "1key"
+                && destination.draw.contains("event_index(450) == 1")
+    )));
+
+    let course_skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/Luxez-Flat/result/courseresult.luaskin");
+    let course_loaded = load_skin_document_uncached(
+        &course_skin_path,
+        SkinKind::Result,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &runtime_state,
+    )
+    .expect("Luxe Flat course result should decode extended arrange labels");
+    assert_eq!(
+        course_loaded
+            .document
+            .text
+            .iter()
+            .find(|text| text.id == "lane_option")
+            .map(|text| text.constant_text.as_str()),
+        Some("F-RANDOM / MF-RANDOM")
+    );
+}
+
+#[test]
+fn ecfn_play7_1p_json_skin_can_be_applied_when_available() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/ECFN/play/play7-1p.json");
+    if !skin_path.is_file() {
+        return;
+    }
+    let mut renderer = Renderer::default();
+
+    apply_beatoraja_json_skin(&mut renderer, &skin_path).unwrap();
+}
+
+#[test]
+fn ecfn_result_json_skin_can_be_applied_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/ECFN/RESULT/result-converted.json");
+    if !skin_path.is_file() {
+        return;
+    }
+    let mut renderer = Renderer::default();
+
+    apply_beatoraja_result_json_skin(&mut renderer, &skin_path).unwrap();
+}
+
+#[test]
+fn ecfn_select_json_skin_can_be_applied_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/ECFN/select/select-converted.json");
+    if !skin_path.is_file() {
+        return;
+    }
+    let mut renderer = Renderer::default();
+
+    apply_beatoraja_select_json_skin(&mut renderer, &skin_path).unwrap();
+}
+
+#[test]
+#[ignore = "manual select skin profiling helper"]
+fn profile_ecfn_select_plan_generation() {
+    let skin_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/ECFN/select/select.luaskin");
+    if !skin_path.is_file() {
+        eprintln!("skip: {} is missing", skin_path.display());
+        return;
+    }
+
+    let decoded = decode_beatoraja_skin_with_options(
+        &skin_path,
+        SkinKind::Select,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    )
+    .unwrap();
+    let document_textures = decoded.sources.iter().map(|source| SkinDocumentTexture {
+        source_id: source.source_id.clone(),
+        texture: source.texture,
+        source_size: SkinImageSize { width: source.size.width, height: source.size.height },
+    });
+    let skin = SkinContext::from_manifest_and_document(
+        bmz_render::skin::default_skin_manifest(),
+        decoded.document,
+        document_textures,
+    );
+    let rows = (0..25)
+        .map(|index| SelectRowSnapshot {
+            index,
+            title: format!("War in the Mirrorworld[{index:02}]"),
+            artist: "Aoi".to_string(),
+            difficulty_name: "ANOTHER".to_string(),
+            play_level: "12".to_string(),
+            total_notes: 2253,
+            chart_normal_notes: 2167,
+            chart_scratch_notes: 86,
+            chart_density: 19.0,
+            chart_peak_density: 38.0,
+            chart_end_density: 25.0,
+            min_bpm: 171.0,
+            max_bpm: 171.0,
+            chart_main_bpm: 171.0,
+            initial_bpm: 171.0,
+            length_ms: 115_000,
+            ..SelectRowSnapshot::default()
+        })
+        .collect();
+    let mut runtime = DynamicTimerRuntime::default();
+    let mut snapshot = SelectSnapshot {
+        time: TimeUs(0),
+        selection_time: TimeUs(0),
+        chart_count: 1_000,
+        selected_index: 12,
+        rows,
+        stage_background: true,
+        banner_image: true,
+        ..SelectSnapshot::default()
+    };
+
+    for frame in 0..30 {
+        snapshot.time = TimeUs(frame * 16_666);
+        black_box(DrawPlan::from_scene_with_skin(
+            &AppSceneSnapshot::Select(snapshot.clone()),
+            &skin,
+            &mut runtime,
+        ));
+    }
+
+    let frames = 300;
+    let start = Instant::now();
+    let mut commands = 0_usize;
+    for frame in 0..frames {
+        snapshot.time = TimeUs((frame + 30) * 16_666);
+        let plan = DrawPlan::from_scene_with_skin(
+            &AppSceneSnapshot::Select(snapshot.clone()),
+            &skin,
+            &mut runtime,
+        );
+        commands += plan.commands.len();
+        black_box(plan);
+    }
+    let elapsed = start.elapsed();
+    println!(
+        "profile_ecfn_select_plan_generation frames={frames} avg_plan_ms={:.3} avg_commands={}",
+        elapsed.as_secs_f64() * 1000.0 / frames as f64,
+        commands / frames as usize
+    );
+}
+
+#[test]
+fn m_select_lua_select_skin_renders_items_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/mz-select/music_select.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+    let decoded = decode_beatoraja_skin_with_options(
+        &skin_path,
+        SkinKind::Select,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    )
+    .unwrap();
+    assert!(decoded.document.text.iter().any(|text| {
+        text.id == "defaultNotesProcessingCounter_notes"
+            || text.id == "defaultNotesProcessingCounter_stroke"
+    }));
+    let document_textures =
+        decoded.sources.iter().map(|source| bmz_render::skin::SkinDocumentTexture {
+            source_id: source.source_id.clone(),
+            texture: source.texture,
+            source_size: bmz_render::skin::SkinImageSize {
+                width: source.size.width,
+                height: source.size.height,
+            },
+        });
+    let context = bmz_render::skin::SkinContext::from_manifest_and_document(
+        bmz_render::skin::default_skin_manifest(),
+        decoded.document,
+        document_textures,
+    );
+    assert!(context.document().is_some_and(|document| document.skin_type == 5));
+    let snapshot = bmz_render::scene::SelectSnapshot {
+        arrange: "F-RANDOM".to_string(),
+        arrange_2p: "MF-RANDOM".to_string(),
+        gauge: "EX-HARD".to_string(),
+        double_option: "BATTLE".to_string(),
+        hs_fix: "CONSTANT".to_string(),
+        rows: vec![bmz_render::scene::SelectRowSnapshot {
+            title: "Song".to_string(),
+            ..Default::default()
+        }],
+        chart_count: 1,
+        ..Default::default()
+    };
+    let items = context.select_document_items_with_dynamic_timers(&snapshot, None);
+    assert!(!items.is_empty(), "m_select select skin should produce render items");
+    assert!(
+            items
+                .iter()
+                .any(|item| matches!(item, bmz_render::skin::SkinRenderItem::Text { text, .. } if text == "Song")),
+            "m_select select skin should render the song title text"
+        );
+    for label in ["F-RANDOM", "MF-RANDOM", "EX-HARD", "BATTLE", "CONSTANT"] {
+        assert!(
+                items.iter().any(
+                    |item| matches!(item, bmz_render::skin::SkinRenderItem::Text { text, .. } if text == label)
+                ),
+                "m_select should render the dynamic option label {label}"
+            );
+    }
+    for x in [503.0, 586.0] {
+        let hit = context
+            .select_click_hit(&snapshot, x / 1920.0, 0.98)
+            .expect("m_select arrange cell should remain clickable across its full width");
+        assert_eq!(hit.target, bmz_render::skin::SkinClickTarget::Event { event_id: 42, click: 2 });
+        assert!((hit.rect.x - 462.0 / 1920.0).abs() < f32::EPSILON);
+        assert!((hit.rect.width - 166.0 / 1920.0).abs() < f32::EPSILON);
+    }
+}
+
+#[test]
+fn antique_play_skin_shows_random_lane_pattern_before_ready_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/mz-select/play/antique/system/play7main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let load_context = |options: &BTreeMap<String, String>| {
+        let decoded = decode_beatoraja_skin_with_options(
+            &skin_path,
+            SkinKind::Play,
+            options,
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        let number_texture = decoded
+            .sources
+            .iter()
+            .find(|source| source.source_id == "src_number_lane")
+            .expect("antique number lane source")
+            .texture;
+        let document_textures = decoded.sources.iter().map(|source| SkinDocumentTexture {
+            source_id: source.source_id.clone(),
+            texture: source.texture,
+            source_size: SkinImageSize { width: source.size.width, height: source.size.height },
+        });
+        (
+            SkinContext::from_manifest_and_document(
+                SkinManifest::default(),
+                decoded.document,
+                document_textures,
+            ),
+            number_texture,
+        )
+    };
+    let (default_context, default_number_texture) = load_context(&BTreeMap::new());
+    let default_document = default_context.document().expect("antique play document");
+    assert!(default_document.enabled_options().contains(&916));
+    assert!(!default_document.enabled_options().contains(&917));
+    assert!(
+        default_document
+            .property
+            .iter()
+            .any(|property| { property.name == "RANDOM配置表示" && property.def == "OFF" })
+    );
+    let options = BTreeMap::from([("RANDOM配置表示".to_string(), "ON".to_string())]);
+    let (context, number_texture) = load_context(&options);
+    let document = context.document().expect("antique play document");
+    assert!(document.enabled_options().contains(&917));
+    assert!(!document.enabled_options().contains(&916));
+    assert!(
+        document
+            .all_destinations(&document.enabled_options())
+            .iter()
+            .filter(|destination| destination.id.starts_with("num_random_"))
+            .all(|destination| !destination.draw.starts_with("bmz:lua_draw_callback:")),
+        "RANDOM digit color predicates should compile without per-frame Lua callbacks"
+    );
+    let displayed_values = [2_u8, 3, 4, 5, 6, 7, 1];
+    let mut pattern = (0..bmz_core::lane::LANE_COUNT as u8).collect::<Vec<_>>();
+    for (destination, source) in (1..=7).zip(displayed_values) {
+        pattern[destination] = source;
+    }
+    let applied_arrange = crate::screens::play_session::AppliedArrange {
+        arrange: crate::select_options::ArrangeOption::Random,
+        pattern: Some(pattern.clone()),
+        ..crate::screens::play_session::AppliedArrange::default()
+    };
+    let mut pre_ready = bmz_render::snapshot::RenderSnapshot {
+        key_mode: KeyMode::K7,
+        ready_elapsed_time: None,
+        ..Default::default()
+    };
+    crate::screens::play_loop::apply_play_arrange_to_snapshot(&mut pre_ready, &applied_arrange);
+    assert_eq!(pre_ready.lane_shuffle_pattern, pattern);
+
+    let render = |context: &SkinContext, snapshot| {
+        bmz_render::plan::DrawPlan::from_scene_with_skin(
+            &bmz_render::scene::AppSceneSnapshot::Play(snapshot),
+            context,
+            &mut bmz_render::skin::DynamicTimerRuntime::default(),
+        )
+    };
+    let random_digits = |plan: &bmz_render::plan::DrawPlan, number_texture: SkinTextureId| {
+        let mut digits = plan
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                bmz_render::plan::DrawCommand::Image { texture, rect, tint, .. }
+                    if texture.0 == number_texture.0 && (0.69..0.72).contains(&rect.y) =>
+                {
+                    Some((rect.x, *tint))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        digits.sort_by(|left, right| left.0.total_cmp(&right.0));
+        digits
+    };
+
+    let digits = random_digits(&render(&context, pre_ready.clone()), number_texture);
+    assert_eq!(digits.len(), 7, "expected seven pre-READY RANDOM digits");
+    for (index, (_, tint)) in digits.into_iter().enumerate() {
+        let value = displayed_values[index];
+        let expected = if matches!(value, 1 | 3 | 5 | 7) {
+            (1.0, 1.0, 1.0)
+        } else {
+            (64.0 / 255.0, 160.0 / 255.0, 1.0)
+        };
+        assert!((tint.r - expected.0).abs() < 0.01);
+        assert!((tint.g - expected.1).abs() < 0.01);
+        assert!((tint.b - expected.2).abs() < 0.01);
+    }
+
+    let mut ready = pre_ready.clone();
+    ready.ready_elapsed_time = Some(TimeUs(0));
+    let ready_digits = random_digits(&render(&context, ready.clone()), number_texture);
+    assert_eq!(ready_digits.len(), 7, "READY should start at full opacity");
+    assert!(ready_digits.iter().all(|(_, tint)| (tint.a - 1.0).abs() < 0.01));
+
+    ready.ready_elapsed_time = Some(TimeUs(250_000));
+    let fading_digits = random_digits(&render(&context, ready.clone()), number_texture);
+    assert_eq!(fading_digits.len(), 7, "RANDOM digits should fade for 500 ms");
+    assert!(fading_digits.iter().all(|(_, tint)| (tint.a - 0.5).abs() < 0.02));
+
+    ready.ready_elapsed_time = Some(TimeUs(501_000));
+    assert!(
+        random_digits(&render(&context, ready), number_texture).is_empty(),
+        "RANDOM digits should disappear after the BACKBMP 500 ms fade"
+    );
+
+    let mut no_pattern = pre_ready.clone();
+    crate::screens::play_loop::apply_play_arrange_to_snapshot(
+        &mut no_pattern,
+        &crate::screens::play_session::AppliedArrange {
+            arrange: crate::select_options::ArrangeOption::Random,
+            ..crate::screens::play_session::AppliedArrange::default()
+        },
+    );
+    assert!(random_digits(&render(&context, no_pattern), number_texture).is_empty());
+
+    assert!(
+        random_digits(&render(&default_context, pre_ready), default_number_texture).is_empty(),
+        "RANDOM display should default to OFF"
+    );
+}
+
+#[test]
+fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/Luxez-Flat/music_select.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let decoded = decode_beatoraja_skin(&skin_path, SkinKind::Select).unwrap();
+    for ref_id in 27..=29 {
+        assert!(
+            decoded.document.value.iter().any(|value| value.ref_id == ref_id),
+            "Luxe Flat should retain operating-time ref {ref_id}"
+        );
+    }
+    for (id, center_x) in [
+        ("bmz_select_arrange", 138),
+        ("bmz_select_gauge", 302),
+        ("bmz_select_double_option", 446),
+        ("bmz_select_hs_fix", 613),
+        ("bmz_select_arrange_2p", 790),
+    ] {
+        assert!(
+            decoded.document.text.iter().any(|text| text.id == id),
+            "Luxe Flat should decode dynamic {id} text"
+        );
+        assert!(decoded.document.destination.iter().any(|entry| matches!(
+            entry,
+            DestinationListEntry::Single(destination)
+                if destination.id == id
+                    && destination.act.is_none()
+                    && matches!(
+                        destination.dst.first(),
+                        Some(bmz_render::skin::SkinDstEntry::Frame(frame))
+                            if frame.x == Some(center_x)
+            )
+        )));
+    }
+    assert!(
+        decoded
+            .document
+            .panel
+            .iter()
+            .any(|panel| panel.id == "bmz_select_option_hit" && panel.color == "00000000")
+    );
+    for (act, left_x, width) in
+        [(42, 69, 138), (40, 254, 96), (54, 381, 129), (55, 550, 126), (43, 721, 138)]
+    {
+        assert!(decoded.document.destination.iter().any(|entry| matches!(
+            entry,
+            DestinationListEntry::Single(destination)
+                if destination.id == "bmz_select_option_hit"
+                    && destination.act == Some(act)
+                    && matches!(
+                        destination.dst.first(),
+                        Some(bmz_render::skin::SkinDstEntry::Frame(frame))
+                            if frame.x == Some(left_x) && frame.w == Some(width)
+            )
+        )));
+    }
+    let document_textures =
+        decoded.sources.iter().map(|source| bmz_render::skin::SkinDocumentTexture {
+            source_id: source.source_id.clone(),
+            texture: source.texture,
+            source_size: bmz_render::skin::SkinImageSize {
+                width: source.size.width,
+                height: source.size.height,
+            },
+        });
+    let context = bmz_render::skin::SkinContext::from_manifest_and_document(
+        bmz_render::skin::default_skin_manifest(),
+        decoded.document,
+        document_textures,
+    );
+    let hit = context
+        .select_click_hit(&bmz_render::scene::SelectSnapshot::default(), 100.0 / 1920.0, 0.98)
+        .expect("Luxe Flat arrange cell should be clickable from its left half");
+    assert_eq!(hit.target, bmz_render::skin::SkinClickTarget::Event { event_id: 42, click: 0 });
+    assert!((hit.rect.x - 69.0 / 1920.0).abs() < f32::EPSILON);
+    assert!((hit.rect.width - 138.0 / 1920.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn rm_skin_play_lua_skins_can_be_decoded_when_available() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rm-skin");
+    let cases = [
+        (root.join("play5main.luaskin"), SkinKind::Play),
+        (root.join("play7main.luaskin"), SkinKind::Play),
+        (root.join("play9main.luaskin"), SkinKind::Play),
+    ];
+    for (skin_path, kind) in cases {
+        if !skin_path.is_file() {
+            continue;
+        }
+        let decoded = decode_beatoraja_skin(&skin_path, kind).unwrap();
+        assert!(!decoded.document.destination.is_empty(), "{}", skin_path.display());
+    }
+}
+
+#[test]
+fn ecfn_lua_skins_can_be_decoded_when_available() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/ECFN");
+    let cases = [
+        (root.join("select/select.luaskin"), SkinKind::Select),
+        (root.join("play/play7.luaskin"), SkinKind::Play),
+        (root.join("RESULT/result.luaskin"), SkinKind::Result),
+    ];
+    for (skin_path, kind) in cases {
+        if !skin_path.is_file() {
+            continue;
+        }
+        let decoded = decode_beatoraja_skin(&skin_path, kind).unwrap();
+        assert!(!decoded.document.destination.is_empty());
+    }
+}
+
+#[test]
+fn luxe_flat_lua_select_skin_keeps_score_availability_guards_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/Luxez-Flat/music_select.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let decoded = decode_beatoraja_skin(&skin_path, SkinKind::Select).unwrap();
+    let clear_state = decoded
+        .document
+        .destination
+        .iter()
+        .find_map(|entry| match entry {
+            DestinationListEntry::Single(destination)
+                if destination.id == "default_playerdata_state_clear" =>
+            {
+                Some(destination)
+            }
+            DestinationListEntry::Single(_) | DestinationListEntry::Conditional { .. } => None,
+        })
+        .expect("Luxe Flat should retain the player clear-state destination");
+    assert_eq!(clear_state.draw, "select_score_available()");
+}
+
+#[test]
+fn mz_select_lua_select_skin_keeps_local_score_availability_guards() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/mz-select/music_select.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let decoded = decode_beatoraja_skin(&skin_path, SkinKind::Select).unwrap();
+    let guarded = decoded
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            DestinationListEntry::Single(destination)
+                if destination.id.starts_with("default_playerdata_")
+                    && destination.draw == "select_score_available()" =>
+            {
+                Some(destination.id.as_str())
+            }
+            DestinationListEntry::Single(_) | DestinationListEntry::Conditional { .. } => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(guarded.len(), 21, "mz-select player-data score guards: {guarded:?}");
+    assert!(guarded.contains(&"default_playerdata_state_clear"));
+    assert!(guarded.contains(&"default_playerdata_score_count"));
+    assert!(guarded.contains(&"default_playerdata_scorerate_dot_count"));
+}

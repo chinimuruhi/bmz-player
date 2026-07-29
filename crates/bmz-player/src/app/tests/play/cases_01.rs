@@ -1,0 +1,302 @@
+use super::*;
+
+#[test]
+fn smoke_play_frame_counter_only_exits_at_the_requested_count() {
+    assert_eq!(count_smoke_play_frame(0, 3), (1, false));
+    assert_eq!(count_smoke_play_frame(2, 3), (3, true));
+    assert_eq!(count_smoke_play_frame(u32::MAX, 1), (u32::MAX, true));
+}
+
+#[test]
+fn player_name_and_fps_are_applied_to_every_scene() {
+    let mut scenes = [
+        AppSceneSnapshot::Select(SelectSnapshot::default()),
+        AppSceneSnapshot::Play(RenderSnapshot::default()),
+        bmz_render::sample::sample_result_scene(),
+    ];
+
+    for scene in &mut scenes {
+        apply_skin_runtime_info_to_scene(scene, "Test Player", 237);
+        match scene {
+            AppSceneSnapshot::Select(snapshot) => {
+                assert_eq!(snapshot.player_name, "Test Player");
+                assert_eq!(snapshot.current_fps, 237);
+            }
+            AppSceneSnapshot::Decide(snapshot) | AppSceneSnapshot::Play(snapshot) => {
+                assert_eq!(snapshot.player_name, "Test Player");
+                assert_eq!(snapshot.current_fps, 237);
+            }
+            AppSceneSnapshot::Result(snapshot) => {
+                assert_eq!(snapshot.player_name, "Test Player");
+                assert_eq!(snapshot.current_fps, 237);
+            }
+        }
+    }
+}
+
+#[test]
+fn active_play_visual_offset_sync_preserves_auto_adjusted_value() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+
+    sync_active_play_visual_offset_to_profile(&mut profile, 1_000, true);
+
+    assert_eq!(profile.judge.visual_offset_us, 1_000);
+    assert_eq!(crate::config::play::play_offsets_from_profile(&profile).visual_offset_us, 1_000);
+
+    sync_active_play_visual_offset_to_profile(&mut profile, 2_000, false);
+    assert_eq!(profile.judge.visual_offset_us, 1_000);
+}
+
+#[test]
+fn pending_play_uses_preload_input_before_session_install() {
+    use bmz_core::input::InputKind;
+    use bmz_gameplay::input::backend::InputBackend;
+
+    let preload_input = SharedInputBackend::default();
+    assert!(play_input_backend_for_context(None, false, None, Some(&preload_input)).is_none());
+
+    let selected = play_input_backend_for_context(None, true, None, Some(&preload_input)).unwrap();
+    crate::input::winit::handle_key_parts(
+        &selected,
+        PhysicalKey::Code(KeyCode::KeyZ),
+        ElementState::Pressed,
+        false,
+    );
+
+    let events = preload_input.clone().drain_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].kind, InputKind::Press);
+}
+
+#[test]
+fn pending_play_input_updates_keybeam_before_session_install() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let binding = crate::config::play::lane_binding_for_chart_with_slots(
+        &profile.input,
+        KeyMode::K7,
+        Default::default(),
+    );
+    let mut visual = PendingPlayVisualInput::new(KeyMode::K7, binding, false);
+    let press = physical_key_to_device_input(
+        PhysicalKey::Code(KeyCode::KeyZ),
+        ElementState::Pressed,
+        false,
+    )
+    .unwrap();
+
+    visual.apply_event(&press, TimeUs(100_000));
+    let mut snapshot = RenderSnapshot::default();
+    crate::screens::play_snapshot::refresh_pending_play_input_visuals(
+        &mut snapshot,
+        visual.key_mode,
+        visual.lane_keyon_started_at,
+        visual.lane_keyoff_started_at,
+        visual.lane_scratch_angle_delta_ms,
+        TimeUs(150_000),
+    );
+
+    assert_eq!(snapshot.keyon_ms[Lane::Key1.index()], Some(50));
+    assert_eq!(snapshot.keyoff_ms[Lane::Key1.index()], None);
+
+    let release = physical_key_to_device_input(
+        PhysicalKey::Code(KeyCode::KeyZ),
+        ElementState::Released,
+        false,
+    )
+    .unwrap();
+    visual.apply_event(&release, TimeUs(160_000));
+    crate::screens::play_snapshot::refresh_pending_play_input_visuals(
+        &mut snapshot,
+        visual.key_mode,
+        visual.lane_keyon_started_at,
+        visual.lane_keyoff_started_at,
+        visual.lane_scratch_angle_delta_ms,
+        TimeUs(175_000),
+    );
+    assert_eq!(snapshot.keyon_ms[Lane::Key1.index()], None);
+    assert_eq!(snapshot.keyoff_ms[Lane::Key1.index()], Some(15));
+}
+
+#[test]
+fn pending_play_input_state_hands_off_without_resetting_keybeam_timer() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let binding = crate::config::play::lane_binding_for_chart_with_slots(
+        &profile.input,
+        KeyMode::K7,
+        Default::default(),
+    );
+    let mut visual = PendingPlayVisualInput::new(KeyMode::K7, binding, false);
+    let press = physical_key_to_device_input(
+        PhysicalKey::Code(KeyCode::KeyZ),
+        ElementState::Pressed,
+        false,
+    )
+    .unwrap();
+    visual.apply_event(&press, TimeUs(100_000));
+    let input = SharedInputBackend::default();
+    input.push_shared_event(press);
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(app_test_chart()),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions::default(),
+    );
+
+    handoff_pending_play_visual_input(&mut session, &input, &visual);
+    let mut snapshot = RenderSnapshot { play_elapsed_time: TimeUs(150_000), ..Default::default() };
+    crate::screens::play_snapshot::refresh_play_skin_visuals_with_input_elapsed(
+        &mut snapshot,
+        &session,
+        TimeUs(150_000),
+    );
+
+    assert_eq!(session.lane_keyon_started_at[Lane::Key1.index()], Some(TimeUs(100_000)));
+    assert_eq!(snapshot.keyon_ms[Lane::Key1.index()], Some(50));
+    assert!(input.clone().drain_events().is_empty());
+}
+
+#[test]
+fn pending_play_input_suppresses_human_keybeam_for_full_autoplay() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let binding = crate::config::play::lane_binding_for_chart_with_slots(
+        &profile.input,
+        KeyMode::K7,
+        Default::default(),
+    );
+    let mut visual = PendingPlayVisualInput::new(KeyMode::K7, binding, true);
+    let press = physical_key_to_device_input(
+        PhysicalKey::Code(KeyCode::KeyZ),
+        ElementState::Pressed,
+        false,
+    )
+    .unwrap();
+
+    visual.apply_event(&press, TimeUs(100_000));
+
+    assert_eq!(visual.lane_keyon_started_at[Lane::Key1.index()], None);
+}
+
+#[test]
+fn play_control_hold_state_rebuilds_from_pressed_controls() {
+    let input = crate::config::play_input::default_profile_input();
+    let play_input = play_option_input_for(&input, KeyMode::K7);
+    let keyboard =
+        |control: &str| (W_KEYBOARD_DEVICE_ID, PhysicalControl::KeyboardKey(control.to_string()));
+    let pressed = HashSet::from([keyboard("Q"), keyboard("W"), keyboard("E")]);
+
+    assert_eq!(
+        play_control_hold_state_from_pressed_inputs(&pressed, &play_input),
+        (true, true, true)
+    );
+
+    let pressed = HashSet::from([keyboard("Q")]);
+    assert_eq!(
+        play_control_hold_state_from_pressed_inputs(&pressed, &play_input),
+        (true, false, false)
+    );
+
+    let pressed = HashSet::from([keyboard("W")]);
+    assert_eq!(
+        play_control_hold_state_from_pressed_inputs(&pressed, &play_input),
+        (false, true, false)
+    );
+}
+
+#[test]
+fn play_control_hold_state_keeps_legacy_and_default_e1_fallbacks() {
+    let mut legacy_input = crate::config::play_input::default_profile_input();
+    legacy_input.ui.bindings.retain(|entry| entry.action != Some(InputActionConfig::E1));
+    legacy_input.start_key = Some("E".to_string());
+    let legacy_play_input = play_option_input_for(&legacy_input, KeyMode::K7);
+    let legacy_pressed =
+        HashSet::from([(W_KEYBOARD_DEVICE_ID, PhysicalControl::KeyboardKey("E".to_string()))]);
+    assert_eq!(
+        play_control_hold_state_from_pressed_inputs(&legacy_pressed, &legacy_play_input),
+        (true, false, true)
+    );
+
+    legacy_input.start_key = None;
+    let fallback_play_input = play_option_input_for(&legacy_input, KeyMode::K7);
+    let fallback_pressed =
+        HashSet::from([(W_KEYBOARD_DEVICE_ID, PhysicalControl::KeyboardKey("Q".to_string()))]);
+    assert_eq!(
+        play_control_hold_state_from_pressed_inputs(&fallback_pressed, &fallback_play_input),
+        (true, false, false)
+    );
+}
+
+#[test]
+fn play_ready_is_blocked_while_e1_or_e2_is_held() {
+    assert!(!play_ready_blocked_by_control_holds(false, false));
+    assert!(play_ready_blocked_by_control_holds(true, false));
+    assert!(play_ready_blocked_by_control_holds(false, true));
+    assert!(play_ready_blocked_by_control_holds(true, true));
+}
+
+#[test]
+fn play_ready_waits_one_second_after_last_e1_or_e2_hold() {
+    let last_control_hold_at = Instant::now();
+
+    assert!(play_ready_blocked_by_recent_control_hold(
+        Some(last_control_hold_at),
+        last_control_hold_at + Duration::from_millis(999)
+    ));
+    assert!(play_ready_blocked_by_recent_control_hold(
+        Some(last_control_hold_at),
+        last_control_hold_at + Duration::from_secs(1)
+    ));
+    assert!(!play_ready_blocked_by_recent_control_hold(
+        Some(last_control_hold_at),
+        last_control_hold_at + Duration::from_millis(1_001)
+    ));
+}
+
+#[test]
+fn play_ready_has_no_release_delay_without_prior_control_hold() {
+    assert!(!play_ready_blocked_by_recent_control_hold(None, Instant::now()));
+}
+
+#[test]
+fn play_analog_lane_cover_delta_maps_scratch_bindings() {
+    let gamepad_keys =
+        SelectKeyBindings::from_profile(&ProfileConfig::new_default("default", "Default", 1).input);
+
+    assert_eq!(play_analog_lane_cover_delta("Axis1", 4, &gamepad_keys), Some(-4));
+    assert_eq!(play_analog_lane_cover_delta("Axis1", -4, &gamepad_keys), Some(4));
+    assert_eq!(play_analog_lane_cover_delta("Axis2", -4, &gamepad_keys), None);
+    assert_eq!(play_analog_lane_cover_delta("Axis1", 0, &gamepad_keys), None);
+}
+
+#[test]
+fn play_analog_green_number_uses_opposite_direction_from_lane_cover() {
+    assert_eq!(green_number_change_from_analog_steps(1), GreenNumberChange::Up);
+    assert_eq!(green_number_change_from_analog_steps(-1), GreenNumberChange::Down);
+}
+
+#[test]
+fn play_exit_hold_timer_uses_beatoraja_default_duration() {
+    let default_hold = Duration::from_millis(1_000);
+    let start = Instant::now();
+    let mut held_since = None;
+
+    update_play_exit_hold_started_at(&mut held_since, true, false, start);
+    assert!(held_since.is_none());
+
+    update_play_exit_hold_started_at(&mut held_since, true, true, start);
+    assert_eq!(held_since, Some(start));
+    assert!(!play_exit_hold_elapsed(held_since, start + default_hold / 2, default_hold));
+    assert!(play_exit_hold_elapsed(held_since, start + default_hold, default_hold));
+
+    update_play_exit_hold_started_at(&mut held_since, false, true, start + default_hold);
+    assert!(held_since.is_none());
+}
+
+#[test]
+fn decide_control_action_skips_with_1p_and_2p_decide_keys() {
+    let keys = select_keys_with_full_2p_bindings();
+
+    assert_eq!(decide_control_action("Z", &keys), Some(DecideAction::Confirm));
+    assert_eq!(decide_control_action("M", &keys), Some(DecideAction::Confirm));
+    assert_eq!(decide_control_action("P2K7", &keys), Some(DecideAction::Confirm));
+    assert_eq!(decide_control_action("S", &keys), None);
+    assert_eq!(decide_control_action("P2K6", &keys), None);
+}

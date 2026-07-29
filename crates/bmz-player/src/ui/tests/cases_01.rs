@@ -1,0 +1,247 @@
+use super::*;
+
+#[test]
+fn ir_provider_presets_recognize_official_and_legacy_urls() {
+    assert_eq!(
+        classify_ir_provider_preset(&test_ir_provider(
+            "bmz-official",
+            "https://bmz-player.hyrorre.workers.dev"
+        )),
+        IrProviderPreset::BmzIr
+    );
+    assert_eq!(
+        classify_ir_provider_preset(&test_ir_provider("rianIR", "https://rianir.link/api/")),
+        IrProviderPreset::RianIr
+    );
+    assert_eq!(
+        classify_ir_provider_preset(&test_ir_provider("rian-ir", "http://localhost:8888/api/")),
+        IrProviderPreset::Other
+    );
+}
+
+#[test]
+fn applying_ir_provider_presets_writes_canonical_values() {
+    let mut provider = test_ir_provider("custom", "http://localhost:8888/");
+    apply_ir_provider_preset(&mut provider, IrProviderPreset::BmzIr);
+    assert_eq!(provider.provider, "bmz");
+    assert_eq!(provider.base_url, "https://bmz-player.hyrorre.workers.dev/");
+
+    apply_ir_provider_preset(&mut provider, IrProviderPreset::RianIr);
+    assert_eq!(provider.provider, "rian-ir");
+    assert_eq!(provider.base_url, "https://rianir.link/");
+
+    apply_ir_provider_preset(&mut provider, IrProviderPreset::Other);
+    assert_eq!(provider.provider, "rian-ir");
+    assert_eq!(provider.base_url, "https://rianir.link/");
+}
+
+#[test]
+fn cjk_font_definitions_keep_latin_first_and_preserve_face_indices() {
+    use bmz_render::FontCoverage;
+    use bmz_render::renderer::SystemFontData;
+
+    let defaults = egui::FontDefinitions::default();
+    let fonts = cjk_font_definitions(vec![
+        (FontCoverage::Korean, SystemFontData { bytes: vec![1], font_index: 3 }),
+        (FontCoverage::Japanese, SystemFontData { bytes: vec![2], font_index: 7 }),
+    ]);
+
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        let default_chain = defaults.families.get(&family).expect("default family");
+        let chain = fonts.families.get(&family).expect("CJK family");
+        assert_eq!(&chain[..default_chain.len()], default_chain);
+        assert_eq!(
+            &chain[default_chain.len()..],
+            &["bmz_cjk_korean".to_string(), "bmz_cjk_japanese".to_string()]
+        );
+    }
+    assert_eq!(fonts.font_data["bmz_cjk_korean"].index, 3);
+    assert_eq!(fonts.font_data["bmz_cjk_japanese"].index, 7);
+}
+
+#[test]
+fn decide_and_play_restrict_settings_panels() {
+    assert!(!scene_restricts_settings("Select"));
+    assert!(scene_restricts_settings("Decide"));
+    assert!(scene_restricts_settings("Play"));
+    assert!(!scene_restricts_settings("Result"));
+}
+
+#[test]
+fn hidden_play_egui_uses_idle_frame_until_an_overlay_needs_full_state() {
+    assert!(!egui_frame_needs_full_state(false, false, false, "Play", false));
+    assert!(egui_frame_needs_full_state(true, false, false, "Play", false));
+    assert!(egui_frame_needs_full_state(false, true, false, "Play", false));
+    assert!(egui_frame_needs_full_state(false, false, true, "Select", false));
+    assert!(egui_frame_needs_full_state(false, false, true, "Play", true));
+    assert!(!egui_frame_needs_full_state(false, false, true, "Play", false));
+}
+
+#[test]
+fn difficulty_table_source_label_shows_fetched_table_name() {
+    let tables = vec![DifficultyTableRecord {
+        id: 1,
+        source_url: "https://example.com/header.json".to_string(),
+        name: "発狂BMS難易度表".to_string(),
+        symbol: "★".to_string(),
+        level_order: vec!["1".to_string()],
+        fetched_at: 1_700_000_000,
+    }];
+
+    assert_eq!(
+        difficulty_table_source_label("https://example.com/header.json", &tables),
+        "発狂BMS難易度表 (https://example.com/header.json)"
+    );
+}
+
+#[test]
+fn difficulty_table_source_label_keeps_url_before_first_fetch() {
+    assert_eq!(
+        difficulty_table_source_label("https://example.com/header.json", &[]),
+        "https://example.com/header.json"
+    );
+}
+
+#[test]
+fn debug_log_filter_keeps_selected_level_and_more_severe_entries() {
+    assert!(!DebugLogFilter::Info.allows(TracingLogLevel::Debug));
+    assert!(DebugLogFilter::Info.allows(TracingLogLevel::Info));
+    assert!(DebugLogFilter::Info.allows(TracingLogLevel::Error));
+    assert!(DebugLogFilter::All.allows(TracingLogLevel::Trace));
+}
+
+#[test]
+fn debug_log_copy_text_includes_level_target_and_message() {
+    let entry = LogEntry {
+        level: TracingLogLevel::Warn,
+        target: "bmz_player::test".to_string(),
+        message: "slow frame".to_string(),
+    };
+
+    let text = Localizer::new(AppLocale::En);
+    assert_eq!(format_log_entry(&entry, text), "[WARN] bmz_player::test slow frame");
+
+    let empty = LogEntry { message: String::new(), ..entry };
+    assert_eq!(format_log_entry(&empty, text), "[WARN] bmz_player::test (no message)");
+}
+
+#[test]
+fn restricted_profile_settings_keep_only_realtime_categories() {
+    let baseline = ProfileConfig::new_default("default", "Default", 1);
+    let mut edited = baseline.clone();
+    edited.display_name = "Changed".to_string();
+    edited.play.rule_mode = RuleMode::Dx;
+    edited.audio_mix.master_volume = 23;
+    edited.judge.input_offset_us = 4_000;
+    edited.lane.hispeed = 3.25;
+    edited.input.analog_scratch_threshold = 321;
+    edited.input.keyboard_release_bounce_ms = 4;
+    edited.input.controller_release_bounce_ms = 7;
+
+    restore_restricted_profile_settings(&mut edited, baseline.clone());
+
+    assert_eq!(edited.display_name, baseline.display_name);
+    assert_eq!(edited.play.rule_mode, baseline.play.rule_mode);
+    assert_eq!(edited.audio_mix.master_volume, 23);
+    assert_eq!(edited.judge.input_offset_us, 4_000);
+    assert_eq!(edited.lane.hispeed, 3.25);
+    assert_eq!(edited.input.analog_scratch_threshold, 321);
+    assert_eq!(edited.input.keyboard_release_bounce_ms, 4);
+    assert_eq!(edited.input.controller_release_bounce_ms, 7);
+}
+
+#[test]
+fn sanitize_profile_id_input_keeps_portable_path_chars_only() {
+    let mut value = "abc_日本語-_.012/\\: xyz".to_string();
+
+    sanitize_profile_id_input(&mut value);
+
+    assert_eq!(value, "abc_-_012xyz");
+}
+
+#[test]
+fn sanitize_profile_id_input_truncates_to_profile_id_limit() {
+    let mut value = "a".repeat(80);
+
+    sanitize_profile_id_input(&mut value);
+
+    assert_eq!(value.len(), 64);
+}
+
+#[test]
+fn skin_candidate_display_hides_bundled_origin_label_when_requested() {
+    let candidate = SkinCandidate {
+        name: "Default".to_string(),
+        path: "resource:skins/default/select.json".to_string(),
+        origin: SkinCandidateOrigin::Bundled,
+    };
+
+    assert_eq!(
+        skin_candidate_display(&candidate, true, Localizer::new(crate::i18n::AppLocale::Ja),),
+        "[同梱] Default (resource:skins/default/select.json)"
+    );
+    assert_eq!(
+        skin_candidate_display(&candidate, false, Localizer::new(crate::i18n::AppLocale::Ja),),
+        "Default (resource:skins/default/select.json)"
+    );
+}
+
+#[test]
+fn skin_candidate_display_keeps_user_origin_label() {
+    let candidate = SkinCandidate {
+        name: "Custom".to_string(),
+        path: "data:skins/custom/play7.luaskin".to_string(),
+        origin: SkinCandidateOrigin::User,
+    };
+
+    assert_eq!(
+        skin_candidate_display(&candidate, false, Localizer::new(crate::i18n::AppLocale::Ja),),
+        "[ユーザー] Custom (data:skins/custom/play7.luaskin)"
+    );
+}
+
+#[test]
+fn bundled_skin_origin_is_hidden_for_development_or_portable_layout() {
+    let app_paths = AppPaths::from_dirs(
+        PathBuf::from("data"),
+        PathBuf::from("data"),
+        PathBuf::from("data/cache"),
+        PathBuf::from("data/logs"),
+    );
+    let mut catalog = SkinCatalog::default();
+    catalog.select.push(SkinCandidate {
+        name: "Default".to_string(),
+        path: "resource:skins/default/select.json".to_string(),
+        origin: SkinCandidateOrigin::Bundled,
+    });
+    catalog.select.push(SkinCandidate {
+        name: "Custom".to_string(),
+        path: "data:skins/custom/select.luaskin".to_string(),
+        origin: SkinCandidateOrigin::User,
+    });
+
+    assert!(!show_bundled_skin_origin(&app_paths, &catalog));
+}
+
+#[test]
+fn bundled_skin_origin_is_shown_when_user_candidates_share_a_regular_layout() {
+    let app_paths = AppPaths::from_dirs(
+        PathBuf::from("resources"),
+        PathBuf::from("profile-data"),
+        PathBuf::from("profile-data/cache"),
+        PathBuf::from("profile-data/logs"),
+    );
+    let mut catalog = SkinCatalog::default();
+    catalog.select.push(SkinCandidate {
+        name: "Default".to_string(),
+        path: "resource:skins/default/select.json".to_string(),
+        origin: SkinCandidateOrigin::Bundled,
+    });
+    catalog.select.push(SkinCandidate {
+        name: "Custom".to_string(),
+        path: "data:skins/custom/select.luaskin".to_string(),
+        origin: SkinCandidateOrigin::User,
+    });
+
+    assert!(show_bundled_skin_origin(&app_paths, &catalog));
+}
