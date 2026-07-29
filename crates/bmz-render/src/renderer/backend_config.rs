@@ -1,0 +1,107 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WgpuBackend {
+    #[default]
+    Auto,
+    Vulkan,
+    Metal,
+    Dx12,
+    Gl,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WgpuPresentMode {
+    #[default]
+    Fifo,
+    FifoRelaxed,
+    Immediate,
+    Mailbox,
+}
+
+/// ゲーム / スキン描画に使う解像度。
+///
+/// `Skin` は現在のスキン document の `w` / `h` が表示領域より小さい場合だけ
+/// 中間 render target を使い、最終 surface へ拡大する。egui は常に surface の
+/// native 解像度で描画する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InternalResolutionMode {
+    #[default]
+    Native,
+    Skin,
+}
+
+/// Surfaceへ実際に適用されたpresent設定。要求modeがGPU/OSで利用できない場合、
+/// `effective_mode`はfallback後の値になる。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SurfacePresentationStatus {
+    pub requested_mode: WgpuPresentMode,
+    pub effective_mode: &'static str,
+    pub maximum_frame_latency: u32,
+}
+
+/// 入力から表示までの待ちを最小化するため、通常modeでswapchainに許可する最大の
+/// in-flight frame数。MailboxだけはDX12でこの値×monitor HzにFPSが制限されるため、
+/// 既定値2を維持してFast VSyncがrefresh rateそのものへ落ちるのを避ける。
+const LOW_LATENCY_MAXIMUM_FRAME_LATENCY: u32 = 1;
+const MAILBOX_MAXIMUM_FRAME_LATENCY: u32 = 2;
+
+impl WgpuBackend {
+    pub fn to_wgpu(self) -> wgpu::Backends {
+        match self {
+            Self::Auto => auto_wgpu_backends(),
+            Self::Vulkan => wgpu::Backends::VULKAN,
+            Self::Metal => wgpu::Backends::METAL,
+            Self::Dx12 => wgpu::Backends::DX12,
+            Self::Gl => wgpu::Backends::GL,
+        }
+    }
+}
+
+/// 設定 UI に表示できるレンダリングバックエンドを、現在の OS / feature 構成から返す。
+///
+/// wgpu の `enabled_backend_features` は、対象プラットフォームとビルド時に有効な
+/// backend feature を反映する。`Auto` は常に利用可能な論理選択肢として含める。
+pub fn available_wgpu_backends() -> Vec<WgpuBackend> {
+    [WgpuBackend::Auto, WgpuBackend::Vulkan, WgpuBackend::Metal, WgpuBackend::Dx12, WgpuBackend::Gl]
+        .into_iter()
+        .filter(|backend| {
+            *backend == WgpuBackend::Auto
+                || wgpu::Instance::enabled_backend_features().contains(backend.to_wgpu())
+        })
+        .collect()
+}
+
+fn auto_wgpu_backends() -> wgpu::Backends {
+    #[cfg(target_os = "linux")]
+    {
+        // Prefer Vulkan on Linux. GL/GLES remains available only as an
+        // explicit fallback when Vulkan surface/device creation fails.
+        wgpu::Backends::VULKAN
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Prefer DirectX 12 on Windows. Vulkan and GL remain available only as
+        // explicit fallbacks when DirectX 12 surface/device creation fails.
+        wgpu::Backends::DX12
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        wgpu::Backends::all()
+    }
+}
+
+fn fallback_wgpu_backends(backend: WgpuBackend) -> &'static [WgpuBackend] {
+    match backend {
+        #[cfg(target_os = "linux")]
+        WgpuBackend::Auto => &[WgpuBackend::Vulkan, WgpuBackend::Gl],
+        #[cfg(target_os = "windows")]
+        WgpuBackend::Auto => &[WgpuBackend::Dx12, WgpuBackend::Vulkan, WgpuBackend::Gl],
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        WgpuBackend::Auto => &[WgpuBackend::Auto],
+        WgpuBackend::Vulkan => &[WgpuBackend::Vulkan],
+        WgpuBackend::Metal => &[WgpuBackend::Metal],
+        WgpuBackend::Dx12 => &[WgpuBackend::Dx12],
+        WgpuBackend::Gl => &[WgpuBackend::Gl],
+    }
+}
