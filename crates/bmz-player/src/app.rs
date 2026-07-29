@@ -22,7 +22,6 @@ use bmz_gameplay::input::backend::{
     DeviceId, DeviceInputEvent, InputBackend, InputBouncePolicy, PhysicalControl,
 };
 use bmz_gameplay::input::binding::LaneBinding;
-use bmz_gameplay::input::bounce::{InputBounceConfig, InputBounceFilter};
 use bmz_gameplay::input::system::last_input_collection_diagnostics;
 use bmz_gameplay::rule::RuleMode;
 use bmz_gameplay::session::compute_frame_times;
@@ -98,7 +97,6 @@ use crate::i18n::{FluentArgs, Localizer};
 use crate::input::shared::SharedInputBackend;
 use crate::input::winit::{
     W_KEYBOARD_DEVICE_ID, key_event_to_device_input, physical_key_to_control,
-    physical_key_to_device_input,
 };
 use crate::ir::table::{
     RIAN_TABLE_MANUAL_REFRESH_COOLDOWN, RIAN_TABLE_REFRESH_INTERVAL, RianTableIdentity,
@@ -217,7 +215,9 @@ use frame_runtime::{
     FrameProfileKind, FrameRuntime, FrameSchedule, PlayLoopFrameTimings, SceneFrameProfileSample,
     SkinVideoFrameProfile,
 };
-use input_runtime::{AppInputRuntime, ControlInputEvent};
+use input_runtime::{
+    AppInputRuntime, ControlInputEvent, should_route_gamepad_event_while_discarding,
+};
 use play_control::{
     GreenNumberChange, HispeedChange, LaneCoverChange, PlayAnalogOptionMode, PlayLaneAction,
     PlayOptionControl, keyboard_lane_action, lane_action_from_option,
@@ -242,6 +242,8 @@ use table_fetch_runtime::{
     startup_difficulty_table_fetch_urls_for_boot,
 };
 
+#[cfg(test)]
+use crate::input::winit::physical_key_to_device_input;
 #[cfg(test)]
 use crate::screens::result_model::ResultFastSlowJudgeCounts;
 #[cfg(test)]
@@ -622,8 +624,6 @@ struct WinitApp {
     applied_window_mode: WindowMode,
     /// ウィンドウがフォーカスを持っているか。フレームレート上限の切替に使う。
     focused: bool,
-    /// フォーカス復帰直後の gamepad poll を状態再同期だけに使う。
-    discard_gamepad_output_until_resynced: bool,
     /// frame pacing、確定FPS、scene別profile集計をまとめた描画runtime。
     frame: FrameRuntime,
     /// 設定画面で編集中の項目。`None` なら一覧操作モード。
@@ -1885,7 +1885,6 @@ impl WinitApp {
             log_buffer,
             applied_window_mode: initial_window_mode,
             focused: true,
-            discard_gamepad_output_until_resynced: false,
             frame: FrameRuntime::new(now),
             settings_edit: None,
             key_config_edit: None,
@@ -1977,8 +1976,7 @@ impl WinitApp {
 
     fn filter_app_input_bounce(&mut self, event: DeviceInputEvent) -> Option<DeviceInputEvent> {
         let config = input_bounce_config_from_profile(&self.boot.profile_config.input);
-        self.input.app_bounce_filter.set_config(config);
-        self.input.app_bounce_filter.accept(event)
+        self.input.accept_app_event(config, event)
     }
 
     fn route_play_device_input(&mut self, event: DeviceInputEvent) {
@@ -2026,40 +2024,16 @@ impl WinitApp {
             return;
         }
         if self.play_input_backend().is_none() {
-            if state == ElementState::Released {
-                self.input.raw_input_pressed_keys.remove(&physical_key);
-            }
-            self.input.raw_bounce_filter.clear();
+            self.input.discard_raw_keyboard_transition(physical_key, state);
             return;
         }
         let config = input_bounce_config_from_profile(&self.boot.profile_config.input);
         let gameplay_blocked = self.raw_input_gameplay_blocked();
-        if let Some(event) = filtered_raw_input_transition(
-            &mut self.input.raw_input_pressed_keys,
-            &mut self.input.raw_bounce_filter,
-            config,
-            physical_key,
-            state,
-            gameplay_blocked,
-        ) {
+        if let Some(event) =
+            self.input.raw_keyboard_transition(config, physical_key, state, gameplay_blocked)
+        {
             self.route_play_device_input(event);
         }
-    }
-
-    fn release_raw_input_pressed_keys(&mut self) {
-        let events = raw_input_release_events(&mut self.input.raw_input_pressed_keys);
-        for event in events {
-            self.route_play_device_input(event);
-        }
-        self.input.raw_bounce_filter.clear();
-    }
-
-    fn release_window_input_pressed_keys(&mut self) {
-        let events = raw_input_release_events(&mut self.input.window_input_pressed_keys);
-        for event in events {
-            self.route_play_device_input(event);
-        }
-        self.input.app_bounce_filter.clear();
     }
 
     fn ensure_window(&mut self, event_loop: &ActiveEventLoop) {
@@ -4095,17 +4069,13 @@ impl WinitApp {
             return;
         }
         let window_keyboard_gameplay_enabled = self.window_keyboard_gameplay_enabled();
-        if window_keyboard_gameplay_enabled && !event.repeat {
-            match event.state {
-                ElementState::Pressed if has_play_control_context => {
-                    self.input.window_input_pressed_keys.insert(event.physical_key);
-                }
-                ElementState::Released => {
-                    self.input.window_input_pressed_keys.remove(&event.physical_key);
-                }
-                ElementState::Pressed => {}
-            }
-        }
+        self.input.track_window_keyboard(
+            event.physical_key,
+            event.state,
+            event.repeat,
+            window_keyboard_gameplay_enabled,
+            has_play_control_context,
+        );
         if has_play_control_context
             && window_keyboard_gameplay_enabled
             && let Some(device_event) = key_event_to_device_input(event)
@@ -4578,10 +4548,7 @@ impl WinitApp {
         let Some(gamepad) = &mut self.gamepad else { return };
         let backend_name = gamepad.name();
         let output = gamepad.poll();
-        if should_discard_gamepad_output(
-            self.focused,
-            &mut self.discard_gamepad_output_until_resynced,
-        ) {
+        if self.input.should_discard_gamepad_output(self.focused) {
             for event in output
                 .buttons
                 .iter()
@@ -15776,57 +15743,6 @@ fn keyboard_input_backend_for_config(config: &AppConfig) -> Option<KeyboardInput
     }
 }
 
-/// UI がゲーム入力をブロックしていても、受理済みキーの Release は通す。
-/// バウンスとして抑制した Press は押下集合へ追加しない。
-fn filtered_raw_input_transition(
-    pressed_keys: &mut HashSet<PhysicalKey>,
-    bounce_filter: &mut InputBounceFilter,
-    bounce_config: InputBounceConfig,
-    physical_key: PhysicalKey,
-    state: ElementState,
-    gameplay_blocked: bool,
-) -> Option<DeviceInputEvent> {
-    let tracked = pressed_keys.contains(&physical_key);
-    if matches!(state, ElementState::Pressed) && (gameplay_blocked || tracked) {
-        return None;
-    }
-    if matches!(state, ElementState::Released) && !tracked {
-        return None;
-    }
-    let event = physical_key_to_device_input(physical_key, state, false)?;
-    bounce_filter.set_config(bounce_config);
-    let event = bounce_filter.accept(event)?;
-    match state {
-        ElementState::Pressed => {
-            pressed_keys.insert(physical_key);
-        }
-        ElementState::Released => {
-            pressed_keys.remove(&physical_key);
-        }
-    }
-    Some(event)
-}
-
-fn raw_input_release_events(pressed_keys: &mut HashSet<PhysicalKey>) -> Vec<DeviceInputEvent> {
-    std::mem::take(pressed_keys)
-        .into_iter()
-        .filter_map(|physical_key| {
-            physical_key_to_device_input(physical_key, ElementState::Released, false)
-        })
-        .collect()
-}
-
-fn should_discard_gamepad_output(focused: bool, discard_until_resynced: &mut bool) -> bool {
-    if !focused {
-        return true;
-    }
-    std::mem::take(discard_until_resynced)
-}
-
-fn should_route_gamepad_event_while_discarding(pressed: bool) -> bool {
-    !pressed
-}
-
 fn config_renderer_backend(
     backend: crate::config::app_config::RendererBackend,
 ) -> bmz_render::WgpuBackend {
@@ -15986,11 +15902,13 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             WindowEvent::Focused(focused) => {
                 self.focused = focused;
                 if !focused {
-                    self.discard_gamepad_output_until_resynced = true;
-                    self.input.pressed_controls.clear();
-                    self.input.pressed_play_inputs.clear();
-                    self.release_raw_input_pressed_keys();
-                    self.release_window_input_pressed_keys();
+                    let releases = self.input.handle_focus_lost();
+                    for event in releases.raw_keyboard {
+                        self.route_play_device_input(event);
+                    }
+                    for event in releases.window_keyboard {
+                        self.route_play_device_input(event);
+                    }
                     self.sync_select_holds_from_pressed_controls();
                     self.clear_select_hold();
                     self.reset_select_analog_scroll();
@@ -21552,129 +21470,6 @@ mod tests {
         visual.apply_event(&press, TimeUs(100_000));
 
         assert_eq!(visual.lane_keyon_started_at[Lane::Key1.index()], None);
-    }
-
-    #[test]
-    fn raw_input_blocking_drops_new_presses_but_keeps_release_for_tracked_keys() {
-        let key = PhysicalKey::Code(KeyCode::KeyZ);
-        let mut pressed_keys = HashSet::new();
-        let mut bounce_filter = InputBounceFilter::default();
-
-        let press = filtered_raw_input_transition(
-            &mut pressed_keys,
-            &mut bounce_filter,
-            InputBounceConfig::default(),
-            key,
-            ElementState::Pressed,
-            false,
-        )
-        .unwrap();
-        assert_eq!(press.kind, InputKind::Press);
-        assert!(
-            filtered_raw_input_transition(
-                &mut pressed_keys,
-                &mut bounce_filter,
-                InputBounceConfig::default(),
-                key,
-                ElementState::Pressed,
-                true,
-            )
-            .is_none()
-        );
-        assert!(pressed_keys.contains(&key));
-        let release = filtered_raw_input_transition(
-            &mut pressed_keys,
-            &mut bounce_filter,
-            InputBounceConfig::default(),
-            key,
-            ElementState::Released,
-            true,
-        )
-        .unwrap();
-        assert_eq!(release.kind, InputKind::Release);
-        assert!(pressed_keys.is_empty());
-    }
-
-    #[test]
-    fn raw_input_bounce_press_does_not_restore_pressed_state() {
-        let key = PhysicalKey::Code(KeyCode::KeyZ);
-        let config =
-            InputBounceConfig { keyboard_threshold_us: 1_000_000, controller_threshold_us: 0 };
-        let mut pressed_keys = HashSet::new();
-        let mut bounce_filter = InputBounceFilter::default();
-
-        assert!(
-            filtered_raw_input_transition(
-                &mut pressed_keys,
-                &mut bounce_filter,
-                config,
-                key,
-                ElementState::Pressed,
-                false,
-            )
-            .is_some()
-        );
-        assert!(
-            filtered_raw_input_transition(
-                &mut pressed_keys,
-                &mut bounce_filter,
-                config,
-                key,
-                ElementState::Released,
-                false,
-            )
-            .is_some()
-        );
-        assert!(
-            filtered_raw_input_transition(
-                &mut pressed_keys,
-                &mut bounce_filter,
-                config,
-                key,
-                ElementState::Pressed,
-                false,
-            )
-            .is_none()
-        );
-
-        assert!(pressed_keys.is_empty());
-        assert!(
-            filtered_raw_input_transition(
-                &mut pressed_keys,
-                &mut bounce_filter,
-                config,
-                key,
-                ElementState::Released,
-                false,
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn releasing_raw_input_pressed_keys_enqueues_release_events() {
-        use bmz_core::input::InputKind;
-
-        let mut pressed_keys = HashSet::from([PhysicalKey::Code(KeyCode::KeyZ)]);
-
-        let events = raw_input_release_events(&mut pressed_keys);
-
-        assert!(pressed_keys.is_empty());
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].kind, InputKind::Release);
-    }
-
-    #[test]
-    fn gamepad_output_is_discarded_while_unfocused_and_once_after_regain() {
-        let mut discard_until_resynced = true;
-
-        assert!(should_discard_gamepad_output(false, &mut discard_until_resynced));
-        assert!(discard_until_resynced);
-        assert!(should_discard_gamepad_output(true, &mut discard_until_resynced));
-        assert!(!discard_until_resynced);
-        assert!(!should_discard_gamepad_output(true, &mut discard_until_resynced));
-        assert!(!should_route_gamepad_event_while_discarding(true));
-        assert!(should_route_gamepad_event_while_discarding(false));
     }
 
     #[test]
