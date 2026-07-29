@@ -1,4 +1,4 @@
-fn skin_config_options_from_header(
+pub(super) fn skin_config_options_from_header(
     header: &JsonValue,
     selected: &BTreeMap<String, String>,
     warnings: &mut Vec<String>,
@@ -38,7 +38,7 @@ fn skin_config_options_from_header(
 /// 無効な destination が Lua 評価時にも座標を要求するスキン向けの退避値。
 /// property ごとに末尾の選択肢を採用し、通常の選択で初期化されなかった optional
 /// layout を構築できるようにする。呼び出し元は描画用の有効 op を元選択で上書きする。
-fn fallback_skin_config_options(
+pub(super) fn fallback_skin_config_options(
     header: &JsonValue,
     selected_options: &BTreeMap<String, i64>,
 ) -> BTreeMap<String, i64> {
@@ -65,11 +65,11 @@ fn fallback_skin_config_options(
     fallback
 }
 
-fn lua_nil_arithmetic_error(error: &mlua::Error) -> bool {
+pub(super) fn lua_nil_arithmetic_error(error: &mlua::Error) -> bool {
     error.to_string().contains("attempt to perform arithmetic on a nil value")
 }
 
-fn option_value_to_op(items: &[JsonValue], value: &str) -> Option<i64> {
+pub(super) fn option_value_to_op(items: &[JsonValue], value: &str) -> Option<i64> {
     if let Ok(op) = value.parse::<i64>() {
         return items
             .iter()
@@ -82,7 +82,7 @@ fn option_value_to_op(items: &[JsonValue], value: &str) -> Option<i64> {
     })
 }
 
-fn default_property_op(property: &JsonValue, items: &[JsonValue]) -> Option<i64> {
+pub(super) fn default_property_op(property: &JsonValue, items: &[JsonValue]) -> Option<i64> {
     if let Some(default_name) = property.get("def").and_then(JsonValue::as_str)
         && let Some(op) = option_name_to_op(items, default_name)
     {
@@ -91,7 +91,7 @@ fn default_property_op(property: &JsonValue, items: &[JsonValue]) -> Option<i64>
     items.first().and_then(|item| item.get("op")).and_then(json_integer)
 }
 
-fn option_name_to_op(items: &[JsonValue], value: &str) -> Option<i64> {
+pub(super) fn option_name_to_op(items: &[JsonValue], value: &str) -> Option<i64> {
     items.iter().find_map(|item| {
         (item.get("name").and_then(JsonValue::as_str) == Some(value))
             .then(|| item.get("op").and_then(json_integer))
@@ -99,7 +99,7 @@ fn option_name_to_op(items: &[JsonValue], value: &str) -> Option<i64> {
     })
 }
 
-fn json_integer(value: &JsonValue) -> Option<i64> {
+pub(super) fn json_integer(value: &JsonValue) -> Option<i64> {
     value.as_i64().or_else(|| {
         let value = value.as_f64()?;
         (value.is_finite()
@@ -110,7 +110,7 @@ fn json_integer(value: &JsonValue) -> Option<i64> {
     })
 }
 
-fn skin_config_offsets_from_header(
+pub(super) fn skin_config_offsets_from_header(
     header: &JsonValue,
     runtime_state: &LuaLoadRuntimeState,
 ) -> BTreeMap<String, LuaSkinOffsetValue> {
@@ -121,7 +121,7 @@ fn skin_config_offsets_from_header(
     result
 }
 
-fn skin_offset_definitions_from_header(header: &JsonValue) -> Vec<(String, i32)> {
+pub(super) fn skin_offset_definitions_from_header(header: &JsonValue) -> Vec<(String, i32)> {
     let mut result = Vec::new();
     if let Some(offsets) = header.get("offset").and_then(JsonValue::as_array) {
         for offset in offsets {
@@ -155,7 +155,7 @@ fn skin_offset_definitions_from_header(header: &JsonValue) -> Vec<(String, i32)>
     result
 }
 
-fn lua_skin_offset_value(
+pub(super) fn lua_skin_offset_value(
     runtime_state: &LuaLoadRuntimeState,
     name: &str,
     id: Option<i32>,
@@ -171,7 +171,7 @@ fn lua_skin_offset_value(
 /// スキン設定パネルで選んだファイル選択を、filepath 定義の `path` グロブごとに
 /// 集める。キーは `path` グロブ (区切りを `/` に正規化)、値は選択ファイルの
 /// スキンルート相対パス。選択が無い / 空の定義は含めない。
-fn skin_files_from_header(
+pub(super) fn skin_files_from_header(
     root: &Path,
     header: &JsonValue,
     selected: &BTreeMap<String, String>,
@@ -200,7 +200,7 @@ fn skin_files_from_header(
     result
 }
 
-fn skin_named_files_from_header(
+pub(super) fn skin_named_files_from_header(
     root: &Path,
     header: &JsonValue,
     selected: &BTreeMap<String, String>,
@@ -229,7 +229,9 @@ fn skin_named_files_from_header(
     result
 }
 
-fn skin_file_dependency_names_from_header(header: &JsonValue) -> BTreeMap<String, String> {
+pub(super) fn skin_file_dependency_names_from_header(
+    header: &JsonValue,
+) -> BTreeMap<String, String> {
     let mut result = BTreeMap::new();
     let Some(filepaths) = header.get("filepath").and_then(JsonValue::as_array) else {
         return result;
@@ -249,12 +251,12 @@ fn skin_file_dependency_names_from_header(header: &JsonValue) -> BTreeMap<String
 /// beatoraja のファイル選択カスタマイズで「ランダム」を表す番兵値。
 /// `skin_files` の値がこれのとき、`skin_config.get_path` はロードごとに候補から
 /// ランダムに選ぶ。
-const RANDOM_FILE_SELECTION: &str = "Random";
+pub(super) const RANDOM_FILE_SELECTION: &str = "Random";
 
 /// `0..len` の範囲でロードごとに変わる擬似乱数インデックスを返す。
 /// `RandomState` のプロセス内ランダムキーを使い、追加クレートなしで beatoraja
 /// 相当の「毎ロードでランダム」を満たす。
-fn random_skin_file_index(len: usize) -> usize {
+pub(super) fn random_skin_file_index(len: usize) -> usize {
     use std::hash::BuildHasher;
 
     debug_assert!(len > 0);
@@ -262,7 +264,7 @@ fn random_skin_file_index(len: usize) -> usize {
     (hash % len as u64) as usize
 }
 
-fn default_skin_file_from_filepath(
+pub(super) fn default_skin_file_from_filepath(
     root: &Path,
     normalized_path: &str,
     filepath: &JsonValue,
@@ -289,3 +291,4 @@ fn default_skin_file_from_filepath(
     }
     candidates.into_iter().next().map(|candidate| candidate_file_name(&candidate))
 }
+use super::*;

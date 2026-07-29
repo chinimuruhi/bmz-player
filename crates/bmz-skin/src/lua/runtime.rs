@@ -1,13 +1,13 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct LuaRuntimeFlagProbe {
-    id: i32,
-    table: String,
-    field: String,
-    initial: bool,
+pub(super) struct LuaRuntimeFlagProbe {
+    pub(super) id: i32,
+    pub(super) table: String,
+    pub(super) field: String,
+    pub(super) initial: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum LuaRuntimeScalar {
+pub(super) enum LuaRuntimeScalar {
     Boolean(bool),
     Integer(i64),
     Number(f64),
@@ -15,24 +15,24 @@ enum LuaRuntimeScalar {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LuaAudioActionKindProbe {
+pub(super) enum LuaAudioActionKindProbe {
     Play,
     Loop,
     Stop,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct LuaAudioActionProbe {
-    action: LuaAudioActionKindProbe,
-    path: String,
-    volume: f64,
+pub(super) struct LuaAudioActionProbe {
+    pub(super) action: LuaAudioActionKindProbe,
+    pub(super) path: String,
+    pub(super) volume: f64,
 }
 
 /// beatoraja fast/slow 判定カウント ref (graph 比率推論用)
-const FAST_SLOW_FAST_REFS: [i32; 6] = [410, 412, 414, 416, 418, 421];
-const FAST_SLOW_SLOW_REFS: [i32; 6] = [411, 413, 415, 417, 419, 422];
+pub(super) const FAST_SLOW_FAST_REFS: [i32; 6] = [410, 412, 414, 416, 418, 421];
+pub(super) const FAST_SLOW_SLOW_REFS: [i32; 6] = [411, 413, 415, 417, 419, 422];
 
-fn main_state_judge_ref(index: i32) -> Option<i32> {
+pub(super) fn main_state_judge_ref(index: i32) -> Option<i32> {
     match index {
         0 => Some(110),
         1 => Some(111),
@@ -49,9 +49,9 @@ pub struct ConvertReport {
     pub warnings: Vec<String>,
 }
 
-struct LuaRuntimeCallback {
-    path: String,
-    key: Option<RegistryKey>,
+pub(super) struct LuaRuntimeCallback {
+    pub(super) path: String,
+    pub(super) key: Option<RegistryKey>,
 }
 
 /// A Lua-only sidecar that owns the runtime VM and every callback registry key.
@@ -60,13 +60,13 @@ struct LuaRuntimeCallback {
 /// load after inference has completed, so inference can never mutate runtime
 /// closure state, module state, or the Lua random-number generator.
 pub struct LuaSkinRuntime {
-    lua: Lua,
-    callbacks: Vec<LuaRuntimeCallback>,
-    main_state_key: RegistryKey,
-    instruction_budget: LuaInstructionBudget,
-    skin_path: PathBuf,
-    failed_callbacks: BTreeSet<usize>,
-    failure_log_count: usize,
+    pub(super) lua: Lua,
+    pub(super) callbacks: Vec<LuaRuntimeCallback>,
+    pub(super) main_state_key: RegistryKey,
+    pub(super) instruction_budget: LuaInstructionBudget,
+    pub(super) skin_path: PathBuf,
+    pub(super) failed_callbacks: BTreeSet<usize>,
+    pub(super) failure_log_count: usize,
 }
 
 impl fmt::Debug for LuaSkinRuntime {
@@ -210,3 +210,4 @@ impl LuaSkinRuntime {
         );
     }
 }
+use super::*;

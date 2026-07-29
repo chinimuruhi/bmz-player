@@ -1,4 +1,6 @@
 /// HCN passing 中レーンの表示タイマー状態。
+use super::judgement::update_gauge_increase_timer;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HcnLaneTimer {
     /// 押下中 (回復中) なら true、離している (減衰中) なら false。
@@ -136,3 +138,4 @@ pub fn apply_hcn_gauge(session: &mut GameSession, audio_now: TimeUs) {
         session.lane_hcn_timer[idx] = Some(timer);
     }
 }
+use super::*;

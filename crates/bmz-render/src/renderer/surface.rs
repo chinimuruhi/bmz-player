@@ -10,7 +10,7 @@ impl fmt::Debug for Renderer {
     }
 }
 
-fn resolve_wgpu_present_mode(
+pub(super) fn resolve_wgpu_present_mode(
     requested: WgpuPresentMode,
     available: &[wgpu::PresentMode],
 ) -> wgpu::PresentMode {
@@ -40,7 +40,7 @@ fn resolve_wgpu_present_mode(
     fallback
 }
 
-fn configure_surface_settings(
+pub(super) fn configure_surface_settings(
     config: &mut wgpu::SurfaceConfiguration,
     requested_present_mode: WgpuPresentMode,
     available_present_modes: &[wgpu::PresentMode],
@@ -54,7 +54,7 @@ fn configure_surface_settings(
     config.usage |= wgpu::TextureUsages::COPY_SRC;
 }
 
-fn wgpu_present_mode_label(mode: wgpu::PresentMode) -> &'static str {
+pub(super) fn wgpu_present_mode_label(mode: wgpu::PresentMode) -> &'static str {
     match mode {
         wgpu::PresentMode::AutoVsync => "AutoVsync",
         wgpu::PresentMode::AutoNoVsync => "AutoNoVsync",
@@ -64,3 +64,4 @@ fn wgpu_present_mode_label(mode: wgpu::PresentMode) -> &'static str {
         wgpu::PresentMode::Mailbox => "Mailbox",
     }
 }
+use super::*;

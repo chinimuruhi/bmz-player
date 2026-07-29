@@ -39,13 +39,26 @@ const SCRATCH_ANGLE_PERIOD_MS: i64 = 2_160;
 /// pre-ready の wall-clock key 時刻と chart 時刻を区別する閾値。
 const CHART_KEY_FUTURE_SLACK_US: i64 = 1_000_000;
 
-include!("session/state.rs");
-include!("session/judgement.rs");
-include!("session/audio.rs");
-include!("session/input.rs");
-include!("session/hcn.rs");
-include!("session/frame.rs");
+mod audio;
+mod frame;
+mod hcn;
+mod input;
+mod judgement;
+mod state;
 
+pub use audio::*;
+pub use frame::*;
+pub use hcn::*;
+pub use input::*;
+pub use judgement::*;
+pub use state::*;
+
+#[cfg(test)]
+use frame::{sync_input_timestamp_anchor, update_full_combo_timer};
+#[cfg(test)]
+use input::process_session_input;
+#[cfg(test)]
+use judgement::{update_failed_state_from_gauge, update_gauge_max_timer};
 #[cfg(test)]
 #[path = "session/tests.rs"]
 mod tests;

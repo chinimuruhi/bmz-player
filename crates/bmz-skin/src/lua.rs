@@ -61,12 +61,20 @@ const LUA_MEMORY_LIMIT_BYTES: usize = 256 * 1024 * 1024;
 const TIMER_OFF_VALUE: i32 = i32::MIN;
 pub const LUA_DRAW_CALLBACK_PREFIX: &str = "bmz:lua_draw_callback:";
 
-include!("lua/runtime.rs");
-include!("lua/loading.rs");
-include!("lua/execution.rs");
-include!("lua/postprocess.rs");
-include!("lua/config.rs");
-include!("lua/paths.rs");
+mod config;
+mod execution;
+mod loading;
+mod paths;
+mod postprocess;
+mod runtime;
+
+use config::*;
+use execution::*;
+pub use loading::{convert_lua_skin_to_json, load_lua_skin_header_value, load_lua_skin_value};
+use paths::*;
+use postprocess::*;
+use runtime::*;
+pub use runtime::{ConvertReport, LuaSkinRuntime};
 
 #[cfg(test)]
 #[path = "lua/tests.rs"]

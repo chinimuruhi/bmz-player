@@ -58,11 +58,34 @@ use text_cached_builder::*;
 use text_layout::*;
 use text_raster_builder::*;
 
-include!("renderer/backend_config.rs");
-include!("renderer/canvas.rs");
-include!("renderer/state.rs");
-include!("renderer/api.rs");
-include!("renderer/surface.rs");
+mod api;
+mod backend_config;
+mod canvas;
+mod state;
+mod surface;
+
+#[cfg(test)]
+use backend_config::auto_wgpu_backends;
+pub use backend_config::{
+    InternalResolutionMode, SurfacePresentationStatus, WgpuBackend, WgpuPresentMode,
+    available_wgpu_backends,
+};
+use backend_config::{
+    LOW_LATENCY_MAXIMUM_FRAME_LATENCY, MAILBOX_MAXIMUM_FRAME_LATENCY, fallback_wgpu_backends,
+};
+#[cfg(test)]
+use canvas::{CanvasFitMode, CanvasSize};
+use canvas::{CanvasRenderPolicy, CanvasViewport, GpuRenderTimings, validate_rgba_texture};
+pub use canvas::{RenderFrameTimings, RenderSurfaceStatus, Renderer, SurfaceSize};
+pub use state::PreparedTexture;
+use state::{
+    InternalSceneTarget, OFFSCREEN_RECT_BATCH_TEXTURE_BASE,
+    OFFSCREEN_RECT_BATCH_TEXTURE_MAX_ENTRIES, OffscreenRectBatchTextureKey, PendingTexture,
+    WgpuRenderer,
+};
+#[cfg(test)]
+use surface::resolve_wgpu_present_mode;
+use surface::{configure_surface_settings, wgpu_present_mode_label};
 
 #[cfg(test)]
 #[path = "renderer/tests.rs"]

@@ -78,7 +78,7 @@ pub fn apply_judge_outcome(
     events
 }
 
-fn push_skin_runtime_event(session: &mut GameSession, kind: SkinRuntimeEventKind) {
+pub(super) fn push_skin_runtime_event(session: &mut GameSession, kind: SkinRuntimeEventKind) {
     let sequence = session.next_skin_event_sequence;
     session.next_skin_event_sequence = session
         .next_skin_event_sequence
@@ -116,20 +116,24 @@ fn update_course_combo_state(session: &mut GameSession, event: &JudgementEvent) 
     }
 }
 
-fn update_failed_state_from_gauge(session: &mut GameSession) {
+pub(super) fn update_failed_state_from_gauge(session: &mut GameSession) {
     if session.state == PlayState::Playing && session.gauge.current_closes_play_on_zero() {
         session.state = PlayState::Failed;
     }
 }
 
-fn update_gauge_increase_timer(session: &mut GameSession, previous_value: f32, now: TimeUs) {
+pub(super) fn update_gauge_increase_timer(
+    session: &mut GameSession,
+    previous_value: f32,
+    now: TimeUs,
+) {
     let current_value = session.gauge.current().value;
     if current_value > previous_value + f32::EPSILON {
         session.gauge_increase_started_at = Some(TimeUs(now.0.max(0)));
     }
 }
 
-fn update_gauge_max_timer(session: &mut GameSession, now: TimeUs) {
+pub(super) fn update_gauge_max_timer(session: &mut GameSession, now: TimeUs) {
     let current = session.gauge.current();
     let is_max = current.value >= current.definition.max.max(1.0);
     match (is_max, session.gauge_max_started_at) {
@@ -147,3 +151,4 @@ fn update_gauge_max_timer(session: &mut GameSession, now: TimeUs) {
         }
     }
 }
+use super::*;

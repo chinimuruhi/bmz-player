@@ -41,8 +41,8 @@ pub struct SurfacePresentationStatus {
 /// 入力から表示までの待ちを最小化するため、通常modeでswapchainに許可する最大の
 /// in-flight frame数。MailboxだけはDX12でこの値×monitor HzにFPSが制限されるため、
 /// 既定値2を維持してFast VSyncがrefresh rateそのものへ落ちるのを避ける。
-const LOW_LATENCY_MAXIMUM_FRAME_LATENCY: u32 = 1;
-const MAILBOX_MAXIMUM_FRAME_LATENCY: u32 = 2;
+pub(super) const LOW_LATENCY_MAXIMUM_FRAME_LATENCY: u32 = 1;
+pub(super) const MAILBOX_MAXIMUM_FRAME_LATENCY: u32 = 2;
 
 impl WgpuBackend {
     pub fn to_wgpu(self) -> wgpu::Backends {
@@ -70,7 +70,7 @@ pub fn available_wgpu_backends() -> Vec<WgpuBackend> {
         .collect()
 }
 
-fn auto_wgpu_backends() -> wgpu::Backends {
+pub(super) fn auto_wgpu_backends() -> wgpu::Backends {
     #[cfg(target_os = "linux")]
     {
         // Prefer Vulkan on Linux. GL/GLES remains available only as an
@@ -91,7 +91,7 @@ fn auto_wgpu_backends() -> wgpu::Backends {
     }
 }
 
-fn fallback_wgpu_backends(backend: WgpuBackend) -> &'static [WgpuBackend] {
+pub(super) fn fallback_wgpu_backends(backend: WgpuBackend) -> &'static [WgpuBackend] {
     match backend {
         #[cfg(target_os = "linux")]
         WgpuBackend::Auto => &[WgpuBackend::Vulkan, WgpuBackend::Gl],

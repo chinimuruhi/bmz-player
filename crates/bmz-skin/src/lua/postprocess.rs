@@ -1,4 +1,4 @@
-fn normalize_lua_skin_audio_paths(
+pub(super) fn normalize_lua_skin_audio_paths(
     skin_root: &Path,
     root: &mut JsonMap<String, JsonValue>,
     warnings: &mut Vec<String>,
@@ -16,7 +16,7 @@ fn normalize_lua_skin_audio_paths(
     }
 }
 
-fn normalize_lua_skin_audio_action_array(
+pub(super) fn normalize_lua_skin_audio_action_array(
     skin_root: &Path,
     actions: &mut Vec<JsonValue>,
     warnings: &mut Vec<String>,
@@ -44,7 +44,7 @@ fn normalize_lua_skin_audio_action_array(
     });
 }
 
-fn lua_result_panel_value(value: Value) -> Option<i32> {
+pub(super) fn lua_result_panel_value(value: Value) -> Option<i32> {
     match value {
         Value::Integer(value) => i32::try_from(value).ok(),
         Value::Number(value) if value.is_finite() && value.fract() == 0.0 => Some(value as i32),
@@ -53,7 +53,7 @@ fn lua_result_panel_value(value: Value) -> Option<i32> {
     .filter(|panel| (0..=2).contains(panel))
 }
 
-fn result_panel_from_local_mode(mode: i32) -> Option<i32> {
+pub(super) fn result_panel_from_local_mode(mode: i32) -> Option<i32> {
     match mode {
         0 => Some(2),
         1 => Some(1),
@@ -61,7 +61,7 @@ fn result_panel_from_local_mode(mode: i32) -> Option<i32> {
     }
 }
 
-fn record_local_result_panel_default(
+pub(super) fn record_local_result_panel_default(
     main_state_probe: &Arc<Mutex<MainStateProbe>>,
     mode: i32,
 ) -> Option<()> {
@@ -184,7 +184,7 @@ unsafe extern "C-unwind" fn set_boolean_upvalue(state: *mut mlua::lua_State) -> 
     }
 }
 
-fn lua_result_mode_upvalue(lua: &Lua, function: &Function) -> Option<(i32, i32)> {
+pub(super) fn lua_result_mode_upvalue(lua: &Lua, function: &Function) -> Option<(i32, i32)> {
     // SAFETY: both callbacks obey Lua's C function ABI and access only their
     // call frame. They are retained by mlua for the duration of `call`.
     let helper = unsafe { lua.create_c_function(find_result_mode_upvalue).ok()? };
@@ -192,7 +192,12 @@ fn lua_result_mode_upvalue(lua: &Lua, function: &Function) -> Option<(i32, i32)>
     Some((i32::try_from(index).ok()?, i32::try_from(value).ok()?))
 }
 
-fn set_lua_integer_upvalue(lua: &Lua, function: &Function, index: i32, value: i32) -> bool {
+pub(super) fn set_lua_integer_upvalue(
+    lua: &Lua,
+    function: &Function,
+    index: i32,
+    value: i32,
+) -> bool {
     // SAFETY: see `lua_result_mode_upvalue`; Rust-side argument conversion also
     // guarantees the C callback receives a function and two integers.
     let Ok(helper) = (unsafe { lua.create_c_function(set_integer_upvalue) }) else {
@@ -201,7 +206,7 @@ fn set_lua_integer_upvalue(lua: &Lua, function: &Function, index: i32, value: i3
     helper.call::<bool>((function.clone(), index, value)).unwrap_or(false)
 }
 
-fn lua_flag_score_upvalue(lua: &Lua, function: &Function) -> Option<(i32, bool)> {
+pub(super) fn lua_flag_score_upvalue(lua: &Lua, function: &Function) -> Option<(i32, bool)> {
     // SAFETY: the callback obeys Lua's C function ABI and accesses only its
     // call frame. It is retained by mlua for the duration of `call`.
     let helper = unsafe { lua.create_c_function(find_flag_score_upvalue).ok()? };
@@ -209,7 +214,12 @@ fn lua_flag_score_upvalue(lua: &Lua, function: &Function) -> Option<(i32, bool)>
     Some((i32::try_from(index).ok()?, value))
 }
 
-fn set_lua_boolean_upvalue(lua: &Lua, function: &Function, index: i32, value: bool) -> bool {
+pub(super) fn set_lua_boolean_upvalue(
+    lua: &Lua,
+    function: &Function,
+    index: i32,
+    value: bool,
+) -> bool {
     // SAFETY: see `lua_flag_score_upvalue`; Rust-side argument conversion
     // guarantees the callback receives a function, integer, and boolean.
     let Ok(helper) = (unsafe { lua.create_c_function(set_boolean_upvalue) }) else {
@@ -218,7 +228,10 @@ fn set_lua_boolean_upvalue(lua: &Lua, function: &Function, index: i32, value: bo
     helper.call::<bool>((function.clone(), index, value)).unwrap_or(false)
 }
 
-fn postprocess_lua_skin_json(root: &mut JsonMap<String, JsonValue>, warnings: &mut Vec<String>) {
+pub(super) fn postprocess_lua_skin_json(
+    root: &mut JsonMap<String, JsonValue>,
+    warnings: &mut Vec<String>,
+) {
     repair_malformed_destination_ops(root, warnings);
     repair_select_score_rate_punctuation(root);
     let repaired = repair_keybeam_destination_draws(root);
@@ -234,7 +247,7 @@ fn postprocess_lua_skin_json(root: &mut JsonMap<String, JsonValue>, warnings: &m
 /// Repairs two malformed `op` table shapes accepted by Lua/beatoraja skins but
 /// rejected by the strict document schema. Keep the predicates narrow so an
 /// unrelated object or intentionally nested array is not silently flattened.
-fn repair_malformed_destination_ops(
+pub(super) fn repair_malformed_destination_ops(
     root: &mut JsonMap<String, JsonValue>,
     warnings: &mut Vec<String>,
 ) {
@@ -355,3 +368,4 @@ fn repair_malformed_destination_ops(
         warnings.push(format!("repaired {repaired_count} malformed destination op tables"));
     }
 }
+use super::*;

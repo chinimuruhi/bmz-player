@@ -29,6 +29,7 @@ fn plays_keysound(judge: Judge) -> bool {
     matches!(judge, Judge::PGreat | Judge::Great | Judge::Good | Judge::Bad)
 }
 
-fn counts_for_input_offset_auto_adjust(judge: Judge) -> bool {
+pub(super) fn counts_for_input_offset_auto_adjust(judge: Judge) -> bool {
     plays_keysound(judge)
 }
+use super::*;

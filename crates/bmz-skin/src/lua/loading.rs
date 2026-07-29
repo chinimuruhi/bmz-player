@@ -55,7 +55,7 @@ pub fn convert_lua_skin_to_json(
     Ok(ConvertReport { warnings })
 }
 
-fn execute_lua_skin_header(input: &Path) -> Result<(JsonValue, Vec<String>)> {
+pub(super) fn execute_lua_skin_header(input: &Path) -> Result<(JsonValue, Vec<String>)> {
     let input = canonicalize_skin_path(input)
         .with_context(|| format!("failed to canonicalize input: {}", input.display()))?;
     let parent =
@@ -101,3 +101,4 @@ fn execute_lua_skin_header(input: &Path) -> Result<(JsonValue, Vec<String>)> {
 
     Ok((header_json, warnings))
 }
+use super::*;

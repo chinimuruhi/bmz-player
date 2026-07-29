@@ -20,8 +20,8 @@ pub struct PlayOffsets {
 
 pub const INPUT_OFFSET_AUTO_ADJUST_MIN_US: i64 = -500_000;
 pub const INPUT_OFFSET_AUTO_ADJUST_MAX_US: i64 = 500_000;
-const INPUT_OFFSET_AUTO_ADJUST_STEP_US: i64 = 1_000;
-const INPUT_OFFSET_AUTO_ADJUST_BATCH: u32 = 10;
+pub(super) const INPUT_OFFSET_AUTO_ADJUST_STEP_US: i64 = 1_000;
+pub(super) const INPUT_OFFSET_AUTO_ADJUST_BATCH: u32 = 10;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct InputOffsetAutoAdjustState {
@@ -293,3 +293,4 @@ pub fn compute_frame_times(session: &GameSession) -> FrameTimes {
     let audio_schedule_until = TimeUs(audio_now.0 + AUDIO_SCHEDULE_AHEAD_US);
     FrameTimes { audio_now, audio_schedule_until }
 }
+use super::*;

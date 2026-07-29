@@ -14,7 +14,9 @@ pub fn sync_judge_windows(session: &mut GameSession, now: TimeUs) {
     ));
 }
 
-fn sync_input_timestamp_anchor(session: &mut GameSession, audio_now: TimeUs) {
+use super::judgement::{update_failed_state_from_gauge, update_gauge_max_timer};
+
+pub(super) fn sync_input_timestamp_anchor(session: &mut GameSession, audio_now: TimeUs) {
     session.input_timestamp_anchor = if session.audio_clock.running {
         Some(InputTimestampAnchor { monotonic_ns: monotonic_timestamp_ns(), audio_time: audio_now })
     } else {
@@ -103,7 +105,7 @@ pub fn advance_session_frame(
     }
 }
 
-fn update_full_combo_timer(session: &mut GameSession, judgements: &[JudgementEvent]) {
+pub(super) fn update_full_combo_timer(session: &mut GameSession, judgements: &[JudgementEvent]) {
     update_opponent_full_combo_timer(session, judgements);
     if session.full_combo_started_at.is_some()
         || session.scored_total_notes == 0
@@ -144,3 +146,4 @@ pub fn should_finish(session: &GameSession, audio_now: TimeUs) -> bool {
         && session.bgm_scheduler.is_done(&session.chart)
         && audio_now.0 > session.chart.end_time.0 + SESSION_END_MARGIN_US
 }
+use super::*;

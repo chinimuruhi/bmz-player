@@ -1,4 +1,4 @@
-fn skin_file_candidates(root: &Path, normalized_path: &str) -> Vec<String> {
+pub(super) fn skin_file_candidates(root: &Path, normalized_path: &str) -> Vec<String> {
     let requested_path = strip_beatoraja_asset_filter(normalized_path);
     let Some((prefix, suffix)) = requested_path.split_once('*') else {
         return vec![requested_path.to_string()];
@@ -31,7 +31,7 @@ fn skin_file_candidates(root: &Path, normalized_path: &str) -> Vec<String> {
     candidates
 }
 
-fn filename_matches_def(candidate: &str, default_name: &str) -> bool {
+pub(super) fn filename_matches_def(candidate: &str, default_name: &str) -> bool {
     let file_name = Path::new(candidate).file_name().and_then(|name| name.to_str()).unwrap_or("");
     if file_name.eq_ignore_ascii_case(default_name) {
         return true;
@@ -47,7 +47,7 @@ fn filename_matches_def(candidate: &str, default_name: &str) -> bool {
     })
 }
 
-fn filepath_def_acronym(default_name: &str) -> Option<String> {
+pub(super) fn filepath_def_acronym(default_name: &str) -> Option<String> {
     if !default_name.contains('-') {
         return None;
     }
@@ -58,7 +58,7 @@ fn filepath_def_acronym(default_name: &str) -> Option<String> {
     (!acronym.is_empty()).then_some(acronym)
 }
 
-fn candidate_file_name(candidate: &str) -> String {
+pub(super) fn candidate_file_name(candidate: &str) -> String {
     Path::new(candidate).file_name().and_then(|name| name.to_str()).unwrap_or(candidate).to_string()
 }
 
@@ -69,7 +69,7 @@ fn candidate_file_name(candidate: &str) -> String {
 /// ファイル / ディレクトリの双方を許可する (Lua スキンは
 /// `skin_config.get_path("dir/*") .. "/foo.lua"` の形でディレクトリ選択を
 /// 連結に使うパターンがある)。
-fn resolve_selected_skin_path(root: &Path, selected: &str) -> Option<PathBuf> {
+pub(super) fn resolve_selected_skin_path(root: &Path, selected: &str) -> Option<PathBuf> {
     let relative = Path::new(selected);
     if relative.as_os_str().is_empty()
         || relative.is_absolute()
@@ -83,7 +83,7 @@ fn resolve_selected_skin_path(root: &Path, selected: &str) -> Option<PathBuf> {
     candidate.exists().then_some(candidate)
 }
 
-fn skin_config_get_path(
+pub(super) fn skin_config_get_path(
     root: &Path,
     requested: &str,
     skin_files: &BTreeMap<String, String>,
@@ -159,7 +159,7 @@ fn skin_config_get_path(
     Ok(candidates.swap_remove(index))
 }
 
-fn resolve_selected_skin_path_for_wildcard_child(
+pub(super) fn resolve_selected_skin_path_for_wildcard_child(
     root: &Path,
     requested: &str,
     skin_files: &BTreeMap<String, String>,
@@ -179,7 +179,7 @@ fn resolve_selected_skin_path_for_wildcard_child(
     None
 }
 
-fn resolve_selected_skin_path_for_pattern(
+pub(super) fn resolve_selected_skin_path_for_pattern(
     root: &Path,
     pattern: &str,
     selected: &str,
@@ -195,7 +195,7 @@ fn resolve_selected_skin_path_for_pattern(
     resolve_selected_skin_path(root, &format!("{directory_prefix}{}", selected.replace('\\', "/")))
 }
 
-fn wildcard_from_selection<'a>(
+pub(super) fn wildcard_from_selection<'a>(
     configured_prefix: &str,
     configured_suffix: &str,
     selected: &'a str,
@@ -211,7 +211,7 @@ fn wildcard_from_selection<'a>(
         })
 }
 
-fn strip_beatoraja_asset_filter(path: &str) -> &str {
+pub(super) fn strip_beatoraja_asset_filter(path: &str) -> &str {
     path.split_once('|').map_or(path, |(asset_path, _)| asset_path)
 }
 
@@ -221,12 +221,12 @@ fn strip_beatoraja_asset_filter(path: &str) -> &str {
 /// so a verbatim sandbox root makes every such `dofile`/`require` fail with a
 /// path-syntax error. Strip the verbatim prefix so derived paths stay normal and
 /// tolerate mixed separators. No-op on non-Windows.
-fn canonicalize_skin_path(path: &Path) -> std::io::Result<PathBuf> {
+pub(super) fn canonicalize_skin_path(path: &Path) -> std::io::Result<PathBuf> {
     path.canonicalize().map(simplify_verbatim_path)
 }
 
 #[cfg(windows)]
-fn simplify_verbatim_path(path: PathBuf) -> PathBuf {
+pub(super) fn simplify_verbatim_path(path: PathBuf) -> PathBuf {
     let text = path.as_os_str().to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         return PathBuf::from(format!(r"\\{rest}"));
@@ -242,11 +242,11 @@ fn simplify_verbatim_path(path: PathBuf) -> PathBuf {
 }
 
 #[cfg(not(windows))]
-fn simplify_verbatim_path(path: PathBuf) -> PathBuf {
+pub(super) fn simplify_verbatim_path(path: PathBuf) -> PathBuf {
     path
 }
 
-fn resolve_lua_path(root: &Path, requested: &str, module: bool) -> Result<PathBuf> {
+pub(super) fn resolve_lua_path(root: &Path, requested: &str, module: bool) -> Result<PathBuf> {
     let relative = if module { requested.replace('.', "/") } else { requested.to_string() };
     let relative_path = Path::new(&relative);
     if relative_path.is_absolute() {
@@ -286,7 +286,7 @@ fn resolve_lua_path(root: &Path, requested: &str, module: bool) -> Result<PathBu
     bail!("lua file not found: {requested}");
 }
 
-fn resolve_skin_io_path(root: &Path, requested: &str) -> Result<PathBuf> {
+pub(super) fn resolve_skin_io_path(root: &Path, requested: &str) -> Result<PathBuf> {
     let relative = normalize_skin_io_relative_path(requested)?;
 
     if let Some(path) = resolve_beatoraja_skin_alias(root, &relative) {
@@ -301,7 +301,7 @@ fn resolve_skin_io_path(root: &Path, requested: &str) -> Result<PathBuf> {
     Ok(canonical)
 }
 
-fn normalize_skin_io_relative_path(requested: &str) -> Result<String> {
+pub(super) fn normalize_skin_io_relative_path(requested: &str) -> Result<String> {
     if requested.contains('\0') {
         bail!("io path contains NUL");
     }
@@ -329,7 +329,7 @@ fn normalize_skin_io_relative_path(requested: &str) -> Result<String> {
     Ok(normalized.join("/"))
 }
 
-fn normalize_virtual_io_files(
+pub(super) fn normalize_virtual_io_files(
     files: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<String, String>> {
     let mut normalized = BTreeMap::new();
@@ -346,7 +346,7 @@ fn normalize_virtual_io_files(
     Ok(normalized)
 }
 
-fn read_skin_io_source(path: &Path) -> Result<String> {
+pub(super) fn read_skin_io_source(path: &Path) -> Result<String> {
     let metadata = fs::metadata(path)?;
     if metadata.len() > LUA_IO_MAX_READ_BYTES as u64 {
         bail!("Lua IO file exceeds {} byte limit: {}", LUA_IO_MAX_READ_BYTES, path.display());
@@ -358,7 +358,7 @@ fn read_skin_io_source(path: &Path) -> Result<String> {
     Ok(source)
 }
 
-fn record_virtual_io_dependency(
+pub(super) fn record_virtual_io_dependency(
     path: &str,
     source: Option<&str>,
     dependencies: Option<&Arc<Mutex<SkinLoadDependencies>>>,
@@ -370,7 +370,7 @@ fn record_virtual_io_dependency(
     }
 }
 
-fn mark_io_dependency_opaque(dependencies: Option<&Arc<Mutex<SkinLoadDependencies>>>) {
+pub(super) fn mark_io_dependency_opaque(dependencies: Option<&Arc<Mutex<SkinLoadDependencies>>>) {
     if let Some(dependencies) = dependencies
         && let Ok(mut dependencies) = dependencies.lock()
     {
@@ -381,7 +381,7 @@ fn mark_io_dependency_opaque(dependencies: Option<&Arc<Mutex<SkinLoadDependencie
     }
 }
 
-fn resolve_beatoraja_skin_alias(root: &Path, relative: &str) -> Option<PathBuf> {
+pub(super) fn resolve_beatoraja_skin_alias(root: &Path, relative: &str) -> Option<PathBuf> {
     let rest = relative.strip_prefix("skin/")?;
     let (skin_name, skin_relative) = rest.split_once('/')?;
     if let Some(canonical) = canonicalize_skin_child(root, skin_relative) {
@@ -398,7 +398,7 @@ fn resolve_beatoraja_skin_alias(root: &Path, relative: &str) -> Option<PathBuf> 
     None
 }
 
-fn canonicalize_skin_child(root: &Path, relative: &str) -> Option<PathBuf> {
+pub(super) fn canonicalize_skin_child(root: &Path, relative: &str) -> Option<PathBuf> {
     let path = root.join(relative);
     if !path.is_file() {
         return None;
@@ -412,7 +412,7 @@ fn canonicalize_skin_child(root: &Path, relative: &str) -> Option<PathBuf> {
     canonical.starts_with(&root).then_some(canonical)
 }
 
-fn is_unsupported_json_field_value(value: &Value) -> bool {
+pub(super) fn is_unsupported_json_field_value(value: &Value) -> bool {
     matches!(
         value,
         Value::Function(_)
@@ -426,13 +426,18 @@ fn is_unsupported_json_field_value(value: &Value) -> bool {
 
 /// beatoraja Lua skin loader が document/header に残すコールバック。
 /// BMZ は `.luaskin` 実行結果だけを使い、関数参照自体は JSON 化しない。
-const SILENTLY_SKIPPED_LOADER_FIELDS: &[&str] = &["process", "main", "processHeader", "act"];
+pub(super) const SILENTLY_SKIPPED_LOADER_FIELDS: &[&str] =
+    &["process", "main", "processHeader", "act"];
 
-fn should_silently_skip_loader_field(key: &str, value: &Value) -> bool {
+pub(super) fn should_silently_skip_loader_field(key: &str, value: &Value) -> bool {
     matches!(value, Value::Function(_)) && SILENTLY_SKIPPED_LOADER_FIELDS.contains(&key)
 }
 
-fn lua_key_to_json_key(key: Value, path: &str, warnings: &mut Vec<String>) -> Result<String> {
+pub(super) fn lua_key_to_json_key(
+    key: Value,
+    path: &str,
+    warnings: &mut Vec<String>,
+) -> Result<String> {
     match key {
         Value::String(value) => Ok(value.to_string_lossy()),
         Value::Integer(value) => Ok(value.to_string()),
@@ -444,3 +449,4 @@ fn lua_key_to_json_key(key: Value, path: &str, warnings: &mut Vec<String>) -> Re
         }
     }
 }
+use super::*;

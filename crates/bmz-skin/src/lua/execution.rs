@@ -1,13 +1,13 @@
-struct ExecutedLuaSkin {
-    value: JsonValue,
-    warnings: Vec<String>,
-    files: BTreeMap<String, String>,
-    dependencies: SkinLoadDependencies,
-    lua_runtime: Option<LuaSkinRuntime>,
-    runtime_draw_paths: Vec<String>,
+pub(super) struct ExecutedLuaSkin {
+    pub(super) value: JsonValue,
+    pub(super) warnings: Vec<String>,
+    pub(super) files: BTreeMap<String, String>,
+    pub(super) dependencies: SkinLoadDependencies,
+    pub(super) lua_runtime: Option<LuaSkinRuntime>,
+    pub(super) runtime_draw_paths: Vec<String>,
 }
 
-fn execute_lua_skin(
+pub(super) fn execute_lua_skin(
     input: &Path,
     options: &BTreeMap<String, String>,
     files: &BTreeMap<String, String>,
@@ -315,7 +315,7 @@ fn execute_lua_skin(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_lua_skin_runtime(
+pub(super) fn build_lua_skin_runtime(
     input: &Path,
     root: &Path,
     source: &str,
@@ -389,7 +389,7 @@ fn build_lua_skin_runtime(
     })
 }
 
-fn lua_value_at_field_path(mut value: Value, path: &str) -> Result<Value> {
+pub(super) fn lua_value_at_field_path(mut value: Value, path: &str) -> Result<Value> {
     let bytes = path.as_bytes();
     if bytes.first() != Some(&b'$') {
         bail!("invalid Lua callback field path: {path}");
@@ -435,3 +435,4 @@ fn lua_value_at_field_path(mut value: Value, path: &str) -> Result<Value> {
     }
     Ok(value)
 }
+use super::*;

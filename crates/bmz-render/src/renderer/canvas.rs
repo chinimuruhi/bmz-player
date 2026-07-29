@@ -1,29 +1,29 @@
 #[derive(Default)]
 pub struct Renderer {
-    last_scene: Option<AppSceneSnapshot>,
-    last_plan: Option<DrawPlan>,
-    play_skin_context: SkinContext,
-    select_skin_context: SkinContext,
-    decide_skin_context: SkinContext,
-    result_skin_context: SkinContext,
-    last_plan_canvas_policy: CanvasRenderPolicy,
-    pending_textures: Vec<PendingTexture>,
-    fonts: HashMap<String, FontArc>,
-    bitmap_fonts: HashMap<String, BitmapFont>,
-    gpu: Option<WgpuRenderer>,
-    pending_egui: Option<EguiFrame>,
-    pending_screenshot: Option<ScreenshotRequest>,
-    play_dynamic_timer_runtime: DynamicTimerRuntime,
-    select_dynamic_timer_runtime: DynamicTimerRuntime,
-    decide_dynamic_timer_runtime: DynamicTimerRuntime,
-    result_dynamic_timer_runtime: DynamicTimerRuntime,
-    last_frame_timings: Option<RenderFrameTimings>,
+    pub(super) last_scene: Option<AppSceneSnapshot>,
+    pub(super) last_plan: Option<DrawPlan>,
+    pub(super) play_skin_context: SkinContext,
+    pub(super) select_skin_context: SkinContext,
+    pub(super) decide_skin_context: SkinContext,
+    pub(super) result_skin_context: SkinContext,
+    pub(super) last_plan_canvas_policy: CanvasRenderPolicy,
+    pub(super) pending_textures: Vec<PendingTexture>,
+    pub(super) fonts: HashMap<String, FontArc>,
+    pub(super) bitmap_fonts: HashMap<String, BitmapFont>,
+    pub(super) gpu: Option<WgpuRenderer>,
+    pub(super) pending_egui: Option<EguiFrame>,
+    pub(super) pending_screenshot: Option<ScreenshotRequest>,
+    pub(super) play_dynamic_timer_runtime: DynamicTimerRuntime,
+    pub(super) select_dynamic_timer_runtime: DynamicTimerRuntime,
+    pub(super) decide_dynamic_timer_runtime: DynamicTimerRuntime,
+    pub(super) result_dynamic_timer_runtime: DynamicTimerRuntime,
+    pub(super) last_frame_timings: Option<RenderFrameTimings>,
     /// サーフェス生成時および `set_present_mode` で参照する希望 present mode。
-    present_mode: WgpuPresentMode,
-    internal_resolution_mode: InternalResolutionMode,
-    backend: WgpuBackend,
-    default_font_coverage: bmz_font::FontCoverage,
-    default_font_search_paths: Vec<PathBuf>,
+    pub(super) present_mode: WgpuPresentMode,
+    pub(super) internal_resolution_mode: InternalResolutionMode,
+    pub(super) backend: WgpuBackend,
+    pub(super) default_font_coverage: bmz_font::FontCoverage,
+    pub(super) default_font_search_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -50,24 +50,24 @@ pub struct RenderFrameTimings {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct GpuRenderTimings {
-    draw_us: u128,
-    text_us: u128,
-    geometry_us: u128,
-    upload_us: u128,
-    submit_us: u128,
-    surface_us: u128,
-    bind_us: u128,
-    encode_us: u128,
-    queue_us: u128,
-    present_us: u128,
-    steps: usize,
-    rect_steps: usize,
-    image_steps: usize,
-    text_steps: usize,
-    rect_instances: usize,
-    image_instances: usize,
-    text_instances: usize,
+pub(super) struct GpuRenderTimings {
+    pub(super) draw_us: u128,
+    pub(super) text_us: u128,
+    pub(super) geometry_us: u128,
+    pub(super) upload_us: u128,
+    pub(super) submit_us: u128,
+    pub(super) surface_us: u128,
+    pub(super) bind_us: u128,
+    pub(super) encode_us: u128,
+    pub(super) queue_us: u128,
+    pub(super) present_us: u128,
+    pub(super) steps: usize,
+    pub(super) rect_steps: usize,
+    pub(super) image_steps: usize,
+    pub(super) text_steps: usize,
+    pub(super) rect_instances: usize,
+    pub(super) image_instances: usize,
+    pub(super) text_instances: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,28 +77,28 @@ pub struct SurfaceSize {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-enum CanvasFitMode {
+pub(super) enum CanvasFitMode {
     #[default]
     Expand,
     Contain,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct CanvasSize {
-    width: u32,
-    height: u32,
+pub(super) struct CanvasSize {
+    pub(super) width: u32,
+    pub(super) height: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct CanvasRenderPolicy {
-    fit_mode: CanvasFitMode,
-    canvas_size: Option<CanvasSize>,
+pub(super) struct CanvasRenderPolicy {
+    pub(super) fit_mode: CanvasFitMode,
+    pub(super) canvas_size: Option<CanvasSize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct CanvasViewport {
-    rect: Rect,
-    content_size: SurfaceSize,
+pub(super) struct CanvasViewport {
+    pub(super) rect: Rect,
+    pub(super) content_size: SurfaceSize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,14 +117,14 @@ impl SurfaceSize {
 }
 
 impl CanvasRenderPolicy {
-    fn skin_document(document: &SkinDocument) -> Self {
+    pub(super) fn skin_document(document: &SkinDocument) -> Self {
         Self {
             fit_mode: CanvasFitMode::Contain,
             canvas_size: Some(CanvasSize { width: document.w.max(1), height: document.h.max(1) }),
         }
     }
 
-    fn internal_render_size(
+    pub(super) fn internal_render_size(
         self,
         surface: SurfaceSize,
         mode: InternalResolutionMode,
@@ -142,7 +142,7 @@ impl CanvasRenderPolicy {
 }
 
 impl CanvasViewport {
-    fn from_policy(surface: SurfaceSize, policy: CanvasRenderPolicy) -> Self {
+    pub(super) fn from_policy(surface: SurfaceSize, policy: CanvasRenderPolicy) -> Self {
         let full =
             Self { rect: Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 }, content_size: surface };
         if !surface.is_drawable() || policy.fit_mode == CanvasFitMode::Expand {
@@ -175,15 +175,15 @@ impl CanvasViewport {
         Self { rect, content_size: Self::content_size_for_rect(surface, rect) }
     }
 
-    fn content_size(self) -> SurfaceSize {
+    pub(super) fn content_size(self) -> SurfaceSize {
         self.content_size
     }
 
-    fn is_identity(self) -> bool {
+    pub(super) fn is_identity(self) -> bool {
         self.rect == Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 }
     }
 
-    fn transform_rect(self, rect: Rect) -> Rect {
+    pub(super) fn transform_rect(self, rect: Rect) -> Rect {
         Rect {
             x: self.rect.x + rect.x * self.rect.width,
             y: self.rect.y + rect.y * self.rect.height,
@@ -192,7 +192,7 @@ impl CanvasViewport {
         }
     }
 
-    fn surface_to_canvas_point(self, x: f32, y: f32) -> Option<(f32, f32)> {
+    pub(super) fn surface_to_canvas_point(self, x: f32, y: f32) -> Option<(f32, f32)> {
         let right = self.rect.x + self.rect.width;
         let bottom = self.rect.y + self.rect.height;
         if x < self.rect.x || x > right || y < self.rect.y || y > bottom {
@@ -201,15 +201,15 @@ impl CanvasViewport {
         Some(((x - self.rect.x) / self.rect.width, (y - self.rect.y) / self.rect.height))
     }
 
-    fn transform_rect_command(self, command: RectCommand) -> RectCommand {
+    pub(super) fn transform_rect_command(self, command: RectCommand) -> RectCommand {
         RectCommand { rect: self.transform_rect(command.rect), color: command.color }
     }
 
-    fn transform_rect_batch_cache(self, cache: RectBatchCache) -> RectBatchCache {
+    pub(super) fn transform_rect_batch_cache(self, cache: RectBatchCache) -> RectBatchCache {
         RectBatchCache { bounds: self.transform_rect(cache.bounds), ..cache }
     }
 
-    fn transform_text_instances(self, instances: &mut [u8]) {
+    pub(super) fn transform_text_instances(self, instances: &mut [u8]) {
         for instance in instances.chunks_exact_mut(TEXT_INSTANCE_BYTES) {
             let x = f32::from_le_bytes(instance[0..4].try_into().unwrap());
             let y = f32::from_le_bytes(instance[4..8].try_into().unwrap());
@@ -223,13 +223,13 @@ impl CanvasViewport {
         }
     }
 
-    fn transform_text_caret_rects(self, rects: &mut [Option<RectCommand>]) {
+    pub(super) fn transform_text_caret_rects(self, rects: &mut [Option<RectCommand>]) {
         for rect in rects.iter_mut().flatten() {
             *rect = self.transform_rect_command(*rect);
         }
     }
 
-    fn content_size_for_rect(surface: SurfaceSize, rect: Rect) -> SurfaceSize {
+    pub(super) fn content_size_for_rect(surface: SurfaceSize, rect: Rect) -> SurfaceSize {
         SurfaceSize {
             width: normalized_extent_to_pixels(rect.width, surface.width),
             height: normalized_extent_to_pixels(rect.height, surface.height),
@@ -237,7 +237,7 @@ impl CanvasViewport {
     }
 }
 
-fn validate_rgba_texture(width: u32, height: u32, rgba: &[u8]) -> Result<()> {
+pub(super) fn validate_rgba_texture(width: u32, height: u32, rgba: &[u8]) -> Result<()> {
     if width == 0 || height == 0 {
         return Err(anyhow!("texture dimensions must be non-zero"));
     }
@@ -250,3 +250,4 @@ fn validate_rgba_texture(width: u32, height: u32, rgba: &[u8]) -> Result<()> {
     }
     Ok(())
 }
+use super::*;

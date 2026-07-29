@@ -33,6 +33,10 @@ pub fn apply_input_offset_auto_adjust(session: &mut GameSession, events: &[Judge
     }
 }
 
+use super::audio::counts_for_input_offset_auto_adjust;
+use super::judgement::push_skin_runtime_event;
+use super::state::{INPUT_OFFSET_AUTO_ADJUST_BATCH, INPUT_OFFSET_AUTO_ADJUST_STEP_US};
+
 pub fn update_recent_judgements(session: &mut GameSession, events: &[JudgementEvent], now: TimeUs) {
     for event in events {
         if !event.affects_score {
@@ -295,7 +299,10 @@ pub fn process_autoplay_inputs(
     judgements
 }
 
-fn process_session_input(session: &mut GameSession, input: InputEvent) -> Vec<JudgementEvent> {
+pub(super) fn process_session_input(
+    session: &mut GameSession,
+    input: InputEvent,
+) -> Vec<JudgementEvent> {
     push_skin_runtime_event(session, SkinRuntimeEventKind::Input(input));
     let mut outcome = session.judge.process_input(&session.chart, input);
     if input.kind == InputKind::Press {
@@ -383,3 +390,4 @@ pub fn process_misses(session: &mut GameSession, audio_now: TimeUs) -> Vec<Judge
     let outcome = session.judge.process_misses(&session.chart, audio_now);
     apply_judge_outcome(session, outcome)
 }
+use super::*;

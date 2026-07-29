@@ -144,12 +144,12 @@ impl Renderer {
         }
     }
 
-    fn insert_vector_font(&mut self, id: String, font: FontArc) {
+    pub(super) fn insert_vector_font(&mut self, id: String, font: FontArc) {
         self.bitmap_fonts.remove(&id);
         self.fonts.insert(id, font);
     }
 
-    fn insert_bitmap_font_entry(&mut self, id: String, font: BitmapFont) {
+    pub(super) fn insert_bitmap_font_entry(&mut self, id: String, font: BitmapFont) {
         self.fonts.remove(&id);
         self.bitmap_fonts.insert(id, font);
     }
@@ -563,3 +563,4 @@ impl Renderer {
             .unwrap_or_default()
     }
 }
+use super::*;
