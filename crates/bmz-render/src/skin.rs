@@ -33,7 +33,20 @@ mod condition;
 mod document_render;
 mod runtime;
 mod select_state;
-mod state_values;
+#[path = "skin/state_values/charts.rs"]
+mod state_value_charts;
+#[path = "skin/state_values/graph.rs"]
+mod state_value_graph;
+#[path = "skin/state_values/image.rs"]
+mod state_value_image;
+#[path = "skin/state_values/number.rs"]
+mod state_value_number;
+#[path = "skin/state_values/text.rs"]
+mod state_value_text;
+#[path = "skin/state_values/text_state.rs"]
+mod state_value_text_state;
+#[path = "skin/state_values/timer.rs"]
+mod state_value_timer;
 
 pub use condition::test_skin_ops;
 use condition::*;
@@ -45,13 +58,20 @@ pub use runtime::{
     build_judge_region_state, lane_judge_region,
 };
 use select_state::*;
-pub(crate) use state_values::result_grade_diff_label;
-use state_values::*;
-pub use state_values::{
-    duration_to_green_number_ms, format_rm_skin_course_table_text, green_duration_to_duration_i32,
-    lua_main_state_event_index, lua_main_state_float, lua_main_state_number, lua_main_state_option,
-    lua_main_state_timer, skin_start_input_elapsed_ms,
+use state_value_charts::*;
+use state_value_graph::*;
+use state_value_image::*;
+pub(crate) use state_value_number::result_grade_diff_label;
+use state_value_number::*;
+pub use state_value_number::{duration_to_green_number_ms, green_duration_to_duration_i32};
+use state_value_text::*;
+use state_value_text_state::*;
+pub use state_value_text_state::{
+    format_rm_skin_course_table_text, lua_main_state_event_index, lua_main_state_float,
+    lua_main_state_number, lua_main_state_option, lua_main_state_timer,
 };
+pub use state_value_timer::skin_start_input_elapsed_ms;
+use state_value_timer::*;
 
 const OFFSET_ALL: i32 = 10;
 const OFFSET_NOTES_1P: i32 = 30;
