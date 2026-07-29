@@ -322,8 +322,7 @@ mod tests {
             SoundId(1),
             DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![1.0, 0.5] },
         );
-        let mut mixer = MixerState::default();
-        mixer.master_gain = 0.25;
+        let mut mixer = MixerState { master_gain: 0.25, ..MixerState::default() };
         mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
             sound_id: SoundId(1),

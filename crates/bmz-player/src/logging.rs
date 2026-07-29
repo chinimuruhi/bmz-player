@@ -198,8 +198,8 @@ mod tests {
 
     #[test]
     fn log_entry_text_contains_message_and_fields() {
-        let mut visitor = EventVisitor::default();
-        visitor.message = Some("started".to_string());
+        let mut visitor =
+            EventVisitor { message: Some("started".to_string()), ..EventVisitor::default() };
         visitor.fields.push(("chart_id".to_string(), "42".to_string()));
 
         assert_eq!(visitor.finish(), "started chart_id=42");

@@ -2377,7 +2377,8 @@ mod tests {
 
     #[test]
     fn skin_reload_diff_marks_each_offset_slot_for_redecode() {
-        let cases: &[(&str, fn(&mut SkinConfig), fn(SkinReloadRequest) -> bool)] = &[
+        type SkinReloadCase = (&'static str, fn(&mut SkinConfig), fn(SkinReloadRequest) -> bool);
+        let cases: &[SkinReloadCase] = &[
             (
                 "select",
                 |skin| skin.select_offsets.push(Default::default()),

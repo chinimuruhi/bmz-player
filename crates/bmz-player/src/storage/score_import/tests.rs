@@ -121,10 +121,9 @@ fn beatoraja_import_preserves_fast_slow_counts_and_current_schema_fields() {
     .unwrap();
 
     assert_eq!(report.imported, 1);
-    let row: (
-        (String, u32, u32, u32, String, String, String, String),
-        (String, String, String, String, i64),
-    ) = score_db
+    type ScoreFields = (String, u32, u32, u32, String, String, String, String);
+    type ContextFields = (String, String, String, String, i64);
+    let row: (ScoreFields, ContextFields) = score_db
         .conn()
         .query_row(
             "SELECT clear_type, fast_pgreat, slow_pgreat, slow_empty_poor,

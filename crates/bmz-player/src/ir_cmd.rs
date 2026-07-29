@@ -1570,7 +1570,7 @@ mod tests {
             ir_user_id: String::new(),
         });
 
-        assert!(sync_ir_rivals_into_profile(&mut profile, "bmz-official", &[]) == false);
+        assert!(!sync_ir_rivals_into_profile(&mut profile, "bmz-official", &[]));
         assert_eq!(profile.rival.entries.len(), 1);
         assert_eq!(profile.rival.entries[0].id, "local-1");
     }

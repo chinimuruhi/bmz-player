@@ -554,7 +554,7 @@ mod tests {
         assert_eq!(record.gauge_value, None);
         assert_eq!(record.score.ex_score(), 21);
         assert_eq!(record.score.bp(), 1);
-        assert_eq!(record.count_unprocessed_notes, false);
+        assert!(!record.count_unprocessed_notes);
         assert_eq!(record.random_seed, Some(123));
         assert_eq!(record.playtime_seconds, 123);
         assert_eq!(record.seed_scheme, "beatoraja_24bit_v1");

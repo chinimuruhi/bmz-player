@@ -297,11 +297,15 @@ mod tests {
 
         assert_eq!(asset.width, 256);
         assert_eq!(asset.height, 256);
-        let left_black = ((0 * 256 + 126) * 4)..((0 * 256 + 127) * 4);
+        let pixel_range = |row: usize, column: usize| {
+            let start = (row * 256 + column) * 4;
+            start..start + 4
+        };
+        let left_black = pixel_range(0, 126);
         assert_eq!(&asset.pixels[left_black], &[0, 0, 0, 0]);
-        let first_source_pixel = ((0 * 256 + 127) * 4)..((0 * 256 + 128) * 4);
+        let first_source_pixel = pixel_range(0, 127);
         assert_eq!(&asset.pixels[first_source_pixel], &[255, 0, 0, 255]);
-        let second_row_pixel = ((1 * 256 + 128) * 4)..((1 * 256 + 129) * 4);
+        let second_row_pixel = pixel_range(1, 128);
         assert_eq!(&asset.pixels[second_row_pixel], &[255, 255, 255, 255]);
         std::fs::remove_file(path).unwrap();
     }

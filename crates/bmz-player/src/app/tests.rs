@@ -5260,7 +5260,7 @@ fn restored_select_index_keeps_chart_when_clear_sort_moves_after_score_update() 
     played.chart.as_mut().unwrap().title = "Played".to_string();
     let mut other = select_chart_row(2);
     other.chart.as_mut().unwrap().title = "Other".to_string();
-    let old_items = vec![SelectItem::Chart(played.clone()), SelectItem::Chart(other.clone())];
+    let old_items = [SelectItem::Chart(played.clone()), SelectItem::Chart(other.clone())];
     let selected_key = select_item_key(&old_items[0]);
 
     played.best_score = Some(BestScoreSummary {

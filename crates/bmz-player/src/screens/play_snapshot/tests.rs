@@ -294,8 +294,10 @@ fn bga_texture_ids_do_not_overlap_beatoraja_skin_ranges() {
     // result スキンが数千 PNG あっても BGA 帯に届かないこと。
     const MAX_RESULT_SKIN_TEXTURES: u32 = 10_000;
 
-    assert!(CHART_BGA_TEXTURE_BASE >= RESULT_SKIN_BASE + MAX_RESULT_SKIN_TEXTURES);
-    assert!(CHART_BGA_TEXTURE_BASE > SELECT_SKIN_BASE);
+    const {
+        assert!(CHART_BGA_TEXTURE_BASE >= RESULT_SKIN_BASE + MAX_RESULT_SKIN_TEXTURES);
+        assert!(CHART_BGA_TEXTURE_BASE > SELECT_SKIN_BASE);
+    }
     assert_eq!(bga_texture_id(BgaAssetId(0)), CHART_BGA_TEXTURE_BASE);
 }
 

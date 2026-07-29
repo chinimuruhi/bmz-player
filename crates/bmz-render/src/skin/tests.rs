@@ -7810,7 +7810,6 @@ fn compatible_daily_statistics_use_skin_specific_note_definitions() {
         clear_update_count: 2,
         miss_count_update_count: 1,
         recent_titles: std::array::from_fn(|index| format!("Recent {}", index + 1)),
-        ..Default::default()
     };
     let state = SkinDrawState {
         player_stats: PlayerStatsSnapshot { daily, ..PlayerStatsSnapshot::default() },

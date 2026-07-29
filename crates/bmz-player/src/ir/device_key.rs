@@ -397,7 +397,7 @@ mod tests {
     fn canonical_json_matches_jcs_number_formatting() {
         let value = serde_json::json!({
             "numbers": [
-                333333333.33333329,
+                333_333_333.333_333_3,
                 1e30,
                 4.50,
                 2e-3,

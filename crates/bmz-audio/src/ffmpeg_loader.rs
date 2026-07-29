@@ -315,7 +315,7 @@ mod tests {
         bytes.extend_from_slice(&16_u16.to_le_bytes());
         bytes.extend_from_slice(b"data");
         bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&data);
+        bytes.extend_from_slice(data);
         if padding != 0 {
             bytes.push(0);
         }
