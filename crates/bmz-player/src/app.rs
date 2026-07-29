@@ -202,6 +202,7 @@ mod result_runtime;
 mod select_assets;
 mod select_folder_summary;
 mod skin_pipeline;
+mod table_fetch_runtime;
 
 use bga_runtime::{
     BgaImageLoadStatus, BgaPreloadRuntime, PendingBgaImageResult, RESOURCE_LOAD_PROGRESS_SCALE,
@@ -222,6 +223,10 @@ use select_assets::{
 };
 use select_folder_summary::SelectFolderSummaryRuntime;
 use skin_pipeline::{SkinPipelineRuntime, SkinReloadGenerations};
+use table_fetch_runtime::{
+    RianTableFetchWorkerResult, TableFetchProgress, TableFetchRuntime, TableFetchWorkerEvent,
+    startup_difficulty_table_fetch_urls_for_boot,
+};
 
 #[cfg(test)]
 use crate::screens::result_model::ResultFastSlowJudgeCounts;
@@ -354,36 +359,6 @@ fn spawn_ir_sync_worker(boot: &bootstrap::BootstrappedApp) {
     });
 }
 
-fn startup_difficulty_table_fetch_urls_for_boot(boot: &BootstrappedApp) -> Vec<String> {
-    let fetched_source_urls: HashSet<String> = match boot
-        .library_db
-        .list_difficulty_table_sources_with_current_download_metadata()
-    {
-        Ok(source_urls) => source_urls.into_iter().collect(),
-        Err(error) => {
-            tracing::warn!(%error, "failed to list difficulty tables with current download metadata");
-            HashSet::new()
-        }
-    };
-    startup_difficulty_table_fetch_urls(&boot.app_config, &fetched_source_urls)
-}
-
-fn startup_difficulty_table_fetch_urls(
-    app_config: &AppConfig,
-    fetched_source_urls: &HashSet<String>,
-) -> Vec<String> {
-    app_config
-        .tables
-        .sources
-        .iter()
-        .filter(|source| source.enabled)
-        .filter(|source| {
-            app_config.tables.auto_fetch_on_startup || !fetched_source_urls.contains(&source.url)
-        })
-        .map(|source| source.url.clone())
-        .collect()
-}
-
 #[derive(Debug, Clone)]
 enum UpdatePrompt {
     Available(UpdateCandidate),
@@ -424,26 +399,6 @@ struct LeftOverlayToast {
 }
 
 const LEFT_OVERLAY_TOAST_DURATION: Duration = Duration::from_secs(2);
-
-#[derive(Debug)]
-enum TableFetchWorkerEvent {
-    Outcome(TableFetchOutcome),
-    Finished(Result<TableFetchReport>),
-}
-
-struct TableFetchProgress {
-    label: String,
-    total: usize,
-    completed: usize,
-    succeeded: usize,
-    failed: usize,
-}
-
-struct RianTableFetchWorkerResult {
-    generation: u64,
-    identity: RianTableIdentity,
-    result: Result<Vec<crate::difficulty_table::FetchedDifficultyTable>>,
-}
 
 struct WinitApp {
     boot: BootstrappedApp,
@@ -522,17 +477,8 @@ struct WinitApp {
     renderer: Box<Renderer>,
     skin_catalog: SkinCatalog,
     skin_defs_cache: BTreeMap<String, SceneSkinDefs>,
-    /// 初回描画後に開始する自動取得対象。起動前のネットワーク待機を避ける。
-    startup_table_fetch_urls: Option<Vec<String>>,
-    pending_table_fetch: Option<Receiver<TableFetchWorkerEvent>>,
-    pending_table_fetch_urls: HashSet<String>,
-    queued_table_fetch_urls: Vec<String>,
-    table_fetch_progress: Option<TableFetchProgress>,
-    rian_table_identity: Option<RianTableIdentity>,
-    rian_table_fetch_generation: u64,
-    pending_rian_table_fetch: Option<Receiver<RianTableFetchWorkerResult>>,
-    rian_table_last_started_at: Option<Instant>,
-    rian_table_next_refresh_at: Option<Instant>,
+    /// 通常表・rianIR表の取得channel、queue、progress、世代状態。
+    table_fetch: TableFetchRuntime,
     pending_song_scan: Option<Receiver<SongScanEvent>>,
     pending_chart_download: Option<Receiver<Result<ChartDownloadResult>>>,
     queued_download_scan: Option<(PathBuf, String)>,
@@ -1812,6 +1758,7 @@ impl WinitApp {
             select_folder_summary_rule_mode,
         )?;
         let rian_table_identity = RianTableIdentity::from_ir_config(&boot.profile_config.ir);
+        let table_fetch = TableFetchRuntime::new(startup_table_fetch_urls, rian_table_identity);
 
         let mut app = Self {
             boot,
@@ -1861,16 +1808,7 @@ impl WinitApp {
             renderer,
             skin_catalog,
             skin_defs_cache: BTreeMap::new(),
-            startup_table_fetch_urls: Some(startup_table_fetch_urls),
-            pending_table_fetch: None,
-            pending_table_fetch_urls: HashSet::new(),
-            queued_table_fetch_urls: Vec::new(),
-            table_fetch_progress: None,
-            rian_table_identity,
-            rian_table_fetch_generation: 0,
-            pending_rian_table_fetch: None,
-            rian_table_last_started_at: None,
-            rian_table_next_refresh_at: None,
+            table_fetch,
             pending_song_scan: None,
             pending_chart_download: None,
             queued_download_scan: None,
@@ -2542,7 +2480,7 @@ impl WinitApp {
         if let Some(progress) = self.song_scan_progress {
             tasks.push(format!("SCAN {} / {}", progress.done, progress.total));
         }
-        if let Some(progress) = &self.table_fetch_progress {
+        if let Some(progress) = &self.table_fetch.progress {
             tasks.push(format!("TABLE {} / {}", progress.completed, progress.total));
         }
         tasks.join(" | ")
@@ -11154,7 +11092,7 @@ impl WinitApp {
 
     /// 起動直後の初回描画が完了してから、未取得の有効な表を取得する。
     fn start_startup_table_fetch_after_first_frame(&mut self) {
-        let Some(urls) = self.startup_table_fetch_urls.take() else {
+        let Some(urls) = self.table_fetch.startup_urls.take() else {
             return;
         };
         self.spawn_table_fetches(urls, "startup table fetch".to_string());
@@ -11162,10 +11100,10 @@ impl WinitApp {
     }
 
     fn spawn_rian_table_fetch(&mut self, manual: bool) {
-        let Some(identity) = self.rian_table_identity.clone() else {
+        let Some(identity) = self.table_fetch.rian_identity.clone() else {
             return;
         };
-        if self.pending_rian_table_fetch.is_some() {
+        if self.table_fetch.pending_rian.is_some() {
             tracing::debug!("rianIR table fetch already in progress");
             return;
         }
@@ -11173,13 +11111,14 @@ impl WinitApp {
         let minimum_interval =
             if manual { RIAN_TABLE_MANUAL_REFRESH_COOLDOWN } else { RIAN_TABLE_REFRESH_INTERVAL };
         if self
-            .rian_table_last_started_at
+            .table_fetch
+            .rian_last_started_at
             .is_some_and(|started| now.duration_since(started) < minimum_interval)
         {
             return;
         }
 
-        let generation = self.rian_table_fetch_generation;
+        let generation = self.table_fetch.rian_generation;
         let fetched_at = now_unix_seconds();
         let (tx, rx) = mpsc::channel();
         let event_proxy = self.event_proxy.clone();
@@ -11204,9 +11143,9 @@ impl WinitApp {
                 let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
             })
             .expect("failed to spawn rianIR table fetch thread");
-        self.pending_rian_table_fetch = Some(rx);
-        self.rian_table_last_started_at = Some(now);
-        self.rian_table_next_refresh_at = now.checked_add(RIAN_TABLE_REFRESH_INTERVAL);
+        self.table_fetch.pending_rian = Some(rx);
+        self.table_fetch.rian_last_started_at = Some(now);
+        self.table_fetch.rian_next_refresh_at = now.checked_add(RIAN_TABLE_REFRESH_INTERVAL);
         tracing::info!(
             provider = %identity.provider_key,
             manual,
@@ -11215,13 +11154,13 @@ impl WinitApp {
     }
 
     fn poll_pending_rian_table_fetch(&mut self) {
-        let Some(rx) = self.pending_rian_table_fetch.take() else {
+        let Some(rx) = self.table_fetch.pending_rian.take() else {
             return;
         };
         let result = match rx.try_recv() {
             Ok(result) => result,
             Err(mpsc::TryRecvError::Empty) => {
-                self.pending_rian_table_fetch = Some(rx);
+                self.table_fetch.pending_rian = Some(rx);
                 return;
             }
             Err(mpsc::TryRecvError::Disconnected) => {
@@ -11231,8 +11170,8 @@ impl WinitApp {
             }
         };
 
-        if result.generation != self.rian_table_fetch_generation
-            || self.rian_table_identity.as_ref() != Some(&result.identity)
+        if result.generation != self.table_fetch.rian_generation
+            || self.table_fetch.rian_identity.as_ref() != Some(&result.identity)
         {
             tracing::info!("ignored stale rianIR table fetch result");
             return;
@@ -11271,25 +11210,26 @@ impl WinitApp {
     }
 
     fn maybe_start_periodic_rian_table_fetch(&mut self) {
-        if self.pending_rian_table_fetch.is_some() {
+        if self.table_fetch.pending_rian.is_some() {
             return;
         }
-        if self.rian_table_next_refresh_at.is_some_and(|deadline| Instant::now() >= deadline) {
+        if self.table_fetch.rian_next_refresh_at.is_some_and(|deadline| Instant::now() >= deadline)
+        {
             self.spawn_rian_table_fetch(false);
         }
     }
 
     fn reconcile_rian_table_identity(&mut self) {
         let next = RianTableIdentity::from_ir_config(&self.boot.profile_config.ir);
-        if next == self.rian_table_identity {
+        if next == self.table_fetch.rian_identity {
             return;
         }
 
-        let previous = self.rian_table_identity.take();
-        self.rian_table_fetch_generation = self.rian_table_fetch_generation.wrapping_add(1);
-        self.pending_rian_table_fetch = None;
-        self.rian_table_last_started_at = None;
-        self.rian_table_next_refresh_at = None;
+        let previous = self.table_fetch.rian_identity.take();
+        self.table_fetch.rian_generation = self.table_fetch.rian_generation.wrapping_add(1);
+        self.table_fetch.pending_rian = None;
+        self.table_fetch.rian_last_started_at = None;
+        self.table_fetch.rian_next_refresh_at = None;
 
         if let Some(previous) = &previous {
             match self
@@ -11315,7 +11255,7 @@ impl WinitApp {
             }
         }
 
-        self.rian_table_identity = next;
+        self.table_fetch.rian_identity = next;
         self.refresh_difficulty_tables_and_select();
         if self.first_frame_startup_completed {
             self.spawn_rian_table_fetch(true);
@@ -11333,14 +11273,14 @@ impl WinitApp {
     }
 
     fn spawn_table_fetches(&mut self, urls: Vec<String>, label: String) {
-        let urls = self.filter_new_table_fetch_urls(urls);
+        let urls = self.table_fetch.filter_new_urls(urls);
         if urls.is_empty() {
             return;
         }
-        if self.pending_table_fetch.is_some() {
-            self.queued_table_fetch_urls.extend(urls);
+        if self.table_fetch.pending.is_some() {
+            self.table_fetch.queued_urls.extend(urls);
             tracing::debug!(
-                queued = self.queued_table_fetch_urls.len(),
+                queued = self.table_fetch.queued_urls.len(),
                 %label,
                 "queued table fetch while another batch is in progress"
             );
@@ -11373,36 +11313,27 @@ impl WinitApp {
                 let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
             })
             .expect("failed to spawn table fetch thread");
-        self.pending_table_fetch_urls = urls.iter().cloned().collect();
-        self.table_fetch_progress = Some(TableFetchProgress {
+        self.table_fetch.pending_urls = urls.iter().cloned().collect();
+        self.table_fetch.progress = Some(TableFetchProgress {
             label: label.clone(),
             total: urls.len(),
             completed: 0,
             succeeded: 0,
             failed: 0,
         });
-        self.pending_table_fetch = Some(rx);
+        self.table_fetch.pending = Some(rx);
         tracing::info!(count = urls.len(), %label, "started table fetch");
     }
 
-    fn filter_new_table_fetch_urls(&self, urls: Vec<String>) -> Vec<String> {
-        let mut seen = HashSet::new();
-        urls.into_iter()
-            .filter(|url| seen.insert(url.clone()))
-            .filter(|url| !self.pending_table_fetch_urls.contains(url))
-            .filter(|url| !self.queued_table_fetch_urls.iter().any(|queued| queued == url))
-            .collect()
-    }
-
     fn poll_pending_table_fetch(&mut self) {
-        let Some(rx) = self.pending_table_fetch.take() else {
+        let Some(rx) = self.table_fetch.pending.take() else {
             return;
         };
         let mut keep_pending = true;
         loop {
             match rx.try_recv() {
                 Ok(TableFetchWorkerEvent::Outcome(outcome)) => {
-                    if let Some(progress) = &mut self.table_fetch_progress {
+                    if let Some(progress) = &mut self.table_fetch.progress {
                         progress.completed =
                             progress.completed.saturating_add(1).min(progress.total);
                         match outcome {
@@ -11433,7 +11364,8 @@ impl WinitApp {
                 Ok(TableFetchWorkerEvent::Finished(Err(error))) => {
                     keep_pending = false;
                     let label = self
-                        .table_fetch_progress
+                        .table_fetch
+                        .progress
                         .as_ref()
                         .map(|progress| progress.label.as_str())
                         .unwrap_or("table fetch");
@@ -11451,14 +11383,14 @@ impl WinitApp {
             }
         }
         if keep_pending {
-            self.pending_table_fetch = Some(rx);
+            self.table_fetch.pending = Some(rx);
             return;
         }
 
-        self.pending_table_fetch_urls.clear();
-        self.table_fetch_progress = None;
-        if !self.queued_table_fetch_urls.is_empty() {
-            let queued = std::mem::take(&mut self.queued_table_fetch_urls);
+        self.table_fetch.pending_urls.clear();
+        self.table_fetch.progress = None;
+        if !self.table_fetch.queued_urls.is_empty() {
+            let queued = std::mem::take(&mut self.table_fetch.queued_urls);
             self.spawn_table_fetches(queued, "queued table fetch".to_string());
         }
     }
@@ -21586,9 +21518,7 @@ mod tests {
     use bmz_render::scene::SelectRowKind;
     use bmz_render::skin::default_skin_manifest;
 
-    use crate::config::app_config::{
-        AppConfig, DifficultyTableSource, DifficultyTablesConfig, PathEntry, VsyncModeConfig,
-    };
+    use crate::config::app_config::{AppConfig, PathEntry, VsyncModeConfig};
     use crate::config::profile_config::ProfileConfig;
     use crate::screens::select_model::{SelectChartRow, SelectCourseRow};
     use crate::skin_loader::default_skin_root;
@@ -21852,69 +21782,6 @@ mod tests {
 
         assert_eq!(breadcrumb.name, "通常難易度表");
         assert_eq!(breadcrumb.symbol, "★");
-    }
-
-    #[test]
-    fn startup_table_fetch_urls_include_unfetched_enabled_sources() {
-        let config = AppConfig {
-            tables: DifficultyTablesConfig {
-                sources: vec![
-                    DifficultyTableSource {
-                        url: "https://example.com/fetched".to_string(),
-                        enabled: true,
-                    },
-                    DifficultyTableSource {
-                        url: "https://example.com/missing".to_string(),
-                        enabled: true,
-                    },
-                    DifficultyTableSource {
-                        url: "https://example.com/disabled".to_string(),
-                        enabled: false,
-                    },
-                ],
-                auto_fetch_on_startup: false,
-            },
-            ..AppConfig::default()
-        };
-        let fetched = HashSet::from(["https://example.com/fetched".to_string()]);
-
-        assert_eq!(
-            startup_difficulty_table_fetch_urls(&config, &fetched),
-            vec!["https://example.com/missing".to_string()]
-        );
-    }
-
-    #[test]
-    fn startup_table_fetch_urls_include_all_enabled_sources_when_auto_fetch_is_on() {
-        let config = AppConfig {
-            tables: DifficultyTablesConfig {
-                sources: vec![
-                    DifficultyTableSource {
-                        url: "https://example.com/fetched".to_string(),
-                        enabled: true,
-                    },
-                    DifficultyTableSource {
-                        url: "https://example.com/missing".to_string(),
-                        enabled: true,
-                    },
-                    DifficultyTableSource {
-                        url: "https://example.com/disabled".to_string(),
-                        enabled: false,
-                    },
-                ],
-                auto_fetch_on_startup: true,
-            },
-            ..AppConfig::default()
-        };
-        let fetched = HashSet::from(["https://example.com/fetched".to_string()]);
-
-        assert_eq!(
-            startup_difficulty_table_fetch_urls(&config, &fetched),
-            vec![
-                "https://example.com/fetched".to_string(),
-                "https://example.com/missing".to_string(),
-            ]
-        );
     }
 
     #[test]
