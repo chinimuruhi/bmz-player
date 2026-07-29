@@ -29,11 +29,27 @@ use crate::{
 
 mod conversion;
 mod function_inference;
-mod sandbox;
+#[path = "lua/sandbox/budget.rs"]
+mod sandbox_budget;
+#[path = "lua/sandbox/environment.rs"]
+mod sandbox_environment;
+#[path = "lua/sandbox/event.rs"]
+mod sandbox_event;
+#[path = "lua/sandbox/io.rs"]
+mod sandbox_io;
+#[path = "lua/sandbox/main_state.rs"]
+mod sandbox_main_state;
+#[path = "lua/sandbox/probe.rs"]
+mod sandbox_probe;
 
 use conversion::*;
 use function_inference::*;
-use sandbox::*;
+use sandbox_budget::*;
+use sandbox_environment::*;
+use sandbox_event::*;
+use sandbox_io::*;
+use sandbox_main_state::*;
+use sandbox_probe::*;
 
 const LUA_INSTRUCTION_LIMIT: i64 = 2_000_000;
 const LUA_INFERENCE_INSTRUCTION_LIMIT: i64 = 16_000_000;
