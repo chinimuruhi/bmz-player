@@ -134,10 +134,10 @@ use crate::screens::practice::{
 use crate::screens::result_model::ResultSummary;
 use crate::screens::select_model::{
     COURSE_ROOT_PATH, DifficultyTableText, FAVORITE_CHART_PATH, FAVORITE_ROOT_PATH,
-    FAVORITE_SONG_PATH, MAX_SEARCH_HISTORY, SEARCH_PATH_PREFIX, SelectChartRow,
-    SelectExecutableKind, SelectItem, TABLE_ROOT_PATH, TablePath, apply_collection_flags,
-    course_root_item, difficulty_table_text_for_chart_with_active_sources, favorite_root_item,
-    favorite_root_items, favorite_song_representatives_for_folder, load_select_items_for_courses,
+    FAVORITE_SONG_PATH, SEARCH_PATH_PREFIX, SelectChartRow, SelectExecutableKind, SelectItem,
+    TABLE_ROOT_PATH, TablePath, apply_collection_flags, course_root_item,
+    difficulty_table_text_for_chart_with_active_sources, favorite_root_item, favorite_root_items,
+    favorite_song_representatives_for_folder, load_select_items_for_courses,
     load_select_items_for_favorite_charts, load_select_items_for_favorite_song,
     load_select_items_for_favorite_songs, load_select_items_for_search_for_rule_mode_with_filters,
     load_select_items_in_folder_for_rule_mode_with_filters,
@@ -201,6 +201,7 @@ mod frame_runtime;
 mod result_runtime;
 mod select_assets;
 mod select_folder_summary;
+mod select_search;
 mod skin_pipeline;
 mod table_fetch_runtime;
 
@@ -222,6 +223,7 @@ use select_assets::{
     SelectMetaImageSlot, SelectPreviewCacheEntry, SelectPreviewFade, SelectPreviewResult,
 };
 use select_folder_summary::SelectFolderSummaryRuntime;
+use select_search::{SearchInputAction, SelectSearchRuntime};
 use skin_pipeline::{SkinPipelineRuntime, SkinReloadGenerations};
 use table_fetch_runtime::{
     RianTableFetchWorkerResult, TableFetchProgress, TableFetchRuntime, TableFetchWorkerEvent,
@@ -635,25 +637,12 @@ struct WinitApp {
     /// Lua Result スキンの展開パネル (0=非表示、1=IR、2=グラフ)。
     result_panel: i32,
     deferred_boot: Option<DeferredBoot>,
-    /// 選曲画面で楽曲検索の入力モード中か。
-    search_mode: bool,
-    /// 現在入力中の検索クエリ。検索モード中はそのまま skin の search_word に渡る。
-    search_query: String,
-    /// `search_query` 内のカーソル位置 (UTF-8 byte index)。常に char boundary に補正する。
-    search_cursor: usize,
-    /// 検索 caret の点滅周期開始時刻。カーソル移動時にリセットし、直後は表示する。
-    search_caret_blink_started_at: Instant,
+    /// 選曲画面の検索文字列、IME、cursor、履歴、feedback状態。
+    search: SelectSearchRuntime,
     /// 直近のマウスカーソル位置。select skin のクリック hit-test に使う。
     last_cursor_position: Option<PhysicalPosition<f64>>,
     /// ドラッグ中の select skin slider type。
     select_slider_dragging_type: Option<i32>,
-    /// IME 変換中の未確定文字列 (Preedit)。Commit で空になり search_query に追加される。
-    search_preedit: String,
-    /// 直近の検索クエリ履歴 (古い順)。`bmz-search:<q>` 仮想フォルダとしてルートに並ぶ。
-    search_history: std::collections::VecDeque<String>,
-    /// 直近の検索で「0 件ヒット」になった等のフィードバック文字列。
-    /// 検索モード解除時にクリアされる。
-    search_message: Option<String>,
     /// CLI から入ったプラクティスセッション。選曲 UI からは未対応。
     practice_session: Option<PracticeSession>,
     /// 次の `RunningPlaySession::start` で使う chart zero（区間先頭の 1 秒前）。
@@ -1918,15 +1907,9 @@ impl WinitApp {
             result_gauge_graph_type: GaugeType::Normal as i32,
             result_panel: 0,
             deferred_boot: deferred_boot_action(boot_chart_id, &options),
-            search_mode: false,
-            search_query: String::new(),
-            search_cursor: 0,
-            search_caret_blink_started_at: now,
+            search: SelectSearchRuntime::new(now),
             last_cursor_position: None,
             select_slider_dragging_type: None,
-            search_preedit: String::new(),
-            search_history: std::collections::VecDeque::new(),
-            search_message: None,
             practice_session: None,
             practice_chart_zero_time: None,
             last_cursor_action_at: now,
@@ -2887,33 +2870,10 @@ impl WinitApp {
     /// that by multiplying skin-resolved alpha by `< 1.0` for placeholder /
     /// feedback states.
     fn display_search_word(&self) -> (String, f32, Option<usize>) {
-        const PLACEHOLDER_ALPHA: f32 = 0.45;
-        const MESSAGE_ALPHA: f32 = 0.6;
-        if in_settings_stack(&self.folder_stack) {
-            return (String::new(), 0.0, None);
-        }
-        let blink_on = search_caret_visible(self.search_caret_blink_started_at.elapsed());
-        if self.search_mode {
-            if self.search_query.is_empty()
-                && self.search_preedit.is_empty()
-                && let Some(message) = &self.search_message
-            {
-                return (message.clone(), MESSAGE_ALPHA, None);
-            }
-            let cursor = clamp_search_cursor(&self.search_query, self.search_cursor);
-            let text = search_display_text(&self.search_query, cursor, &self.search_preedit);
-            let caret = blink_on.then_some(cursor + self.search_preedit.len());
-            (text, 1.0, caret)
-        } else if let Some(message) = &self.search_message {
-            (message.clone(), MESSAGE_ALPHA, None)
-        } else {
-            (
-                Localizer::new(self.boot.profile_config.ui.locale())
-                    .text("select-search-placeholder"),
-                PLACEHOLDER_ALPHA,
-                None,
-            )
-        }
+        self.search.display_word(
+            in_settings_stack(&self.folder_stack),
+            Localizer::new(self.boot.profile_config.ui.locale()).text("select-search-placeholder"),
+        )
     }
 
     fn poll_select_asset_loads(&mut self) {
@@ -5406,7 +5366,7 @@ impl WinitApp {
             && !in_settings_stack(&self.folder_stack)
             && self.select_search_word_hit(x, y)
         {
-            if !self.search_mode {
+            if !self.search.is_active() {
                 self.set_search_mode(true);
                 tracing::info!("entered song search mode from mouse click");
             } else {
@@ -5520,22 +5480,8 @@ impl WinitApp {
     }
 
     fn search_cursor_to_end(&mut self) {
-        self.search_cursor = self.search_query.len();
-        self.reset_search_caret_blink();
+        self.search.cursor_to_end();
         self.update_search_ime_cursor_area();
-    }
-
-    fn set_search_cursor(&mut self, cursor: usize) {
-        let cursor = clamp_search_cursor(&self.search_query, cursor);
-        if self.search_cursor != cursor {
-            self.search_cursor = cursor;
-            self.reset_search_caret_blink();
-            self.update_search_ime_cursor_area();
-        }
-    }
-
-    fn reset_search_caret_blink(&mut self) {
-        self.search_caret_blink_started_at = Instant::now();
     }
 
     fn apply_select_slider_hit(&mut self, hit: SkinSliderHit) {
@@ -6458,24 +6404,10 @@ impl WinitApp {
     /// search query state. Only acts while the user is in search mode on the
     /// select screen — IME events received otherwise are ignored.
     fn route_ime_event(&mut self, ime: &winit::event::Ime) {
-        if !matches!(self.view_state(), AppViewState::Select) || !self.search_mode {
+        if !matches!(self.view_state(), AppViewState::Select) || !self.search.is_active() {
             return;
         }
-        use winit::event::Ime;
-        match ime {
-            Ime::Enabled | Ime::Disabled => {
-                self.search_preedit.clear();
-            }
-            Ime::Preedit(text, _cursor) => {
-                self.search_preedit = text.clone();
-            }
-            Ime::Commit(text) => {
-                search_insert_text(&mut self.search_query, &mut self.search_cursor, text);
-                self.reset_search_caret_blink();
-                self.search_preedit.clear();
-                self.search_message = None;
-            }
-        }
+        self.search.apply_ime(ime);
     }
 
     /// Toggles search mode and synchronizes IME enablement on the window.
@@ -6485,14 +6417,7 @@ impl WinitApp {
         if enabled && in_settings_stack(&self.folder_stack) {
             return;
         }
-        self.search_mode = enabled;
-        self.search_query.clear();
-        self.search_cursor = 0;
-        self.reset_search_caret_blink();
-        self.search_preedit.clear();
-        if !enabled {
-            self.search_message = None;
-        }
+        self.search.set_active(enabled);
         if let Some(window) = self.window.as_ref() {
             window.set_ime_allowed(enabled);
         }
@@ -6508,7 +6433,7 @@ impl WinitApp {
     /// skin canvas; letterboxing is approximated by direct proportional scale,
     /// which is close enough for IME candidate positioning.
     fn update_search_ime_cursor_area(&self) {
-        if !self.search_mode {
+        if !self.search.is_active() {
             return;
         }
         let Some(window) = self.window.as_ref() else { return };
@@ -6533,109 +6458,32 @@ impl WinitApp {
     }
 
     fn handle_search_key(&mut self, event: &winit::event::KeyEvent) -> bool {
-        // 起動トリガ: 検索モードでない時に `/` 押下 → モード ON、クエリリセット。
-        if !self.search_mode {
-            if should_start_search_mode(
-                event.physical_key,
-                event.state,
-                event.repeat,
-                self.select_e_action_held(),
-                in_settings_stack(&self.folder_stack),
-            ) {
+        match self.search.handle_key(
+            event,
+            self.select_e_action_held(),
+            in_settings_stack(&self.folder_stack),
+        ) {
+            SearchInputAction::Ignored => false,
+            SearchInputAction::Consumed => true,
+            SearchInputAction::CursorMoved => {
+                self.update_search_ime_cursor_area();
+                true
+            }
+            SearchInputAction::EnterMode => {
                 self.set_search_mode(true);
                 tracing::info!("entered song search mode");
-                return true;
+                true
             }
-            return false;
-        }
-
-        // 以下、検索モード中の処理。Release は無視する (Press / Repeat のみ反応)。
-        if event.state != ElementState::Pressed {
-            return true;
-        }
-
-        match event.physical_key {
-            PhysicalKey::Code(KeyCode::Escape) => {
+            SearchInputAction::ExitMode => {
                 self.set_search_mode(false);
                 tracing::info!("exited song search mode");
+                true
             }
-            PhysicalKey::Code(KeyCode::Enter | KeyCode::NumpadEnter) => {
-                if event.repeat {
-                    return true;
-                }
-                // IME 変換中の Enter は確定キー (IME が処理) なので検索実行しない。
-                if !self.search_preedit.is_empty() {
-                    return true;
-                }
+            SearchInputAction::Execute => {
                 self.execute_song_search();
-            }
-            PhysicalKey::Code(KeyCode::Backspace) => {
-                // IME 変換中の Backspace は IME に渡す (preedit の文字削除)。
-                if !self.search_preedit.is_empty() {
-                    return true;
-                }
-                search_delete_backward(&mut self.search_query, &mut self.search_cursor);
-                self.reset_search_caret_blink();
-            }
-            PhysicalKey::Code(KeyCode::Delete) => {
-                if !self.search_preedit.is_empty() {
-                    return true;
-                }
-                search_delete_forward(&mut self.search_query, &mut self.search_cursor);
-                self.reset_search_caret_blink();
-            }
-            PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                if self.search_preedit.is_empty() {
-                    self.set_search_cursor(previous_search_cursor(
-                        &self.search_query,
-                        self.search_cursor,
-                    ));
-                }
-            }
-            PhysicalKey::Code(KeyCode::ArrowRight) => {
-                if self.search_preedit.is_empty() {
-                    self.set_search_cursor(next_search_cursor(
-                        &self.search_query,
-                        self.search_cursor,
-                    ));
-                }
-            }
-            PhysicalKey::Code(KeyCode::Home) => {
-                if self.search_preedit.is_empty() {
-                    self.set_search_cursor(0);
-                }
-            }
-            PhysicalKey::Code(KeyCode::End) => {
-                if self.search_preedit.is_empty() {
-                    self.search_cursor_to_end();
-                }
-            }
-            _ => {
-                // テキスト入力: winit が解決した text (キーレイアウト適用後) を採用。
-                // 制御文字 (\r, \t, \x08 等) は除外する。IME 入力は WindowEvent::Ime
-                // 経由で別途処理する。
-                if let Some(text) = event.text.as_ref() {
-                    // メッセージ表示中 ("no song found" 等) に `/` (検索モード
-                    // 起動キー) を押した場合は、メッセージのみクリアして文字
-                    // としては入力しない。`/` 連打でモード再起動感を出すため。
-                    if self.search_message.is_some()
-                        && self.search_query.is_empty()
-                        && text.as_str() == "/"
-                    {
-                        self.search_message = None;
-                        return true;
-                    }
-                    for ch in text.chars() {
-                        if !ch.is_control() {
-                            search_insert_char(&mut self.search_query, &mut self.search_cursor, ch);
-                            self.reset_search_caret_blink();
-                            self.search_message = None;
-                        }
-                    }
-                }
+                true
             }
         }
-        true
     }
 
     /// Runs the current `search_query` against the library DB. On hit: appends
@@ -6643,7 +6491,7 @@ impl WinitApp {
     /// and exits search mode. On miss: leaves the query intact and updates the
     /// feedback message.
     fn execute_song_search(&mut self) {
-        let query = self.search_query.trim().to_string();
+        let query = self.search.trimmed_query();
         if query.is_empty() {
             return;
         }
@@ -6657,10 +6505,7 @@ impl WinitApp {
         if hit_count == 0 {
             // クエリをクリアして次入力を待つ。display_search_word はクエリ空 +
             // メッセージ有りの組み合わせで "no song found" を流す。
-            self.search_query.clear();
-            self.search_cursor = 0;
-            self.reset_search_caret_blink();
-            self.search_message = Some(
+            self.search.set_no_results(
                 Localizer::new(self.boot.profile_config.ui.locale())
                     .text("select-search-no-results"),
             );
@@ -6668,17 +6513,12 @@ impl WinitApp {
             return;
         }
 
-        // dedupe + FIFO eviction
-        self.search_history.retain(|existing| existing != &query);
-        while self.search_history.len() >= MAX_SEARCH_HISTORY {
-            self.search_history.pop_front();
-        }
-        self.search_history.push_back(query.clone());
+        self.search.record_successful_query(query.clone());
 
         self.set_search_mode(false);
         let mut args = FluentArgs::new();
         args.set("count", hit_count as i64);
-        self.search_message = Some(
+        self.search.set_message(
             Localizer::new(self.boot.profile_config.ui.locale())
                 .format("select-search-results", &args),
         );
@@ -11000,7 +10840,7 @@ impl WinitApp {
     fn reload_select_items(&mut self) {
         self.select_folder_summaries.sync_view(&self.folder_stack);
         let previous_selected_key = self.select_items.get(self.selected_index).map(select_item_key);
-        let history: Vec<String> = self.search_history.iter().cloned().collect();
+        let history: Vec<String> = self.search.history().iter().cloned().collect();
         let (items, resolved_mode_filter) = load_items_for_stack(
             &self.boot,
             &self.folder_stack,
@@ -13262,7 +13102,7 @@ impl WinitApp {
         if locale_after_ui != locale_before_ui {
             // 設定・検索履歴などアプリが生成した行名を新しい locale で作り直す。
             // 選択復元は表示名ではなく typed/path ID を使う。
-            self.search_message = None;
+            self.search.clear_message();
             self.reload_select_items();
         }
         self.renderer.set_egui_frame(output.frame);
@@ -21636,88 +21476,6 @@ fn select_control_with_lane_fallback(
     configured.into_iter().next().or_else(|| lane_fallback.into_iter().next())
 }
 
-fn should_start_search_mode(
-    physical_key: PhysicalKey,
-    state: ElementState,
-    repeat: bool,
-    e_action_held: bool,
-    in_settings: bool,
-) -> bool {
-    physical_key == PhysicalKey::Code(KeyCode::Slash)
-        && state == ElementState::Pressed
-        && !repeat
-        && !e_action_held
-        && !in_settings
-}
-
-fn search_display_text(query: &str, cursor: usize, preedit: &str) -> String {
-    let cursor = clamp_search_cursor(query, cursor);
-    let mut text = String::with_capacity(query.len() + preedit.len());
-    text.push_str(&query[..cursor]);
-    text.push_str(preedit);
-    text.push_str(&query[cursor..]);
-    text
-}
-
-fn search_caret_visible(elapsed: Duration) -> bool {
-    (elapsed.as_micros() / 500_000).is_multiple_of(2)
-}
-
-fn search_insert_char(query: &mut String, cursor: &mut usize, ch: char) {
-    let index = clamp_search_cursor(query, *cursor);
-    query.insert(index, ch);
-    *cursor = index + ch.len_utf8();
-}
-
-fn search_insert_text(query: &mut String, cursor: &mut usize, text: &str) {
-    let index = clamp_search_cursor(query, *cursor);
-    query.insert_str(index, text);
-    *cursor = index + text.len();
-}
-
-fn search_delete_backward(query: &mut String, cursor: &mut usize) {
-    let index = clamp_search_cursor(query, *cursor);
-    if index == 0 {
-        *cursor = 0;
-        return;
-    }
-    let previous = previous_search_cursor(query, index);
-    query.drain(previous..index);
-    *cursor = previous;
-}
-
-fn search_delete_forward(query: &mut String, cursor: &mut usize) {
-    let index = clamp_search_cursor(query, *cursor);
-    if index >= query.len() {
-        *cursor = query.len();
-        return;
-    }
-    let next = next_search_cursor(query, index);
-    query.drain(index..next);
-    *cursor = index;
-}
-
-fn previous_search_cursor(query: &str, cursor: usize) -> usize {
-    let cursor = clamp_search_cursor(query, cursor);
-    query[..cursor].char_indices().last().map(|(index, _)| index).unwrap_or(0)
-}
-
-fn next_search_cursor(query: &str, cursor: usize) -> usize {
-    let cursor = clamp_search_cursor(query, cursor);
-    if cursor >= query.len() {
-        return query.len();
-    }
-    query[cursor..].char_indices().nth(1).map(|(offset, _)| cursor + offset).unwrap_or(query.len())
-}
-
-fn clamp_search_cursor(query: &str, cursor: usize) -> usize {
-    let mut cursor = cursor.min(query.len());
-    while cursor > 0 && !query.is_char_boundary(cursor) {
-        cursor -= 1;
-    }
-    cursor
-}
-
 #[cfg(test)]
 mod tests {
     use bmz_render::scene::SelectRowKind;
@@ -23413,56 +23171,6 @@ mod tests {
     }
 
     #[test]
-    fn search_input_inserts_and_deletes_at_cursor() {
-        let mut query = "abcd".to_string();
-        let mut cursor = 2;
-
-        search_insert_char(&mut query, &mut cursor, 'X');
-        assert_eq!(query, "abXcd");
-        assert_eq!(cursor, 3);
-
-        search_delete_backward(&mut query, &mut cursor);
-        assert_eq!(query, "abcd");
-        assert_eq!(cursor, 2);
-
-        search_delete_forward(&mut query, &mut cursor);
-        assert_eq!(query, "abd");
-        assert_eq!(cursor, 2);
-    }
-
-    #[test]
-    fn search_mode_start_respects_settings_and_e_action_holds() {
-        assert!(should_start_search_mode(
-            PhysicalKey::Code(KeyCode::Slash),
-            ElementState::Pressed,
-            false,
-            false,
-            false,
-        ));
-        assert!(!should_start_search_mode(
-            PhysicalKey::Code(KeyCode::Slash),
-            ElementState::Pressed,
-            false,
-            true,
-            false,
-        ));
-        assert!(!should_start_search_mode(
-            PhysicalKey::Code(KeyCode::Slash),
-            ElementState::Pressed,
-            false,
-            false,
-            true,
-        ));
-        assert!(!should_start_search_mode(
-            PhysicalKey::Code(KeyCode::Slash),
-            ElementState::Pressed,
-            true,
-            false,
-            false,
-        ));
-    }
-
-    #[test]
     fn select_key_bindings_identify_e_action_controls() {
         let keys = default_select_keys();
 
@@ -23471,38 +23179,6 @@ mod tests {
         assert_eq!(keys.e_action_for_control("E"), Some(InputActionConfig::E3));
         assert_eq!(keys.e_action_for_control("R"), Some(InputActionConfig::E4));
         assert_eq!(keys.e_action_for_control("Slash"), None);
-    }
-
-    #[test]
-    fn search_input_moves_by_utf8_char_boundaries() {
-        let query = "a楽b".to_string();
-        let mut cursor = query.len();
-
-        cursor = previous_search_cursor(&query, cursor);
-        assert_eq!(cursor, "a楽".len());
-        cursor = previous_search_cursor(&query, cursor);
-        assert_eq!(cursor, "a".len());
-        cursor = next_search_cursor(&query, cursor);
-        assert_eq!(cursor, "a楽".len());
-
-        let mut edited = query;
-        search_delete_backward(&mut edited, &mut cursor);
-        assert_eq!(edited, "ab");
-        assert_eq!(cursor, "a".len());
-    }
-
-    #[test]
-    fn search_display_inserts_preedit_without_caret_character() {
-        assert_eq!(search_display_text("ab cd", 2, "変換"), "ab変換 cd");
-        assert_eq!(search_display_text("a楽b", 2, ""), "a楽b");
-    }
-
-    #[test]
-    fn search_caret_blink_starts_visible_after_reset() {
-        assert!(search_caret_visible(Duration::ZERO));
-        assert!(search_caret_visible(Duration::from_millis(499)));
-        assert!(!search_caret_visible(Duration::from_millis(500)));
-        assert!(search_caret_visible(Duration::from_millis(1_000)));
     }
 
     #[test]
