@@ -9,7 +9,7 @@ impl WinitApp {
     /// earlier entries map to Stage1..4 by their 1-based index, clamped to
     /// Stage4 for courses longer than 4 + final entry.
     pub(super) fn current_course_stage_marker(&self) -> Option<CourseStageMarker> {
-        let course = self.active_course.as_ref()?;
+        let course = self.play.active_course.as_ref()?;
         let total = course.definition.entries.len();
         if total == 0 {
             return None;
@@ -28,7 +28,7 @@ impl WinitApp {
     }
 
     pub(super) fn current_course_titles(&self) -> [String; 10] {
-        let Some(course) = self.active_course.as_ref() else {
+        let Some(course) = self.play.active_course.as_ref() else {
             return Default::default();
         };
         course_titles_from_entries(
@@ -46,7 +46,7 @@ impl WinitApp {
     }
 
     pub(super) fn start_course(&mut self, course_id: i64) {
-        self.autoplay_folder = None;
+        self.select.autoplay_folder = None;
         self.start_course_with_arrange(course_id, Vec::new(), false);
     }
 
@@ -130,7 +130,7 @@ impl WinitApp {
                 return;
             }
         };
-        self.active_course = Some(ActiveCourseSession {
+        self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
             course_total_notes,
@@ -267,7 +267,7 @@ impl WinitApp {
                 return;
             }
         };
-        self.active_course = Some(ActiveCourseSession {
+        self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
             course_total_notes,
@@ -283,14 +283,17 @@ impl WinitApp {
     /// finished_play だけが立ち、finished_course はまだ無い状態を指す。
     pub(super) fn is_course_intermediate_result(&self) -> bool {
         is_course_intermediate_result(
-            self.active_course.is_some(),
-            self.finished_course.is_some(),
-            self.finished_play.is_some(),
+            self.play.active_course.is_some(),
+            self.result.finished_course.is_some(),
+            self.result.finished_play.is_some(),
         )
     }
 
     pub(super) fn course_intermediate_auto_advance_enabled(&self) -> bool {
-        self.active_course.as_ref().is_some_and(|course| course.auto_advance_intermediate_results)
+        self.play
+            .active_course
+            .as_ref()
+            .is_some_and(|course| course.auto_advance_intermediate_results)
     }
 
     /// コース曲間の中間リザルト画面を表示する。直前に終わった曲の結果を
@@ -298,6 +301,7 @@ impl WinitApp {
     /// finished_course は立てないので「中間リザルト」状態になる。
     pub(super) fn show_course_intermediate_result(&mut self) {
         let last = self
+            .play
             .active_course
             .as_ref()
             .and_then(|course| course.entry_results.last())
@@ -307,46 +311,47 @@ impl WinitApp {
             self.start_next_course_chart();
             return;
         };
-        self.result_gauge_graph_type = last.summary.gauge_type as i32;
-        self.finished_play = Some(last);
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
-        self.result_scene_started_at = Instant::now();
+        self.result.result_gauge_graph_type = last.summary.gauge_type as i32;
+        self.result.finished_play = Some(last);
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
+        self.result.result_scene_started_at = Instant::now();
         self.ensure_result_skin_ready(ResultSkinSlot::Normal);
     }
 
     /// 中間リザルトを閉じて次の曲へ進む。finished_play をクリアして中間リザルト
     /// 状態を抜け、active_course はそのまま次の曲を開始する。
     pub(super) fn advance_to_next_course_chart(&mut self) {
-        self.finished_play = None;
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
+        self.result.finished_play = None;
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
         self.start_next_course_chart();
     }
 
     pub(super) fn autoplay_folder_has_next(&self) -> bool {
-        self.autoplay_folder
+        self.select
+            .autoplay_folder
             .as_ref()
             .is_some_and(|session| session.next_index < session.chart_ids.len())
     }
 
     pub(super) fn advance_autoplay_folder(&mut self) {
-        let Some(session) = self.autoplay_folder.as_mut() else {
+        let Some(session) = self.select.autoplay_folder.as_mut() else {
             self.leave_result();
             return;
         };
         let Some(&chart_id) = session.chart_ids.get(session.next_index) else {
-            self.autoplay_folder = None;
+            self.select.autoplay_folder = None;
             self.leave_result();
             return;
         };
         session.next_index += 1;
-        self.finished_play = None;
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
+        self.result.finished_play = None;
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
         let mut options = self.play_start_options();
         options.session_mode = SessionMode::Autoplay;
         options.autoplay = true;
@@ -355,17 +360,17 @@ impl WinitApp {
     }
 
     pub(super) fn finish_course_after_intermediate_result(&mut self) {
-        self.finished_play = None;
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
+        self.result.finished_play = None;
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
         self.finish_active_course();
     }
 
     /// コースの (current_index が指す) 次の曲を開始する。ゲージ持ち越しや
     /// replay / 同配置 arrange の適用は元の advance_course_after_finish と同じ。
     pub(super) fn start_next_course_chart(&mut self) {
-        let Some(course) = &self.active_course else {
+        let Some(course) = &self.play.active_course else {
             return;
         };
         let next_index = course.current_index;
@@ -388,7 +393,7 @@ impl WinitApp {
     }
 
     pub(super) fn course_intermediate_exit_action(&self) -> ResultExitAction {
-        let Some(course) = self.active_course.as_ref() else {
+        let Some(course) = self.play.active_course.as_ref() else {
             return ResultExitAction::FinishCourse;
         };
         let failed = course.entry_results.last().is_some_and(|entry| {
@@ -414,7 +419,7 @@ impl WinitApp {
         if pressed
             && !repeat
             && self.result_input_ready()
-            && self.result_panel == 1
+            && self.result.result_panel == 1
             && self.result_ir_scope_toggle_is_e1()
             && self.is_result_ir_scope_toggle_control(control)
             && self.toggle_result_ir_scope()
@@ -457,10 +462,10 @@ impl WinitApp {
     }
 
     pub(super) fn advance_course_after_finish(&mut self, finished: FinishedPlaySession) {
-        let Some(course) = &mut self.active_course else {
+        let Some(course) = &mut self.play.active_course else {
             return;
         };
-        let chart_id = self.last_started_chart_id.unwrap_or(0);
+        let chart_id = self.play.last_started_chart_id.unwrap_or(0);
         // Beatoraja behavior: if any chart in the course is Failed, the course
         // ends immediately and remaining charts are skipped.
         let failed = finished.result.clear_type == bmz_core::clear::ClearType::Failed;
@@ -485,7 +490,7 @@ impl WinitApp {
     }
 
     pub(super) fn finish_active_course(&mut self) {
-        let Some(course) = self.active_course.take() else {
+        let Some(course) = self.play.active_course.take() else {
             return;
         };
         let course_id = course.course_id;
@@ -579,14 +584,15 @@ impl WinitApp {
                 );
                 self.install_finished_course(course_result, None, None);
                 if let Some(last) = last_finished {
-                    self.result_gauge_graph_type = last.summary.gauge_type as i32;
-                    self.finished_play = Some(last);
-                    self.result_key5_held = false;
-                    self.result_key7_held = false;
-                    self.result_scene_started_at = Instant::now();
+                    self.result.result_gauge_graph_type = last.summary.gauge_type as i32;
+                    self.result.finished_play = Some(last);
+                    self.result.result_key5_held = false;
+                    self.result.result_key7_held = false;
+                    self.result.result_scene_started_at = Instant::now();
                     self.ensure_result_skin_ready(ResultSkinSlot::Course);
                 }
                 let clear_type = self
+                    .result
                     .finished_course
                     .as_ref()
                     .map(|course| course.final_clear_type)
@@ -757,14 +763,15 @@ impl WinitApp {
         self.install_finished_course(course_result, course_hash, rian_course_hash_v1);
         // Use the last chart's result for the standard result skin display.
         if let Some(last) = last_finished {
-            self.result_gauge_graph_type = last.summary.gauge_type as i32;
-            self.finished_play = Some(last);
-            self.result_key5_held = false;
-            self.result_key7_held = false;
-            self.result_scene_started_at = Instant::now();
+            self.result.result_gauge_graph_type = last.summary.gauge_type as i32;
+            self.result.finished_play = Some(last);
+            self.result.result_key5_held = false;
+            self.result.result_key7_held = false;
+            self.result.result_scene_started_at = Instant::now();
             self.ensure_result_skin_ready(ResultSkinSlot::Course);
         }
         let clear_type = self
+            .result
             .finished_course
             .as_ref()
             .map(|course| course.final_clear_type)
@@ -804,9 +811,9 @@ impl WinitApp {
     pub(super) fn course_result_ir_target(
         &self,
     ) -> Option<(String, String, String, String, bmz_gameplay::rule::RuleMode)> {
-        let course = self.finished_course.as_ref()?;
-        let course_hash = self.finished_course_hash.clone()?;
-        let rian_course_hash_v1 = self.finished_course_rian_hash_v1.clone()?;
+        let course = self.result.finished_course.as_ref()?;
+        let course_hash = self.result.finished_course_hash.clone()?;
+        let rian_course_hash_v1 = self.result.finished_course_rian_hash_v1.clone()?;
         let gauge = course.final_gauge_type.as_str().to_string();
         let ln_policy = self.boot.profile_config.play.ln_mode_policy.as_ir_str().to_string();
         Some((
@@ -823,7 +830,7 @@ impl WinitApp {
             return;
         }
         let chart_sha256_hex = crate::storage::common::hash_to_hex(&finished.result.chart_sha256);
-        if self.result_ir.as_ref().is_some_and(|state| {
+        if self.result.result_ir.as_ref().is_some_and(|state| {
             state.matches_chart_result(
                 finished.stored.score_history_id,
                 &chart_sha256_hex,
@@ -834,7 +841,7 @@ impl WinitApp {
         }) {
             return;
         }
-        self.result_ir = crate::screens::result_ir::spawn_result_ir_task(
+        self.result.result_ir = crate::screens::result_ir::spawn_result_ir_task(
             self.boot.profile_paths.root_dir.clone(),
             self.boot.profile_paths.score_db.clone(),
             self.boot.profile_paths.network_db.clone(),
@@ -874,7 +881,7 @@ impl WinitApp {
                     && (!crate::ir::rian_ir::is_rian_ir_config(provider)
                         || crate::ir::rian_ir::course_submission_supported(
                             self.boot.profile_config.play.ln_mode_policy,
-                            self.double_option,
+                            self.select.double_option,
                         ))
             })
             .cloned()

@@ -2,14 +2,14 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn update_window_title_for_scene(&mut self, scene_kind: AppSceneKind) {
-        let scene_changed = self.last_scene_kind != Some(scene_kind);
+        let scene_changed = self.integrations.last_scene_kind != Some(scene_kind);
         self.notify_obs_scene(scene_kind);
         if !scene_changed {
             return;
         }
 
-        let previous = self.last_scene_kind;
-        self.last_scene_kind = Some(scene_kind);
+        let previous = self.integrations.last_scene_kind;
+        self.integrations.last_scene_kind = Some(scene_kind);
         if previous == Some(AppSceneKind::Select) && scene_kind != AppSceneKind::Select {
             self.stop_select_preview();
         }
@@ -23,18 +23,18 @@ impl WinitApp {
 
     pub(super) fn sync_discord_presence_config(&mut self) {
         let desired = DiscordPresenceConfig::from_app_config(&self.boot.app_config.discord);
-        if self.discord_presence_config == desired {
+        if self.integrations.discord_presence_config == desired {
             return;
         }
 
-        if let Some(handle) = self.discord_presence.take() {
+        if let Some(handle) = self.integrations.discord_presence.take() {
             handle.shutdown();
         }
-        self.discord_presence_config = desired.clone();
+        self.integrations.discord_presence_config = desired.clone();
         if let Some(config) = desired {
             let handle = DiscordPresenceHandle::start(config);
             handle.update(self.discord_presence_for_scene(self.current_scene_kind()));
-            self.discord_presence = Some(handle);
+            self.integrations.discord_presence = Some(handle);
             tracing::info!("Discord Rich Presence enabled");
         } else {
             tracing::info!("Discord Rich Presence disabled");
@@ -42,7 +42,7 @@ impl WinitApp {
     }
 
     pub(super) fn publish_discord_presence_for_scene(&self, scene_kind: AppSceneKind) {
-        if let Some(handle) = &self.discord_presence {
+        if let Some(handle) = &self.integrations.discord_presence {
             handle.update(self.discord_presence_for_scene(scene_kind));
         }
     }
@@ -53,7 +53,7 @@ impl WinitApp {
             AppSceneKind::Select => DiscordPresence::select(started_at),
             AppSceneKind::Decide => DiscordPresence::decide(started_at),
             AppSceneKind::Play => {
-                if let Some(active_play) = &self.active_play {
+                if let Some(active_play) = &self.play.active_play {
                     let metadata = &active_play.running.session.chart.metadata;
                     let key_mode = discord_key_mode_label(metadata.key_mode);
                     let title = discord_join_metadata(&metadata.title, &metadata.subtitle, " ");
@@ -76,7 +76,7 @@ impl WinitApp {
                     )
                 }
             }
-            AppSceneKind::Result if self.finished_course.is_some() => {
+            AppSceneKind::Result if self.result.finished_course.is_some() => {
                 DiscordPresence::course_result(started_at)
             }
             AppSceneKind::Result => DiscordPresence::result(started_at),
@@ -84,48 +84,53 @@ impl WinitApp {
     }
 
     pub(super) fn discord_presence_show_song_details(&self) -> bool {
-        self.discord_presence_config
+        self.integrations
+            .discord_presence_config
             .as_ref()
             .map(DiscordPresenceConfig::show_song_details)
             .unwrap_or(self.boot.app_config.discord.show_song_details)
     }
 
     pub(super) fn sync_obs_controller(&mut self) {
-        if self.applied_obs_config == self.boot.app_config.obs {
+        if self.integrations.applied_obs_config == self.boot.app_config.obs {
             return;
         }
-        self.applied_obs_config = self.boot.app_config.obs.clone();
-        self.obs_controller = crate::obs::ObsController::spawn(self.applied_obs_config.clone());
-        self.last_obs_event_key = None;
+        self.integrations.applied_obs_config = self.boot.app_config.obs.clone();
+        self.integrations.obs_controller =
+            crate::obs::ObsController::spawn(self.integrations.applied_obs_config.clone());
+        self.integrations.last_obs_event_key = None;
         self.notify_obs_scene(self.current_scene_kind());
-        tracing::info!(enabled = self.applied_obs_config.enabled, "OBS WebSocket config applied");
+        tracing::info!(
+            enabled = self.integrations.applied_obs_config.enabled,
+            "OBS WebSocket config applied"
+        );
     }
 
     pub(super) fn notify_obs_scene(&mut self, scene_kind: AppSceneKind) {
         let key = self.obs_event_key_for_scene(scene_kind);
-        if self.last_obs_event_key == Some(key) {
+        if self.integrations.last_obs_event_key == Some(key) {
             return;
         }
-        self.last_obs_event_key = Some(key);
-        if let Some(obs) = &self.obs_controller {
+        self.integrations.last_obs_event_key = Some(key);
+        if let Some(obs) = &self.integrations.obs_controller {
             obs.scene(key);
         }
     }
 
     pub(super) fn notify_obs_play_ended(&self) {
-        if let Some(obs) = &self.obs_controller {
+        if let Some(obs) = &self.integrations.obs_controller {
             obs.play_ended();
         }
     }
 
     pub(super) fn notify_obs_retry_play(&self) {
-        if let Some(obs) = &self.obs_controller {
+        if let Some(obs) = &self.integrations.obs_controller {
             obs.retry_play();
         }
     }
 
     pub(super) fn notify_obs_save_recording(&self, reason: crate::obs::ObsRecordingSaveReason) {
-        if let Some(obs) = &self.obs_controller {
+        if let Some(obs) = &self.integrations.obs_controller {
             obs.save_last_recording(reason);
         }
     }
@@ -138,7 +143,7 @@ impl WinitApp {
             AppSceneKind::Select => crate::obs::ObsEventKey::MusicSelect,
             AppSceneKind::Decide => crate::obs::ObsEventKey::Decide,
             AppSceneKind::Play => crate::obs::ObsEventKey::Play,
-            AppSceneKind::Result if self.finished_course.is_some() => {
+            AppSceneKind::Result if self.result.finished_course.is_some() => {
                 crate::obs::ObsEventKey::CourseResult
             }
             AppSceneKind::Result => crate::obs::ObsEventKey::Result,
@@ -153,7 +158,7 @@ impl WinitApp {
         }
         match scene_kind {
             AppSceneKind::Select
-                if should_play_select_bgm_on_enter(self.select_assets.preview_playing()) =>
+                if should_play_select_bgm_on_enter(self.select.select_assets.preview_playing()) =>
             {
                 self.play_system_sound(SoundType::Select);
             }
@@ -161,7 +166,7 @@ impl WinitApp {
             AppSceneKind::Decide => self.play_system_sound(SoundType::Decide),
             AppSceneKind::Play => {}
             AppSceneKind::Result => {
-                let Some(finished) = self.finished_play.as_ref() else {
+                let Some(finished) = self.result.finished_play.as_ref() else {
                     return;
                 };
                 let clear_type = result_entry_clear_type_for_sound(finished);
@@ -174,7 +179,7 @@ impl WinitApp {
     /// `master_volume` を乗算してシステム音を鳴らす。
     /// ボリュームは AudioEngine 側で 0.0..=1.0 にクランプされる。
     pub(super) fn play_system_sound(&self, sound_type: crate::system_sound::SoundType) {
-        if let Some(manager) = &self.system_sound {
+        if let Some(manager) = &self.audio.system_sound {
             manager.play_with_master_gain(
                 sound_type,
                 system_sound_volume_from_mix(&self.boot.profile_config.audio_mix, sound_type),
@@ -214,11 +219,11 @@ impl WinitApp {
     }
 
     pub(super) fn system_sound_has(&self, sound_type: crate::system_sound::SoundType) -> bool {
-        self.system_sound.as_ref().is_some_and(|manager| manager.has_sound(sound_type))
+        self.audio.system_sound.as_ref().is_some_and(|manager| manager.has_sound(sound_type))
     }
 
     pub(super) fn start_audio_output_stream(&self) {
-        let Some(runtime) = &self.audio_runtime else {
+        let Some(runtime) = &self.audio.audio_runtime else {
             return;
         };
         if let Err(error) = runtime.play() {
@@ -237,7 +242,7 @@ impl WinitApp {
     }
 
     pub(super) fn stop_system_sound(&self, sound_type: crate::system_sound::SoundType) {
-        if let Some(manager) = &self.system_sound {
+        if let Some(manager) = &self.audio.system_sound {
             manager.stop(sound_type);
         }
     }

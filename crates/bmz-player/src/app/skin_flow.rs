@@ -6,19 +6,19 @@ impl WinitApp {
     /// move し、worker は decode 結果を受けて GPU アップロードし `skin_upload_tx` で
     /// main へ返す。
     pub(super) fn start_skin_upload_worker(&mut self) {
-        if self.skin_pipeline.upload_worker_started {
+        if self.skin.skin_pipeline.upload_worker_started {
             return;
         }
-        let Some(decode_rx) = self.skin_pipeline.decode_rx.take() else {
+        let Some(decode_rx) = self.skin.skin_pipeline.decode_rx.take() else {
             return;
         };
         let Some(uploader) = self.renderer.gpu_uploader() else {
             // surface 未接続。次回接続時に再試行できるよう receiver を戻す。
-            self.skin_pipeline.decode_rx = Some(decode_rx);
+            self.skin.skin_pipeline.decode_rx = Some(decode_rx);
             return;
         };
-        let upload_tx = self.skin_pipeline.upload_tx.clone();
-        let texture_cache = self.skin_pipeline.gpu_texture_cache.clone();
+        let upload_tx = self.skin.skin_pipeline.upload_tx.clone();
+        let texture_cache = self.skin.skin_pipeline.gpu_texture_cache.clone();
         let event_proxy = self.event_proxy.clone();
         thread::Builder::new()
             .name("skin-upload".to_string())
@@ -26,7 +26,7 @@ impl WinitApp {
                 skin_upload_worker(decode_rx, upload_tx, uploader, texture_cache, event_proxy)
             })
             .expect("failed to spawn skin upload thread");
-        self.skin_pipeline.upload_worker_started = true;
+        self.skin.skin_pipeline.upload_worker_started = true;
     }
 
     /// upload worker が GPU アップロードまで終えたスキンを非ブロッキングで取り込む。
@@ -34,7 +34,7 @@ impl WinitApp {
     pub(super) fn drain_pending_skins(&mut self) -> SkinDrainStats {
         let mut stats = SkinDrainStats::default();
         for _ in 0..MAX_SKIN_UPLOADS_PER_REDRAW {
-            match self.skin_pipeline.upload_rx.try_recv() {
+            match self.skin.skin_pipeline.upload_rx.try_recv() {
                 Ok(result) => {
                     stats.received_count += 1;
                     stats.max_upload_wait_us = stats
@@ -57,7 +57,7 @@ impl WinitApp {
     /// 先読みが間に合っていれば待ちはゼロ。
     pub(super) fn ensure_skin_ready(&mut self, kind: SkinKind) {
         while self.is_kind_pending_decode(kind) {
-            match self.skin_pipeline.upload_rx.recv() {
+            match self.skin.skin_pipeline.upload_rx.recv() {
                 Ok(result) => {
                     let _ = self.apply_uploaded_skin(result);
                 }
@@ -72,14 +72,14 @@ impl WinitApp {
         self.ensure_skin_ready(SkinKind::Result);
         self.renderer.reset_result_skin_runtime();
         let (skin_bgm_volume, skin_se_volume) = self.result_skin_audio_volumes();
-        let started = self.result_skin_audio.as_mut().is_some_and(|audio| {
+        let started = self.result.result_skin_audio.as_mut().is_some_and(|audio| {
             audio.reset();
             audio.start_scene(skin_bgm_volume, skin_se_volume)
         });
         if started {
             self.start_audio_output_stream();
         }
-        self.result_panel = self
+        self.result.result_panel = self
             .renderer
             .result_skin_document()
             .and_then(|document| document.result_panel_default)
@@ -88,12 +88,14 @@ impl WinitApp {
     }
 
     pub(super) fn refresh_result_favorite_chart(&mut self) {
-        let Some(sha256) = self.finished_play.as_ref().map(|finished| finished.result.chart_sha256)
+        let Some(sha256) =
+            self.result.finished_play.as_ref().map(|finished| finished.result.chart_sha256)
         else {
-            self.result_favorite_chart = false;
+            self.result.result_favorite_chart = false;
             return;
         };
-        self.result_favorite_chart = match self.boot.collection_db.is_favorite_chart(sha256) {
+        self.result.result_favorite_chart = match self.boot.collection_db.is_favorite_chart(sha256)
+        {
             Ok(favorite) => favorite,
             Err(error) => {
                 tracing::warn!(%error, "failed to load favorite chart state for result");
@@ -103,26 +105,30 @@ impl WinitApp {
     }
 
     pub(super) fn current_result_skin_slot(&self) -> ResultSkinSlot {
-        if self.finished_course.is_some() { ResultSkinSlot::Course } else { ResultSkinSlot::Normal }
+        if self.result.finished_course.is_some() {
+            ResultSkinSlot::Course
+        } else {
+            ResultSkinSlot::Normal
+        }
     }
 
     pub(super) fn spawn_result_skin_decode_for(&mut self, slot: ResultSkinSlot) {
         let skin = &self.boot.profile_config.skin;
-        let table_song = !self.play_table_text_primary.is_empty();
+        let table_song = !self.play.play_table_text_primary.is_empty();
         let ir_name = result_ir_skin_name(&self.boot.profile_config.ir);
         let runtime_state = self.result_lua_runtime_state(slot, table_song, ir_name);
         let signature = result_skin_signature_for_config(skin, slot, runtime_state);
-        if !self.skin_pipeline.is_pending(SkinKind::Result)
-            && self.last_result_skin_signature.as_ref() == Some(&signature)
+        if !self.skin.skin_pipeline.is_pending(SkinKind::Result)
+            && self.skin.last_result_skin_signature.as_ref() == Some(&signature)
         {
             tracing::debug!(?slot, "result skin reuse (signature unchanged)");
             return;
         }
 
         let (_, trimmed, options, files, runtime_state) = signature.clone();
-        self.last_result_skin_signature = Some(signature);
-        self.skin_pipeline.set_pending(SkinKind::Result, false);
-        let generation = self.skin_pipeline.bump_generation(SkinKind::Result);
+        self.skin.last_result_skin_signature = Some(signature);
+        self.skin.skin_pipeline.set_pending(SkinKind::Result, false);
+        let generation = self.skin.skin_pipeline.bump_generation(SkinKind::Result);
 
         let (path, path_label, options, files) = if trimmed.is_empty() {
             (
@@ -158,12 +164,12 @@ impl WinitApp {
         }
 
         spawn_skin_decode(
-            self.skin_pipeline.decode_tx.clone(),
-            self.skin_pipeline.source_asset_cache.clone(),
-            self.skin_pipeline.document_cache.clone(),
-            self.skin_pipeline.gpu_texture_cache.clone(),
-            self.skin_pipeline.font_cache.clone(),
-            self.skin_pipeline.installed_font_cache.clone(),
+            self.skin.skin_pipeline.decode_tx.clone(),
+            self.skin.skin_pipeline.source_asset_cache.clone(),
+            self.skin.skin_pipeline.document_cache.clone(),
+            self.skin.skin_pipeline.gpu_texture_cache.clone(),
+            self.skin.skin_pipeline.font_cache.clone(),
+            self.skin.skin_pipeline.installed_font_cache.clone(),
             generation,
             path,
             SkinKind::Result,
@@ -171,7 +177,7 @@ impl WinitApp {
             files,
             runtime_state,
         );
-        self.skin_pipeline.set_pending(SkinKind::Result, true);
+        self.skin.skin_pipeline.set_pending(SkinKind::Result, true);
         tracing::info!(?slot, path = %path_label, generation, "result skin decode queued");
     }
 
@@ -182,8 +188,10 @@ impl WinitApp {
         ir_name: Option<&str>,
     ) -> bmz_skin::LuaLoadRuntimeState {
         let summary = match slot {
-            ResultSkinSlot::Course => self.finished_course_skin_summary.as_ref(),
-            ResultSkinSlot::Normal => self.finished_play.as_ref().map(|finished| &finished.summary),
+            ResultSkinSlot::Course => self.result.finished_course_skin_summary.as_ref(),
+            ResultSkinSlot::Normal => {
+                self.result.finished_play.as_ref().map(|finished| &finished.summary)
+            }
         };
         let key_mode = summary.map(|summary| summary.key_mode).unwrap_or_default();
         let number_values =
@@ -200,9 +208,9 @@ impl WinitApp {
             apply_result_summary_lua_load_state(
                 &mut runtime_state,
                 summary,
-                &self.play_table_text_primary,
-                &self.play_table_text_secondary,
-                &self.play_table_text_fallback,
+                &self.play.play_table_text_primary,
+                &self.play.play_table_text_secondary,
+                &self.play.play_table_text_fallback,
             );
         }
         runtime_state.event_index_values.insert(
@@ -216,7 +224,7 @@ impl WinitApp {
             apply_course_mode_lua_options(&mut runtime_state, Some(stage));
         }
         if let ResultSkinSlot::Course = slot
-            && let Some(course) = &self.finished_course
+            && let Some(course) = &self.result.finished_course
         {
             apply_course_mode_lua_options(&mut runtime_state, None);
             apply_course_result_lua_load_state(&mut runtime_state, course);
@@ -227,6 +235,7 @@ impl WinitApp {
     pub(super) fn result_double_option_for_slot(&self, slot: ResultSkinSlot) -> DoubleOption {
         match slot {
             ResultSkinSlot::Normal => self
+                .result
                 .finished_play
                 .as_ref()
                 .map(|finished| finished.applied_arrange.double_option)
@@ -241,10 +250,13 @@ impl WinitApp {
 
     pub(super) fn result_score_save_enabled_for_slot(&self, slot: ResultSkinSlot) -> bool {
         match slot {
-            ResultSkinSlot::Course => {
-                self.finished_course.as_ref().is_some_and(|course| course.course_score_id.is_some())
-            }
+            ResultSkinSlot::Course => self
+                .result
+                .finished_course
+                .as_ref()
+                .is_some_and(|course| course.course_score_id.is_some()),
             ResultSkinSlot::Normal => self
+                .result
                 .finished_play
                 .as_ref()
                 .is_some_and(|finished| finished.stored.score_history_id > 0),
@@ -252,18 +264,22 @@ impl WinitApp {
     }
 
     pub(super) fn set_empty_result_skin_context(&mut self) {
-        let context =
-            self.default_skin_manifest.clone().map(SkinContext::from_manifest).unwrap_or_default();
+        let context = self
+            .skin
+            .default_skin_manifest
+            .clone()
+            .map(SkinContext::from_manifest)
+            .unwrap_or_default();
         self.renderer.set_result_skin_context(context);
-        self.skin_video_sources.remove(&SkinKind::Result);
+        self.skin.skin_video_sources.remove(&SkinKind::Result);
     }
 
     pub(super) fn is_kind_pending_decode(&self, kind: SkinKind) -> bool {
-        self.skin_pipeline.is_pending(kind)
+        self.skin.skin_pipeline.is_pending(kind)
     }
 
     pub(super) fn has_pending_skin_reload(&self) -> bool {
-        self.skin_pipeline.has_pending()
+        self.skin.skin_pipeline.has_pending()
     }
 
     /// upload worker から届いた `UploadedSkin` を Renderer へ取り込む。
@@ -282,7 +298,7 @@ impl WinitApp {
             uploaded,
         } = pending;
         let apply_started_at = Instant::now();
-        let current_generation = self.skin_pipeline.generation(kind);
+        let current_generation = self.skin.skin_pipeline.generation(kind);
         if generation != current_generation {
             tracing::debug!(
                 path = %path.display(),
@@ -296,7 +312,7 @@ impl WinitApp {
             );
             return false;
         }
-        self.skin_pipeline.set_pending(kind, false);
+        self.skin.skin_pipeline.set_pending(kind, false);
         let uploaded = match uploaded {
             Ok(uploaded) => uploaded,
             Err(error) => {
@@ -312,7 +328,7 @@ impl WinitApp {
                 return false;
             }
         };
-        let Some(manifest) = self.default_skin_manifest.clone() else {
+        let Some(manifest) = self.skin.default_skin_manifest.clone() else {
             tracing::warn!(
                 path = %path.display(),
                 kind = ?kind,
@@ -331,7 +347,7 @@ impl WinitApp {
             upload_stats,
         } = uploaded;
         if kind == SkinKind::Result {
-            self.result_skin_audio = self.system_audio.as_ref().map(|audio| {
+            self.result.result_skin_audio = self.audio.system_audio.as_ref().map(|audio| {
                 crate::skin_audio::SkinAudioRuntime::install(
                     audio.engine(),
                     &document,
@@ -349,7 +365,7 @@ impl WinitApp {
             let stored_id = font.stored_id.clone();
             let cache_key = font.cache_key.clone();
             if let Some(cache_key) = cache_key.as_ref()
-                && self.skin_pipeline.installed_font_cache.get(&stored_id) == Some(cache_key)
+                && self.skin.skin_pipeline.installed_font_cache.get(&stored_id) == Some(cache_key)
             {
                 font_install_skip_count += 1;
                 continue;
@@ -357,13 +373,13 @@ impl WinitApp {
             if install_decoded_font(&mut self.renderer, font) {
                 font_install_count += 1;
                 if let Some(cache_key) = cache_key {
-                    self.skin_pipeline.installed_font_cache.insert(stored_id, cache_key);
+                    self.skin.skin_pipeline.installed_font_cache.insert(stored_id, cache_key);
                 } else {
-                    self.skin_pipeline.installed_font_cache.remove(&stored_id);
+                    self.skin.skin_pipeline.installed_font_cache.remove(&stored_id);
                 }
             } else {
                 font_install_failed_count += 1;
-                self.skin_pipeline.installed_font_cache.remove(&stored_id);
+                self.skin.skin_pipeline.installed_font_cache.remove(&stored_id);
             }
         }
         let font_install_us = instant_elapsed_us_u64(font_install_start);
@@ -376,7 +392,7 @@ impl WinitApp {
             if let Some(prepared) = prepared {
                 self.renderer.insert_prepared_texture(TextureId(texture.0), prepared);
                 if let Some(cache_key) = cache_key
-                    && let Ok(mut cache) = self.skin_pipeline.gpu_texture_cache.lock()
+                    && let Ok(mut cache) = self.skin.skin_pipeline.gpu_texture_cache.lock()
                 {
                     cache.insert(cache_key, texture, size);
                 }
@@ -399,11 +415,12 @@ impl WinitApp {
             document_textures.push(SkinDocumentTexture { source_id, texture, source_size: size });
         }
         if video_sources.is_empty() {
-            self.skin_video_sources.remove(&kind);
+            self.skin.skin_video_sources.remove(&kind);
         } else {
-            self.skin_video_sources.insert(kind, video_sources);
+            self.skin.skin_video_sources.insert(kind, video_sources);
         }
-        let preserve_play_dynamic_timers = kind == SkinKind::Play && self.active_play.is_some();
+        let preserve_play_dynamic_timers =
+            kind == SkinKind::Play && self.play.active_play.is_some();
         let installed_sources = document_textures.len();
         set_decoded_skin_context(
             &mut self.renderer,
@@ -414,7 +431,7 @@ impl WinitApp {
             document_textures,
             preserve_play_dynamic_timers,
         );
-        self.pending_skin_render_probe =
+        self.skin.pending_skin_render_probe =
             Some(PendingSkinRenderProbe { kind, generation, applied_at: Instant::now() });
         self.frame.request_immediate_frame();
         tracing::debug!(
@@ -487,10 +504,12 @@ impl WinitApp {
 
     pub(super) fn sync_realtime_profile_settings(&mut self) {
         self.sync_active_play_realtime_profile_settings();
-        if let Some(manager) = &self.system_sound {
+        if let Some(manager) = &self.audio.system_sound {
             let mix = self.boot.profile_config.audio_mix.clone();
-            let preview_factor =
-                select_preview_fade_factor(self.select_assets.preview_fade(), Instant::now());
+            let preview_factor = select_preview_fade_factor(
+                self.select.select_assets.preview_fade(),
+                Instant::now(),
+            );
             manager.refresh_volumes(|sound_type| {
                 let volume = system_sound_volume_from_mix(&mix, sound_type);
                 if sound_type == crate::system_sound::SoundType::Select {
@@ -504,11 +523,11 @@ impl WinitApp {
     }
 
     pub(super) fn sync_active_play_lane_settings_from_profile(&mut self, before: &LaneViewConfig) {
-        let speed_locked = self.active_course.as_ref().is_some_and(|course| {
+        let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
             course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
         });
         let profile_lane = self.boot.profile_config.lane.clone();
-        let Some(active_play) = &mut self.active_play else {
+        let Some(active_play) = &mut self.play.active_play else {
             return;
         };
         if apply_profile_lane_settings_to_session(
@@ -518,8 +537,8 @@ impl WinitApp {
             speed_locked,
         ) {
             update_pre_ready_play_snapshot_options_for_session(
-                self.play_ready_sound_started_at,
-                &mut self.last_play_snapshot,
+                self.play.play_ready_sound_started_at,
+                &mut self.play.last_play_snapshot,
                 &active_play.running.session,
                 &active_play.running.applied_arrange,
             );
@@ -535,7 +554,7 @@ impl WinitApp {
     }
 
     pub(super) fn sync_active_play_realtime_profile_settings(&mut self) {
-        if let Some(active_play) = &mut self.active_play {
+        if let Some(active_play) = &mut self.play.active_play {
             let session = &mut active_play.running.session;
             let chart_normalization_gain = session.audio_mix.chart_normalization_gain;
             session.audio_mix = crate::config::play::audio_mix_from_profile_with_chart_gain(
@@ -558,7 +577,7 @@ impl WinitApp {
 
     pub(super) fn sync_profile_visual_offset_from_active_play(&mut self) {
         let Some((visual_offset_us, auto_adjust_active)) =
-            self.active_play.as_ref().map(|active| {
+            self.play.active_play.as_ref().map(|active| {
                 (
                     active.running.session.offsets.visual_offset_us,
                     active.running.session.input_offset_auto_adjust.is_some(),
@@ -576,11 +595,11 @@ impl WinitApp {
 
     pub(super) fn play_skin_defs_for_path(&mut self, path: &str) -> SceneSkinDefs {
         let key = path.trim().to_string();
-        if let Some(defs) = self.skin_defs_cache.get(&key) {
+        if let Some(defs) = self.skin.skin_defs_cache.get(&key) {
             return defs.clone();
         }
         let defs = play_skin_defs_from_path(&self.boot.app_paths, &key);
-        self.skin_defs_cache.insert(key, defs.clone());
+        self.skin.skin_defs_cache.insert(key, defs.clone());
         defs
     }
 
@@ -618,6 +637,7 @@ impl WinitApp {
 
     pub(super) fn apply_profile_skin_offsets_to_active_play(&mut self) {
         let Some(key_mode) = self
+            .play
             .active_play
             .as_ref()
             .map(|active_play| active_play.running.session.chart.metadata.key_mode)
@@ -627,7 +647,7 @@ impl WinitApp {
         let offsets = play_skin_selection_for_session(
             &self.boot.profile_config.skin,
             key_mode,
-            self.session_mode,
+            self.select.session_mode,
         )
         .offsets
         .iter()
@@ -641,7 +661,7 @@ impl WinitApp {
             a: offset.a,
         })
         .collect();
-        if let Some(active_play) = &mut self.active_play {
+        if let Some(active_play) = &mut self.play.active_play {
             active_play.running.session.skin_offsets = offsets;
         }
     }
@@ -656,12 +676,12 @@ impl WinitApp {
         let (pending_select, pending_decide, _pending_result) = reload_skin_textures(
             &mut self.renderer,
             &self.boot.app_paths,
-            &self.skin_pipeline.decode_tx,
-            &self.skin_pipeline.source_asset_cache,
-            &self.skin_pipeline.document_cache,
-            &self.skin_pipeline.gpu_texture_cache,
-            &self.skin_pipeline.font_cache,
-            &mut self.skin_pipeline.generations,
+            &self.skin.skin_pipeline.decode_tx,
+            &self.skin.skin_pipeline.source_asset_cache,
+            &self.skin.skin_pipeline.document_cache,
+            &self.skin.skin_pipeline.gpu_texture_cache,
+            &self.skin.skin_pipeline.font_cache,
+            &mut self.skin.skin_pipeline.generations,
             texture_request,
             &self.boot.profile_config.display_name,
             &skin.select,
@@ -678,13 +698,13 @@ impl WinitApp {
             &skin.result_offsets,
         );
         if request.select {
-            self.skin_pipeline.set_pending(SkinKind::Select, pending_select);
+            self.skin.skin_pipeline.set_pending(SkinKind::Select, pending_select);
         }
         if request.decide {
-            self.skin_pipeline.set_pending(SkinKind::Decide, pending_decide);
+            self.skin.skin_pipeline.set_pending(SkinKind::Decide, pending_decide);
         }
         if request.result || request.course_result {
-            self.last_result_skin_signature = None;
+            self.skin.last_result_skin_signature = None;
             if matches!(self.current_scene_kind(), AppSceneKind::Result) {
                 let slot = self.current_result_skin_slot();
                 if matches!(
@@ -698,11 +718,12 @@ impl WinitApp {
         // 旧 generation 分の upload 結果は apply_uploaded_skin の generation
         // チェックで破棄されるため、ここでの明示的なキュー破棄は不要。
         if let Some((key_mode, old_path, old_options, old_files, runtime_state)) =
-            self.last_play_skin_signature.clone()
+            self.skin.last_play_skin_signature.clone()
             && skin_reload_request_includes_key_mode(request, key_mode)
         {
-            let selection = play_skin_selection_for_session(&skin, key_mode, self.session_mode);
-            let play_options_only = self.active_play.is_some()
+            let selection =
+                play_skin_selection_for_session(&skin, key_mode, self.select.session_mode);
+            let play_options_only = self.play.active_play.is_some()
                 && old_path == selection.path.trim()
                 && old_files == *selection.files
                 && old_options != *selection.options;
@@ -712,7 +733,7 @@ impl WinitApp {
                 && !play_options_need_full_reload
                 && self.apply_active_play_skin_options_fast_path(key_mode, selection.options)
             {
-                self.last_play_skin_signature = Some((
+                self.skin.last_play_skin_signature = Some((
                     key_mode,
                     selection.path.trim().to_string(),
                     selection.options.clone(),
@@ -726,7 +747,7 @@ impl WinitApp {
                 tracing::info!(?request, "skin reload queued from egui skin panel");
                 return;
             }
-            self.last_play_skin_signature = None;
+            self.skin.last_play_skin_signature = None;
             self.spawn_play_skin_decode_for(key_mode, runtime_state);
         }
         let pending_after_reload = self.has_pending_skin_reload();
@@ -755,7 +776,7 @@ impl WinitApp {
         };
         let applied_options = enabled_options.clone();
         if self.renderer.set_play_skin_user_selected_options(enabled_options) {
-            if let Some(sources) = self.skin_video_sources.get_mut(&SkinKind::Play) {
+            if let Some(sources) = self.skin.skin_video_sources.get_mut(&SkinKind::Play) {
                 apply_skin_video_source_enabled_options(sources, &applied_options, &property_ops);
             }
             tracing::debug!(?key_mode, "applied play skin option change before background reload");
@@ -809,7 +830,7 @@ impl WinitApp {
         let selection = play_skin_selection_for_session(
             &self.boot.profile_config.skin,
             key_mode,
-            self.session_mode,
+            self.select.session_mode,
         );
         runtime_state.offset_values.clear();
         runtime_state.offset_id_values.clear();
@@ -823,15 +844,15 @@ impl WinitApp {
             runtime_state.clone(),
         );
 
-        if !self.skin_pipeline.is_pending(SkinKind::Play)
-            && self.last_play_skin_signature.as_ref() == Some(&signature)
+        if !self.skin.skin_pipeline.is_pending(SkinKind::Play)
+            && self.skin.last_play_skin_signature.as_ref() == Some(&signature)
         {
             tracing::debug!(?key_mode, "play skin reuse (signature unchanged)");
             return;
         }
-        self.last_play_skin_signature = Some(signature);
-        self.skin_pipeline.set_pending(SkinKind::Play, false);
-        let generation = self.skin_pipeline.bump_generation(SkinKind::Play);
+        self.skin.last_play_skin_signature = Some(signature);
+        self.skin.skin_pipeline.set_pending(SkinKind::Play, false);
+        let generation = self.skin.skin_pipeline.bump_generation(SkinKind::Play);
 
         let (path, path_label, options, files) = if trimmed.is_empty() {
             (
@@ -865,12 +886,12 @@ impl WinitApp {
         }
 
         spawn_skin_decode(
-            self.skin_pipeline.decode_tx.clone(),
-            self.skin_pipeline.source_asset_cache.clone(),
-            self.skin_pipeline.document_cache.clone(),
-            self.skin_pipeline.gpu_texture_cache.clone(),
-            self.skin_pipeline.font_cache.clone(),
-            self.skin_pipeline.installed_font_cache.clone(),
+            self.skin.skin_pipeline.decode_tx.clone(),
+            self.skin.skin_pipeline.source_asset_cache.clone(),
+            self.skin.skin_pipeline.document_cache.clone(),
+            self.skin.skin_pipeline.gpu_texture_cache.clone(),
+            self.skin.skin_pipeline.font_cache.clone(),
+            self.skin.skin_pipeline.installed_font_cache.clone(),
             generation,
             path,
             SkinKind::Play,
@@ -878,7 +899,7 @@ impl WinitApp {
             files,
             runtime_state,
         );
-        self.skin_pipeline.set_pending(SkinKind::Play, true);
+        self.skin.skin_pipeline.set_pending(SkinKind::Play, true);
         tracing::info!(?key_mode, path = %path_label, generation, "play skin decode queued");
     }
 
@@ -892,6 +913,7 @@ impl WinitApp {
             return profile;
         };
         let needs_runtime_state = self
+            .skin
             .skin_video_sources
             .get(&kind)
             .is_some_and(|sources| skin_video_sources_need_runtime_state(sources));
@@ -900,7 +922,7 @@ impl WinitApp {
         let runtime_state = needs_runtime_state
             .then(|| self.current_skin_video_draw_state_for_scene(kind, scene))
             .flatten();
-        let Some(sources) = self.skin_video_sources.get_mut(&kind) else {
+        let Some(sources) = self.skin.skin_video_sources.get_mut(&kind) else {
             return profile;
         };
         for source in sources {
@@ -1002,12 +1024,13 @@ impl WinitApp {
         match self.view_state() {
             AppViewState::Select => Some((SkinKind::Select, self.select_time().0)),
             AppViewState::Decide => self
+                .play
                 .pending_decide
                 .as_ref()
                 .map(|decide| (SkinKind::Decide, elapsed_since(decide.started_at).0)),
             AppViewState::Play => Some((SkinKind::Play, self.play_elapsed_time().0)),
             AppViewState::Result => {
-                Some((SkinKind::Result, elapsed_since(self.result_scene_started_at).0))
+                Some((SkinKind::Result, elapsed_since(self.result.result_scene_started_at).0))
             }
         }
     }
@@ -1035,6 +1058,7 @@ impl WinitApp {
                     return None;
                 };
                 let ranktime = self
+                    .skin
                     .skin_video_sources
                     .get(&SkinKind::Result)
                     .and_then(|sources| sources.first())

@@ -2,7 +2,7 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn start_chart(&mut self, chart_id: i64) {
-        self.autoplay_folder = None;
+        self.select.autoplay_folder = None;
         let mut options = self.play_start_options();
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
@@ -112,7 +112,7 @@ impl WinitApp {
             }
         };
         let max_end_time_ms = defaults.property.end_time_ms;
-        self.practice_session = Some(PracticeSession {
+        self.play.practice_session = Some(PracticeSession {
             chart_id,
             chart_title: defaults.title,
             chart_sha256: defaults.sha256,
@@ -120,9 +120,9 @@ impl WinitApp {
             phase: PracticePhase::Config,
             max_end_time_ms,
         });
-        self.finished_play = None;
-        self.play_ending = None;
-        self.result_exit = None;
+        self.result.finished_play = None;
+        self.play.play_ending = None;
+        self.result.result_exit = None;
         self.clear_active_course_state();
 
         let preload_options = PlayStartOptions {
@@ -150,7 +150,7 @@ impl WinitApp {
             &self.boot.profile_paths,
             &import.chart.identity.file_sha256,
             &import.chart,
-            self.gauge_option,
+            self.select.gauge_option,
             cli,
         )?;
         let title = if import.chart.metadata.title.is_empty() {
@@ -162,13 +162,13 @@ impl WinitApp {
     }
 
     pub(super) fn practice_media_ready(&self) -> bool {
-        self.practice_session.is_some()
-            && self.preloaded_play_session.is_some()
-            && self.pending_play_preload.is_none()
+        self.play.practice_session.is_some()
+            && self.play.preloaded_play_session.is_some()
+            && self.play.pending_play_preload.is_none()
     }
 
     pub(super) fn leave_practice(&mut self) {
-        if let Some(practice) = &self.practice_session {
+        if let Some(practice) = &self.play.practice_session {
             let _ = save_practice_property(
                 &self.boot.profile_paths,
                 &practice.chart_sha256,
@@ -178,23 +178,23 @@ impl WinitApp {
         if !self.commit_active_play_lane_state_to_profile() {
             self.commit_pending_play_lane_state_to_profile();
         }
-        self.practice_session = None;
-        self.autoplay_folder = None;
-        self.practice_chart_zero_time = None;
-        self.active_play = None;
-        self.pending_play_start = None;
-        self.preloaded_play_session = None;
+        self.play.practice_session = None;
+        self.select.autoplay_folder = None;
+        self.play.practice_chart_zero_time = None;
+        self.play.active_play = None;
+        self.play.pending_play_start = None;
+        self.play.preloaded_play_session = None;
         self.invalidate_play_preload();
-        self.play_ending = None;
-        self.finished_play = None;
-        self.play_ready_sound_started_at = None;
-        self.play_ready_last_control_hold_at = None;
-        self.draining_audio = None;
+        self.play.play_ending = None;
+        self.result.finished_play = None;
+        self.play.play_ready_sound_started_at = None;
+        self.play.play_ready_last_control_hold_at = None;
+        self.audio.draining_audio = None;
         self.clear_play_meta_image_state();
-        self.last_play_snapshot = None;
+        self.play.last_play_snapshot = None;
         self.reload_select_items();
         let now = Instant::now();
-        self.select_scene_started_at = now;
+        self.select.select_scene_started_at = now;
         self.restart_select_bar_timer_without_scroll(now);
         tracing::info!("left practice mode");
     }
@@ -205,10 +205,10 @@ impl WinitApp {
             return;
         }
         let (chart_id, property, chart_sha256) = {
-            let Some(practice) = &mut self.practice_session else {
+            let Some(practice) = &mut self.play.practice_session else {
                 return;
             };
-            if let Some(preloaded) = &self.preloaded_play_session {
+            if let Some(preloaded) = &self.play.preloaded_play_session {
                 clamp_practice_property(&mut practice.property, &preloaded.preloaded.chart);
                 practice.max_end_time_ms =
                     crate::screens::practice::default_end_time_ms(&preloaded.preloaded.chart);
@@ -220,19 +220,19 @@ impl WinitApp {
         {
             tracing::warn!(%error, "failed to save practice property");
         }
-        self.practice_chart_zero_time =
+        self.play.practice_chart_zero_time =
             Some(practice_chart_zero_time(&property, self.play_skin_playstart_offset()));
-        if let Some(practice) = &mut self.practice_session {
+        if let Some(practice) = &mut self.play.practice_session {
             practice.phase = PracticePhase::Playing;
         }
 
-        let chart_zero = self.practice_chart_zero_time.unwrap_or(TimeUs(0));
-        let preloaded = match self.preloaded_play_session.take() {
+        let chart_zero = self.play.practice_chart_zero_time.unwrap_or(TimeUs(0));
+        let preloaded = match self.play.preloaded_play_session.take() {
             Some(preloaded) => preloaded,
             None => {
                 tracing::error!(chart_id, "practice start without preloaded session");
-                self.practice_chart_zero_time = None;
-                if let Some(practice) = &mut self.practice_session {
+                self.play.practice_chart_zero_time = None;
+                if let Some(practice) = &mut self.play.practice_session {
                     practice.phase = PracticePhase::Config;
                 }
                 return;
@@ -267,13 +267,13 @@ impl WinitApp {
         match self.open_prepared_winit_play_session(prepared_winit) {
             Ok(active_play) => {
                 self.install_active_play(chart_id, active_play);
-                self.pending_play_start = None;
+                self.play.pending_play_start = None;
                 tracing::info!(chart_id, "practice round started");
             }
             Err(error) => {
                 tracing::error!(%error, chart_id, "failed to open practice play session");
-                self.practice_chart_zero_time = None;
-                if let Some(practice) = &mut self.practice_session {
+                self.play.practice_chart_zero_time = None;
+                if let Some(practice) = &mut self.play.practice_session {
                     practice.phase = PracticePhase::Config;
                 }
             }
@@ -282,7 +282,7 @@ impl WinitApp {
 
     pub(super) fn finish_practice_round(&mut self) {
         let (chart_id, chart_sha256, property) = {
-            let Some(practice) = &self.practice_session else {
+            let Some(practice) = &self.play.practice_session else {
                 return;
             };
             (practice.chart_id, practice.chart_sha256, practice.property.clone())
@@ -293,18 +293,18 @@ impl WinitApp {
             tracing::warn!(%error, "failed to save practice property after round");
         }
         self.commit_active_play_lane_state_to_profile();
-        if let Some(started) = self.active_play.take() {
+        if let Some(started) = self.play.active_play.take() {
             let mut audio = started.running.audio;
             audio.mark_draining();
-            self.draining_audio = Some(audio);
+            self.audio.draining_audio = Some(audio);
         }
         self.clear_play_control_holds();
-        self.play_ending = None;
-        self.finished_play = None;
-        self.play_ready_sound_started_at = None;
-        self.play_ready_last_control_hold_at = None;
-        self.practice_chart_zero_time = None;
-        if let Some(practice) = &mut self.practice_session {
+        self.play.play_ending = None;
+        self.result.finished_play = None;
+        self.play.play_ready_sound_started_at = None;
+        self.play.play_ready_last_control_hold_at = None;
+        self.play.practice_chart_zero_time = None;
+        if let Some(practice) = &mut self.play.practice_session {
             practice.phase = PracticePhase::Config;
         }
 
@@ -322,6 +322,7 @@ impl WinitApp {
             preload_options.clone(),
         );
         let mut snapshot = self
+            .play
             .last_play_snapshot
             .clone()
             .unwrap_or_else(|| self.decide_snapshot_for_chart(chart_id));
@@ -341,14 +342,14 @@ impl WinitApp {
         );
         pending_play_start.lane.lane_cover_changing = self.play_lane_value_changing();
         pending_play_start.lane.apply_to_snapshot(&mut snapshot);
-        self.play_option_input = Some(PlayOptionInput::new(
+        self.play.play_option_input = Some(PlayOptionInput::new(
             key_mode,
             pending_play_start.visual_input.binding.clone(),
             &self.boot.profile_config.input,
             session_options.gamepad_slots,
         ));
-        self.last_play_snapshot = Some(snapshot);
-        self.pending_play_start = Some(pending_play_start);
+        self.play.last_play_snapshot = Some(snapshot);
+        self.play.pending_play_start = Some(pending_play_start);
         tracing::info!(chart_id, "practice round finished; back to configuration");
     }
 
@@ -428,7 +429,7 @@ impl WinitApp {
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.start_play_preload(chart_id, options.clone());
         let now = Instant::now();
-        self.pending_decide = Some(DecideTransition {
+        self.play.pending_decide = Some(DecideTransition {
             chart_id,
             options,
             started_at: now,
@@ -440,9 +441,9 @@ impl WinitApp {
     }
 
     pub(super) fn start_play_preload(&mut self, chart_id: i64, options: PlayStartOptions) {
-        self.play_preload_generation = self.play_preload_generation.wrapping_add(1);
-        let generation = self.play_preload_generation;
-        self.preloaded_play_session = None;
+        self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
+        let generation = self.play.play_preload_generation;
+        self.play.preloaded_play_session = None;
         let bga_options = options.clone();
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
@@ -494,7 +495,7 @@ impl WinitApp {
                 let _ = tx.send(PlayPreloadResult { generation, chart_id, result });
             })
             .expect("failed to spawn play preload thread");
-        self.pending_play_preload = Some(PendingPlayPreload {
+        self.play.pending_play_preload = Some(PendingPlayPreload {
             generation,
             chart_id,
             input,
@@ -507,10 +508,10 @@ impl WinitApp {
     }
 
     pub(super) fn invalidate_play_preload(&mut self) {
-        self.play_preload_generation = self.play_preload_generation.wrapping_add(1);
-        self.pending_play_preload = None;
+        self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
+        self.play.pending_play_preload = None;
         // 裏で完成して退避していた結果も無効化する (decide キャンセル / 譜面差し替え)。
-        self.preloaded_play_session = None;
+        self.play.preloaded_play_session = None;
         self.invalidate_chart_bga_texture_preload();
     }
 
@@ -519,6 +520,7 @@ impl WinitApp {
     /// 未知 / 見つからない場合だけデフォルトの 7K を返す。
     pub(super) fn key_mode_for_chart(&self, chart_id: i64) -> KeyMode {
         if let Some(key_mode) = self
+            .select
             .select_items
             .iter()
             .find_map(|item| match item {
@@ -559,12 +561,13 @@ impl WinitApp {
         &self,
         prepared: PreparedInputPlaySession,
     ) -> Result<StartedInputPlaySession> {
-        let runtime = self.audio_runtime.as_ref().context("audio output is not available")?;
+        let runtime = self.audio.audio_runtime.as_ref().context("audio output is not available")?;
         open_prepared_winit_play_session(&self.boot.score_db, runtime, prepared)
     }
 
     pub(super) fn play_output_sample_rate(&self) -> u32 {
-        self.audio_runtime
+        self.audio
+            .audio_runtime
             .as_ref()
             .map(AudioRuntime::sample_rate)
             .unwrap_or(self.boot.app_config.audio.sample_rate)
@@ -586,10 +589,10 @@ impl WinitApp {
     /// corked stream の内部
     /// worker だけが動き続ける状態を避ける。
     pub(super) fn ensure_audio_output(&mut self) {
-        if self.audio_runtime.is_some() || self.audio_output_open_attempted {
+        if self.audio.audio_runtime.is_some() || self.audio.audio_output_open_attempted {
             return;
         }
-        self.audio_output_open_attempted = true;
+        self.audio.audio_output_open_attempted = true;
 
         match AudioRuntime::open(&self.boot.app_config.audio) {
             Ok(runtime) => {
@@ -597,7 +600,7 @@ impl WinitApp {
                 if let Err(error) = runtime.play() {
                     tracing::warn!(%error, "failed to start shared audio output stream");
                 }
-                self.audio_runtime = Some(runtime);
+                self.audio.audio_runtime = Some(runtime);
                 tracing::info!("audio output opened after window initialization");
             }
             Err(error) => {
@@ -608,17 +611,19 @@ impl WinitApp {
 
     pub(super) fn log_audio_diagnostics(&mut self) {
         let now = Instant::now();
-        if now.duration_since(self.audio_diagnostics_last_log_at) < AUDIO_DIAGNOSTICS_LOG_INTERVAL {
+        if now.duration_since(self.audio.audio_diagnostics_last_log_at)
+            < AUDIO_DIAGNOSTICS_LOG_INTERVAL
+        {
             return;
         }
-        self.audio_diagnostics_last_log_at = now;
+        self.audio.audio_diagnostics_last_log_at = now;
 
-        if self.audio_runtime.is_none() {
-            self.audio_diagnostics_last = None;
+        if self.audio.audio_runtime.is_none() {
+            self.audio.audio_diagnostics_last = None;
             return;
         };
         let snapshot = self.collect_audio_diagnostics();
-        let Some(previous) = self.audio_diagnostics_last.replace(snapshot) else {
+        let Some(previous) = self.audio.audio_diagnostics_last.replace(snapshot) else {
             return;
         };
         if snapshot.callback_count < previous.callback_count {
@@ -668,7 +673,7 @@ impl WinitApp {
             snapshot.command_coalesced_count.saturating_sub(previous.command_coalesced_count);
 
         let sample_rate =
-            self.audio_runtime.as_ref().map(AudioRuntime::sample_rate).unwrap_or(1).max(1);
+            self.audio.audio_runtime.as_ref().map(AudioRuntime::sample_rate).unwrap_or(1).max(1);
         let avg_callback_frames = rendered_frames as f64 / callbacks as f64;
         let callback_budget_ns =
             ((avg_callback_frames / f64::from(sample_rate)) * 1_000_000_000.0).round() as u64;
@@ -683,7 +688,7 @@ impl WinitApp {
             command_engine_lock_misses,
             callback_over_budget,
             clipped_samples,
-            self.select_assets.generated_preview_loading(),
+            self.select.select_assets.generated_preview_loading(),
         );
 
         if stream_errors == 0
@@ -718,11 +723,12 @@ impl WinitApp {
             command_engine_lock_misses,
             command_queue_max_depth = snapshot.command_queue_max_depth,
             suspected_cause = suspected_cause.as_str(),
-            generated_preview_loading = self.select_assets.generated_preview_loading(),
-            select_preview_playing = self.select_assets.preview_playing(),
-            select_preview_fade = select_preview_fade_name(self.select_assets.preview_fade()),
+            generated_preview_loading = self.select.select_assets.generated_preview_loading(),
+            select_preview_playing = self.select.select_assets.preview_playing(),
+            select_preview_fade =
+                select_preview_fade_name(self.select.select_assets.preview_fade()),
             select_preview_factor =
-                select_preview_fade_factor(self.select_assets.preview_fade(), now),
+                select_preview_fade_factor(self.select.select_assets.preview_fade(), now),
             clipped_samples,
             peak_abs = snapshot.peak_abs,
             max_callback_us = snapshot.max_callback_ns / 1_000,
@@ -733,11 +739,12 @@ impl WinitApp {
 
     pub(super) fn log_input_diagnostics(&mut self) {
         let diagnostics = last_input_collection_diagnostics();
-        if diagnostics.sequence == 0 || diagnostics.sequence == self.input_diagnostics_last_sequence
+        if diagnostics.sequence == 0
+            || diagnostics.sequence == self.audio.input_diagnostics_last_sequence
         {
             return;
         }
-        self.input_diagnostics_last_sequence = diagnostics.sequence;
+        self.audio.input_diagnostics_last_sequence = diagnostics.sequence;
         if diagnostics.drained_events == 0 {
             return;
         }
@@ -757,15 +764,19 @@ impl WinitApp {
     }
 
     pub(super) fn collect_audio_diagnostics(&self) -> AudioOutputDiagnostics {
-        let mut snapshot =
-            self.audio_runtime.as_ref().map(AudioRuntime::take_diagnostics).unwrap_or_default();
-        if let Some(system_audio) = &self.system_audio {
+        let mut snapshot = self
+            .audio
+            .audio_runtime
+            .as_ref()
+            .map(AudioRuntime::take_diagnostics)
+            .unwrap_or_default();
+        if let Some(system_audio) = &self.audio.system_audio {
             snapshot.add_command_queue(system_audio.command_diagnostics());
         }
-        if let Some(active_play) = &self.active_play {
+        if let Some(active_play) = &self.play.active_play {
             snapshot.add_command_queue(active_play.running.audio.command_diagnostics());
         }
-        if let Some(draining_audio) = &self.draining_audio {
+        if let Some(draining_audio) = &self.audio.draining_audio {
             snapshot.add_command_queue(draining_audio.command_diagnostics());
         }
         snapshot
@@ -781,32 +792,35 @@ impl WinitApp {
             None => crate::audio::SystemAudio::open(runtime),
         };
 
-        if self.system_sound.is_none() {
-            self.system_sound = Some(system_sound_manager_from_boot(&self.boot, &system_audio));
+        if self.audio.system_sound.is_none() {
+            self.audio.system_sound =
+                Some(system_sound_manager_from_boot(&self.boot, &system_audio));
         }
-        if !self.select_assets.has_preview() {
-            self.select_assets.install_preview(SelectChartPreview::new(system_audio.engine()));
+        if !self.select.select_assets.has_preview() {
+            self.select
+                .select_assets
+                .install_preview(SelectChartPreview::new(system_audio.engine()));
         }
-        self.system_audio = Some(system_audio);
+        self.audio.system_audio = Some(system_audio);
     }
 
     /// 設定パネルの「適用」で、現在の `AppConfig` の音声設定を使って共有 cpal
     /// ストリームを開き直す。ASIO は排他なので新ストリームを開く前に旧ストリームを
     /// 完全に閉じる。プレイ中・プレイ開始待ち中はストリーム差し替えが危険なため何もしない。
     pub(super) fn reopen_audio_output(&mut self) {
-        if self.active_play.is_some() || self.pending_play_start.is_some() {
+        if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             tracing::warn!("ignoring audio apply while a play session is active");
             return;
         }
 
         // SystemSoundManager / SelectChartPreview と共有しているシステムエンジン
         // Arc を保持し、新ストリームへそのまま載せ替える(samples を再ロードしない)。
-        let system_engine = self.system_audio.as_ref().map(crate::audio::SystemAudio::engine);
+        let system_engine = self.audio.system_audio.as_ref().map(crate::audio::SystemAudio::engine);
 
         // 旧ストリームを参照する全ハンドルを drop し、ASIO デバイスを解放する。
-        self.draining_audio = None;
-        self.system_audio = None;
-        self.audio_runtime = None;
+        self.audio.draining_audio = None;
+        self.audio.system_audio = None;
+        self.audio.audio_runtime = None;
 
         match AudioRuntime::open(&self.boot.app_config.audio) {
             Ok(runtime) => {
@@ -814,7 +828,7 @@ impl WinitApp {
                 if let Err(error) = runtime.play() {
                     tracing::warn!(%error, "failed to start shared audio output stream");
                 }
-                self.audio_runtime = Some(runtime);
+                self.audio.audio_runtime = Some(runtime);
                 tracing::info!("audio output reopened with current settings");
             }
             Err(error) => {
@@ -829,7 +843,7 @@ impl WinitApp {
     pub(super) fn decide_snapshot_for_chart(&self, chart_id: i64) -> RenderSnapshot {
         let mut snapshot = RenderSnapshot::default();
         let metadata = chart_snapshot_metadata_for_chart(
-            &self.select_items,
+            &self.select.select_items,
             chart_id,
             |chart_id| {
                 self.boot
@@ -860,7 +874,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
-        self.last_play_was_autoplay = options.autoplay;
+        self.result.last_play_was_autoplay = options.autoplay;
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
@@ -872,26 +886,26 @@ impl WinitApp {
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.ensure_skin_ready(SkinKind::Play);
         self.invalidate_play_preload();
-        if self.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
-            self.play_media_cache = None;
+        if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
+            self.play.play_media_cache = None;
         }
-        self.play_ending = None;
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
-        self.play_ready_sound_started_at = None;
-        self.play_ready_last_control_hold_at = None;
-        self.decide_sound_stopped_for_chart_start = false;
+        self.play.play_ending = None;
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
+        self.play.play_ready_sound_started_at = None;
+        self.play.play_ready_last_control_hold_at = None;
+        self.play.decide_sound_stopped_for_chart_start = false;
         if options.chart_zero_time == TimeUs(0) {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }
         // 新しいプレイの音声出力を開く前に、前曲の余韻再生を止めて出力を解放する。
-        self.draining_audio = None;
+        self.audio.draining_audio = None;
 
         // Decide 演出中に preload worker が完成させていればそれを使う。
         // 譜面/音源は別スレッドでロード済みなので、ここでは音声出力 open 等の軽量処理だけ。
         // バッファが無ければ (course モード / preload 不発時) 従来通り main で同期ロードする。
-        let opened = match self.preloaded_play_session.take() {
+        let opened = match self.play.preloaded_play_session.take() {
             Some(preloaded) => {
                 tracing::debug!(chart_id, "using buffered play preload");
                 let prepared =
@@ -944,14 +958,14 @@ impl WinitApp {
     }
 
     pub(super) fn clear_play_stagefile_state(&mut self) {
-        self.play_stagefile_source = None;
-        self.play_stagefile_loaded = false;
-        self.play_stagefile_size = None;
+        self.play.play_stagefile_source = None;
+        self.play.play_stagefile_loaded = false;
+        self.play.play_stagefile_size = None;
     }
 
     pub(super) fn clear_play_backbmp_state(&mut self) {
-        self.play_backbmp_source = None;
-        self.play_backbmp_loaded = false;
+        self.play.play_backbmp_source = None;
+        self.play.play_backbmp_loaded = false;
     }
 
     pub(super) fn prepare_play_meta_image_textures(&mut self, chart_id: i64) {
@@ -971,22 +985,22 @@ impl WinitApp {
 
     pub(super) fn sync_play_stagefile_texture(&mut self, folder: &str, relative: &str) {
         let stagefile_key = format!("{folder}|{relative}");
-        if self.play_stagefile_source.as_deref() == Some(stagefile_key.as_str()) {
+        if self.play.play_stagefile_source.as_deref() == Some(stagefile_key.as_str()) {
             return;
         }
-        self.play_stagefile_source = Some(stagefile_key);
-        self.play_stagefile_size =
+        self.play.play_stagefile_source = Some(stagefile_key);
+        self.play.play_stagefile_size =
             load_chart_meta_texture(&mut self.renderer, SELECT_STAGE_TEXTURE, folder, relative);
-        self.play_stagefile_loaded = self.play_stagefile_size.is_some();
+        self.play.play_stagefile_loaded = self.play.play_stagefile_size.is_some();
     }
 
     pub(super) fn sync_play_backbmp_texture(&mut self, folder: &str, relative: &str) {
         let backbmp_key = format!("{folder}|{relative}");
-        if self.play_backbmp_source.as_deref() == Some(backbmp_key.as_str()) {
+        if self.play.play_backbmp_source.as_deref() == Some(backbmp_key.as_str()) {
             return;
         }
-        self.play_backbmp_source = Some(backbmp_key);
-        self.play_backbmp_loaded =
+        self.play.play_backbmp_source = Some(backbmp_key);
+        self.play.play_backbmp_loaded =
             load_chart_meta_texture(&mut self.renderer, PLAY_BACKBMP_TEXTURE, folder, relative)
                 .is_some();
     }
@@ -1000,28 +1014,28 @@ impl WinitApp {
         // リザルトの非同期 IR state は今回の試行だけを表す。retry 中にも残すと
         // 同じ chart hash の前回スコアを次の Result で表示し得るため、Play へ
         // 入る時点で直ちに手放す（バックグラウンド送信自体は継続する）。
-        self.result_ir = None;
-        self.play_ending = None;
-        self.result_exit = None;
-        self.play_ready_sound_started_at = None;
-        self.play_ready_last_control_hold_at = None;
-        self.decide_sound_stopped_for_chart_start = false;
-        self.active_play = None;
+        self.result.result_ir = None;
+        self.play.play_ending = None;
+        self.result.result_exit = None;
+        self.play.play_ready_sound_started_at = None;
+        self.play.play_ready_last_control_hold_at = None;
+        self.play.decide_sound_stopped_for_chart_start = false;
+        self.play.active_play = None;
         self.clear_play_control_holds();
         // begin_decide_for_chart_with_snapshot で先行ロードした stagefile / backbmp は保持する。
         // boot / retry など Decide を通らない経路でも、この呼び出しで補完する。
         self.prepare_play_meta_image_textures(chart_id);
-        self.finished_play = None;
-        self.draining_audio = None;
-        self.play_scene_started_at = Instant::now();
+        self.result.finished_play = None;
+        self.audio.draining_audio = None;
+        self.play.play_scene_started_at = Instant::now();
         snapshot.arrange = options.arrange.as_str().to_string();
         snapshot.arrange_2p = options.arrange_2p.as_str().to_string();
         snapshot.play_elapsed_time = TimeUs(0);
         snapshot.ready_elapsed_time = None;
         snapshot.time = self.play_skin_playstart_offset();
-        snapshot.stagefile_background = self.play_stagefile_loaded;
-        snapshot.stagefile_image_size = self.play_stagefile_size;
-        snapshot.backbmp_background = self.play_backbmp_loaded;
+        snapshot.stagefile_background = self.play.play_stagefile_loaded;
+        snapshot.stagefile_image_size = self.play.play_stagefile_size;
+        snapshot.backbmp_background = self.play.play_backbmp_loaded;
         // preload 完了で install_active_play がフル snapshot に置き換えるまでの間、
         // 初期ゲージや緑数字が空表示にならないようセッション開始時相当の値を埋める。
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
@@ -1047,7 +1061,7 @@ impl WinitApp {
             session_options.gamepad_slots,
         );
         pending_play_start.lane.apply_to_snapshot(&mut snapshot);
-        self.play_option_input = Some(PlayOptionInput::new(
+        self.play.play_option_input = Some(PlayOptionInput::new(
             key_mode,
             pending_play_start.visual_input.binding.clone(),
             &self.boot.profile_config.input,
@@ -1056,10 +1070,10 @@ impl WinitApp {
         self.capture_play_table_text_for_chart(chart_id);
         self.apply_course_skin_context(&mut snapshot);
         self.apply_play_table_text(&mut snapshot);
-        self.last_play_snapshot = Some(snapshot.clone());
-        self.pending_play_start = Some(pending_play_start);
+        self.play.last_play_snapshot = Some(snapshot.clone());
+        self.play.pending_play_start = Some(pending_play_start);
         self.sync_play_control_holds_from_pressed_controls();
-        self.last_started_chart_id = Some(chart_id);
+        self.play.last_started_chart_id = Some(chart_id);
     }
 
     /// FAST/SLOW 表示モード (Auto / ThresholdMs) を snapshot へ適用する。
@@ -1077,16 +1091,16 @@ impl WinitApp {
         chart_id: i64,
         mut active_play: StartedInputPlaySession,
     ) {
-        self.last_play_was_autoplay = active_play
+        self.result.last_play_was_autoplay = active_play
             .running
             .session
             .autoplay
             .as_ref()
             .is_some_and(|autoplay| autoplay.is_full());
         if let Some(pending) =
-            self.pending_play_start.as_ref().filter(|pending| pending.chart_id == chart_id)
+            self.play.pending_play_start.as_ref().filter(|pending| pending.chart_id == chart_id)
         {
-            let speed_locked = self.active_course.as_ref().is_some_and(|course| {
+            let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
                 course.definition.constraints.speed
                     == bmz_core::course::CourseSpeedConstraint::NoSpeed
             });
@@ -1108,24 +1122,24 @@ impl WinitApp {
         active_play.running.session.lane_cover_changing = self.play_lane_value_changing();
         let active_bga_assets = &active_play.running.session.chart.bga_assets;
         let preload_matches_active_chart =
-            self.bga_preload.matches_chart(chart_id, active_bga_assets);
-        if self.bga_preload.chart_id == Some(chart_id) && !preload_matches_active_chart {
+            self.play.bga_preload.matches_chart(chart_id, active_bga_assets);
+        if self.play.bga_preload.chart_id == Some(chart_id) && !preload_matches_active_chart {
             tracing::warn!(
                 chart_id,
-                preloaded_assets = self.bga_preload.assets.as_ref().map_or(0, Vec::len),
+                preloaded_assets = self.play.bga_preload.assets.as_ref().map_or(0, Vec::len),
                 active_assets = active_bga_assets.len(),
                 "discarding BGA preload because its asset manifest does not match the active chart"
             );
         }
         active_play.running.bga_frames = if preload_matches_active_chart {
-            self.bga_preload.frames.clone()
+            self.play.bga_preload.frames.clone()
         } else {
             self.start_chart_bga_texture_load_for_chart(
                 chart_id,
                 &active_play.running.session.chart,
             )
         };
-        if let Some(cache) = self.play_media_cache.as_mut()
+        if let Some(cache) = self.play.play_media_cache.as_mut()
             && cache.chart_id == chart_id
         {
             let mut videos = std::mem::take(&mut cache.video_bga_decoders);
@@ -1161,12 +1175,12 @@ impl WinitApp {
         // RANDOM lane ref (450..469) を解決できないため、確定patternも必要。
         apply_play_arrange_to_snapshot(&mut snapshot, &active_play.running.applied_arrange);
         snapshot.target = active_play.running.target.clone();
-        snapshot.stagefile_background = self.play_stagefile_loaded;
-        snapshot.stagefile_image_size = self.play_stagefile_size;
-        snapshot.backbmp_background = self.play_backbmp_loaded;
+        snapshot.stagefile_background = self.play.play_stagefile_loaded;
+        snapshot.stagefile_image_size = self.play.play_stagefile_size;
+        snapshot.backbmp_background = self.play.play_backbmp_loaded;
         let play_elapsed_time = self.play_elapsed_time();
         snapshot.play_elapsed_time = play_elapsed_time;
-        snapshot.ready_elapsed_time = self.play_ready_sound_started_at.map(elapsed_since);
+        snapshot.ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
         self.apply_course_skin_context(&mut snapshot);
         self.apply_play_table_text(&mut snapshot);
         crate::screens::play_snapshot::refresh_play_skin_visuals_with_input_elapsed(
@@ -1174,8 +1188,8 @@ impl WinitApp {
             &active_play.running.session,
             play_elapsed_time,
         );
-        self.last_play_snapshot = Some(snapshot);
-        self.active_play = Some(active_play);
+        self.play.last_play_snapshot = Some(snapshot);
+        self.play.active_play = Some(active_play);
         // preload 経路では Play シーンへの遷移後にここで曲メタデータが確定する。
         // 曲情報なしで送った Presence を実際の譜面情報で置き換える。
         self.publish_discord_presence_for_scene(AppSceneKind::Play);
@@ -1187,10 +1201,10 @@ impl WinitApp {
         chart_id: i64,
         options: PlayStartOptions,
     ) {
-        let generation = self.bga_preload.begin_unresolved(chart_id);
+        let generation = self.play.bga_preload.begin_unresolved(chart_id);
         let Some(uploader) = self.renderer.gpu_uploader() else {
             tracing::warn!(chart_id, "skipping BGA preload because GPU uploader is unavailable");
-            self.bga_preload.status = BgaImageLoadStatus::skipped(generation, chart_id);
+            self.play.bga_preload.status = BgaImageLoadStatus::skipped(generation, chart_id);
             return;
         };
 
@@ -1200,7 +1214,7 @@ impl WinitApp {
             .name(format!("bga-image-load-{chart_id}"))
             .spawn({
                 let (tx, rx) = bounded_gpu_upload_channel(MAX_PENDING_BGA_TEXTURE_UPLOADS);
-                self.bga_preload.rx = Some(rx);
+                self.play.bga_preload.rx = Some(rx);
                 move || {
                     let session_options =
                         crate::screens::play_start::play_session_options_from_start(
@@ -1224,7 +1238,7 @@ impl WinitApp {
     }
 
     pub(super) fn invalidate_chart_bga_texture_preload(&mut self) {
-        self.bga_preload.invalidate();
+        self.play.bga_preload.invalidate();
     }
 
     pub(super) fn start_chart_bga_texture_load_for_chart(
@@ -1232,21 +1246,21 @@ impl WinitApp {
         chart_id: i64,
         chart: &PlayableChart,
     ) -> BgaFrameCatalog {
-        let generation = self.bga_preload.begin_chart(chart_id, chart.bga_assets.clone());
+        let generation = self.play.bga_preload.begin_chart(chart_id, chart.bga_assets.clone());
         let static_asset_count = chart
             .bga_assets
             .iter()
             .filter(|asset| asset.kind == bmz_chart::model::BgaAssetKind::Static)
             .count();
         if static_asset_count == 0 {
-            self.bga_preload.status = BgaImageLoadStatus::ready(generation, chart_id);
+            self.play.bga_preload.status = BgaImageLoadStatus::ready(generation, chart_id);
             return BgaFrameCatalog::new();
         }
         let Some(uploader) = self.renderer.gpu_uploader() else {
             tracing::warn!("loading BGA images synchronously because GPU uploader is unavailable");
             let frames = load_chart_bga_textures(&mut self.renderer, chart);
-            self.bga_preload.completed_assets = self.bga_preload.total_assets;
-            self.bga_preload.status = BgaImageLoadStatus::ready(generation, chart_id);
+            self.play.bga_preload.completed_assets = self.play.bga_preload.total_assets;
+            self.play.bga_preload.status = BgaImageLoadStatus::ready(generation, chart_id);
             return frames;
         };
 
@@ -1256,43 +1270,43 @@ impl WinitApp {
             .name("bga-image-load".to_string())
             .spawn(move || chart_bga_texture_load_worker(generation, assets, tx, uploader))
             .expect("failed to spawn BGA image load thread");
-        self.bga_preload.rx = Some(rx);
+        self.play.bga_preload.rx = Some(rx);
         tracing::info!(chart_id, generation, "BGA image preload started");
         BgaFrameCatalog::new()
     }
 
     pub(super) fn poll_chart_bga_texture_load(&mut self) {
-        let Some(rx) = self.bga_preload.rx.take() else {
+        let Some(rx) = self.play.bga_preload.rx.take() else {
             return;
         };
         let mut keep_rx = true;
         for _ in 0..MAX_BGA_TEXTURE_RESULTS_PER_REDRAW {
             match rx.try_recv() {
                 Ok(PendingBgaImageResult::Manifest { generation, assets }) => {
-                    if generation != self.bga_preload.generation {
+                    if generation != self.play.bga_preload.generation {
                         continue;
                     }
-                    self.bga_preload.total_assets = assets
+                    self.play.bga_preload.total_assets = assets
                         .iter()
                         .filter(|asset| asset.kind == bmz_chart::model::BgaAssetKind::Static)
                         .count()
                         .min(u32::MAX as usize)
                         as u32;
-                    self.bga_preload.completed_assets = 0;
-                    self.bga_preload.assets = Some(assets);
+                    self.play.bga_preload.completed_assets = 0;
+                    self.play.bga_preload.assets = Some(assets);
                 }
                 Ok(PendingBgaImageResult::Loaded(image)) => {
-                    if image.generation != self.bga_preload.generation {
+                    if image.generation != self.play.bga_preload.generation {
                         continue;
                     }
-                    self.bga_preload.completed_assets =
-                        self.bga_preload.completed_assets.saturating_add(1);
+                    self.play.bga_preload.completed_assets =
+                        self.play.bga_preload.completed_assets.saturating_add(1);
                     self.renderer.insert_prepared_texture(image.texture_id, image.prepared);
-                    self.bga_preload.frames.insert(
+                    self.play.bga_preload.frames.insert(
                         image.asset_id,
                         display_bga_frame(image.asset_id, image.width, image.height),
                     );
-                    if let Some(active_play) = &mut self.active_play {
+                    if let Some(active_play) = &mut self.play.active_play {
                         active_play.running.bga_frames.insert(
                             image.asset_id,
                             display_bga_frame(image.asset_id, image.width, image.height),
@@ -1320,11 +1334,11 @@ impl WinitApp {
                     decode_us,
                     error,
                 }) => {
-                    if generation != self.bga_preload.generation {
+                    if generation != self.play.bga_preload.generation {
                         continue;
                     }
-                    self.bga_preload.completed_assets =
-                        self.bga_preload.completed_assets.saturating_add(1);
+                    self.play.bga_preload.completed_assets =
+                        self.play.bga_preload.completed_assets.saturating_add(1);
                     tracing::warn!(
                         asset_id = asset_id.0,
                         file_bytes,
@@ -1336,19 +1350,19 @@ impl WinitApp {
                     );
                 }
                 Ok(PendingBgaImageResult::PreloadFailed { generation, chart_id, error }) => {
-                    if generation != self.bga_preload.generation {
+                    if generation != self.play.bga_preload.generation {
                         continue;
                     }
-                    self.bga_preload.status = BgaImageLoadStatus::failed(generation, chart_id);
+                    self.play.bga_preload.status = BgaImageLoadStatus::failed(generation, chart_id);
                     tracing::warn!(chart_id, error, "BGA image preload failed");
                     keep_rx = false;
                     break;
                 }
                 Ok(PendingBgaImageResult::Finished { generation, stats }) => {
-                    if generation == self.bga_preload.generation {
-                        self.bga_preload.completed_assets = self.bga_preload.total_assets;
-                        if let Some(chart_id) = self.bga_preload.chart_id {
-                            self.bga_preload.status =
+                    if generation == self.play.bga_preload.generation {
+                        self.play.bga_preload.completed_assets = self.play.bga_preload.total_assets;
+                        if let Some(chart_id) = self.play.bga_preload.chart_id {
+                            self.play.bga_preload.status =
                                 BgaImageLoadStatus::ready(generation, chart_id);
                         }
                         tracing::info!(
@@ -1372,9 +1386,9 @@ impl WinitApp {
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    if let Some(chart_id) = self.bga_preload.chart_id {
-                        self.bga_preload.status =
-                            BgaImageLoadStatus::failed(self.bga_preload.generation, chart_id);
+                    if let Some(chart_id) = self.play.bga_preload.chart_id {
+                        self.play.bga_preload.status =
+                            BgaImageLoadStatus::failed(self.play.bga_preload.generation, chart_id);
                     }
                     keep_rx = false;
                     break;
@@ -1382,28 +1396,28 @@ impl WinitApp {
             }
         }
         if keep_rx {
-            self.bga_preload.rx = Some(rx);
+            self.play.bga_preload.rx = Some(rx);
         }
     }
 
     pub(super) fn poll_play_preload(&mut self) {
         // 1) preload worker からの結果を受け取り (Decide 演出中でも受信して退避する)。
-        if let Some(pending) = &self.pending_play_preload {
+        if let Some(pending) = &self.play.pending_play_preload {
             match pending.rx.try_recv() {
                 Ok(result) => {
-                    self.pending_play_preload = None;
-                    if result.generation != self.play_preload_generation {
+                    self.play.pending_play_preload = None;
+                    if result.generation != self.play.play_preload_generation {
                         tracing::debug!(
                             chart_id = result.chart_id,
                             generation = result.generation,
-                            current_generation = self.play_preload_generation,
+                            current_generation = self.play.play_preload_generation,
                             "discarding stale play preload result"
                         );
-                        if self.pending_play_start.is_some() {
+                        if self.play.pending_play_start.is_some() {
                             tracing::warn!(
                                 chart_id = result.chart_id,
                                 generation = result.generation,
-                                current_generation = self.play_preload_generation,
+                                current_generation = self.play.play_preload_generation,
                                 "aborting pending play start after stale preload result"
                             );
                             self.abort_pending_play_start();
@@ -1417,7 +1431,7 @@ impl WinitApp {
                                     generation = result.generation,
                                     "play preload ready (buffered)"
                                 );
-                                self.preloaded_play_session = Some(prepared);
+                                self.play.preloaded_play_session = Some(prepared);
                             }
                             Err(error) => {
                                 // preload 全体の失敗は譜面パース不能など再生不能なケースのみ
@@ -1429,7 +1443,7 @@ impl WinitApp {
                                     error,
                                     "play preload failed"
                                 );
-                                if self.pending_play_start.is_some() {
+                                if self.play.pending_play_start.is_some() {
                                     self.abort_pending_play_start();
                                     return;
                                 }
@@ -1444,8 +1458,8 @@ impl WinitApp {
                         generation = pending.generation,
                         "play preload worker disconnected"
                     );
-                    self.pending_play_preload = None;
-                    if self.pending_play_start.is_some() {
+                    self.play.pending_play_preload = None;
+                    if self.play.pending_play_start.is_some() {
                         self.abort_pending_play_start();
                         return;
                     }
@@ -1455,16 +1469,17 @@ impl WinitApp {
 
         // 2) Play 入場が確定 (pending_play_start) しており、バッファに preload があれば install。
         if self
+            .play
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config)
         {
             return;
         }
-        let Some(play_start) = self.pending_play_start.as_ref() else {
+        let Some(play_start) = self.play.pending_play_start.as_ref() else {
             return;
         };
-        let Some(prepared) = self.preloaded_play_session.take() else {
+        let Some(prepared) = self.play.preloaded_play_session.take() else {
             return;
         };
         let chart_id = play_start.chart_id;
@@ -1506,21 +1521,21 @@ impl WinitApp {
         if !self.commit_active_play_lane_state_to_profile() {
             self.commit_pending_play_lane_state_to_profile();
         }
-        self.pending_play_start = None;
-        self.active_play = None;
-        self.decide_sound_stopped_for_chart_start = true;
+        self.play.pending_play_start = None;
+        self.play.active_play = None;
+        self.play.decide_sound_stopped_for_chart_start = true;
         self.clear_play_meta_image_state();
-        self.last_play_snapshot = None;
+        self.play.last_play_snapshot = None;
         // An audio-open / audio-start failure bounces the user back to the
         // select screen.  If they were in a course at the time, the course
         // session is no longer valid — otherwise the next chart they pick
         // would be treated as the next entry of a stale course (route
         // through advance_course_after_finish with mismatched chart_id).
         self.clear_active_course_state();
-        self.autoplay_folder = None;
-        self.play_media_cache = None;
+        self.select.autoplay_folder = None;
+        self.play.play_media_cache = None;
         let now = Instant::now();
-        self.select_scene_started_at = now;
+        self.select.select_scene_started_at = now;
         self.restart_select_bar_timer_without_scroll(now);
     }
 
@@ -1528,14 +1543,14 @@ impl WinitApp {
     /// summary.  Call from any path that returns to the select screen
     /// without completing the course naturally.
     pub(super) fn clear_active_course_state(&mut self) {
-        if self.active_course.is_some() || self.finished_course.is_some() {
+        if self.play.active_course.is_some() || self.result.finished_course.is_some() {
             tracing::info!(
-                had_active = self.active_course.is_some(),
-                had_finished = self.finished_course.is_some(),
+                had_active = self.play.active_course.is_some(),
+                had_finished = self.result.finished_course.is_some(),
                 "clearing course session state (abort or cancel)"
             );
         }
-        self.active_course = None;
+        self.play.active_course = None;
         self.clear_finished_course();
     }
 
@@ -1543,18 +1558,18 @@ impl WinitApp {
         // beatoraja assigns a 24-bit seed even to NORMAL/MIRROR. Generate both
         // sides here so preload, retry, replay and IR all observe one stable pair.
         let option_seeds = crate::random_option_seed::RandomOptionSeeds::fresh(true);
-        let random_trainer_seed = self.random_trainer.arrange_seed(option_seeds.p1);
+        let random_trainer_seed = self.select.random_trainer.arrange_seed(option_seeds.p1);
         PlayStartOptions {
-            session_mode: self.session_mode,
-            autoplay: self.session_mode.primary_autoplay(),
-            gauge: Some(self.gauge_option),
-            gauge_auto_shift: self.gauge_auto_shift_option,
-            bottom_shiftable_gauge: self.bottom_shiftable_gauge_option,
-            arrange: self.arrange_option,
-            arrange_2p: self.arrange_option_2p,
-            double_option: self.double_option,
-            hs_fix: self.hs_fix_option,
-            target: self.target_option,
+            session_mode: self.select.session_mode,
+            autoplay: self.select.session_mode.primary_autoplay(),
+            gauge: Some(self.select.gauge_option),
+            gauge_auto_shift: self.select.gauge_auto_shift_option,
+            bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
+            arrange: self.select.arrange_option,
+            arrange_2p: self.select.arrange_option_2p,
+            double_option: self.select.double_option,
+            hs_fix: self.select.hs_fix_option,
+            target: self.select.target_option,
             arrange_seed: Some(i64::from(option_seeds.p1.value())),
             arrange_seed_2p: option_seeds.p2.map(|seed| i64::from(seed.value())),
             random_trainer_seed,
@@ -1565,6 +1580,7 @@ impl WinitApp {
 
     pub(super) fn refresh_play_target_from_source(&mut self) {
         let source = self
+            .play
             .active_play
             .as_ref()
             .map(|active| {
@@ -1575,7 +1591,7 @@ impl WinitApp {
                 )
             })
             .or_else(|| {
-                self.preloaded_play_session.as_ref().map(|preloaded| {
+                self.play.preloaded_play_session.as_ref().map(|preloaded| {
                     (preloaded.preloaded.score_key, preloaded.session_options.target, None)
                 })
             });
@@ -1592,7 +1608,7 @@ impl WinitApp {
             score_key.double_option,
             score_key.rule_mode,
         );
-        self.select_ir.update(
+        self.select.select_ir.update(
             &self.boot.profile_config.ir,
             &self.boot.profile_paths.root_dir,
             &context,
@@ -1601,13 +1617,13 @@ impl WinitApp {
             score_key.rule_mode,
             Some(score_key.chart_sha256),
         );
-        let resolved = self.select_ir.target_ex_score_for(
+        let resolved = self.select.select_ir.target_ex_score_for(
             &self.boot.profile_config.ir,
             Some(score_key.chart_sha256),
             target,
             local_best_ex_score,
         );
-        if let Some(active) = &mut self.active_play
+        if let Some(active) = &mut self.play.active_play
             && active.running.score_key == score_key
             && active.running.target_option == target
         {
@@ -1646,14 +1662,14 @@ impl WinitApp {
             practice_mode: false,
             replay_player: Some(player),
             chart_zero_time: TimeUs(0),
-            gauge: Some(self.gauge_option),
-            gauge_auto_shift: self.gauge_auto_shift_option,
-            bottom_shiftable_gauge: self.bottom_shiftable_gauge_option,
+            gauge: Some(self.select.gauge_option),
+            gauge_auto_shift: self.select.gauge_auto_shift_option,
+            bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: replay_file.arrange_option(),
             arrange_2p: replay_file.arrange_2p_option(),
             double_option: replay_file.double_option(),
             hs_fix: HsFixOption::Off,
-            target: self.target_option,
+            target: self.select.target_option,
             arrange_seed: replay_file.arrange_seed,
             arrange_seed_2p: replay_file.arrange_seed_2p,
             random_trainer_seed: None,
@@ -1711,7 +1727,7 @@ impl WinitApp {
                 self.boot.profile_config.play.ln_mode_policy,
                 &chart,
             ),
-            self.double_option.normalize_for_key_mode(key_mode).score_bucket(),
+            self.select.double_option.normalize_for_key_mode(key_mode).score_bucket(),
             self.boot.profile_config.play.rule_mode,
         );
         let Some(slot_record) = self.boot.score_db.replay_slot(key, slot).ok().flatten() else {
@@ -1741,14 +1757,14 @@ impl WinitApp {
             practice_mode: false,
             replay_player: Some(player),
             chart_zero_time: TimeUs(0),
-            gauge: Some(self.gauge_option),
-            gauge_auto_shift: self.gauge_auto_shift_option,
-            bottom_shiftable_gauge: self.bottom_shiftable_gauge_option,
+            gauge: Some(self.select.gauge_option),
+            gauge_auto_shift: self.select.gauge_auto_shift_option,
+            bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: replay_file.arrange_option(),
             arrange_2p: replay_file.arrange_2p_option(),
             double_option: replay_file.double_option(),
             hs_fix: HsFixOption::Off,
-            target: self.target_option,
+            target: self.select.target_option,
             arrange_seed: replay_file.arrange_seed,
             arrange_seed_2p: replay_file.arrange_seed_2p,
             random_trainer_seed: None,
@@ -1782,7 +1798,7 @@ impl WinitApp {
     }
 
     pub(super) fn currently_selected_chart_id(&self) -> Option<i64> {
-        match self.select_items.get(self.selected_index)? {
+        match self.select.select_items.get(self.select.selected_index)? {
             SelectItem::Chart(row) => row.chart.as_ref().map(|chart| chart.chart_id),
             SelectItem::Folder { .. }
             | SelectItem::Course(_)
@@ -1796,7 +1812,7 @@ impl WinitApp {
     }
 
     pub(super) fn currently_selected_course_id(&self) -> Option<i64> {
-        match self.select_items.get(self.selected_index)? {
+        match self.select.select_items.get(self.select.selected_index)? {
             SelectItem::Course(row) => Some(row.course_id),
             SelectItem::Chart(_)
             | SelectItem::Folder { .. }
@@ -1853,7 +1869,7 @@ impl WinitApp {
     }
 
     pub(super) fn retry_last_chart_with_mode(&mut self, mode: ResultRetryMode) {
-        let Some(chart_id) = self.last_started_chart_id else {
+        let Some(chart_id) = self.play.last_started_chart_id else {
             tracing::warn!("no previous chart is available to retry");
             return;
         };
@@ -1868,7 +1884,7 @@ impl WinitApp {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }
 
-        if let Some(cache) = self.play_media_cache.take()
+        if let Some(cache) = self.play.play_media_cache.take()
             && cache.chart_id == chart_id
         {
             match retry_preload_kind(mode, cache.chart.is_some()) {
@@ -1906,14 +1922,14 @@ impl WinitApp {
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.ensure_skin_ready(SkinKind::Play);
-        self.play_ending = None;
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
-        self.play_ready_sound_started_at = None;
-        self.play_ready_last_control_hold_at = None;
-        self.decide_sound_stopped_for_chart_start = false;
-        self.draining_audio = None;
+        self.play.play_ending = None;
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
+        self.play.play_ready_sound_started_at = None;
+        self.play.play_ready_last_control_hold_at = None;
+        self.play.decide_sound_stopped_for_chart_start = false;
+        self.audio.draining_audio = None;
         self.enter_play_scene(chart_id, options, self.decide_snapshot_for_chart(chart_id));
         self.poll_play_preload();
     }
@@ -1930,7 +1946,7 @@ impl WinitApp {
     }
 
     pub(super) fn retry_course_with_mode(&mut self, mode: ResultRetryMode) {
-        let Some(course) = self.finished_course.as_ref() else {
+        let Some(course) = self.result.finished_course.as_ref() else {
             tracing::warn!("no finished course is available to retry");
             return;
         };
@@ -1943,16 +1959,17 @@ impl WinitApp {
         // Drop the finished-course/result state before re-entering the course;
         // start_course_with_arrange installs a fresh active_course session.
         self.clear_finished_course();
-        self.finished_play = None;
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
+        self.result.finished_play = None;
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
         self.start_course_with_arrange(course_id, arrange_overrides, false);
     }
 
     pub(super) fn result_retry_same_arrange_options(&self) -> PlayStartOptions {
         let mut options = self.play_start_options();
-        if let Some(applied) = self.finished_play.as_ref().map(|finished| &finished.applied_arrange)
+        if let Some(applied) =
+            self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
             options.arrange = applied.arrange;
             options.arrange_seed = applied.seed;
@@ -1966,7 +1983,8 @@ impl WinitApp {
 
     pub(super) fn result_retry_different_arrange_options(&self) -> PlayStartOptions {
         let mut options = self.play_start_options();
-        if let Some(applied) = self.finished_play.as_ref().map(|finished| &finished.applied_arrange)
+        if let Some(applied) =
+            self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
             options.arrange = applied.arrange;
             options.arrange_pattern = None;
@@ -1976,7 +1994,7 @@ impl WinitApp {
 
     pub(super) fn active_play_retry_options(&self, mode: ResultRetryMode) -> PlayStartOptions {
         let mut options = self.play_start_options();
-        if let Some(active) = &self.active_play {
+        if let Some(active) = &self.play.active_play {
             let applied = &active.running.applied_arrange;
             options.arrange = applied.arrange;
             options.arrange_2p = applied.arrange_2p;
@@ -2002,7 +2020,7 @@ impl WinitApp {
         chart_id: i64,
         mode: ResultRetryMode,
     ) -> Option<PlayMediaCache> {
-        let active = self.active_play.as_mut()?;
+        let active = self.play.active_play.as_mut()?;
         let video_bga_decoders = std::mem::take(&mut active.running.video_bga_decoders);
         let (chart, applied_arrange, score_key) = match mode {
             ResultRetryMode::SameArrange => (
@@ -2030,7 +2048,7 @@ impl WinitApp {
         running: &mut crate::audio::RunningPlaySession,
     ) {
         let video_bga_decoders = std::mem::take(&mut running.video_bga_decoders);
-        self.play_media_cache = Some(PlayMediaCache {
+        self.play.play_media_cache = Some(PlayMediaCache {
             chart_id,
             chart: Some(Arc::clone(&running.session.chart)),
             chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
@@ -2049,7 +2067,7 @@ impl WinitApp {
         bga_assets: Vec<BgaAssetRef>,
     ) {
         let bga_frame_count = bga_frames.len();
-        let bga_generation = self.bga_preload.apply_reused(chart_id, bga_frames, bga_assets);
+        let bga_generation = self.play.bga_preload.apply_reused(chart_id, bga_frames, bga_assets);
         tracing::info!(
             chart_id,
             bga_generation,
@@ -2067,11 +2085,11 @@ impl WinitApp {
         cache.chart = None;
         cache.applied_arrange = None;
         cache.score_key = None;
-        self.play_preload_generation = self.play_preload_generation.wrapping_add(1);
-        let generation = self.play_preload_generation;
-        self.preloaded_play_session = None;
+        self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
+        let generation = self.play.play_preload_generation;
+        self.play.preloaded_play_session = None;
         self.apply_reused_bga_preload(chart_id, cache.bga_frames.clone(), cache.bga_assets.clone());
-        self.play_media_cache = Some(cache);
+        self.play.play_media_cache = Some(cache);
 
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
@@ -2123,7 +2141,7 @@ impl WinitApp {
                 let _ = tx.send(PlayPreloadResult { generation, chart_id, result });
             })
             .expect("failed to spawn BGA-reusing play preload thread");
-        self.pending_play_preload = Some(PendingPlayPreload {
+        self.play.pending_play_preload = Some(PendingPlayPreload {
             generation,
             chart_id,
             input,
@@ -2151,11 +2169,11 @@ impl WinitApp {
         let score_key = cache.score_key.expect("SameArrange cache includes score key");
         let chart_normalization_gain = cache.chart_normalization_gain;
 
-        self.play_preload_generation = self.play_preload_generation.wrapping_add(1);
-        let generation = self.play_preload_generation;
-        self.preloaded_play_session = None;
+        self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
+        let generation = self.play.play_preload_generation;
+        self.play.preloaded_play_session = None;
         self.apply_reused_bga_preload(chart_id, cache.bga_frames.clone(), cache.bga_assets.clone());
-        self.play_media_cache = Some(cache);
+        self.play.play_media_cache = Some(cache);
 
         let mut session_options =
             play_session_options_from_start(&self.play_session_app_config(), options);
@@ -2195,7 +2213,7 @@ impl WinitApp {
                 let _ = tx.send(PlayPreloadResult { generation, chart_id, result });
             })
             .expect("failed to spawn quick retry audio preload thread");
-        self.pending_play_preload = Some(PendingPlayPreload {
+        self.play.pending_play_preload = Some(PendingPlayPreload {
             generation,
             chart_id,
             input,
@@ -2207,19 +2225,19 @@ impl WinitApp {
     }
 
     pub(super) fn handle_quick_retry_control(&mut self, control: &str) -> bool {
-        let Some(ending) = &self.play_ending else {
+        let Some(ending) = &self.play.play_ending else {
             return false;
         };
         if !ending.failed
-            || self.active_course.is_some()
-            || self.practice_session.is_some()
-            || self.last_play_was_autoplay
+            || self.play.active_course.is_some()
+            || self.play.practice_session.is_some()
+            || self.result.last_play_was_autoplay
         {
             return false;
         }
-        let mode = if self.select_keys.is_start(control) {
+        let mode = if self.select.select_keys.is_start(control) {
             Some(ResultRetryMode::DifferentArrange)
-        } else if self.select_keys.is_e2_action(control) || matches!(control, "Select") {
+        } else if self.select.select_keys.is_e2_action(control) || matches!(control, "Select") {
             Some(ResultRetryMode::SameArrange)
         } else {
             None
@@ -2232,13 +2250,13 @@ impl WinitApp {
     }
 
     pub(super) fn begin_play_fadeout_after_final_notes_control(&mut self, control: &str) -> bool {
-        let escape_before_play_ending = control == "Escape" && self.play_ending.is_none();
-        if !play_fadeout_after_final_notes_control(control, &self.select_keys)
+        let escape_before_play_ending = control == "Escape" && self.play.play_ending.is_none();
+        if !play_fadeout_after_final_notes_control(control, &self.select.select_keys)
             && !escape_before_play_ending
         {
             return false;
         }
-        if let Some(ending) = &mut self.play_ending {
+        if let Some(ending) = &mut self.play.play_ending {
             if ending.failed {
                 return false;
             }
@@ -2250,14 +2268,14 @@ impl WinitApp {
             return true;
         }
 
-        let Some(active_play) = &self.active_play else {
+        let Some(active_play) = &self.play.active_play else {
             return false;
         };
         let should_begin = should_begin_play_fadeout_after_final_notes(
             control,
-            &self.select_keys,
-            self.play_ready_sound_started_at.is_some(),
-            self.play_ending.is_some(),
+            &self.select.select_keys,
+            self.play.play_ready_sound_started_at.is_some(),
+            self.play.play_ending.is_some(),
             active_play.running.session.state,
             active_play.running.session.judge.is_exhausted(&active_play.running.session.chart),
         );
@@ -2265,16 +2283,19 @@ impl WinitApp {
             return false;
         }
 
-        let finish_mode = if self.active_course.is_some() {
+        let finish_mode = if self.play.active_course.is_some() {
             crate::screens::play_finish::FinishResultMode::CourseStage
         } else {
             crate::screens::play_finish::FinishResultMode::Normal
         };
         let now = Instant::now();
-        let full_combo_elapsed_at_finish_ms =
-            self.last_play_snapshot.as_ref().and_then(|snapshot| snapshot.full_combo_elapsed_ms);
+        let full_combo_elapsed_at_finish_ms = self
+            .play
+            .last_play_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.full_combo_elapsed_ms);
         let early_finished = {
-            let Some(active_play) = &mut self.active_play else {
+            let Some(active_play) = &mut self.play.active_play else {
                 return false;
             };
             active_play.running.session.state = bmz_gameplay::session::PlayState::Finished;
@@ -2312,14 +2333,14 @@ impl WinitApp {
             }
         };
         self.save_current_play_options(
-            self.active_play.as_ref().map(|active| active.running.session.hispeed),
+            self.play.active_play.as_ref().map(|active| active.running.session.hispeed),
             "play fadeout requested",
         );
         if let Some(finished) = &early_finished {
             self.start_result_ir_for_finished_play(finished);
         }
         self.notify_obs_play_ended();
-        self.play_ending = Some(PlayEndingTransition {
+        self.play.play_ending = Some(PlayEndingTransition {
             started_at: now,
             fadeout_started_at: Some(now),
             failed: false,
@@ -2332,7 +2353,7 @@ impl WinitApp {
     }
 
     pub(super) fn quick_retry_active_play(&mut self, mode: ResultRetryMode) {
-        let Some(chart_id) = self.last_started_chart_id else {
+        let Some(chart_id) = self.play.last_started_chart_id else {
             tracing::warn!("quick retry ignored without previous chart id");
             return;
         };
@@ -2347,18 +2368,18 @@ impl WinitApp {
         tracing::info!(chart_id, ?mode, "quick retrying chart");
         self.notify_obs_retry_play();
         self.save_current_play_options(
-            self.active_play.as_ref().map(|active| active.running.session.hispeed),
+            self.play.active_play.as_ref().map(|active| active.running.session.hispeed),
             "quick retry",
         );
-        if let Some(active) = &mut self.active_play
+        if let Some(active) = &mut self.play.active_play
             && let Err(error) = active.running.pause_audio()
         {
             tracing::warn!(%error, "failed to stop previous play audio for quick retry");
         }
-        self.active_play = None;
-        self.play_ending = None;
-        self.finished_play = None;
-        self.draining_audio = None;
+        self.play.active_play = None;
+        self.play.play_ending = None;
+        self.result.finished_play = None;
+        self.audio.draining_audio = None;
         self.clear_play_control_holds();
         match media {
             Some(cache)
@@ -2371,7 +2392,7 @@ impl WinitApp {
                 self.start_play_preload_reusing_bga(chart_id, options.clone(), cache);
             }
             None => {
-                self.play_media_cache = None;
+                self.play.play_media_cache = None;
                 self.start_play_preload(chart_id, options.clone());
             }
         }

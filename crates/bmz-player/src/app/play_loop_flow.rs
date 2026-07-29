@@ -2,25 +2,25 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn advance_active_play(&mut self) {
-        if self.play_ending.is_some() {
+        if self.play.play_ending.is_some() {
             self.update_play_ending_snapshot();
             return;
         }
-        if self.pending_play_start.is_some() {
+        if self.play.pending_play_start.is_some() {
             self.update_pending_play_snapshot_timers();
         }
-        if self.active_play.is_none() {
+        if self.play.active_play.is_none() {
             return;
         }
         if self.stop_play_if_exit_hold_elapsed() {
             self.clear_play_control_holds();
-            if self.play_ending.is_some() {
+            if self.play.play_ending.is_some() {
                 return;
             }
         }
         self.maybe_start_ready_phase();
         self.stop_decide_system_sound_after_chart_start();
-        if self.play_ready_sound_started_at.is_none() {
+        if self.play.play_ready_sound_started_at.is_none() {
             self.update_pre_ready_play_state();
             self.update_pending_play_snapshot_timers();
             return;
@@ -28,11 +28,11 @@ impl WinitApp {
         let course_titles = self.current_course_titles();
         let course_stage = self.current_course_stage_marker();
         let play_elapsed_time = self.play_elapsed_time();
-        let ready_elapsed_time = self.play_ready_sound_started_at.map(elapsed_since);
-        let stagefile_background = self.play_stagefile_loaded;
-        let stagefile_image_size = self.play_stagefile_size;
-        let backbmp_background = self.play_backbmp_loaded;
-        let Some(active_play) = &mut self.active_play else {
+        let ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
+        let stagefile_background = self.play.play_stagefile_loaded;
+        let stagefile_image_size = self.play.play_stagefile_size;
+        let backbmp_background = self.play.play_backbmp_loaded;
+        let Some(active_play) = &mut self.play.active_play else {
             return;
         };
 
@@ -65,13 +65,13 @@ impl WinitApp {
                 snapshot.course_stage = course_stage;
                 snapshot.course_titles = course_titles.clone();
                 self.apply_play_table_text(&mut snapshot);
-                if let Some(active_play) = &self.active_play {
+                if let Some(active_play) = &self.play.active_play {
                     crate::screens::play_snapshot::refresh_play_skin_visuals(
                         &mut snapshot,
                         &active_play.running.session,
                     );
                 }
-                self.last_play_snapshot = Some(snapshot);
+                self.play.last_play_snapshot = Some(snapshot);
                 self.play_landmine_se(mine_hits);
             }
             Ok(frame) => {
@@ -81,6 +81,7 @@ impl WinitApp {
                 );
                 active_play.running.result_graph.record_frame(&frame);
                 if self
+                    .play
                     .practice_session
                     .as_ref()
                     .is_some_and(|practice| practice.phase == PracticePhase::Playing)
@@ -93,7 +94,7 @@ impl WinitApp {
                     self.finish_practice_round();
                     return;
                 }
-                let finish_mode = if self.active_course.is_some() {
+                let finish_mode = if self.play.active_course.is_some() {
                     crate::screens::play_finish::FinishResultMode::CourseStage
                 } else {
                     crate::screens::play_finish::FinishResultMode::Normal
@@ -147,7 +148,7 @@ impl WinitApp {
                 );
                 self.apply_profile_fast_slow_filter(&mut snapshot);
                 self.apply_play_table_text(&mut snapshot);
-                self.last_play_snapshot = Some(snapshot);
+                self.play.last_play_snapshot = Some(snapshot);
                 if should_play_retire_sound {
                     self.play_system_sound(crate::system_sound::SoundType::PlayStop);
                 }
@@ -158,7 +159,7 @@ impl WinitApp {
                     self.start_result_ir_for_finished_play(finished);
                 }
                 self.notify_obs_play_ended();
-                self.play_ending = Some(PlayEndingTransition {
+                self.play.play_ending = Some(PlayEndingTransition {
                     started_at: Instant::now(),
                     fadeout_started_at: None,
                     failed: frame.state == bmz_gameplay::session::PlayState::Failed,
@@ -169,26 +170,27 @@ impl WinitApp {
             }
             Err(error) => {
                 tracing::error!(%error, "failed to advance play session");
-                self.active_play = None;
+                self.play.active_play = None;
                 self.clear_play_meta_image_state();
-                self.last_play_snapshot = None;
+                self.play.last_play_snapshot = None;
             }
         }
         self.sync_profile_visual_offset_from_active_play();
     }
 
     pub(super) fn maybe_start_ready_phase(&mut self) {
-        if self.play_ready_sound_started_at.is_some() {
+        if self.play.play_ready_sound_started_at.is_some() {
             return;
         }
         self.sync_play_control_holds_from_pressed_controls();
         let now = Instant::now();
-        if play_ready_blocked_by_control_holds(self.play_e1_held, self.play_e2_held) {
-            self.play_ready_last_control_hold_at = Some(now);
+        if play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held) {
+            self.play.play_ready_last_control_hold_at = Some(now);
             self.update_pending_play_snapshot_timers();
             return;
         }
-        if play_ready_blocked_by_recent_control_hold(self.play_ready_last_control_hold_at, now) {
+        if play_ready_blocked_by_recent_control_hold(self.play.play_ready_last_control_hold_at, now)
+        {
             self.update_pending_play_snapshot_timers();
             return;
         }
@@ -196,22 +198,24 @@ impl WinitApp {
             return;
         }
         let chart_id = self
+            .play
             .pending_play_start
             .as_ref()
             .map(|start| start.chart_id)
-            .or(self.last_started_chart_id);
-        let Some(active_play) = &self.active_play else {
+            .or(self.play.last_started_chart_id);
+        let Some(active_play) = &self.play.active_play else {
             return;
         };
-        if !self.bga_preload.ready_for(chart_id, active_play.running.session.bga_enabled) {
+        if !self.play.bga_preload.ready_for(chart_id, active_play.running.session.bga_enabled) {
             return;
         }
         let chart_zero_time = self
+            .play
             .practice_chart_zero_time
             .take()
             .unwrap_or_else(|| self.play_skin_playstart_offset());
         let play_elapsed_time = self.play_elapsed_time();
-        let Some(active_play) = &mut self.active_play else {
+        let Some(active_play) = &mut self.play.active_play else {
             return;
         };
         bmz_gameplay::session::drain_pre_ready_visual_inputs(
@@ -223,14 +227,14 @@ impl WinitApp {
             self.abort_pending_play_start();
             return;
         }
-        self.play_ready_sound_started_at = Some(Instant::now());
-        self.pending_play_start = None;
+        self.play.play_ready_sound_started_at = Some(Instant::now());
+        self.play.pending_play_start = None;
         self.play_system_sound(crate::system_sound::SoundType::PlayReady);
-        if let Some(snapshot) = &mut self.last_play_snapshot {
+        if let Some(snapshot) = &mut self.play.last_play_snapshot {
             snapshot.play_elapsed_time = play_elapsed_time;
             snapshot.ready_elapsed_time = Some(TimeUs(0));
             snapshot.time = chart_zero_time;
-            if let Some(active_play) = &self.active_play {
+            if let Some(active_play) = &self.play.active_play {
                 crate::screens::play_snapshot::refresh_play_skin_visuals_with_input_elapsed(
                     snapshot,
                     &active_play.running.session,
@@ -241,31 +245,32 @@ impl WinitApp {
     }
 
     pub(super) fn stop_decide_system_sound_after_chart_start(&mut self) {
-        if self.decide_sound_stopped_for_chart_start {
+        if self.play.decide_sound_stopped_for_chart_start {
             return;
         }
-        let Some(active_play) = &self.active_play else {
+        let Some(active_play) = &self.play.active_play else {
             return;
         };
         if !chart_started_for_system_sound(&active_play.running.session) {
             return;
         }
         self.stop_system_sound(crate::system_sound::SoundType::Decide);
-        self.decide_sound_stopped_for_chart_start = true;
+        self.play.decide_sound_stopped_for_chart_start = true;
     }
 
     pub(super) fn update_pending_play_snapshot_timers(&mut self) {
         let play_elapsed_time = self.play_elapsed_time();
-        let ready_elapsed_time = self.play_ready_sound_started_at.map(elapsed_since);
+        let ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
         let resource_load_progress = self.current_play_resource_load_progress();
         let chart_id = self
+            .play
             .pending_play_start
             .as_ref()
             .map(|start| start.chart_id)
-            .or(self.last_started_chart_id);
+            .or(self.play.last_started_chart_id);
         let applied_arrange =
             chart_id.and_then(|chart_id| self.play_preload_applied_arrange(chart_id));
-        if let Some(snapshot) = &mut self.last_play_snapshot {
+        if let Some(snapshot) = &mut self.play.last_play_snapshot {
             snapshot.play_elapsed_time = play_elapsed_time;
             snapshot.ready_elapsed_time = ready_elapsed_time;
             snapshot.resource_load_progress = resource_load_progress;
@@ -277,12 +282,14 @@ impl WinitApp {
     }
 
     pub(super) fn play_preload_applied_arrange(&self, chart_id: i64) -> Option<AppliedArrange> {
-        self.preloaded_play_session
+        self.play
+            .preloaded_play_session
             .as_ref()
             .filter(|preloaded| preloaded.chart_id == chart_id)
             .map(|preloaded| preloaded.preloaded.applied_arrange.clone())
             .or_else(|| {
-                self.pending_play_preload
+                self.play
+                    .pending_play_preload
                     .as_ref()
                     .filter(|pending| pending.chart_id == chart_id)
                     .and_then(|pending| pending.applied_arrange.get().cloned())
@@ -291,11 +298,13 @@ impl WinitApp {
 
     pub(super) fn current_play_resource_load_progress(&self) -> f32 {
         let chart_id = self
+            .play
             .pending_play_start
             .as_ref()
             .map(|start| start.chart_id)
-            .or(self.last_started_chart_id);
+            .or(self.play.last_started_chart_id);
         let audio_progress = self
+            .play
             .pending_play_preload
             .as_ref()
             .filter(|pending| Some(pending.chart_id) == chart_id)
@@ -304,28 +313,28 @@ impl WinitApp {
                     / RESOURCE_LOAD_PROGRESS_SCALE as f32
             })
             .unwrap_or_else(|| {
-                if self.preloaded_play_session.is_some() || self.active_play.is_some() {
+                if self.play.preloaded_play_session.is_some() || self.play.active_play.is_some() {
                     1.0
                 } else {
                     0.0
                 }
             });
-        let bga_progress = self.bga_preload.progress(chart_id);
+        let bga_progress = self.play.bga_preload.progress(chart_id);
         let bga_enabled =
-            self.last_play_snapshot.as_ref().is_some_and(|snapshot| snapshot.bga_enabled);
+            self.play.last_play_snapshot.as_ref().is_some_and(|snapshot| snapshot.bga_enabled);
         combined_resource_load_progress(audio_progress, bga_progress, bga_enabled)
     }
 
     pub(super) fn update_pre_ready_play_state(&mut self) {
         let play_elapsed_time = self.play_elapsed_time();
-        let Some(active_play) = &mut self.active_play else {
+        let Some(active_play) = &mut self.play.active_play else {
             return;
         };
         bmz_gameplay::session::drain_pre_ready_visual_inputs(
             &mut active_play.running.session,
             play_elapsed_time,
         );
-        let Some(snapshot) = &mut self.last_play_snapshot else {
+        let Some(snapshot) = &mut self.play.last_play_snapshot else {
             return;
         };
         snapshot.play_elapsed_time = play_elapsed_time;
@@ -337,13 +346,13 @@ impl WinitApp {
     }
 
     pub(super) fn apply_play_lane_action(&mut self, action: PlayLaneAction) -> bool {
-        if self.active_play.is_none() {
+        if self.play.active_play.is_none() {
             return self.apply_pending_play_lane_action(action);
         }
-        let speed_locked = self.active_course.as_ref().is_some_and(|course| {
+        let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
             course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
         });
-        let Some(active_play) = &mut self.active_play else {
+        let Some(active_play) = &mut self.play.active_play else {
             return false;
         };
         let hispeed_step = hispeed_step_for_profile(
@@ -369,8 +378,8 @@ impl WinitApp {
             "adjusted play lane settings"
         );
         update_pre_ready_play_snapshot_options_for_session(
-            self.play_ready_sound_started_at,
-            &mut self.last_play_snapshot,
+            self.play.play_ready_sound_started_at,
+            &mut self.play.last_play_snapshot,
             &active_play.running.session,
             &active_play.running.applied_arrange,
         );
@@ -378,11 +387,12 @@ impl WinitApp {
     }
 
     pub(super) fn apply_pending_play_lane_action(&mut self, action: PlayLaneAction) -> bool {
-        let speed_locked = self.active_course.as_ref().is_some_and(|course| {
+        let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
             course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
         });
-        let now_bpm = self.last_play_snapshot.as_ref().map_or(120.0, |snapshot| snapshot.now_bpm);
-        let Some(pending) = &mut self.pending_play_start else {
+        let now_bpm =
+            self.play.last_play_snapshot.as_ref().map_or(120.0, |snapshot| snapshot.now_bpm);
+        let Some(pending) = &mut self.play.pending_play_start else {
             return false;
         };
         let lane = &mut pending.lane;
@@ -397,7 +407,7 @@ impl WinitApp {
             return false;
         }
         pending.lane_actions.push(action);
-        if let Some(snapshot) = &mut self.last_play_snapshot {
+        if let Some(snapshot) = &mut self.play.last_play_snapshot {
             lane.apply_to_snapshot(snapshot);
         }
         tracing::info!(
@@ -413,7 +423,7 @@ impl WinitApp {
 
     pub(super) fn stop_active_play_like_escape(&mut self, reason: &'static str) -> bool {
         let stopped = {
-            let Some(active_play) = &mut self.active_play else {
+            let Some(active_play) = &mut self.play.active_play else {
                 return false;
             };
             let session = &mut active_play.running.session;
@@ -432,10 +442,10 @@ impl WinitApp {
         };
         self.clear_play_control_holds();
         self.play_system_sound(crate::system_sound::SoundType::PlayStop);
-        if self.play_ready_sound_started_at.is_none() && self.play_ending.is_none() {
-            self.pending_play_start = None;
+        if self.play.play_ready_sound_started_at.is_none() && self.play.play_ending.is_none() {
+            self.play.pending_play_start = None;
             self.notify_obs_play_ended();
-            self.play_ending = Some(failed_play_ending(Instant::now()));
+            self.play.play_ending = Some(failed_play_ending(Instant::now()));
             self.update_play_ending_snapshot();
         }
         stopped
@@ -443,27 +453,28 @@ impl WinitApp {
 
     pub(super) fn update_play_exit_hold_timer(&mut self) {
         update_play_exit_hold_started_at(
-            &mut self.play_exit_hold_started_at,
-            self.play_e1_held,
-            self.play_e2_held,
+            &mut self.play.play_exit_hold_started_at,
+            self.play.play_e1_held,
+            self.play.play_e2_held,
             Instant::now(),
         );
     }
 
     pub(super) fn clear_play_control_holds(&mut self) {
-        self.last_play_start_press_at = None;
-        self.decide_e1_held = false;
-        self.play_e1_held = false;
-        self.play_e2_held = false;
-        self.play_e3_held = false;
-        self.play_ready_last_control_hold_at = None;
-        self.play_exit_hold_started_at = None;
+        self.play.last_play_start_press_at = None;
+        self.play.decide_e1_held = false;
+        self.play.play_e1_held = false;
+        self.play.play_e2_held = false;
+        self.play.play_e3_held = false;
+        self.play.play_ready_last_control_hold_at = None;
+        self.play.play_exit_hold_started_at = None;
         self.reset_play_analog_scroll();
         self.refresh_play_lane_value_changing();
     }
 
     pub(super) fn sync_play_control_holds_from_pressed_controls(&mut self) {
         let (e1_held, e2_held, e3_held) = self
+            .play
             .play_option_input
             .as_ref()
             .map(|input| {
@@ -471,48 +482,48 @@ impl WinitApp {
             })
             .unwrap_or((false, false, false));
         let was_ready_blocked =
-            play_ready_blocked_by_control_holds(self.play_e1_held, self.play_e2_held);
-        if self.play_e1_held == e1_held
-            && self.play_e2_held == e2_held
-            && self.play_e3_held == e3_held
+            play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held);
+        if self.play.play_e1_held == e1_held
+            && self.play.play_e2_held == e2_held
+            && self.play.play_e3_held == e3_held
         {
             if was_ready_blocked {
-                self.play_ready_last_control_hold_at = Some(Instant::now());
+                self.play.play_ready_last_control_hold_at = Some(Instant::now());
             }
             return;
         }
-        if self.play_e1_held != e1_held || self.play_e2_held != e2_held {
+        if self.play.play_e1_held != e1_held || self.play.play_e2_held != e2_held {
             self.reset_play_analog_scroll();
         }
-        self.play_e1_held = e1_held;
-        self.play_e2_held = e2_held;
-        self.play_e3_held = e3_held;
+        self.play.play_e1_held = e1_held;
+        self.play.play_e2_held = e2_held;
+        self.play.play_e3_held = e3_held;
         if was_ready_blocked || play_ready_blocked_by_control_holds(e1_held, e2_held) {
-            self.play_ready_last_control_hold_at = Some(Instant::now());
+            self.play.play_ready_last_control_hold_at = Some(Instant::now());
         }
         self.refresh_play_lane_value_changing();
         self.update_play_exit_hold_timer();
     }
 
     pub(super) fn play_lane_value_changing(&self) -> bool {
-        self.play_e1_held || self.play_e2_held
+        self.play.play_e1_held || self.play.play_e2_held
     }
 
     pub(super) fn refresh_play_lane_value_changing(&mut self) {
         let changing = self.play_lane_value_changing();
-        if let Some(active_play) = &mut self.active_play {
+        if let Some(active_play) = &mut self.play.active_play {
             active_play.running.session.lane_cover_changing = changing;
             update_pre_ready_play_snapshot_options_for_session(
-                self.play_ready_sound_started_at,
-                &mut self.last_play_snapshot,
+                self.play.play_ready_sound_started_at,
+                &mut self.play.last_play_snapshot,
                 &active_play.running.session,
                 &active_play.running.applied_arrange,
             );
-        } else if self.play_ready_sound_started_at.is_none()
-            && let Some(pending) = &mut self.pending_play_start
+        } else if self.play.play_ready_sound_started_at.is_none()
+            && let Some(pending) = &mut self.play.pending_play_start
         {
             pending.lane.lane_cover_changing = changing;
-            if let Some(snapshot) = &mut self.last_play_snapshot {
+            if let Some(snapshot) = &mut self.play.last_play_snapshot {
                 pending.lane.apply_to_snapshot(snapshot);
             }
         }
@@ -524,7 +535,7 @@ impl WinitApp {
         control: &PhysicalControl,
         pressed: bool,
     ) -> bool {
-        let is_e1 = self.play_option_input.as_ref().is_some_and(|input| {
+        let is_e1 = self.play.play_option_input.as_ref().is_some_and(|input| {
             !input.resolves_lane(device, control)
                 && input.is_action(device, control, InputActionConfig::E1)
         });
@@ -532,15 +543,15 @@ impl WinitApp {
             return false;
         }
         let was_ready_blocked =
-            play_ready_blocked_by_control_holds(self.play_e1_held, self.play_e2_held);
-        if self.play_e1_held != pressed {
+            play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held);
+        if self.play.play_e1_held != pressed {
             self.reset_play_analog_scroll();
         }
-        self.play_e1_held = pressed;
+        self.play.play_e1_held = pressed;
         if was_ready_blocked
-            || play_ready_blocked_by_control_holds(self.play_e1_held, self.play_e2_held)
+            || play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held)
         {
-            self.play_ready_last_control_hold_at = Some(Instant::now());
+            self.play.play_ready_last_control_hold_at = Some(Instant::now());
         }
         self.refresh_play_lane_value_changing();
         self.update_play_exit_hold_timer();
@@ -550,11 +561,11 @@ impl WinitApp {
     /// Start / E1 の2回連続押しでレーンカバー (SUDDEN+) 表示を切り替える。
     /// キーボード・ゲームパッド共通。トグルした場合は true。
     pub(super) fn handle_play_start_double_press(&mut self) -> bool {
-        if self.active_play.is_none() && self.pending_play_start.is_none() {
+        if self.play.active_play.is_none() && self.play.pending_play_start.is_none() {
             return false;
         }
         let now = Instant::now();
-        if !register_play_start_double_press(&mut self.last_play_start_press_at, now) {
+        if !register_play_start_double_press(&mut self.play.last_play_start_press_at, now) {
             return false;
         }
         self.apply_play_lane_action(PlayLaneAction::ToggleLaneCoverVisibility)
@@ -567,8 +578,9 @@ impl WinitApp {
         pressed: bool,
     ) -> bool {
         let was_ready_blocked =
-            play_ready_blocked_by_control_holds(self.play_e1_held, self.play_e2_held);
+            play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held);
         let (is_e2, is_e3) = self
+            .play
             .play_option_input
             .as_ref()
             .map(|input| {
@@ -584,27 +596,27 @@ impl WinitApp {
             .unwrap_or((false, false));
         let mut changed = false;
         if is_e2 {
-            if self.play_e2_held != pressed {
+            if self.play.play_e2_held != pressed {
                 self.reset_play_analog_scroll();
             }
-            self.play_e2_held = pressed;
+            self.play.play_e2_held = pressed;
             changed = true;
         }
         if is_e3 {
-            self.play_e3_held = pressed;
+            self.play.play_e3_held = pressed;
             changed = true;
         }
         if !changed {
             return false;
         }
         if was_ready_blocked
-            || play_ready_blocked_by_control_holds(self.play_e1_held, self.play_e2_held)
+            || play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held)
         {
-            self.play_ready_last_control_hold_at = Some(Instant::now());
+            self.play.play_ready_last_control_hold_at = Some(Instant::now());
         }
         self.refresh_play_lane_value_changing();
         self.update_play_exit_hold_timer();
-        if self.play_e2_held && self.play_e3_held {
+        if self.play.play_e2_held && self.play.play_e3_held {
             return self.stop_active_play_like_escape("E2+E3 pressed during play");
         }
         false
@@ -613,32 +625,36 @@ impl WinitApp {
     pub(super) fn stop_play_if_exit_hold_elapsed(&mut self) -> bool {
         let hold_duration =
             Duration::from_millis(self.boot.profile_config.play.play_exit_hold_ms as u64);
-        if play_exit_hold_elapsed(self.play_exit_hold_started_at, Instant::now(), hold_duration) {
-            self.play_exit_hold_started_at = None;
+        if play_exit_hold_elapsed(
+            self.play.play_exit_hold_started_at,
+            Instant::now(),
+            hold_duration,
+        ) {
+            self.play.play_exit_hold_started_at = None;
             return self.stop_active_play_like_escape("E1+E2 held during play");
         }
         false
     }
 
     pub(super) fn update_play_ending_snapshot(&mut self) {
-        let Some(ending) = &self.play_ending else {
+        let Some(ending) = &self.play.play_ending else {
             return;
         };
         let play_elapsed_time = self.play_elapsed_time();
-        let ready_elapsed_time = self.play_ready_sound_started_at.map(elapsed_since);
-        let stagefile_background = self.play_stagefile_loaded;
-        let stagefile_image_size = self.play_stagefile_size;
+        let ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
+        let stagefile_background = self.play.play_stagefile_loaded;
+        let stagefile_image_size = self.play.play_stagefile_size;
         let timers = PlayEndingSkinTimers {
             play_elapsed_time,
             ready_elapsed_time,
-            backbmp_background: self.play_backbmp_loaded,
+            backbmp_background: self.play.play_backbmp_loaded,
             failed_elapsed_ms: ending.failed.then_some(elapsed_since_ms(ending.started_at)),
             music_end_elapsed_ms: (!ending.failed).then_some(elapsed_since_ms(ending.started_at)),
             fadeout_elapsed_ms: ending.fadeout_started_at.map(elapsed_since_ms),
         };
 
-        let Some(active_play) = &mut self.active_play else {
-            let Some(snapshot) = &mut self.last_play_snapshot else {
+        let Some(active_play) = &mut self.play.active_play else {
+            let Some(snapshot) = &mut self.play.last_play_snapshot else {
                 return;
             };
             snapshot.play_elapsed_time = timers.play_elapsed_time;
@@ -664,6 +680,6 @@ impl WinitApp {
         self.apply_profile_fast_slow_filter(&mut snapshot);
         self.apply_course_skin_context(&mut snapshot);
         self.apply_play_table_text(&mut snapshot);
-        self.last_play_snapshot = Some(snapshot);
+        self.play.last_play_snapshot = Some(snapshot);
     }
 }

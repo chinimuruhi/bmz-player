@@ -5,8 +5,8 @@ impl WinitApp {
     /// 常に呼び、終了アニメーション終了時に retry arrange を決める。
     pub(super) fn track_result_lane_hold(&mut self, control: &PhysicalControl, pressed: bool) {
         match self.result_lane_for_control(control) {
-            Some(Lane::Key5) => self.result_key5_held = pressed,
-            Some(Lane::Key7) => self.result_key7_held = pressed,
+            Some(Lane::Key5) => self.result.result_key5_held = pressed,
+            Some(Lane::Key7) => self.result.result_key7_held = pressed,
             _ => {}
         }
     }
@@ -20,7 +20,7 @@ impl WinitApp {
         if pressed
             && !repeat
             && self.result_input_ready()
-            && self.result_panel == 1
+            && self.result.result_panel == 1
             && self.result_ir_scope_toggle_is_e1()
             && self.is_result_ir_scope_toggle_control(control)
             && self.toggle_result_ir_scope()
@@ -74,7 +74,7 @@ impl WinitApp {
         if pressed
             && !repeat
             && self.result_input_ready()
-            && self.result_panel == 1
+            && self.result.result_panel == 1
             && self.result_ir_scope_toggle_is_e1()
             && self.is_result_ir_scope_toggle_control(control)
             && self.toggle_result_ir_scope()
@@ -117,7 +117,7 @@ impl WinitApp {
     }
 
     pub(super) fn save_finished_play_replay_slot(&mut self, slot: u8) -> bool {
-        let Some(finished) = self.finished_play.as_mut() else {
+        let Some(finished) = self.result.finished_play.as_mut() else {
             return false;
         };
         let saved = match crate::storage::play_result::save_existing_replay_to_slot(
@@ -153,14 +153,15 @@ impl WinitApp {
     }
 
     pub(super) fn save_finished_course_replay_slot(&mut self, slot: u8) -> bool {
-        let Some(course_id) = self.finished_course.as_ref().map(|course| course.course_id) else {
+        let Some(course_id) = self.result.finished_course.as_ref().map(|course| course.course_id)
+        else {
             return false;
         };
-        let Some(course_hash) = self.finished_course_hash.clone() else {
+        let Some(course_hash) = self.result.finished_course_hash.clone() else {
             tracing::warn!(course_id, slot, "course identity unavailable for replay slot save");
             return false;
         };
-        let Some(course) = self.finished_course.as_mut() else {
+        let Some(course) = self.result.finished_course.as_mut() else {
             return false;
         };
         let Some(course_score_id) = course.course_score_id else {
@@ -196,7 +197,7 @@ impl WinitApp {
             Ok(()) => {
                 mark_course_replay_slot_saved(
                     course,
-                    self.finished_course_skin_summary.as_mut(),
+                    self.result.finished_course_skin_summary.as_mut(),
                     slot as usize,
                 );
                 self.notify_obs_save_recording(crate::obs::ObsRecordingSaveReason::OnReplay);
@@ -225,18 +226,19 @@ impl WinitApp {
 
     pub(super) fn result_lane_for_control(&self, control: &PhysicalControl) -> Option<Lane> {
         if let Some(control_name) = physical_control_name(control)
-            && let Some(lane) = self.select_keys.ui_lane_for_control(control_name)
+            && let Some(lane) = self.select.select_keys.ui_lane_for_control(control_name)
         {
             return Some(lane);
         }
-        let key_mode = self.finished_play.as_ref()?.summary.key_mode;
+        let key_mode = self.result.finished_play.as_ref()?.summary.key_mode;
         crate::config::play::lane_binding_for_chart(&self.boot.profile_config.input, key_mode)
             .resolve(DeviceId(0), control)
     }
 
     pub(super) fn is_result_panel_toggle_control(&self, control: &PhysicalControl) -> bool {
-        physical_control_name(control)
-            .is_some_and(|control| control == "Select" || self.select_keys.is_e2_action(control))
+        physical_control_name(control).is_some_and(|control| {
+            control == "Select" || self.select.select_keys.is_e2_action(control)
+        })
     }
 
     pub(super) fn select_result_panel_for_control(&mut self, control: &PhysicalControl) -> bool {
@@ -248,9 +250,9 @@ impl WinitApp {
             return false;
         };
         let Some(requested) = toggled_result_panel(
-            self.result_panel,
+            self.result.result_panel,
             result_panel_supported(document),
-            self.result_ir.is_some(),
+            self.result.result_ir.is_some(),
         ) else {
             return false;
         };
@@ -262,15 +264,15 @@ impl WinitApp {
             return false;
         };
         let Some(panel) = selected_result_panel(
-            self.result_panel,
+            self.result.result_panel,
             requested,
             result_panel_supported(document),
-            self.result_ir.is_some(),
+            self.result.result_ir.is_some(),
         ) else {
             return false;
         };
-        self.result_panel = panel;
-        tracing::info!(panel = self.result_panel, "result panel changed");
+        self.result.result_panel = panel;
+        tracing::info!(panel = self.result.result_panel, "result panel changed");
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
         true
     }
@@ -287,7 +289,7 @@ impl WinitApp {
         if document.result_ir_scope_binding != bmz_render::skin::ResultIrScopeBinding::Active {
             return false;
         }
-        let Some(result_ir) = &mut self.result_ir else {
+        let Some(result_ir) = &mut self.result.result_ir else {
             return false;
         };
         if !result_ir.supports_tab(tab) || result_ir.active_tab == tab {
@@ -305,7 +307,7 @@ impl WinitApp {
         if document.result_ir_scope_binding != bmz_render::skin::ResultIrScopeBinding::Active {
             return false;
         }
-        let Some(result_ir) = &self.result_ir else {
+        let Some(result_ir) = &self.result.result_ir else {
             return false;
         };
         let next = match result_ir.active_tab {
@@ -328,8 +330,8 @@ impl WinitApp {
 
     pub(super) fn is_result_ir_scope_toggle_control(&self, control: &PhysicalControl) -> bool {
         physical_control_name(control).is_some_and(|name| {
-            self.select_keys.is_start(name)
-                || self.select_keys.e_action_for_control(name) == Some(InputActionConfig::E1)
+            self.select.select_keys.is_start(name)
+                || self.select.select_keys.e_action_for_control(name) == Some(InputActionConfig::E1)
         })
     }
 
@@ -345,7 +347,7 @@ impl WinitApp {
         if document.select_ir_scope_binding != bmz_render::skin::IrScopeBinding::Active {
             return false;
         }
-        if !self.select_ir.select_scope(
+        if !self.select.select_ir.select_scope(
             &self.boot.profile_config.ir,
             self.selected_chart_sha256(),
             scope,
@@ -363,7 +365,10 @@ impl WinitApp {
         if document.select_ir_scope_binding != bmz_render::skin::IrScopeBinding::Active {
             return false;
         }
-        if !self.select_ir.toggle_scope(&self.boot.profile_config.ir, self.selected_chart_sha256())
+        if !self
+            .select
+            .select_ir
+            .toggle_scope(&self.boot.profile_config.ir, self.selected_chart_sha256())
         {
             return false;
         }
@@ -379,13 +384,14 @@ impl WinitApp {
     }
 
     pub(super) fn is_select_ir_scope_toggle_control(&self, control: &str) -> bool {
-        self.select_keys.e_action_for_control(control) == Some(InputActionConfig::E3)
+        self.select.select_keys.e_action_for_control(control) == Some(InputActionConfig::E3)
     }
 
     pub(super) fn cycle_result_gauge_graph_type(&mut self) {
-        self.result_gauge_graph_type = cycle_result_gauge_graph_type(self.result_gauge_graph_type);
+        self.result.result_gauge_graph_type =
+            cycle_result_gauge_graph_type(self.result.result_gauge_graph_type);
         tracing::info!(
-            gauge_type = self.result_gauge_graph_type,
+            gauge_type = self.result.result_gauge_graph_type,
             "result gauge graph type changed"
         );
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
@@ -396,11 +402,11 @@ impl WinitApp {
     /// timer=2 の実アニメーションが終わって最終フレームを保持したら、
     /// `advance_result_exit` が実際の遷移 (選曲へ戻る / リトライ) を実行する。
     pub(super) fn begin_result_exit(&mut self, action: ResultExitAction) {
-        if self.result_exit.is_some() || self.finished_play.is_none() {
+        if self.result.result_exit.is_some() || self.result.finished_play.is_none() {
             return;
         }
         tracing::info!(?action, "result screen exit animation started");
-        self.result_exit = Some(ResultExit {
+        self.result.result_exit = Some(ResultExit {
             started_at: Instant::now(),
             action,
             skip_requested: false,
@@ -408,6 +414,7 @@ impl WinitApp {
         });
         let (skin_bgm_volume, skin_se_volume) = self.result_skin_audio_volumes();
         let dispatched = self
+            .result
             .result_skin_audio
             .as_mut()
             .is_some_and(|audio| audio.trigger_timer(2, skin_bgm_volume, skin_se_volume));
@@ -453,7 +460,7 @@ impl WinitApp {
     }
 
     pub(super) fn request_result_exit_skip(&mut self) -> bool {
-        let Some(exit) = self.result_exit.as_mut() else {
+        let Some(exit) = self.result.result_exit.as_mut() else {
             return false;
         };
         if !exit.skip_requested {
@@ -464,11 +471,11 @@ impl WinitApp {
     }
 
     pub(super) fn begin_decide_fadeout(&mut self, cancel: bool) {
-        if self.pending_decide.is_none() {
+        if self.play.pending_decide.is_none() {
             return;
         }
         self.clear_play_control_holds();
-        let Some(decide) = &mut self.pending_decide else {
+        let Some(decide) = &mut self.play.pending_decide else {
             return;
         };
         if decide.fadeout_started_at.is_some() {
@@ -480,14 +487,14 @@ impl WinitApp {
 
     pub(super) fn advance_decide_transition(&mut self) {
         let Some(fadeout_started) =
-            self.pending_decide.as_ref().map(|decide| decide.fadeout_started_at.is_some())
+            self.play.pending_decide.as_ref().map(|decide| decide.fadeout_started_at.is_some())
         else {
             return;
         };
         if !fadeout_started && self.cancel_decide_if_exit_hold_elapsed() {
             return;
         }
-        let Some(decide) = &self.pending_decide else {
+        let Some(decide) = &self.play.pending_decide else {
             return;
         };
         if decide.fadeout_started_at.is_none()
@@ -498,7 +505,7 @@ impl WinitApp {
         }
 
         let Some(fadeout_started_at) =
-            self.pending_decide.as_ref().and_then(|d| d.fadeout_started_at)
+            self.play.pending_decide.as_ref().and_then(|d| d.fadeout_started_at)
         else {
             return;
         };
@@ -510,7 +517,7 @@ impl WinitApp {
             return;
         }
 
-        let Some(decide) = self.pending_decide.take() else {
+        let Some(decide) = self.play.pending_decide.take() else {
             return;
         };
         if decide.cancel {
@@ -519,9 +526,9 @@ impl WinitApp {
             // was being started, drop the course session — the user opted
             // out before the first chart actually began.
             self.clear_active_course_state();
-            self.autoplay_folder = None;
+            self.select.autoplay_folder = None;
             let now = Instant::now();
-            self.select_scene_started_at = now;
+            self.select.select_scene_started_at = now;
             self.restart_select_bar_timer_without_scroll(now);
         } else {
             self.enter_play_scene(decide.chart_id, decide.options, decide.snapshot);
@@ -532,7 +539,7 @@ impl WinitApp {
         // preload (WAV ロード等) の完了は待たない。Play 画面へ先に入場し、
         // ロード完了後に poll_play_preload が active_play を install して
         // READY タイマーが始まる。
-        !self.skin_pipeline.is_pending(SkinKind::Play)
+        !self.skin.skin_pipeline.is_pending(SkinKind::Play)
     }
 
     pub(super) fn update_decide_cancel_control_state(
@@ -541,32 +548,32 @@ impl WinitApp {
         pressed: bool,
     ) -> bool {
         let mut handled = false;
-        if self.select_keys.is_start(control) {
-            self.decide_e1_held = pressed;
+        if self.select.select_keys.is_start(control) {
+            self.play.decide_e1_held = pressed;
             handled = true;
         }
-        if self.select_keys.is_e2_action(control) {
-            self.play_e2_held = pressed;
+        if self.select.select_keys.is_e2_action(control) {
+            self.play.play_e2_held = pressed;
             handled = true;
         }
-        if self.select_keys.is_e3_action(control) {
-            self.play_e3_held = pressed;
+        if self.select.select_keys.is_e3_action(control) {
+            self.play.play_e3_held = pressed;
             handled = true;
         }
         if !handled {
             return false;
         }
         update_play_exit_hold_started_at(
-            &mut self.play_exit_hold_started_at,
-            self.decide_e1_held,
-            self.play_e2_held,
+            &mut self.play.play_exit_hold_started_at,
+            self.play.decide_e1_held,
+            self.play.play_e2_held,
             Instant::now(),
         );
         if pressed
             && decide_cancel_chord_pressed(
-                self.decide_e1_held,
-                self.play_e2_held,
-                self.play_e3_held,
+                self.play.decide_e1_held,
+                self.play.play_e2_held,
+                self.play.play_e3_held,
             )
         {
             self.begin_decide_fadeout(true);
@@ -578,7 +585,11 @@ impl WinitApp {
     pub(super) fn cancel_decide_if_exit_hold_elapsed(&mut self) -> bool {
         let hold_duration =
             Duration::from_millis(self.boot.profile_config.play.play_exit_hold_ms as u64);
-        if play_exit_hold_elapsed(self.play_exit_hold_started_at, Instant::now(), hold_duration) {
+        if play_exit_hold_elapsed(
+            self.play.play_exit_hold_started_at,
+            Instant::now(),
+            hold_duration,
+        ) {
             self.begin_decide_fadeout(true);
             return true;
         }
@@ -586,7 +597,7 @@ impl WinitApp {
     }
 
     pub(super) fn advance_play_ending(&mut self) {
-        let Some(ending) = &self.play_ending else {
+        let Some(ending) = &self.play.play_ending else {
             return;
         };
         if ending.failed {
@@ -599,13 +610,14 @@ impl WinitApp {
         if ending.fadeout_started_at.is_none()
             && ending.started_at.elapsed() >= self.play_pre_fadeout_duration(ending)
         {
-            if let Some(ending) = &mut self.play_ending {
+            if let Some(ending) = &mut self.play.play_ending {
                 ending.fadeout_started_at = Some(Instant::now());
             }
             return;
         }
 
-        let Some(fadeout_started_at) = self.play_ending.as_ref().and_then(|e| e.fadeout_started_at)
+        let Some(fadeout_started_at) =
+            self.play.play_ending.as_ref().and_then(|e| e.fadeout_started_at)
         else {
             return;
         };
@@ -615,10 +627,10 @@ impl WinitApp {
     }
 
     pub(super) fn finish_play_ending(&mut self) {
-        let Some(mut ending) = self.play_ending.take() else {
+        let Some(mut ending) = self.play.play_ending.take() else {
             return;
         };
-        let Some(mut started) = self.active_play.take() else {
+        let Some(mut started) = self.play.active_play.take() else {
             return;
         };
         let finished = match ending.finished.take() {
@@ -639,7 +651,7 @@ impl WinitApp {
                         target_name: &started.running.target,
                         score_key: started.running.score_key,
                         practice_mode: started.running.practice_mode,
-                        finish_mode: if self.active_course.is_some() {
+                        finish_mode: if self.play.active_course.is_some() {
                             crate::screens::play_finish::FinishResultMode::CourseStage
                         } else {
                             crate::screens::play_finish::FinishResultMode::Normal
@@ -657,7 +669,7 @@ impl WinitApp {
                     }
                     Err(error) => {
                         tracing::error!(%error, "failed to finish play session");
-                        if let Some(chart_id) = self.last_started_chart_id {
+                        if let Some(chart_id) = self.play.last_started_chart_id {
                             self.capture_play_media_cache_from_running(
                                 chart_id,
                                 &mut started.running,
@@ -665,7 +677,7 @@ impl WinitApp {
                         }
                         let mut audio = started.running.audio;
                         audio.mark_draining();
-                        self.draining_audio = Some(audio);
+                        self.audio.draining_audio = Some(audio);
                         self.refresh_player_stats_snapshot();
                         self.leave_result();
                         return;
@@ -673,29 +685,30 @@ impl WinitApp {
                 }
             }
         };
-        if let Some(chart_id) = self.last_started_chart_id {
+        if let Some(chart_id) = self.play.last_started_chart_id {
             self.capture_play_media_cache_from_running(chart_id, &mut started.running);
         }
         let mut audio = started.running.audio;
         audio.mark_draining();
-        self.draining_audio = Some(audio);
+        self.audio.draining_audio = Some(audio);
         self.refresh_player_stats_snapshot();
-        if self.active_course.is_some() {
+        if self.play.active_course.is_some() {
             self.advance_course_after_finish(finished);
             return;
         }
         if finished.stored.slot_paths.iter().any(Option::is_some) {
             self.notify_obs_save_recording(crate::obs::ObsRecordingSaveReason::OnReplay);
         }
-        self.finished_play = Some(finished);
-        self.result_gauge_graph_type = self
+        self.result.finished_play = Some(finished);
+        self.result.result_gauge_graph_type = self
+            .result
             .finished_play
             .as_ref()
             .map(|finished| finished.summary.gauge_type as i32)
             .unwrap_or(GaugeType::Normal as i32);
-        self.result_key5_held = false;
-        self.result_key7_held = false;
-        self.result_scene_started_at = Instant::now();
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
+        self.result.result_scene_started_at = Instant::now();
         self.ensure_result_skin_ready(ResultSkinSlot::Normal);
     }
 
@@ -703,10 +716,10 @@ impl WinitApp {
     /// スキップ時は timer=2 の実アニメーション終端と最終フレーム保持を過ぎたら
     /// 保留していた遷移を実行する。毎フレーム描画前に呼ぶ。
     pub(super) fn advance_result_exit(&mut self) {
-        if self.finished_play.is_some()
-            && self.result_exit.is_none()
+        if self.result.finished_play.is_some()
+            && self.result.result_exit.is_none()
             && let Some(auto_exit_duration) = self.result_auto_exit_duration()
-            && self.result_scene_started_at.elapsed() >= auto_exit_duration
+            && self.result.result_scene_started_at.elapsed() >= auto_exit_duration
         {
             // 中間リザルトは scene 時間経過で次の曲へ、それ以外は選曲へ戻る。
             let action = if self.is_course_intermediate_result() {
@@ -718,16 +731,16 @@ impl WinitApp {
             };
             self.begin_result_exit(action);
         }
-        let Some(exit) = self.result_exit.as_ref() else {
+        let Some(exit) = self.result.result_exit.as_ref() else {
             return;
         };
         // 何らかの理由でリザルトを抜けていたら終了状態を破棄する。
-        if self.finished_play.is_none() {
+        if self.result.finished_play.is_none() {
             self.stop_result_exit_system_sounds();
-            if let Some(audio) = &self.result_skin_audio {
+            if let Some(audio) = &self.result.result_skin_audio {
                 audio.stop_all();
             }
-            self.result_exit = None;
+            self.result.result_exit = None;
             return;
         }
         let started_at = exit.started_at;
@@ -745,7 +758,7 @@ impl WinitApp {
         self.fade_audio_for_result_exit(elapsed, fadeout);
         if skip_requested && elapsed >= animation_duration && !skip_final_frame_held {
             // この呼び出しでは遷移せず、次のフレームで最終状態を1フレーム描画する。
-            if let Some(exit) = self.result_exit.as_mut() {
+            if let Some(exit) = self.result.result_exit.as_mut() {
                 exit.skip_final_frame_held = true;
             }
             return;
@@ -760,19 +773,25 @@ impl WinitApp {
             return;
         }
         self.stop_result_exit_system_sounds();
-        self.result_exit = None;
+        self.result.result_exit = None;
         match action {
             ResultExitAction::Leave => self.leave_result(),
             ResultExitAction::Retry(mode) => self.retry_last_chart_with_mode(mode),
             ResultExitAction::HeldLanes => {
-                match result_action_for_held_lanes(self.result_key5_held, self.result_key7_held) {
+                match result_action_for_held_lanes(
+                    self.result.result_key5_held,
+                    self.result.result_key7_held,
+                ) {
                     Some(mode) => self.retry_last_chart_with_mode(mode),
                     None => self.leave_result(),
                 }
             }
             ResultExitAction::RetryCourseSameArrange => self.retry_course_same_arrange(),
             ResultExitAction::HeldCourseLanes => {
-                match result_action_for_held_lanes(self.result_key5_held, self.result_key7_held) {
+                match result_action_for_held_lanes(
+                    self.result.result_key5_held,
+                    self.result.result_key7_held,
+                ) {
                     Some(ResultRetryMode::SameArrange) => self.retry_course_same_arrange(),
                     Some(ResultRetryMode::DifferentArrange) => {
                         self.retry_course_different_arrange()
@@ -799,7 +818,7 @@ impl WinitApp {
     /// 見た目の遷移タイミング自体は `fadeout` のまま変えない。
     pub(super) fn fade_audio_for_result_exit(&mut self, elapsed: Duration, fadeout: Duration) {
         let gain = result_exit_audio_gain(elapsed, fadeout);
-        if let Some(audio) = &self.draining_audio {
+        if let Some(audio) = &self.audio.draining_audio {
             audio.engine.set_master_gain(gain);
         }
     }
@@ -812,12 +831,12 @@ impl WinitApp {
     }
 
     pub(super) fn system_audio_sample_rate(&self) -> u32 {
-        self.audio_runtime.as_ref().map(AudioRuntime::sample_rate).unwrap_or(48_000).max(1)
+        self.audio.audio_runtime.as_ref().map(AudioRuntime::sample_rate).unwrap_or(48_000).max(1)
     }
 
     pub(super) fn fade_result_entry_system_sounds(&self, fade_out_frames: u32) {
         use crate::system_sound::SoundType;
-        let Some(manager) = &self.system_sound else {
+        let Some(manager) = &self.audio.system_sound else {
             return;
         };
         for sound_type in [
@@ -831,11 +850,11 @@ impl WinitApp {
     }
 
     pub(super) fn play_result_close_sound_with_fade_out(&self, fade_out_frames: u32) {
-        let Some(manager) = &self.system_sound else {
+        let Some(manager) = &self.audio.system_sound else {
             return;
         };
         let sound_type = result_exit_sound_for_context(
-            self.active_course.is_some() || self.finished_course.is_some(),
+            self.play.active_course.is_some() || self.result.finished_course.is_some(),
             manager.has_sound(crate::system_sound::SoundType::CourseClose),
         );
         manager.play_with_master_gain_and_fade_out(
@@ -849,31 +868,32 @@ impl WinitApp {
 
     pub(super) fn leave_result(&mut self) {
         let score_changed = self
+            .result
             .finished_play
             .as_ref()
             .is_some_and(|finished| finished.stored.score_history_id > 0);
-        if let Some(audio) = &self.result_skin_audio {
+        if let Some(audio) = &self.result.result_skin_audio {
             audio.stop_all();
         }
-        self.finished_play = None;
-        self.autoplay_folder = None;
-        self.result_favorite_chart = false;
+        self.result.finished_play = None;
+        self.select.autoplay_folder = None;
+        self.result.result_favorite_chart = false;
         self.clear_active_course_state();
-        self.result_exit = None;
-        self.result_key5_held = false;
-        self.result_key7_held = false;
+        self.result.result_exit = None;
+        self.result.result_key5_held = false;
+        self.result.result_key7_held = false;
         self.clear_play_meta_image_state();
         // リザルト画面を抜けたら、まだ鳴っていても余韻再生を止める。
-        self.draining_audio = None;
-        self.play_media_cache = None;
-        self.last_play_snapshot = None;
+        self.audio.draining_audio = None;
+        self.play.play_media_cache = None;
+        self.play.last_play_snapshot = None;
         if score_changed {
             self.invalidate_select_folder_summaries();
         }
         self.reload_select_items();
         self.sync_select_holds_from_pressed_controls();
         let now = Instant::now();
-        self.select_scene_started_at = now;
+        self.select.select_scene_started_at = now;
         self.restart_select_bar_timer_without_scroll(now);
     }
 
@@ -915,7 +935,7 @@ impl WinitApp {
     }
 
     pub(super) fn result_input_ready(&self) -> bool {
-        self.result_scene_started_at.elapsed() >= self.result_input_duration()
+        self.result.result_scene_started_at.elapsed() >= self.result_input_duration()
     }
 
     pub(super) fn result_input_duration(&self) -> Duration {

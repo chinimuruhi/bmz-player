@@ -196,9 +196,21 @@ mod play_support;
 mod result_flow;
 mod result_runtime;
 mod result_support;
+mod runtime_state;
 mod scene_input;
 mod select_assets;
-mod select_flow;
+#[path = "app/select_flow/controls.rs"]
+mod select_flow_controls;
+#[path = "app/select_flow/input.rs"]
+mod select_flow_input;
+#[path = "app/select_flow/navigation.rs"]
+mod select_flow_navigation;
+#[path = "app/select_flow/preview.rs"]
+mod select_flow_preview;
+#[path = "app/select_flow/skin_events.rs"]
+mod select_flow_skin_events;
+#[path = "app/select_flow/snapshot.rs"]
+mod select_flow_snapshot;
 mod select_folder_summary;
 mod select_key_bindings;
 mod select_search;
@@ -207,6 +219,8 @@ mod skin_flow;
 mod skin_pipeline;
 mod skin_support;
 mod table_fetch_runtime;
+
+use runtime_state::*;
 
 use select_key_bindings::{
     SelectKeyBindings, play_analog_lane_cover_delta, select_analog_scroll_delta,
@@ -436,243 +450,28 @@ const LEFT_OVERLAY_TOAST_DURATION: Duration = Duration::from_secs(2);
 struct WinitApp {
     boot: BootstrappedApp,
     window: Option<Arc<Window>>,
-    active_play: Option<StartedInputPlaySession>,
-    /// コースプレイ中のセッション。単曲プレイ時は None。
-    active_course: Option<ActiveCourseSession>,
-    /// 選曲画面の F10 で開始したフォルダ内 Autoplay。
-    autoplay_folder: Option<AutoplayFolderSession>,
-    /// コース全体完了時のリザルト。リザルト画面から抜けるまで保持する。
-    finished_course: Option<CourseResultSummary>,
-    /// `finished_course` から Result skin 用に集約した結果。
-    ///
-    /// コースの graph は全ステージ分を連結するため構築コストが高い。コース完了時に
-    /// 一度だけ生成し、リザルト表示中はこの値を参照する。
-    finished_course_skin_summary: Option<ResultSummary>,
-    /// 完了したコースの canonical hash。IR ranking の起動や replay slot 保存で
-    /// course 定義を DB から再走査しないため、identity 解決時に保持する。
-    finished_course_hash: Option<String>,
-    /// 完了したcourseのrianIR/beatoraja connector互換hash。
-    finished_course_rian_hash_v1: Option<String>,
-    /// IR 無効時も course ranking task の起動判定を毎フレーム繰り返さないための印。
-    finished_course_ir_attempted: bool,
-    /// プレイ終了でリザルトへ移った後、曲の余韻を鳴らし切るために保持する音声出力。
-    /// ドレインが完了するか、選曲復帰・次プレイ開始で解放される。
-    draining_audio: Option<AppAudioOutput>,
-    audio_runtime: Option<AudioRuntime>,
-    audio_output_open_attempted: bool,
-    audio_diagnostics_last_log_at: Instant,
-    audio_diagnostics_last: Option<AudioOutputDiagnostics>,
-    input_diagnostics_last_sequence: u64,
     first_frame_startup_completed: bool,
     /// Ctrl-C(SIGINT)受信フラグ。セットされたら `about_to_wait` で event loop を
     /// 正常終了させ、cpal/ASIO ストリームの Drop(停止・後処理)を確実に走らせる。
     shutdown_requested: Arc<AtomicBool>,
-    finished_play: Option<FinishedPlaySession>,
-    /// Result skin の favorite_chart (image ref 90) に渡す現在譜面の状態。
-    /// BMZ は beatoraja の invisible を持たないため false/true の2状態だけを使う。
-    result_favorite_chart: bool,
-    /// リザルト画面の IR 送信・ランキング表示状態。
-    /// 通常プレイでは play ending 中に早期起動し、Result 画面まで保持する。
-    result_ir: Option<crate::screens::result_ir::ResultIrState>,
-    /// 選曲カーソル譜面の IR ランキングキャッシュ。
-    select_ir: crate::screens::select_ir::SelectIrRanking,
-    /// profile 全体の player statistics。Select / Result skin の NUMBER_TOTAL* 系に渡す。
-    player_stats: PlayerStatsSnapshot,
-    /// 直近のプレイがオートプレイだったか。Result 画面の常時表示に使う。
-    last_play_was_autoplay: bool,
-    last_play_snapshot: Option<RenderSnapshot>,
-    pending_decide: Option<DecideTransition>,
-    pending_play_start: Option<PendingPlayStart>,
-    pending_play_preload: Option<PendingPlayPreload>,
-    /// Decide 演出中に preload worker から受け取った結果を退避し、
-    /// `start_chart_with_options` で再利用するためのバッファ。
-    /// 既に裏で完了している譜面/音源ロードを main で再度同期実行するのを避ける。
-    preloaded_play_session: Option<PreloadedInputPlaySession>,
-    play_preload_generation: u64,
-    /// 同曲リトライ用に残すキー音 / 静止画 BGA / 動画デコーダ。
-    play_media_cache: Option<PlayMediaCache>,
-    play_ending: Option<PlayEndingTransition>,
-    last_started_chart_id: Option<i64>,
-    /// プレイ開始時点の難易度表テキスト (beatoraja TEXT_TABLE1..3)。
-    play_table_text_primary: String,
-    play_table_text_secondary: String,
-    play_table_text_fallback: String,
-    select_items: Vec<SelectItem>,
-    select_distribution_cache: RefCell<HashMap<i64, Vec<ChartDistributionSecond>>>,
-    difficulty_tables: Vec<DifficultyTableRecord>,
-    table_breadcrumb_cache: RefCell<HashMap<String, TableBreadcrumb>>,
-    select_folder_summaries: SelectFolderSummaryRuntime,
-    folder_stack: Vec<String>,
-    /// `folder_stack` の各階層に入る直前の `selected_index`。
-    /// フォルダから出た時にカーソル位置を復元するために使う。長さは `folder_stack` と一致。
-    selected_index_stack: Vec<usize>,
-    selected_index: usize,
     renderer: Box<Renderer>,
-    skin_catalog: SkinCatalog,
-    skin_defs_cache: BTreeMap<String, SceneSkinDefs>,
-    /// 通常表・rianIR表の取得channel、queue、progress、世代状態。
-    table_fetch: TableFetchRuntime,
-    pending_song_scan: Option<PendingSongScan>,
-    pending_chart_download: Option<Receiver<Result<ChartDownloadResult>>>,
-    queued_download_scan: Option<(PathBuf, String)>,
-    song_scan_progress: Option<ScanProgress>,
-    pending_update_check: Option<Receiver<Result<Option<UpdateCandidate>>>>,
-    pending_update_check_reports_up_to_date: bool,
-    pending_update_download: Option<Receiver<Result<DownloadedUpdate>>>,
-    update_prompt: Option<UpdatePrompt>,
-    update_dismissed_session_version: Option<String>,
-    obs_controller: Option<crate::obs::ObsController>,
-    applied_obs_config: ObsConfig,
-    exit_configs_saved: bool,
-    last_scene_kind: Option<AppSceneKind>,
-    discord_presence: Option<DiscordPresenceHandle>,
-    discord_presence_config: Option<DiscordPresenceConfig>,
-    last_obs_event_key: Option<crate::obs::ObsEventKey>,
     /// device共通の押下集合とkeyboard bounce状態。
     input: AppInputRuntime,
-    arrange_option: ArrangeOption,
-    arrange_option_2p: ArrangeOption,
-    /// Endless Dream 互換の7K RANDOM固定配置。profileへは保存しない。
-    random_trainer: RandomTrainerState,
-    target_option: TargetOption,
-    gauge_option: GaugeTypeConfig,
-    gauge_auto_shift_option: GaugeAutoShiftConfig,
-    bottom_shiftable_gauge_option: BottomShiftableGaugeConfig,
-    double_option: DoubleOption,
-    hs_fix_option: HsFixOption,
-    session_mode: SessionMode,
-    select_mode_filter: SelectModeFilter,
-    select_sort: SelectSort,
-    select_keys: SelectKeyBindings,
-    /// 現在のプレイ譜面の KEY MODE と device-aware lane binding。
-    /// 選曲用 binding と分離し、10K/14K の同名 gamepad control も側別に解決する。
-    play_option_input: Option<PlayOptionInput>,
-    select_bar_scroll_direction: i32,
-    select_bar_scroll_duration: Duration,
-    select_hold_move: Option<SelectMove>,
-    select_hold_started_at: Option<Instant>,
-    select_hold_last_trigger_at: Option<Instant>,
-    select_hold_control: Option<String>,
-    select_analog_scroll_buffer: i32,
-    select_analog_last_tick_at: Option<Instant>,
-    /// キーコンフィグ確定/キャンセル直後、スクラッチが止まるまでアナログスクロールを抑止する。
-    select_analog_suppress_until_idle: bool,
-    play_analog_scroll_buffer: i32,
-    play_analog_last_tick_at: Option<Instant>,
-    smoke_exit_after_frames: Option<u32>,
-    smoke_exit_after_play_frames: Option<u32>,
-    smoke_exit_after_result_frames: Option<u32>,
-    smoke_exit_on_result: bool,
-    smoke_screenshot_path: Option<PathBuf>,
-    /// 左上へ出す一時メッセージ。
-    left_overlay_toast: Option<LeftOverlayToast>,
-    rendered_frames: u32,
-    rendered_play_frames: u32,
-    rendered_result_frames: u32,
-    app_started_at: Instant,
-    select_scene_started_at: Instant,
-    select_bar_started_at: Instant,
-    play_scene_started_at: Instant,
-    play_ready_sound_started_at: Option<Instant>,
-    /// READY 前に E1/E2 が最後に押されていた時刻。
-    /// beatoraja と同様、解放後 1 秒間は PRELOAD を維持する。
-    play_ready_last_control_hold_at: Option<Instant>,
-    decide_sound_stopped_for_chart_start: bool,
-    result_scene_started_at: Instant,
-    option_panel_started_at: Instant,
-    option_panel_off_started_at: [Option<Instant>; 6],
-    select_option_panel: u8,
     gamepad: Option<Box<crate::input::gamepad::GamepadBackend>>,
-    default_skin_manifest: Option<SkinManifest>,
-    /// skin decode/upload channel、共有cache、pending世代をまとめた非同期pipeline。
-    skin_pipeline: SkinPipelineRuntime,
     /// worker 完了時に main thread の redraw を起こすための winit user event proxy。
     event_proxy: EventLoopProxy<AppUserEvent>,
-    bga_preload: BgaPreloadRuntime,
-    skin_video_sources: HashMap<SkinKind, Vec<ActiveSkinVideoSource>>,
-    pending_skin_render_probe: Option<PendingSkinRenderProbe>,
-    /// 直近 install をリクエストしたプレイスキンの key_mode と設定 fingerprint。
-    /// 同じ mode かつ同じ path/options/files なら再 decode をスキップする。
-    last_play_skin_signature: Option<PlaySkinSignature>,
-    /// 直近 install をリクエストした Result context の用途と設定 fingerprint。
-    /// Renderer の Result context は 1 本だけなので、通常/コース最終結果で差し替える。
-    last_result_skin_signature: Option<ResultSkinSignature>,
-    /// システム SE / BGM を再生する cpal ストリーム。
-    /// 開けない環境では `None` で、システム音はサイレント。
-    #[allow(dead_code)]
-    system_audio: Option<crate::audio::SystemAudio>,
-    /// `system_audio` 上にデコード済みサンプルを乗せて再生・停止する facade。
-    /// `system_audio` が `None` の場合や、サウンドセット未指定の場合も `Some` で
-    /// 構築されるが id_map が空なので各 play/stop は no-op になる。
-    system_sound: Option<crate::system_sound_manager::SystemSoundManager>,
-    /// 現在インストール済みの Result skin が宣言した BGM / SE ランタイム。
-    result_skin_audio: Option<crate::skin_audio::SkinAudioRuntime>,
-    /// 選曲画面でESCを長押し中の開始時刻。離されたり画面を抜けると None になる。
-    select_exit_hold_started_at: Option<Instant>,
-    /// 選曲画面のメタ画像・試聴音源のキャッシュと非同期ロード状態。
-    select_assets: SelectAssetRuntime,
-    /// プレイ開始時にロードした `#STAGEFILE` のキャッシュキー。
-    /// Result でも同じ runtime image 100 を使うため、Result 終了まで保持する。
-    play_stagefile_source: Option<String>,
-    play_stagefile_loaded: bool,
-    play_stagefile_size: Option<SkinImageSize>,
-    /// プレイ `#BACKBMP` のロード済みキャッシュキー。
-    play_backbmp_source: Option<String>,
-    play_backbmp_loaded: bool,
-    /// プレイ中の Start キー直近の押下時刻。連続押し判定で使用。
-    last_play_start_press_at: Option<Instant>,
-    /// Decide 中の E1 押下状態。E1+E2 キャンセルに使う。
-    decide_e1_held: bool,
-    /// プレイ開始待ち/プレイ中の E1 押下状態。READY 前の緑数字表示にも使う。
-    play_e1_held: bool,
-    /// プレイ中の E2 押下状態。E2+E3 即終了 / E1+E2 長押し終了に使う。
-    play_e2_held: bool,
-    /// プレイ中の E3 押下状態。E2+E3 即終了に使う。
-    play_e3_held: bool,
-    /// E1+E2 が押され続けている開始時刻。beatoraja 既定 1000ms で途中終了。
-    play_exit_hold_started_at: Option<Instant>,
-    /// 本体設定 / スキン設定 / デバッグ表示用の egui レイヤ。
-    /// ウィンドウ生成時に初期化される。
-    egui: Option<EguiLayer>,
-    /// デバッグ表示へ渡す bounded tracing ログバッファ。
-    log_buffer: LogBuffer,
-    /// 現在ウィンドウへ適用済みのウィンドウモード。
-    /// config 側との差分検出でライブ反映の要否を判定する。
-    applied_window_mode: WindowMode,
-    /// ウィンドウがフォーカスを持っているか。フレームレート上限の切替に使う。
-    focused: bool,
     /// frame pacing、確定FPS、scene別profile集計をまとめた描画runtime。
     frame: FrameRuntime,
-    /// 設定画面で編集中の項目。`None` なら一覧操作モード。
-    settings_edit: Option<SettingsEditSession>,
-    /// キー設定の待ち受け状態。
-    key_config_edit: Option<KeyConfigEditSession>,
-    /// リザルト画面終了アニメーションの進行状態。
-    /// Some のあいだは終了フェードアウト中で、入力は受け付けない。
-    result_exit: Option<ResultExit>,
-    /// リザルト画面で Key5 が現在押されているか。
-    /// 終了アニメーション終了時に retry arrange を決める判定に使う。
-    result_key5_held: bool,
-    /// リザルト画面で Key7 が現在押されているか。
-    result_key7_held: bool,
-    result_gauge_graph_type: i32,
-    /// Lua Result スキンの展開パネル (0=非表示、1=IR、2=グラフ)。
-    result_panel: i32,
     deferred_boot: Option<DeferredBoot>,
-    /// 選曲画面の検索文字列、IME、cursor、履歴、feedback状態。
-    search: SelectSearchRuntime,
-    /// 直近のマウスカーソル位置。select skin のクリック hit-test に使う。
-    last_cursor_position: Option<PhysicalPosition<f64>>,
-    /// ドラッグ中の select skin slider type。
-    select_slider_dragging_type: Option<i32>,
-    /// CLI から入ったプラクティスセッション。選曲 UI からは未対応。
-    practice_session: Option<PracticeSession>,
-    /// 次の `RunningPlaySession::start` で使う chart zero（区間先頭の 1 秒前）。
-    practice_chart_zero_time: Option<TimeUs>,
-    /// 直近のマウスカーソル移動 / 操作時刻。カーソル非表示判定に使う。
-    last_cursor_action_at: Instant,
-    /// 現在マウスカーソルが表示されているか。
-    cursor_visible: bool,
+    select: SelectRuntimeState,
+    play: PlayRuntimeState,
+    result: ResultRuntimeState,
+    jobs: AppJobs,
+    integrations: IntegrationRuntimeState,
+    smoke: SmokeRuntime,
+    skin: SkinRuntimeState,
+    audio: AppAudioRuntimeState,
+    ui: UiRuntimeState,
 }
 
 struct ActiveSkinVideoSource {
@@ -1765,171 +1564,190 @@ impl WinitApp {
         let mut app = Self {
             boot,
             window: None,
-            active_play: None,
-            active_course: None,
-            autoplay_folder: None,
-            finished_course: None,
-            finished_course_skin_summary: None,
-            finished_course_hash: None,
-            finished_course_rian_hash_v1: None,
-            finished_course_ir_attempted: false,
-            draining_audio: None,
-            audio_runtime,
-            audio_output_open_attempted,
-            audio_diagnostics_last_log_at: now,
-            audio_diagnostics_last: None,
-            input_diagnostics_last_sequence: 0,
             first_frame_startup_completed: false,
             shutdown_requested,
-            finished_play: None,
-            result_favorite_chart: false,
-            result_ir: None,
-            select_ir: crate::screens::select_ir::SelectIrRanking::default(),
-            player_stats,
-            last_play_was_autoplay: false,
-            last_play_snapshot: None,
-            pending_decide: None,
-            pending_play_start: None,
-            pending_play_preload: None,
-            preloaded_play_session: None,
-            play_preload_generation: 0,
-            play_media_cache: None,
-            play_ending: None,
-            last_started_chart_id: None,
-            play_table_text_primary: String::new(),
-            play_table_text_secondary: String::new(),
-            play_table_text_fallback: String::new(),
-            select_items,
-            select_distribution_cache: RefCell::new(HashMap::new()),
-            difficulty_tables,
-            table_breadcrumb_cache: RefCell::new(HashMap::new()),
-            select_folder_summaries,
-            selected_index_stack: vec![0; folder_stack.len()],
-            folder_stack,
-            selected_index: 0,
             renderer,
-            skin_catalog,
-            skin_defs_cache: BTreeMap::new(),
-            table_fetch,
-            pending_song_scan: None,
-            pending_chart_download: None,
-            queued_download_scan: None,
-            song_scan_progress: None,
-            pending_update_check: None,
-            pending_update_check_reports_up_to_date: false,
-            pending_update_download: None,
-            update_prompt: None,
-            update_dismissed_session_version: None,
-            obs_controller,
-            applied_obs_config,
-            exit_configs_saved: false,
-            last_scene_kind: None,
-            discord_presence: None,
-            discord_presence_config: None,
-            last_obs_event_key: None,
             input: AppInputRuntime::default(),
-            arrange_option,
-            arrange_option_2p,
-            random_trainer: RandomTrainerState::default(),
-            target_option,
-            gauge_option,
-            gauge_auto_shift_option,
-            bottom_shiftable_gauge_option,
-            double_option,
-            hs_fix_option,
-            session_mode,
-            select_mode_filter,
-            select_sort,
-            select_keys,
-            play_option_input: None,
-            select_bar_scroll_direction: 0,
-            select_bar_scroll_duration: Duration::ZERO,
-            select_hold_move: None,
-            select_hold_started_at: None,
-            select_hold_last_trigger_at: None,
-            select_hold_control: None,
-            select_analog_scroll_buffer: 0,
-            select_analog_last_tick_at: None,
-            select_analog_suppress_until_idle: false,
-            play_analog_scroll_buffer: 0,
-            play_analog_last_tick_at: None,
-            smoke_exit_after_frames: options.smoke_exit_after_frames,
-            smoke_exit_after_play_frames: options.smoke_exit_after_play_frames,
-            smoke_exit_after_result_frames: options.smoke_exit_after_result_frames,
-            smoke_exit_on_result: options.smoke_exit_on_result,
-            smoke_screenshot_path: options.smoke_screenshot_path.as_ref().map(PathBuf::from),
-            left_overlay_toast: None,
-            rendered_frames: 0,
-            rendered_play_frames: 0,
-            rendered_result_frames: 0,
-            app_started_at: now,
-            select_scene_started_at: now,
-            select_bar_started_at: now,
-            play_scene_started_at: now,
-            play_ready_sound_started_at: None,
-            play_ready_last_control_hold_at: None,
-            decide_sound_stopped_for_chart_start: false,
-            result_scene_started_at: now,
-            option_panel_started_at: now,
-            option_panel_off_started_at: [None; 6],
-            select_option_panel: 0,
             gamepad,
-            default_skin_manifest,
-            skin_pipeline,
             event_proxy,
-            bga_preload: BgaPreloadRuntime::default(),
-            skin_video_sources: initial_skin_video_sources,
-            pending_skin_render_probe: None,
-            last_play_skin_signature: None,
-            last_result_skin_signature: Some(initial_result_skin_signature),
-            system_audio,
-            system_sound,
-            result_skin_audio: None,
-            select_exit_hold_started_at: None,
-            select_assets,
-            play_stagefile_source: None,
-            play_stagefile_loaded: false,
-            play_stagefile_size: None,
-            play_backbmp_source: None,
-            play_backbmp_loaded: false,
-            last_play_start_press_at: None,
-            decide_e1_held: false,
-            play_e1_held: false,
-            play_e2_held: false,
-            play_e3_held: false,
-            play_exit_hold_started_at: None,
-            egui: None,
-            log_buffer,
-            applied_window_mode: initial_window_mode,
-            focused: true,
             frame: FrameRuntime::new(now),
-            settings_edit: None,
-            key_config_edit: None,
-            result_exit: None,
-            result_key5_held: false,
-            result_key7_held: false,
-            result_gauge_graph_type: GaugeType::Normal as i32,
-            result_panel: 0,
             deferred_boot: deferred_boot_action(boot_chart_id, &options),
-            search: SelectSearchRuntime::new(now),
-            last_cursor_position: None,
-            select_slider_dragging_type: None,
-            practice_session: None,
-            practice_chart_zero_time: None,
-            last_cursor_action_at: now,
-            cursor_visible: true,
+            select: SelectRuntimeState {
+                autoplay_folder: None,
+                select_ir: crate::screens::select_ir::SelectIrRanking::default(),
+                player_stats,
+                select_items,
+                select_distribution_cache: RefCell::new(HashMap::new()),
+                difficulty_tables,
+                table_breadcrumb_cache: RefCell::new(HashMap::new()),
+                select_folder_summaries,
+                selected_index_stack: vec![0; folder_stack.len()],
+                folder_stack,
+                selected_index: 0,
+                arrange_option,
+                arrange_option_2p,
+                random_trainer: RandomTrainerState::default(),
+                target_option,
+                gauge_option,
+                gauge_auto_shift_option,
+                bottom_shiftable_gauge_option,
+                double_option,
+                hs_fix_option,
+                session_mode,
+                select_mode_filter,
+                select_sort,
+                select_keys,
+                select_bar_scroll_direction: 0,
+                select_bar_scroll_duration: Duration::ZERO,
+                select_hold_move: None,
+                select_hold_started_at: None,
+                select_hold_last_trigger_at: None,
+                select_hold_control: None,
+                select_analog_scroll_buffer: 0,
+                select_analog_last_tick_at: None,
+                select_analog_suppress_until_idle: false,
+                select_scene_started_at: now,
+                select_bar_started_at: now,
+                option_panel_started_at: now,
+                option_panel_off_started_at: [None; 6],
+                select_option_panel: 0,
+                select_exit_hold_started_at: None,
+                select_assets,
+                settings_edit: None,
+                key_config_edit: None,
+                search: SelectSearchRuntime::new(now),
+                last_cursor_position: None,
+                select_slider_dragging_type: None,
+            },
+            play: PlayRuntimeState {
+                active_play: None,
+                active_course: None,
+                last_play_snapshot: None,
+                pending_decide: None,
+                pending_play_start: None,
+                pending_play_preload: None,
+                preloaded_play_session: None,
+                play_preload_generation: 0,
+                play_media_cache: None,
+                play_ending: None,
+                last_started_chart_id: None,
+                play_table_text_primary: String::new(),
+                play_table_text_secondary: String::new(),
+                play_table_text_fallback: String::new(),
+                play_option_input: None,
+                play_analog_scroll_buffer: 0,
+                play_analog_last_tick_at: None,
+                play_scene_started_at: now,
+                play_ready_sound_started_at: None,
+                play_ready_last_control_hold_at: None,
+                decide_sound_stopped_for_chart_start: false,
+                bga_preload: BgaPreloadRuntime::default(),
+                play_stagefile_source: None,
+                play_stagefile_loaded: false,
+                play_stagefile_size: None,
+                play_backbmp_source: None,
+                play_backbmp_loaded: false,
+                last_play_start_press_at: None,
+                decide_e1_held: false,
+                play_e1_held: false,
+                play_e2_held: false,
+                play_e3_held: false,
+                play_exit_hold_started_at: None,
+                practice_session: None,
+                practice_chart_zero_time: None,
+            },
+            result: ResultRuntimeState {
+                finished_course: None,
+                finished_course_skin_summary: None,
+                finished_course_hash: None,
+                finished_course_rian_hash_v1: None,
+                finished_course_ir_attempted: false,
+                finished_play: None,
+                result_favorite_chart: false,
+                result_ir: None,
+                last_play_was_autoplay: false,
+                result_scene_started_at: now,
+                result_skin_audio: None,
+                result_exit: None,
+                result_key5_held: false,
+                result_key7_held: false,
+                result_gauge_graph_type: GaugeType::Normal as i32,
+                result_panel: 0,
+            },
+            jobs: AppJobs {
+                table_fetch,
+                pending_song_scan: None,
+                pending_chart_download: None,
+                queued_download_scan: None,
+                song_scan_progress: None,
+                pending_update_check: None,
+                pending_update_check_reports_up_to_date: false,
+                pending_update_download: None,
+                update_prompt: None,
+                update_dismissed_session_version: None,
+            },
+            integrations: IntegrationRuntimeState {
+                obs_controller,
+                applied_obs_config,
+                exit_configs_saved: false,
+                last_scene_kind: None,
+                discord_presence: None,
+                discord_presence_config: None,
+                last_obs_event_key: None,
+            },
+            smoke: SmokeRuntime {
+                smoke_exit_after_frames: options.smoke_exit_after_frames,
+                smoke_exit_after_play_frames: options.smoke_exit_after_play_frames,
+                smoke_exit_after_result_frames: options.smoke_exit_after_result_frames,
+                smoke_exit_on_result: options.smoke_exit_on_result,
+                smoke_screenshot_path: options.smoke_screenshot_path.as_ref().map(PathBuf::from),
+                left_overlay_toast: None,
+                rendered_frames: 0,
+                rendered_play_frames: 0,
+                rendered_result_frames: 0,
+                app_started_at: now,
+            },
+            skin: SkinRuntimeState {
+                skin_catalog,
+                skin_defs_cache: BTreeMap::new(),
+                default_skin_manifest,
+                skin_pipeline,
+                skin_video_sources: initial_skin_video_sources,
+                pending_skin_render_probe: None,
+                last_play_skin_signature: None,
+                last_result_skin_signature: Some(initial_result_skin_signature),
+            },
+            audio: AppAudioRuntimeState {
+                draining_audio: None,
+                audio_runtime,
+                audio_output_open_attempted,
+                audio_diagnostics_last_log_at: now,
+                audio_diagnostics_last: None,
+                input_diagnostics_last_sequence: 0,
+                system_audio,
+                system_sound,
+            },
+            ui: UiRuntimeState {
+                egui: None,
+                log_buffer,
+                applied_window_mode: initial_window_mode,
+                focused: true,
+                last_cursor_action_at: now,
+                cursor_visible: true,
+            },
         };
         if options.boot_result_sample {
             tracing::info!("booting directly into synthetic result screen");
-            app.finished_play = Some(debug_boot_finished_play_session());
-            app.result_gauge_graph_type = app
+            app.result.finished_play = Some(debug_boot_finished_play_session());
+            app.result.result_gauge_graph_type = app
+                .result
                 .finished_play
                 .as_ref()
                 .map(|finished| finished.summary.gauge_type as i32)
                 .unwrap_or(GaugeType::Normal as i32);
-            app.result_key5_held = false;
-            app.result_key7_held = false;
-            app.result_scene_started_at = Instant::now();
+            app.result.result_key5_held = false;
+            app.result.result_key7_held = false;
+            app.result.result_scene_started_at = Instant::now();
         }
         app.sync_discord_presence_config();
         if app.boot.app_config.updates.enabled && app.boot.app_config.updates.check_on_startup {
@@ -1940,7 +1758,7 @@ impl WinitApp {
     }
 
     fn refresh_player_stats_snapshot(&mut self) {
-        self.player_stats = player_stats_snapshot(
+        self.select.player_stats = player_stats_snapshot(
             &self.boot.score_db,
             &self.boot.library_db,
             self.boot.profile_config.statistics.day_start_hour,
@@ -1976,18 +1794,19 @@ impl WinitApp {
 
     fn raw_input_gameplay_blocked(&self) -> bool {
         let practice_overlay = self
+            .play
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        self.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay))
+        self.ui.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay))
     }
 
     fn play_input_backend(&self) -> Option<SharedInputBackend> {
         play_input_backend_for_context(
-            self.active_play.as_ref().map(|active_play| &active_play.input),
-            self.pending_play_start.is_some(),
-            self.preloaded_play_session.as_ref().map(|preloaded| &preloaded.input),
-            self.pending_play_preload.as_ref().map(|pending| &pending.input),
+            self.play.active_play.as_ref().map(|active_play| &active_play.input),
+            self.play.pending_play_start.is_some(),
+            self.play.preloaded_play_session.as_ref().map(|preloaded| &preloaded.input),
+            self.play.pending_play_preload.as_ref().map(|pending| &pending.input),
         )
     }
 
@@ -2001,25 +1820,25 @@ impl WinitApp {
             return;
         };
         input.push_shared_event(event.clone());
-        if self.active_play.is_some() {
+        if self.play.active_play.is_some() {
             return;
         }
         let visual_now = self.play_elapsed_time();
-        if let Some(pending) = &mut self.pending_play_start {
+        if let Some(pending) = &mut self.play.pending_play_start {
             pending.visual_input.apply_event(&event, visual_now);
         }
         self.refresh_pending_play_visual_snapshot(visual_now);
     }
 
     fn refresh_pending_play_visual_snapshot(&mut self, visual_now: TimeUs) {
-        if self.active_play.is_some() {
+        if self.play.active_play.is_some() {
             return;
         }
-        let Some(pending) = &mut self.pending_play_start else {
+        let Some(pending) = &mut self.play.pending_play_start else {
             return;
         };
         pending.visual_input.advance(visual_now);
-        let Some(snapshot) = &mut self.last_play_snapshot else {
+        let Some(snapshot) = &mut self.play.last_play_snapshot else {
             return;
         };
         crate::screens::play_snapshot::refresh_pending_play_input_visuals(
@@ -2092,7 +1911,7 @@ impl WinitApp {
                 self.start_skin_upload_worker();
                 self.configure_device_events(event_loop);
                 window.request_redraw();
-                self.egui = Some(EguiLayer::new(
+                self.ui.egui = Some(EguiLayer::new(
                     &window,
                     self.boot.profile_config.ui.show_fps,
                     vec![self.boot.app_paths.bundled_noto_cjk_font_root()],
@@ -2173,14 +1992,14 @@ impl WinitApp {
     }
 
     fn view_state(&self) -> AppViewState {
-        if self.pending_decide.is_some() {
+        if self.play.pending_decide.is_some() {
             return AppViewState::Decide;
         }
-        if self.active_play.is_some() || self.pending_play_start.is_some() {
+        if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             return AppViewState::Play;
         }
 
-        if self.finished_course.is_some() || self.finished_play.is_some() {
+        if self.result.finished_course.is_some() || self.result.finished_play.is_some() {
             return AppViewState::Result;
         }
 
@@ -2188,22 +2007,23 @@ impl WinitApp {
     }
 
     fn current_scene_kind(&self) -> AppSceneKind {
-        if self.pending_decide.is_some() {
+        if self.play.pending_decide.is_some() {
             return AppSceneKind::Decide;
         }
-        if self.active_play.is_some() || self.pending_play_start.is_some() {
+        if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             return AppSceneKind::Play;
         }
-        if self.finished_course.is_some() || self.finished_play.is_some() {
+        if self.result.finished_course.is_some() || self.result.finished_play.is_some() {
             return AppSceneKind::Result;
         }
         AppSceneKind::Select
     }
 
     fn current_result_summary(&self) -> Option<&ResultSummary> {
-        self.finished_course_skin_summary
+        self.result
+            .finished_course_skin_summary
             .as_ref()
-            .or_else(|| self.finished_play.as_ref().map(|finished| &finished.summary))
+            .or_else(|| self.result.finished_play.as_ref().map(|finished| &finished.summary))
     }
 
     fn install_finished_course(
@@ -2212,19 +2032,19 @@ impl WinitApp {
         course_hash: Option<String>,
         rian_course_hash_v1: Option<String>,
     ) {
-        self.finished_course_skin_summary = Some(course_result_summary_for_skin(&course));
-        self.finished_course = Some(course);
-        self.finished_course_hash = course_hash;
-        self.finished_course_rian_hash_v1 = rian_course_hash_v1;
-        self.finished_course_ir_attempted = false;
+        self.result.finished_course_skin_summary = Some(course_result_summary_for_skin(&course));
+        self.result.finished_course = Some(course);
+        self.result.finished_course_hash = course_hash;
+        self.result.finished_course_rian_hash_v1 = rian_course_hash_v1;
+        self.result.finished_course_ir_attempted = false;
     }
 
     fn clear_finished_course(&mut self) {
-        self.finished_course = None;
-        self.finished_course_skin_summary = None;
-        self.finished_course_hash = None;
-        self.finished_course_rian_hash_v1 = None;
-        self.finished_course_ir_attempted = false;
+        self.result.finished_course = None;
+        self.result.finished_course_skin_summary = None;
+        self.result.finished_course_hash = None;
+        self.result.finished_course_rian_hash_v1 = None;
+        self.result.finished_course_ir_attempted = false;
     }
 
     fn scene_snapshot(&self) -> AppSceneSnapshot {
@@ -2232,17 +2052,18 @@ impl WinitApp {
             AppViewState::Select => AppSceneSnapshot::Select(self.select_snapshot()),
             AppViewState::Decide => {
                 let mut snapshot = self
+                    .play
                     .pending_decide
                     .as_ref()
                     .map(|decide| self.decide_snapshot(decide))
-                    .or_else(|| self.last_play_snapshot.clone())
+                    .or_else(|| self.play.last_play_snapshot.clone())
                     .unwrap_or_default();
                 snapshot.skin_offsets =
                     skin_offset_values_from_config(&self.boot.profile_config.skin.decide_offsets);
                 AppSceneSnapshot::Decide(snapshot)
             }
             AppViewState::Play => {
-                AppSceneSnapshot::Play(self.last_play_snapshot.clone().unwrap_or_default())
+                AppSceneSnapshot::Play(self.play.last_play_snapshot.clone().unwrap_or_default())
             }
             AppViewState::Result => {
                 // `view_state` only returns Result when one of the result sources exists.
@@ -2251,7 +2072,12 @@ impl WinitApp {
                     self.current_result_summary().expect("result scene is missing its summary");
                 let raw_clear_type = self
                     .is_course_intermediate_result()
-                    .then(|| self.finished_play.as_ref().map(|finished| finished.result.clear_type))
+                    .then(|| {
+                        self.result
+                            .finished_play
+                            .as_ref()
+                            .map(|finished| finished.result.clear_type)
+                    })
                     .flatten();
                 let result_failed = result_failed_for_skin_ops(summary.clear_type, raw_clear_type);
                 let score_save_enabled = self.current_result_score_save_enabled();
@@ -2305,9 +2131,9 @@ impl WinitApp {
                     key_mode: summary.key_mode,
                     has_long_notes: summary.has_long_notes,
                     ln_mode_index: result_long_note_mode_index(summary.long_note_mode),
-                    result_gauge_graph_type: self.result_gauge_graph_type,
-                    result_panel: self.result_panel,
-                    favorite_chart: self.result_favorite_chart,
+                    result_gauge_graph_type: self.result.result_gauge_graph_type,
+                    result_panel: self.result.result_panel,
+                    favorite_chart: self.result.result_favorite_chart,
                     judge_counts: DisplayJudgeCounts {
                         pgreat: summary.judge_counts.pgreat,
                         great: summary.judge_counts.great,
@@ -2348,10 +2174,13 @@ impl WinitApp {
                     previous_best_bp: summary.previous_best_bp,
                     target_clear_type: summary.target_clear_type,
                     elapsed_time: bmz_core::time::TimeUs(
-                        self.result_scene_started_at.elapsed().as_micros().min(i64::MAX as u128)
-                            as i64,
+                        self.result
+                            .result_scene_started_at
+                            .elapsed()
+                            .as_micros()
+                            .min(i64::MAX as u128) as i64,
                     ),
-                    fadeout_elapsed: self.result_exit.as_ref().map(|exit| {
+                    fadeout_elapsed: self.result.result_exit.as_ref().map(|exit| {
                         bmz_core::time::TimeUs(
                             exit.started_at.elapsed().as_micros().min(i64::MAX as u128) as i64,
                         )
@@ -2363,17 +2192,19 @@ impl WinitApp {
                     genre: summary.genre.clone(),
                     difficulty_name: summary.difficulty_name.clone(),
                     play_level: summary.play_level.clone(),
-                    table_text_primary: self.play_table_text_primary.clone(),
-                    table_text_secondary: self.play_table_text_secondary.clone(),
-                    table_text_fallback: self.play_table_text_fallback.clone(),
-                    stagefile_background: self.play_stagefile_loaded,
-                    stagefile_image_size: self.play_stagefile_size,
+                    table_text_primary: self.play.play_table_text_primary.clone(),
+                    table_text_secondary: self.play.play_table_text_secondary.clone(),
+                    table_text_fallback: self.play.play_table_text_fallback.clone(),
+                    stagefile_background: self.play.play_stagefile_loaded,
+                    stagefile_image_size: self.play.play_stagefile_size,
                     course_titles: self
+                        .result
                         .finished_course
                         .as_ref()
                         .map(|course| course.course_titles.clone())
                         .unwrap_or_default(),
                     course_result: self
+                        .result
                         .finished_course
                         .as_ref()
                         .map(course_result_skin_snapshot)
@@ -2381,11 +2212,12 @@ impl WinitApp {
                     graph: summary.graph.clone(),
                     overlay: OverlaySnapshot::default(),
                     ir: self
+                        .result
                         .result_ir
                         .as_ref()
                         .map(|state| state.skin_snapshot_for_binding(result_ir_scope_binding))
                         .unwrap_or_default(),
-                    player_stats: self.player_stats.clone(),
+                    player_stats: self.select.player_stats.clone(),
                 })
             }
         };
@@ -2393,7 +2225,7 @@ impl WinitApp {
             &mut scene,
             skin_logical_input_snapshot_from_pressed_controls(
                 &self.input.pressed_controls,
-                &self.select_keys,
+                &self.select.select_keys,
             ),
         );
         self.apply_operating_time_to_scene(&mut scene);
@@ -2404,7 +2236,7 @@ impl WinitApp {
     }
 
     fn operating_time_ms(&self) -> i32 {
-        elapsed_since_ms(self.app_started_at)
+        elapsed_since_ms(self.smoke.app_started_at)
     }
 
     fn apply_operating_time_to_scene(&self, scene: &mut AppSceneSnapshot) {
@@ -2430,7 +2262,8 @@ impl WinitApp {
     fn left_overlay_text(&self) -> String {
         resolve_left_overlay_text(
             self.renderer.has_pending_screenshot(),
-            self.left_overlay_toast
+            self.smoke
+                .left_overlay_toast
                 .as_ref()
                 .map(|toast| (toast.message.as_str(), toast.shown_at.elapsed())),
             &self.background_task_overlay_text(),
@@ -2439,10 +2272,10 @@ impl WinitApp {
 
     fn background_task_overlay_text(&self) -> String {
         let mut tasks = Vec::new();
-        if let Some(progress) = self.song_scan_progress {
+        if let Some(progress) = self.jobs.song_scan_progress {
             tasks.push(format!("SCAN {} / {}", progress.done, progress.total));
         }
-        if let Some(progress) = &self.table_fetch.progress {
+        if let Some(progress) = &self.jobs.table_fetch.progress {
             tasks.push(format!("TABLE {} / {}", progress.completed, progress.total));
         }
         tasks.join(" | ")
@@ -2467,8 +2300,9 @@ impl WinitApp {
 
     fn is_autoplay_for_overlay(&self) -> bool {
         match self.view_state() {
-            AppViewState::Result => self.last_play_was_autoplay,
+            AppViewState::Result => self.result.last_play_was_autoplay,
             AppViewState::Play => self
+                .play
                 .active_play
                 .as_ref()
                 .map(|active| {
@@ -2480,10 +2314,15 @@ impl WinitApp {
                         .is_some_and(|autoplay| autoplay.is_full())
                 })
                 .or_else(|| {
-                    self.pending_play_start.as_ref().map(|_| self.session_mode.primary_autoplay())
+                    self.play
+                        .pending_play_start
+                        .as_ref()
+                        .map(|_| self.select.session_mode.primary_autoplay())
                 })
-                .unwrap_or(self.last_play_was_autoplay),
-            AppViewState::Select | AppViewState::Decide => self.session_mode.primary_autoplay(),
+                .unwrap_or(self.result.last_play_was_autoplay),
+            AppViewState::Select | AppViewState::Decide => {
+                self.select.session_mode.primary_autoplay()
+            }
         }
     }
 
@@ -2509,17 +2348,21 @@ impl WinitApp {
     }
 
     fn table_breadcrumb(&self, source_url: &str) -> TableBreadcrumb {
-        if let Some(cached) = self.table_breadcrumb_cache.borrow().get(source_url) {
+        if let Some(cached) = self.select.table_breadcrumb_cache.borrow().get(source_url) {
             return cached.clone();
         }
 
         let breadcrumb = self
+            .select
             .difficulty_tables
             .iter()
             .find(|table| table.source_url == source_url)
             .map(table_breadcrumb_from_record)
             .unwrap_or_else(|| Self::fallback_table_breadcrumb(source_url));
-        self.table_breadcrumb_cache.borrow_mut().insert(source_url.to_string(), breadcrumb.clone());
+        self.select
+            .table_breadcrumb_cache
+            .borrow_mut()
+            .insert(source_url.to_string(), breadcrumb.clone());
         breadcrumb
     }
 
@@ -2530,7 +2373,7 @@ impl WinitApp {
     }
 
     fn table_text_context_for_chart(&self, chart_id: i64) -> DifficultyTableText {
-        if let Some(table_text) = self.select_items.iter().find_map(|item| match item {
+        if let Some(table_text) = self.select.select_items.iter().find_map(|item| match item {
             SelectItem::Chart(row)
                 if row.chart.as_ref().is_some_and(|chart| chart.chart_id == chart_id) =>
             {
@@ -2540,12 +2383,12 @@ impl WinitApp {
         }) {
             return table_text;
         }
-        let selected = self.select_items.get(self.selected_index);
-        let source_hint = table_source_url_from_context(&self.folder_stack, selected);
+        let selected = self.select.select_items.get(self.select.selected_index);
+        let source_hint = table_source_url_from_context(&self.select.folder_stack, selected);
         let source_order = table_source_order(&self.boot.app_config);
 
         let chart = self
-            .select_items
+            .select.select_items
             .iter()
             .find_map(|item| match item {
                 SelectItem::Chart(row)
@@ -2587,15 +2430,15 @@ impl WinitApp {
 
     fn capture_play_table_text_for_chart(&mut self, chart_id: i64) {
         let (primary, secondary, fallback) = self.table_text_context_for_chart(chart_id).as_tuple();
-        self.play_table_text_primary = primary;
-        self.play_table_text_secondary = secondary;
-        self.play_table_text_fallback = fallback;
+        self.play.play_table_text_primary = primary;
+        self.play.play_table_text_secondary = secondary;
+        self.play.play_table_text_fallback = fallback;
     }
 
     fn apply_play_table_text(&self, snapshot: &mut RenderSnapshot) {
-        snapshot.table_text_primary = self.play_table_text_primary.clone();
-        snapshot.table_text_secondary = self.play_table_text_secondary.clone();
-        snapshot.table_text_fallback = self.play_table_text_fallback.clone();
+        snapshot.table_text_primary = self.play.play_table_text_primary.clone();
+        snapshot.table_text_secondary = self.play.play_table_text_secondary.clone();
+        snapshot.table_text_fallback = self.play.play_table_text_fallback.clone();
     }
 }
 
@@ -3136,10 +2979,11 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
         // すべてのウィンドウイベントを egui へ供給する。RedrawRequested など
         // egui が関知しないイベントは egui_winit 側で無視される。
         let practice_overlay = self
+            .play
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        let egui_consumed = match (self.window.clone(), self.egui.as_mut()) {
+        let egui_consumed = match (self.window.clone(), self.ui.egui.as_mut()) {
             (Some(window), Some(egui)) => egui.on_window_event(&window, &event, practice_overlay),
             _ => false,
         };
@@ -3155,7 +2999,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     && event.state == ElementState::Pressed
                     && !event.repeat
                 {
-                    if let Some(egui) = self.egui.as_mut() {
+                    if let Some(egui) = self.ui.egui.as_mut() {
                         egui.toggle();
                     }
                     return;
@@ -3174,12 +3018,12 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_keyboard_input(&event);
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                self.last_cursor_action_at = Instant::now();
-                if !self.cursor_visible {
+                self.ui.last_cursor_action_at = Instant::now();
+                if !self.ui.cursor_visible {
                     if let Some(window) = &self.window {
                         window.set_cursor_visible(true);
                     }
-                    self.cursor_visible = true;
+                    self.ui.cursor_visible = true;
                 }
                 if egui_consumed {
                     return;
@@ -3187,25 +3031,25 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_mouse_wheel(delta);
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.last_cursor_position = Some(position);
-                self.last_cursor_action_at = Instant::now();
-                if !self.cursor_visible {
+                self.select.last_cursor_position = Some(position);
+                self.ui.last_cursor_action_at = Instant::now();
+                if !self.ui.cursor_visible {
                     if let Some(window) = &self.window {
                         window.set_cursor_visible(true);
                     }
-                    self.cursor_visible = true;
+                    self.ui.cursor_visible = true;
                 }
                 if !egui_consumed {
                     self.route_select_slider_drag();
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                self.last_cursor_action_at = Instant::now();
-                if !self.cursor_visible {
+                self.ui.last_cursor_action_at = Instant::now();
+                if !self.ui.cursor_visible {
                     if let Some(window) = &self.window {
                         window.set_cursor_visible(true);
                     }
-                    self.cursor_visible = true;
+                    self.ui.cursor_visible = true;
                 }
                 if egui_consumed {
                     return;
@@ -3225,7 +3069,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.update_search_ime_cursor_area();
             }
             WindowEvent::Focused(focused) => {
-                self.focused = focused;
+                self.ui.focused = focused;
                 if !focused {
                     let releases = self.input.handle_focus_lost();
                     for event in releases.raw_keyboard {
@@ -3250,15 +3094,15 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let redraw_started_at = Instant::now();
                 let scene_before = self.current_scene_kind();
                 let pending_skin_before = self.has_pending_skin_reload();
-                let render_probe_before = self.pending_skin_render_probe.is_some();
+                let render_probe_before = self.skin.pending_skin_render_probe.is_some();
                 let cursor_start = Instant::now();
-                if self.cursor_visible
-                    && self.last_cursor_action_at.elapsed() >= Duration::from_secs(2)
+                if self.ui.cursor_visible
+                    && self.ui.last_cursor_action_at.elapsed() >= Duration::from_secs(2)
                 {
                     if let Some(window) = &self.window {
                         window.set_cursor_visible(false);
                     }
-                    self.cursor_visible = false;
+                    self.ui.cursor_visible = false;
                 }
                 let cursor_us = instant_elapsed_us_u64(cursor_start);
                 // Worker completion should be applied before intentional frame pacing sleep;
@@ -3315,7 +3159,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     // clocked decode thread が古い loop_base で待ち続けることがある。
                 }
                 self.advance_draining_audio();
-                if let Some(runtime) = &self.audio_runtime {
+                if let Some(runtime) = &self.audio.audio_runtime {
                     // chart sample bank を保持する source の破棄は、CPAL callback
                     // ではなく app thread 側で回収する。
                     runtime.reap_retired_sources();
@@ -3447,7 +3291,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(handle) = self.discord_presence.take() {
+        if let Some(handle) = self.integrations.discord_presence.take() {
             handle.shutdown();
         }
         self.flush_pending_screenshots("app exit");
@@ -3457,8 +3301,8 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
         }
         // Linux の winit/wgpu backend では Window より後に Surface を drop すると
         // native 側で落ちることがあるため、Window を保持したまま GPU 資源を解放する。
-        self.egui = None;
-        if let Ok(mut cache) = self.skin_pipeline.gpu_texture_cache.lock() {
+        self.ui.egui = None;
+        if let Ok(mut cache) = self.skin.skin_pipeline.gpu_texture_cache.lock() {
             cache.clear();
         }
         self.renderer.detach_surface();
@@ -3467,21 +3311,21 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
 
 impl WinitApp {
     fn release_audio_for_process_exit(&mut self) -> bool {
-        if self.audio_runtime.as_ref().is_some_and(AudioRuntime::uses_pulseaudio_host) {
+        if self.audio.audio_runtime.as_ref().is_some_and(AudioRuntime::uses_pulseaudio_host) {
             // cpal 0.18 の PulseAudio backend は stream Drop 時に pulseaudio crate の
             // reactor 切断と stream delete が重なり、終了時に native 側で abort する
             // 環境がある。プロセス終了直前だけ handle を残し、通常の drop cascade
             // に戻らずプロセスを終了する。
-            if let Some(audio) = self.draining_audio.take() {
+            if let Some(audio) = self.audio.draining_audio.take() {
                 std::mem::forget(audio);
             }
-            if let Some(active_play) = self.active_play.take() {
+            if let Some(active_play) = self.play.active_play.take() {
                 std::mem::forget(active_play);
             }
-            if let Some(system_audio) = self.system_audio.take() {
+            if let Some(system_audio) = self.audio.system_audio.take() {
                 std::mem::forget(system_audio);
             }
-            if let Some(runtime) = self.audio_runtime.take() {
+            if let Some(runtime) = self.audio.audio_runtime.take() {
                 std::mem::forget(runtime);
             }
             tracing::debug!("exiting process directly after PulseAudio output workaround");
@@ -3489,10 +3333,10 @@ impl WinitApp {
         }
 
         // プロセス終了前に音声出力を確実に Drop し、ASIO の停止・後処理を走らせる。
-        self.draining_audio = None;
-        self.active_play = None;
-        self.system_audio = None;
-        self.audio_runtime = None;
+        self.audio.draining_audio = None;
+        self.play.active_play = None;
+        self.audio.system_audio = None;
+        self.audio.audio_runtime = None;
         false
     }
 }

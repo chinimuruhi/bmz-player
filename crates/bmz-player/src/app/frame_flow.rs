@@ -3,14 +3,14 @@ use super::*;
 impl WinitApp {
     pub(super) fn restart_select_scene_timers(&mut self) {
         let now = Instant::now();
-        self.select_scene_started_at = now;
+        self.select.select_scene_started_at = now;
         self.restart_select_bar_timer_without_scroll(now);
-        self.option_panel_started_at = now;
-        self.option_panel_off_started_at = [None; 6];
+        self.select.option_panel_started_at = now;
+        self.select.option_panel_off_started_at = [None; 6];
     }
 
     pub(super) fn current_frame_limit(&self) -> u32 {
-        if self.focused {
+        if self.ui.focused {
             self.boot.app_config.video.target_fps
         } else {
             self.boot.app_config.video.frame_limit_in_background
@@ -65,21 +65,22 @@ impl WinitApp {
             AppSceneKind::Result => "Result",
         };
         let practice_overlay = self
+            .play
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
         let use_idle_egui_frame = scene_kind == AppSceneKind::Play
-            && self.play_ending.is_none()
-            && self.egui.as_ref().is_some_and(|egui| {
-                !egui.needs_full_frame(scene, practice_overlay, self.update_prompt.is_some())
+            && self.play.play_ending.is_none()
+            && self.ui.egui.as_ref().is_some_and(|egui| {
+                !egui.needs_full_frame(scene, practice_overlay, self.jobs.update_prompt.is_some())
             });
         if use_idle_egui_frame {
-            let Some(mut egui) = self.egui.take() else {
+            let Some(mut egui) = self.ui.egui.take() else {
                 return;
             };
             let frame =
                 egui.run_idle_frame(&window, self.boot.profile_config.ui.locale().font_coverage());
-            self.egui = Some(egui);
+            self.ui.egui = Some(egui);
             self.renderer.set_egui_frame(frame);
             return;
         }
@@ -132,29 +133,34 @@ impl WinitApp {
             course_result: course_result_defs,
         };
         let course_result_active =
-            matches!(scene_kind, AppSceneKind::Result) && self.finished_course.is_some();
+            matches!(scene_kind, AppSceneKind::Result) && self.result.finished_course.is_some();
         if matches!(scene_kind, AppSceneKind::Result)
             && self
+                .result
                 .result_ir
                 .as_ref()
                 .is_some_and(|state| state.is_course() != course_result_active)
         {
-            self.result_ir = None;
+            self.result.result_ir = None;
         }
-        if course_result_active && self.result_ir.is_none() && !self.finished_course_ir_attempted {
+        if course_result_active
+            && self.result.result_ir.is_none()
+            && !self.result.finished_course_ir_attempted
+        {
             // IR が無効、または identity が解決できない場合も、この Result 滞在中の
             // 起動判定は一度で完了させる。
-            self.finished_course_ir_attempted = true;
+            self.result.finished_course_ir_attempted = true;
             if let Some((course_hash, rian_course_hash_v1, gauge, ln_policy, rule_mode)) =
                 self.course_result_ir_target()
             {
-                self.result_ir = crate::screens::result_ir::spawn_course_result_ir_task(
+                self.result.result_ir = crate::screens::result_ir::spawn_course_result_ir_task(
                     self.boot.profile_paths.root_dir.clone(),
                     self.boot.profile_paths.score_db.clone(),
                     self.boot.profile_paths.network_db.clone(),
                     self.boot.app_paths.logs_dir.clone(),
                     &self.boot.profile_config.ir,
-                    self.finished_course
+                    self.result
+                        .finished_course
                         .as_ref()
                         .and_then(|course| course.course_score_id)
                         .unwrap_or_default(),
@@ -170,12 +176,13 @@ impl WinitApp {
         }
         // `egui` は run の直前に Option から一時的に取り出すため、コース全ステージの
         // graph を含む CourseResultSummary をフレームごとに clone せず参照で渡せる。
-        let course_result = self.finished_course.as_ref();
+        let course_result = self.result.finished_course.as_ref();
         // Only show the course preview when the user is on the select screen
         // and the cursor is over a course row.
         let course_preview = matches!(scene_kind, AppSceneKind::Select)
             .then(|| {
-                self.select_items.get(self.selected_index).and_then(|item| match item {
+                self.select.select_items.get(self.select.selected_index).and_then(|item| match item
+                {
                     SelectItem::Course(row) => Some(row.clone()),
                     _ => None,
                 })
@@ -186,7 +193,7 @@ impl WinitApp {
             .flatten();
         let practice_media_ready = self.practice_media_ready();
         let mut practice_panel_ctx = None;
-        if let Some(practice) = &mut self.practice_session
+        if let Some(practice) = &mut self.play.practice_session
             && practice.phase == PracticePhase::Config
         {
             practice_panel_ctx = Some(PracticePanelContext {
@@ -200,11 +207,11 @@ impl WinitApp {
         // 画面まで状態を保持する。コース最終リザルトでは course_hash ベースの
         // course ranking を取得するため、単曲用 state は Result 突入時に差し替える。
         if matches!(scene_kind, AppSceneKind::Result) {
-            if self.result_ir.is_none()
+            if self.result.result_ir.is_none()
                 && !course_result_active
-                && let Some(finished) = &self.finished_play
+                && let Some(finished) = &self.result.finished_play
             {
-                self.result_ir = crate::screens::result_ir::spawn_result_ir_task(
+                self.result.result_ir = crate::screens::result_ir::spawn_result_ir_task(
                     self.boot.profile_paths.root_dir.clone(),
                     self.boot.profile_paths.score_db.clone(),
                     self.boot.profile_paths.network_db.clone(),
@@ -218,45 +225,48 @@ impl WinitApp {
                 );
             }
             let loaded_rankings =
-                self.result_ir.as_mut().map(|state| state.poll()).unwrap_or_default();
+                self.result.result_ir.as_mut().map(|state| state.poll()).unwrap_or_default();
             for ranking in loaded_rankings {
-                self.select_ir
+                self.select
+                    .select_ir
                     .cache_result_global_ranking(&ranking.chart_sha256_hex, &ranking.ranking);
             }
-        } else if self.play_ending.is_some() {
+        } else if self.play.play_ending.is_some() {
             let loaded_rankings =
-                self.result_ir.as_mut().map(|state| state.poll()).unwrap_or_default();
+                self.result.result_ir.as_mut().map(|state| state.poll()).unwrap_or_default();
             for ranking in loaded_rankings {
-                self.select_ir
+                self.select
+                    .select_ir
                     .cache_result_global_ranking(&ranking.chart_sha256_hex, &ranking.ranking);
             }
         } else {
-            self.result_ir = None;
+            self.result.result_ir = None;
         }
         // 選曲画面ではカーソル譜面の IR ランキングをデバウンスつきで取得する
         // (NUMBER_IR_RANK / NUMBER_IR_TOTALPLAYER / OPTION_IR_* 用)。
         if matches!(scene_kind, AppSceneKind::Select) {
             // `selected_chart_sha256()` は &self 全体を借りるため、practice ctx の
             // &mut 借用と衝突しないようフィールド単位で参照する。
-            let (selected, ln_profile, key_mode) = match self.select_items.get(self.selected_index)
-            {
-                Some(SelectItem::Chart(row)) => (
-                    row.score_sha256(),
-                    // library 登録済みなら譜面の LN プロファイルから実プレイと
-                    // 同じスコア分離キーを解決する。未登録は default 近似。
-                    row.chart.as_ref().map(|chart| chart.ln_profile).unwrap_or_default(),
-                    row.chart
-                        .as_ref()
-                        .and_then(|chart| KeyMode::from_str_opt(&chart.mode))
-                        .unwrap_or_default(),
-                ),
-                _ => (None, crate::ln_policy::ChartLnProfile::default(), KeyMode::default()),
-            };
+            let (selected, ln_profile, key_mode) =
+                match self.select.select_items.get(self.select.selected_index) {
+                    Some(SelectItem::Chart(row)) => (
+                        row.score_sha256(),
+                        // library 登録済みなら譜面の LN プロファイルから実プレイと
+                        // 同じスコア分離キーを解決する。未登録は default 近似。
+                        row.chart.as_ref().map(|chart| chart.ln_profile).unwrap_or_default(),
+                        row.chart
+                            .as_ref()
+                            .and_then(|chart| KeyMode::from_str_opt(&chart.mode))
+                            .unwrap_or_default(),
+                    ),
+                    _ => (None, crate::ln_policy::ChartLnProfile::default(), KeyMode::default()),
+                };
             let ln_policy = crate::ln_policy::score_ln_policy(
                 self.boot.profile_config.play.ln_mode_policy,
                 ln_profile,
             );
-            let double_option = self.double_option.normalize_for_key_mode(key_mode).score_bucket();
+            let double_option =
+                self.select.double_option.normalize_for_key_mode(key_mode).score_bucket();
             let ir_config = self.boot.profile_config.ir.clone();
             if let Some(course) = selected_course_ir_target {
                 let context = format!(
@@ -267,7 +277,7 @@ impl WinitApp {
                     course.ln_policy,
                     course.rule_mode.as_str()
                 );
-                self.select_ir.update_course(&ir_config, &context, Some(course));
+                self.select.select_ir.update_course(&ir_config, &context, Some(course));
             } else {
                 let context = select_ir_cache_context(
                     self.boot.profile_config.play.ln_mode_policy,
@@ -275,7 +285,7 @@ impl WinitApp {
                     double_option,
                     self.boot.profile_config.play.rule_mode,
                 );
-                self.select_ir.update(
+                self.select.select_ir.update(
                     &ir_config,
                     &self.boot.profile_paths.root_dir,
                     &context,
@@ -286,9 +296,10 @@ impl WinitApp {
                 );
             }
         }
-        let result_ir_panel = self.result_ir.as_mut();
-        let update_dialog = self.update_prompt.as_ref().map(UpdatePrompt::as_dialog);
+        let result_ir_panel = self.result.result_ir.as_mut();
+        let update_dialog = self.jobs.update_prompt.as_ref().map(UpdatePrompt::as_dialog);
         let obs_connection_status = self
+            .integrations
             .obs_controller
             .as_ref()
             .map(crate::obs::ObsController::status)
@@ -296,7 +307,7 @@ impl WinitApp {
         let connected_gamepads =
             self.gamepad.as_ref().map(|gamepad| gamepad.connected_gamepads()).unwrap_or_default();
         let locale_before_ui = self.boot.profile_config.ui.locale();
-        let Some(mut egui) = self.egui.take() else {
+        let Some(mut egui) = self.ui.egui.take() else {
             return;
         };
         let play_profile_before_egui = self.boot.profile_config.play.clone();
@@ -308,30 +319,30 @@ impl WinitApp {
                 info: &info,
                 app_config: &mut self.boot.app_config,
                 profile_config: &mut self.boot.profile_config,
-                random_trainer: &mut self.random_trainer,
+                random_trainer: &mut self.select.random_trainer,
                 skin_meta: &skin_meta,
-                skin_catalog: &self.skin_catalog,
+                skin_catalog: &self.skin.skin_catalog,
                 course_result,
                 course_preview: course_preview.as_ref(),
                 practice: practice_panel_ctx.as_mut(),
                 result_ir: result_ir_panel,
                 profile_root: &self.boot.profile_paths.root_dir,
                 app_paths: &self.boot.app_paths,
-                difficulty_tables: &self.difficulty_tables,
-                log_buffer: &self.log_buffer,
+                difficulty_tables: &self.select.difficulty_tables,
+                log_buffer: &self.ui.log_buffer,
                 update_dialog,
                 obs_connection_status: &obs_connection_status,
                 connected_gamepads: &connected_gamepads,
             },
         );
-        self.egui = Some(egui);
+        self.ui.egui = Some(egui);
         self.reconcile_rian_table_identity();
         let locale_after_ui = self.boot.profile_config.ui.locale();
         self.renderer.set_default_font_coverage(locale_after_ui.font_coverage());
         if locale_after_ui != locale_before_ui {
             // 設定・検索履歴などアプリが生成した行名を新しい locale で作り直す。
             // 選択復元は表示名ではなく typed/path ID を使う。
-            self.search.clear_message();
+            self.select.search.clear_message();
             self.reload_select_items();
         }
         self.renderer.set_egui_frame(output.frame);
@@ -360,7 +371,7 @@ impl WinitApp {
         ));
         // ウィンドウモード変更をライブ反映する (差分があるときのみ適用)。
         let desired_mode = self.boot.app_config.video.mode.clone();
-        if desired_mode != self.applied_window_mode {
+        if desired_mode != self.ui.applied_window_mode {
             let monitor = select_monitor(
                 &self.boot.app_config.video.monitor_name,
                 window.available_monitors(),
@@ -368,7 +379,7 @@ impl WinitApp {
             );
             window.set_fullscreen(fullscreen_from_config(&desired_mode, monitor));
             tracing::info!(mode = ?desired_mode, "window mode updated");
-            self.applied_window_mode = desired_mode;
+            self.ui.applied_window_mode = desired_mode;
         }
         let mut apply_obs_config = output.obs_enabled_changed;
         if output.save_app_config {
@@ -428,12 +439,12 @@ impl WinitApp {
     /// リザルト遷移後も鳴らし続けている音声出力を監視し、スケジュール済みの
     /// BGM/キー音がすべて鳴り切ったら出力を解放する。
     pub(super) fn advance_draining_audio(&mut self) {
-        let Some(audio) = &self.draining_audio else {
+        let Some(audio) = &self.audio.draining_audio else {
             return;
         };
         if audio.engine.is_idle() {
             tracing::info!("play audio drained after result; releasing output");
-            self.draining_audio = None;
+            self.audio.draining_audio = None;
         }
     }
 
@@ -469,8 +480,8 @@ impl WinitApp {
         let scene_kind = scene_kind(&scene);
         self.update_window_title_for_scene(scene_kind);
         if let (Some(path), Some(exit_after_frames)) =
-            (&self.smoke_screenshot_path, self.smoke_exit_after_frames)
-            && self.rendered_frames.saturating_add(1) >= exit_after_frames
+            (&self.smoke.smoke_screenshot_path, self.smoke.smoke_exit_after_frames)
+            && self.smoke.rendered_frames.saturating_add(1) >= exit_after_frames
         {
             self.renderer.request_screenshot(path.clone());
         }
@@ -478,7 +489,7 @@ impl WinitApp {
         let render_status = self.renderer.render_scene_status(scene);
         let render_us = render_start.elapsed().as_micros();
         let frame_timings = self.renderer.last_frame_timings();
-        if let Some(probe) = self.pending_skin_render_probe.take() {
+        if let Some(probe) = self.skin.pending_skin_render_probe.take() {
             let expected_scene = match probe.kind {
                 SkinKind::Select => AppSceneKind::Select,
                 SkinKind::Decide => AppSceneKind::Decide,
@@ -518,7 +529,7 @@ impl WinitApp {
                     "skin reload first render timings"
                 );
             } else {
-                self.pending_skin_render_probe = Some(probe);
+                self.skin.pending_skin_render_probe = Some(probe);
             }
         }
         match render_status {
@@ -590,7 +601,7 @@ impl WinitApp {
     }
 
     pub(super) fn show_left_overlay_toast(&mut self, message: impl Into<String>) {
-        self.left_overlay_toast =
+        self.smoke.left_overlay_toast =
             Some(LeftOverlayToast { message: message.into(), shown_at: Instant::now() });
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -604,8 +615,8 @@ impl WinitApp {
     }
 
     pub(super) fn handle_smoke_exit_after_redraw(&mut self, event_loop: &ActiveEventLoop) {
-        if self.smoke_exit_on_result && self.finished_play.is_some() {
-            self.smoke_exit_on_result = false;
+        if self.smoke.smoke_exit_on_result && self.result.finished_play.is_some() {
+            self.smoke.smoke_exit_on_result = false;
             tracing::info!("smoke result reached; leaving event loop");
             self.save_configs_for_exit(None, "game exit");
             self.flush_pending_screenshots("smoke result exit");
@@ -613,14 +624,14 @@ impl WinitApp {
             return;
         }
 
-        if let Some(exit_after_result_frames) = self.smoke_exit_after_result_frames
-            && self.finished_play.is_some()
+        if let Some(exit_after_result_frames) = self.smoke.smoke_exit_after_result_frames
+            && self.result.finished_play.is_some()
         {
-            self.rendered_result_frames = self.rendered_result_frames.saturating_add(1);
-            if self.rendered_result_frames >= exit_after_result_frames {
-                self.smoke_exit_after_result_frames = None;
+            self.smoke.rendered_result_frames = self.smoke.rendered_result_frames.saturating_add(1);
+            if self.smoke.rendered_result_frames >= exit_after_result_frames {
+                self.smoke.smoke_exit_after_result_frames = None;
                 tracing::info!(
-                    frames = self.rendered_result_frames,
+                    frames = self.smoke.rendered_result_frames,
                     "smoke result frame count reached; leaving event loop"
                 );
                 self.save_configs_for_exit(None, "game exit");
@@ -630,16 +641,16 @@ impl WinitApp {
             }
         }
 
-        if let Some(exit_after_play_frames) = self.smoke_exit_after_play_frames
+        if let Some(exit_after_play_frames) = self.smoke.smoke_exit_after_play_frames
             && self.current_scene_kind() == AppSceneKind::Play
         {
             let (frames, should_exit) =
-                count_smoke_play_frame(self.rendered_play_frames, exit_after_play_frames);
-            self.rendered_play_frames = frames;
+                count_smoke_play_frame(self.smoke.rendered_play_frames, exit_after_play_frames);
+            self.smoke.rendered_play_frames = frames;
             if should_exit {
-                self.smoke_exit_after_play_frames = None;
+                self.smoke.smoke_exit_after_play_frames = None;
                 tracing::info!(
-                    frames = self.rendered_play_frames,
+                    frames = self.smoke.rendered_play_frames,
                     "smoke play frame count reached; leaving event loop"
                 );
                 self.save_configs_for_exit(self.active_hispeed(), "smoke play frame exit");
@@ -649,15 +660,15 @@ impl WinitApp {
             }
         }
 
-        let Some(exit_after_frames) = self.smoke_exit_after_frames else {
+        let Some(exit_after_frames) = self.smoke.smoke_exit_after_frames else {
             return;
         };
 
-        self.rendered_frames = self.rendered_frames.saturating_add(1);
-        if self.rendered_frames >= exit_after_frames {
-            self.smoke_exit_after_frames = None;
+        self.smoke.rendered_frames = self.smoke.rendered_frames.saturating_add(1);
+        if self.smoke.rendered_frames >= exit_after_frames {
+            self.smoke.smoke_exit_after_frames = None;
             tracing::info!(
-                frames = self.rendered_frames,
+                frames = self.smoke.rendered_frames,
                 "smoke exit frame count reached; leaving event loop"
             );
             self.save_configs_for_exit(self.active_hispeed(), "game exit");
@@ -667,10 +678,11 @@ impl WinitApp {
     }
 
     pub(super) fn active_hispeed(&self) -> Option<f32> {
-        self.active_play
+        self.play
+            .active_play
             .as_ref()
             .map(|active| active.running.session.hispeed)
-            .or_else(|| self.pending_play_start.as_ref().map(|pending| pending.lane.hispeed))
+            .or_else(|| self.play.pending_play_start.as_ref().map(|pending| pending.lane.hispeed))
     }
 
     pub(super) fn start_scene_timers_before_snapshot(
@@ -678,23 +690,24 @@ impl WinitApp {
         select_view: bool,
         result_view: bool,
     ) {
-        match self.last_scene_kind {
+        match self.integrations.last_scene_kind {
             Some(AppSceneKind::Select) if select_view => {}
             _ if select_view => self.restart_select_scene_timers(),
             Some(AppSceneKind::Result) if result_view => {}
             _ if result_view => {
-                self.result_scene_started_at = Instant::now();
+                self.result.result_scene_started_at = Instant::now();
             }
             _ => {}
         }
     }
 
     pub(super) fn active_lane_state(&self) -> Option<ActiveLaneState> {
-        self.active_play
+        self.play
+            .active_play
             .as_ref()
             .map(|active| active_lane_state_for_session(&active.running.session))
             .or_else(|| {
-                self.pending_play_start.as_ref().map(|pending| ActiveLaneState {
+                self.play.pending_play_start.as_ref().map(|pending| ActiveLaneState {
                     lane_cover: pending.lane.lane_cover,
                     lift: pending.lane.lift,
                     hispeed_mode: pending.lane.hispeed_mode,
@@ -704,7 +717,7 @@ impl WinitApp {
     }
 
     pub(super) fn commit_pending_play_lane_state_to_profile(&mut self) {
-        let Some(pending) = &self.pending_play_start else {
+        let Some(pending) = &self.play.pending_play_start else {
             return;
         };
         if pending.lane_actions.is_empty() {
@@ -724,7 +737,7 @@ impl WinitApp {
     }
 
     pub(super) fn commit_active_play_lane_state_to_profile(&mut self) -> bool {
-        let Some(active_play) = &self.active_play else {
+        let Some(active_play) = &self.play.active_play else {
             return false;
         };
         let session = &active_play.running.session;
@@ -758,7 +771,7 @@ impl WinitApp {
     }
 
     pub(super) fn save_configs_for_exit(&mut self, hispeed: Option<f32>, reason: &'static str) {
-        if self.exit_configs_saved {
+        if self.integrations.exit_configs_saved {
             return;
         }
         self.save_current_play_options(hispeed, reason);
@@ -768,6 +781,6 @@ impl WinitApp {
         } else {
             tracing::info!(reason, "saved app config on exit");
         }
-        self.exit_configs_saved = true;
+        self.integrations.exit_configs_saved = true;
     }
 }

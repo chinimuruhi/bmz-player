@@ -1,0 +1,763 @@
+use super::*;
+
+impl WinitApp {
+    pub(super) fn should_exit_via_select_hold(&mut self) -> bool {
+        if !matches!(self.view_state(), AppViewState::Select) {
+            self.select.select_exit_hold_started_at = None;
+            return false;
+        }
+        let Some(started) = self.select.select_exit_hold_started_at else {
+            return false;
+        };
+        started.elapsed() >= SELECT_EXIT_HOLD_DURATION
+    }
+
+    pub(super) fn select_exit_hold_progress(&self) -> f32 {
+        let Some(started) = self.select.select_exit_hold_started_at else {
+            return 0.0;
+        };
+        let elapsed = started.elapsed().as_secs_f32();
+        let total = SELECT_EXIT_HOLD_DURATION.as_secs_f32();
+        (elapsed / total).clamp(0.0, 1.0)
+    }
+
+    pub(super) fn select_time(&self) -> TimeUs {
+        let micros =
+            self.select.select_scene_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
+        TimeUs(micros)
+    }
+
+    pub(super) fn select_bar_time(&self) -> TimeUs {
+        let micros =
+            self.select.select_bar_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
+        TimeUs(micros)
+    }
+
+    pub(super) fn restart_select_bar_timer_without_scroll(&mut self, now: Instant) {
+        self.select.select_bar_started_at = now;
+        self.select.select_bar_scroll_direction = 0;
+        self.select.select_bar_scroll_duration = Duration::ZERO;
+    }
+
+    pub(super) fn select_bar_scroll_progress(&self) -> f32 {
+        if self.select.select_bar_scroll_direction == 0
+            || self.select.select_bar_scroll_duration.is_zero()
+        {
+            return 0.0;
+        }
+        let elapsed = self.select.select_bar_started_at.elapsed();
+        if elapsed >= self.select.select_bar_scroll_duration {
+            return 0.0;
+        }
+        1.0 - elapsed.as_secs_f32() / self.select.select_bar_scroll_duration.as_secs_f32()
+    }
+
+    pub(super) fn select_scroll_duration_low(&self) -> Duration {
+        Duration::from_millis(u64::from(select_scroll_duration_low_ms(&self.boot.app_config)))
+    }
+
+    pub(super) fn select_scroll_duration_high(&self) -> Duration {
+        Duration::from_millis(u64::from(select_scroll_duration_high_ms(&self.boot.app_config)))
+    }
+
+    pub(super) fn play_elapsed_time(&self) -> TimeUs {
+        let micros =
+            self.play.play_scene_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
+        TimeUs(micros)
+    }
+
+    pub(super) fn decide_snapshot(&self, decide: &DecideTransition) -> RenderSnapshot {
+        let mut snapshot = decide.snapshot_for_render();
+        let elapsed = match decide.fadeout_started_at {
+            Some(fadeout_started_at) => {
+                let fadeout_duration = self.decide_fadeout_duration();
+                let fadeout_elapsed = fadeout_started_at.elapsed().min(fadeout_duration);
+                let scene_elapsed = decide_fadeout_scene_elapsed(
+                    fadeout_started_at.duration_since(decide.started_at),
+                    fadeout_elapsed,
+                    self.decide_scene_duration(),
+                    fadeout_duration,
+                    self.decide_fadeout_scene_timing(),
+                );
+                TimeUs(scene_elapsed.as_micros().min(i64::MAX as u128) as i64)
+            }
+            None => elapsed_since(decide.started_at),
+        };
+        snapshot.play_elapsed_time = elapsed;
+        snapshot.fadeout_elapsed_ms = decide.fadeout_started_at.map(|started_at| {
+            let elapsed_ms = elapsed_since_ms(started_at);
+            let fadeout_ms =
+                self.decide_fadeout_duration().as_millis().min(i32::MAX as u128) as i32;
+            elapsed_ms.min(fadeout_ms)
+        });
+        snapshot
+    }
+
+    pub(super) fn option_panel_time(&self) -> TimeUs {
+        let micros =
+            self.select.option_panel_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
+        TimeUs(micros)
+    }
+
+    pub(super) fn set_start_held(&mut self, held: bool) {
+        if self.input.start_held != held {
+            self.input.start_held = held;
+            self.update_select_option_panel();
+        }
+    }
+
+    pub(super) fn set_select_held(&mut self, held: bool) {
+        if self.input.select_held != held {
+            self.input.select_held = held;
+            self.update_select_option_panel();
+        }
+    }
+
+    pub(super) fn sync_select_holds_from_pressed_controls(&mut self) {
+        let (start_held, select_held, e_action_holds) = select_hold_state_from_pressed_controls(
+            &self.input.pressed_controls,
+            &self.select.select_keys,
+        );
+        self.input.select_e_action_holds = e_action_holds;
+        self.set_start_held(start_held);
+        self.set_select_held(select_held);
+    }
+
+    pub(super) fn update_select_e_action_hold(&mut self, control: &str, held: bool) {
+        let Some(action) = self.select.select_keys.e_action_for_control(control) else {
+            return;
+        };
+        if held {
+            self.input.select_e_action_holds.insert(action);
+        } else {
+            self.input.select_e_action_holds.remove(&action);
+        }
+    }
+
+    pub(super) fn select_e_action_held(&self) -> bool {
+        self.input.select_e_action_held()
+    }
+
+    pub(super) fn update_select_option_panel(&mut self) {
+        let panel = if in_settings_stack(&self.select.folder_stack) {
+            0
+        } else {
+            select_option_panel_for_holds(self.input.start_held, self.input.select_held)
+        };
+        let previous_panel = self.select.select_option_panel;
+        let now = Instant::now();
+        if transition_select_option_panel(
+            &mut self.select.select_option_panel,
+            &mut self.select.option_panel_started_at,
+            &mut self.select.option_panel_off_started_at,
+            panel,
+            now,
+        ) {
+            self.reset_select_analog_scroll();
+            if let Some(sound_type) =
+                select_option_panel_sound_for_transition(previous_panel, panel)
+            {
+                self.play_system_sound(sound_type);
+            }
+        }
+    }
+
+    pub(super) fn begin_settings_edit(&mut self, entry_id: SettingsEntryId) {
+        self.select.settings_edit =
+            Some(SettingsEditSession::capture(&self.boot.profile_config, entry_id));
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        tracing::info!(?entry_id, "settings edit mode started");
+    }
+
+    pub(super) fn cancel_settings_edit(&mut self) {
+        let Some(session) = self.select.settings_edit.take() else {
+            return;
+        };
+        let entry_id = session.entry_id;
+        let score_context_before = SelectScoreContext::from_profile(&self.boot.profile_config);
+        session.restore(&mut self.boot.profile_config);
+        self.sync_select_settings_from_profile_if_needed(entry_id);
+        self.sync_changed_select_score_context(score_context_before);
+        self.play_system_sound(crate::system_sound::SoundType::FolderClose);
+        tracing::info!(?entry_id, "settings edit cancelled");
+    }
+
+    pub(super) fn commit_settings_edit(&mut self) {
+        let Some(session) = self.select.settings_edit.take() else {
+            return;
+        };
+        let entry_id = session.entry_id;
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        match save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
+        {
+            Ok(()) => {
+                self.sync_select_settings_from_profile_if_needed(entry_id);
+                self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+                tracing::info!(?entry_id, "settings edit saved");
+            }
+            Err(error) => {
+                tracing::error!(%error, ?entry_id, "failed to save settings");
+                let score_context_before =
+                    SelectScoreContext::from_profile(&self.boot.profile_config);
+                session.restore(&mut self.boot.profile_config);
+                self.sync_select_settings_from_profile_if_needed(entry_id);
+                self.sync_changed_select_score_context(score_context_before);
+            }
+        }
+    }
+
+    pub(super) fn begin_key_config_edit(
+        &mut self,
+        key_mode: bmz_core::lane::KeyMode,
+        target: KeyBindingTarget,
+    ) {
+        self.select.key_config_edit =
+            Some(KeyConfigEditSession::begin(key_mode, target, &self.boot.profile_config));
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        tracing::info!(?key_mode, ?target, "key config listen started");
+    }
+
+    pub(super) fn cancel_key_config_edit(&mut self) {
+        let Some(session) = self.select.key_config_edit.take() else {
+            return;
+        };
+        let target = session.target;
+        session.cancel(&mut self.boot.profile_config);
+        self.suppress_select_analog_until_idle();
+        self.play_system_sound(crate::system_sound::SoundType::FolderClose);
+        tracing::info!(?target, "key config cancelled");
+    }
+
+    pub(super) fn commit_key_config_edit(&mut self) {
+        let Some(session) = self.select.key_config_edit.take() else {
+            return;
+        };
+        let target = session.target;
+        self.suppress_select_analog_until_idle();
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        match save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
+        {
+            Ok(()) => {
+                self.select.select_keys =
+                    SelectKeyBindings::from_profile(&self.boot.profile_config.input);
+                self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+                tracing::info!(?target, "key config saved");
+            }
+            Err(error) => {
+                tracing::error!(%error, ?target, "failed to save key config");
+                session.cancel(&mut self.boot.profile_config);
+            }
+        }
+    }
+
+    pub(super) fn apply_key_config_control(&mut self, control: &str) {
+        let Some(session) = self.select.key_config_edit.as_ref() else {
+            return;
+        };
+        if !session.listening {
+            return;
+        }
+        if !matches!(
+            session.target.slot(),
+            KeyBindingSlot::KeyboardPrimary | KeyBindingSlot::KeyboardSecondary
+        ) {
+            return;
+        }
+        let target = session.target;
+        let key_mode = session.key_mode;
+        if let Err(error) =
+            apply_play_binding(&mut self.boot.profile_config.input, key_mode, target, control)
+        {
+            tracing::warn!(%error, ?key_mode, ?target, control, "failed to apply key binding");
+            return;
+        }
+        self.commit_key_config_edit();
+    }
+
+    pub(super) fn apply_key_config_gamepad(&mut self, control: &str) {
+        let Some(session) = self.select.key_config_edit.as_ref() else {
+            return;
+        };
+        if !session.listening || !session.target.slot().is_controller() {
+            return;
+        }
+        let target = session.target;
+        let key_mode = session.key_mode;
+        if let Err(error) =
+            apply_play_binding(&mut self.boot.profile_config.input, key_mode, target, control)
+        {
+            tracing::warn!(%error, ?key_mode, ?target, control, "failed to apply controller binding");
+            return;
+        }
+        self.commit_key_config_edit();
+    }
+
+    pub(super) fn clear_key_config_binding(&mut self) {
+        let Some(session) = self.select.key_config_edit.as_ref() else {
+            return;
+        };
+        if !session.listening {
+            return;
+        }
+        let target = session.target;
+        let key_mode = session.key_mode;
+        if let Err(error) =
+            clear_play_binding(&mut self.boot.profile_config.input, key_mode, target)
+        {
+            tracing::warn!(%error, ?key_mode, ?target, "failed to clear key binding");
+            return;
+        }
+        self.commit_key_config_edit();
+    }
+
+    pub(super) fn adjust_settings_edit(&mut self, direction: i32) {
+        if direction == 0 {
+            return;
+        }
+        let Some(session) = self.select.settings_edit.as_ref() else {
+            return;
+        };
+        let entry_id = session.entry_id;
+        let delta = direction * crate::config::settings_registry::settings_adjust_step(entry_id);
+        let score_context_before = SelectScoreContext::from_profile(&self.boot.profile_config);
+        if adjust_settings_draft(&mut self.boot.profile_config, session, delta) {
+            self.sync_select_settings_from_profile_if_needed(entry_id);
+            self.sync_changed_select_score_context(score_context_before);
+            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        }
+    }
+
+    pub(super) fn sync_select_settings_from_profile_if_needed(
+        &mut self,
+        entry_id: SettingsEntryId,
+    ) {
+        self.sync_select_play_options_from_profile_if_needed(entry_id);
+        if entry_id == SettingsEntryId::SelectInputMode {
+            self.select.select_keys =
+                SelectKeyBindings::from_profile(&self.boot.profile_config.input);
+            self.sync_select_holds_from_pressed_controls();
+        }
+        if matches!(
+            entry_id,
+            SettingsEntryId::AnalogScratchSensitivity | SettingsEntryId::AnalogScratchThreshold
+        ) {
+            self.apply_gamepad_analog_config();
+        }
+        if SettingsEntryId::VOLUME_ENTRIES.contains(&entry_id) {
+            self.sync_realtime_profile_settings();
+        }
+    }
+
+    pub(super) fn sync_changed_gamepad_analog_config_from_profile(
+        &mut self,
+        before: &ProfileInputConfig,
+    ) {
+        let after = &self.boot.profile_config.input;
+        if before.analog_scratch_sensitivity == after.analog_scratch_sensitivity
+            && before.analog_scratch_threshold == after.analog_scratch_threshold
+        {
+            return;
+        }
+        self.apply_gamepad_analog_config();
+    }
+
+    pub(super) fn apply_gamepad_analog_config(&mut self) {
+        let input = &self.boot.profile_config.input;
+        if let Some(gamepad) = &mut self.gamepad {
+            gamepad.set_analog_config(
+                input.analog_scratch_sensitivity,
+                input.analog_scratch_threshold,
+            );
+            tracing::info!(
+                sensitivity = input.analog_scratch_sensitivity,
+                threshold = input.analog_scratch_threshold,
+                "applied analog scratch settings"
+            );
+        }
+    }
+
+    pub(super) fn sync_select_play_options_from_profile_if_needed(
+        &mut self,
+        entry_id: SettingsEntryId,
+    ) {
+        if !SettingsEntryId::PLAY_ENTRIES.contains(&entry_id) {
+            return;
+        }
+        self.sync_select_play_options_from_profile();
+    }
+
+    pub(super) fn sync_select_play_options_from_profile(&mut self) {
+        let options = select_play_options_from_profile(&self.boot.profile_config.play);
+        self.set_select_play_options(options);
+    }
+
+    pub(super) fn sync_changed_select_play_options_from_profile(
+        &mut self,
+        before: &PlayDefaultsConfig,
+    ) {
+        let current = self.current_select_play_options();
+        let next = merge_changed_select_play_options_from_profile(
+            current,
+            before,
+            &self.boot.profile_config.play,
+        );
+        if next != current {
+            self.set_select_play_options(next);
+            tracing::info!("applied profile play settings to select options");
+        }
+    }
+
+    pub(super) fn sync_changed_select_score_context(&mut self, before: SelectScoreContext) {
+        let after = SelectScoreContext::from_profile(&self.boot.profile_config);
+        if before == after {
+            return;
+        }
+
+        self.select.select_folder_summaries.sync_score_context(
+            &mut self.select.select_items,
+            self.boot.profile_config.play.ln_mode_policy,
+            self.boot.profile_config.play.rule_mode,
+        );
+        self.reload_select_items();
+        self.invalidate_play_preload();
+        // Result画面からのリトライ用cacheも古いscore key / LN変換済みchartを持つ。
+        self.play.play_media_cache = None;
+        tracing::info!(
+            rule_mode = after.rule_mode.as_str(),
+            ln_mode = after.ln_mode_policy.display_label(),
+            "applied profile score context to select"
+        );
+    }
+
+    pub(super) fn current_select_play_options(&self) -> CurrentPlayOptions {
+        CurrentPlayOptions {
+            arrange: self.select.arrange_option,
+            arrange_2p: self.select.arrange_option_2p,
+            target: self.select.target_option,
+            gauge: self.select.gauge_option,
+            gauge_auto_shift: self.select.gauge_auto_shift_option,
+            bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
+            double_option: self.select.double_option,
+            hs_fix: self.select.hs_fix_option,
+            session_mode: self.select.session_mode,
+        }
+    }
+
+    pub(super) fn set_select_play_options(&mut self, options: CurrentPlayOptions) {
+        self.select.arrange_option = options.arrange;
+        self.select.arrange_option_2p = options.arrange_2p;
+        self.select.target_option = options.target;
+        self.select.gauge_option = options.gauge;
+        self.select.gauge_auto_shift_option = options.gauge_auto_shift;
+        self.select.bottom_shiftable_gauge_option = options.bottom_shiftable_gauge;
+        self.select.double_option = options.double_option;
+        self.select.hs_fix_option = options.hs_fix;
+        self.select.session_mode = options.session_mode;
+    }
+
+    pub(super) fn route_settings_control(&mut self, control: &str) -> bool {
+        let bindings = SettingsBindings::from_profile(&self.boot.profile_config.input);
+
+        if control.starts_with("Axis")
+            && (self.select.select_keys.is_select_scratch_up(control)
+                || self.select.select_keys.is_select_scratch_down(control))
+        {
+            return true;
+        }
+
+        if self.select.key_config_edit.is_some() {
+            if bindings.is_back(control) {
+                self.cancel_key_config_edit();
+            }
+            return true;
+        }
+
+        if self.select.settings_edit.is_some() {
+            if bindings.is_confirm(control) {
+                self.commit_settings_edit();
+                return true;
+            }
+            if bindings.is_back(control) {
+                self.cancel_settings_edit();
+                return true;
+            }
+            if bindings.is_increase(control) {
+                self.adjust_settings_edit(1);
+                return true;
+            }
+            if bindings.is_decrease(control) {
+                self.adjust_settings_edit(-1);
+                return true;
+            }
+            return true;
+        }
+
+        if bindings.is_back(control) {
+            self.exit_folder();
+            return true;
+        }
+        if let Some(select_move) =
+            settings_browse_move_control(control, &bindings, &self.select.select_keys)
+        {
+            self.move_selection(select_move);
+            self.start_select_hold_move(select_move, control.to_string());
+            return true;
+        }
+        if bindings.is_confirm(control) {
+            return match self.select.select_items.get(self.select.selected_index) {
+                Some(SelectItem::Config(row)) => {
+                    self.begin_settings_edit(row.entry_id);
+                    true
+                }
+                Some(SelectItem::KeyBinding(row)) => {
+                    self.begin_key_config_edit(row.key_mode, row.target);
+                    true
+                }
+                Some(SelectItem::Folder { .. }) => {
+                    self.enter_or_play_selected();
+                    true
+                }
+                Some(SelectItem::SettingsBack | SelectItem::SettingsClose) => {
+                    self.exit_folder();
+                    true
+                }
+                Some(SelectItem::AdvancedSettings) => {
+                    self.open_advanced_settings_from_select();
+                    true
+                }
+                _ => false,
+            };
+        }
+        false
+    }
+
+    pub(super) fn cycle_bga_option(&mut self) {
+        self.boot.profile_config.play.bga = cycle_bga_option(self.boot.profile_config.play.bga);
+        tracing::info!(
+            bga = bga_mode_as_str(self.boot.profile_config.play.bga),
+            "bga option changed"
+        );
+    }
+
+    pub(super) fn toggle_gauge_auto_shift(&mut self) {
+        self.select.gauge_auto_shift_option =
+            cycle_gauge_auto_shift_option(self.select.gauge_auto_shift_option);
+        tracing::info!(
+            gauge_auto_shift = gauge_auto_shift_as_str(self.select.gauge_auto_shift_option),
+            "gauge auto shift changed"
+        );
+    }
+
+    pub(super) fn toggle_visual_offset_auto_adjust(&mut self) {
+        self.boot.profile_config.judge.visual_offset_auto_adjust =
+            !self.boot.profile_config.judge.visual_offset_auto_adjust;
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.sync_realtime_profile_settings();
+        tracing::info!(
+            visual_offset_auto_adjust = self.boot.profile_config.judge.visual_offset_auto_adjust,
+            "visual offset auto adjust changed"
+        );
+    }
+
+    pub(super) fn apply_play_option_control(&mut self, control: &str) -> bool {
+        if self.select.select_keys.is_key1(control) {
+            self.select.arrange_option = self.select.arrange_option.cycle();
+            tracing::info!(arrange = self.select.arrange_option.as_str(), "arrange option changed");
+            true
+        } else if self.select.select_keys.is_key2(control) {
+            self.select.arrange_option = self.select.arrange_option.cycle_prev();
+            tracing::info!(arrange = self.select.arrange_option.as_str(), "arrange option changed");
+            true
+        } else if self.select.select_keys.is_key8(control) {
+            self.select.arrange_option_2p = self.select.arrange_option_2p.cycle();
+            tracing::info!(
+                arrange_2p = self.select.arrange_option_2p.as_str(),
+                "2P arrange changed"
+            );
+            true
+        } else if self.select.select_keys.is_key9(control) {
+            self.select.arrange_option_2p = self.select.arrange_option_2p.cycle_prev();
+            tracing::info!(
+                arrange_2p = self.select.arrange_option_2p.as_str(),
+                "2P arrange changed"
+            );
+            true
+        } else if self.select.select_keys.is_ui_key3(control) {
+            self.select.gauge_option = cycle_gauge_option(self.select.gauge_option);
+            tracing::info!(gauge = ?self.select.gauge_option, "gauge option changed");
+            true
+        } else if self.select.select_keys.is_ui_key4(control) {
+            self.select.gauge_option = cycle_gauge_option_prev(self.select.gauge_option);
+            tracing::info!(gauge = ?self.select.gauge_option, "gauge option changed");
+            true
+        } else if self.select.select_keys.is_ui_key5(control) {
+            self.select.hs_fix_option = self.select.hs_fix_option.cycle();
+            tracing::info!(hs_fix = self.select.hs_fix_option.as_str(), "HS-FIX option changed");
+            true
+        } else if self.select.select_keys.is_ui_key6(control) {
+            self.select.double_option = self.select.double_option.cycle();
+            tracing::info!(
+                double_option = self.select.double_option.as_str(),
+                "double option changed"
+            );
+            true
+        } else if self.select.select_keys.is_ui_key7(control) {
+            self.set_session_mode(self.select.session_mode.cycle());
+            tracing::info!(
+                session_mode = self.select.session_mode.as_str(),
+                "session mode changed"
+            );
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn apply_gamepad_play_option_control(
+        &mut self,
+        device: DeviceId,
+        control: &str,
+    ) -> bool {
+        let app_config = self.play_session_app_config();
+        let slots = crate::input::gamepad::GamepadSlotMap::from_runtime_or_legacy(
+            app_config.input.gamepad_slot_runtime_device_ids,
+            app_config.input.gamepad_slot_gilrs_ids,
+        );
+        match select_option_lane_for_gamepad(
+            &self.boot.profile_config.input,
+            slots,
+            device,
+            control,
+        ) {
+            Some(Lane::Key1) => {
+                self.select.arrange_option = self.select.arrange_option.cycle();
+                tracing::info!(
+                    arrange = self.select.arrange_option.as_str(),
+                    "arrange option changed"
+                );
+                true
+            }
+            Some(Lane::Key2) => {
+                self.select.arrange_option = self.select.arrange_option.cycle_prev();
+                tracing::info!(
+                    arrange = self.select.arrange_option.as_str(),
+                    "arrange option changed"
+                );
+                true
+            }
+            Some(Lane::Key8) => {
+                self.select.arrange_option_2p = self.select.arrange_option_2p.cycle();
+                tracing::info!(
+                    arrange_2p = self.select.arrange_option_2p.as_str(),
+                    "2P arrange changed"
+                );
+                true
+            }
+            Some(Lane::Key9) => {
+                self.select.arrange_option_2p = self.select.arrange_option_2p.cycle_prev();
+                tracing::info!(
+                    arrange_2p = self.select.arrange_option_2p.as_str(),
+                    "2P arrange changed"
+                );
+                true
+            }
+            _ => self.apply_play_option_control(control),
+        }
+    }
+
+    pub(super) fn set_session_mode(&mut self, session_mode: SessionMode) {
+        self.select.session_mode = session_mode;
+        self.boot.profile_config.play.session_mode = Some(session_mode);
+        self.boot.profile_config.play.auto_play = session_mode.primary_autoplay();
+    }
+
+    pub(super) fn apply_target_option_cycle(&mut self, cycle: TargetCycle) {
+        self.select.target_option = match cycle {
+            TargetCycle::Previous => self.select.target_option.cycle_prev(),
+            TargetCycle::Next => self.select.target_option.cycle(),
+        };
+        tracing::info!(target = self.select.target_option.as_str(), "target option changed");
+    }
+
+    pub(super) fn apply_detail_option_control(&mut self, control: &str) -> bool {
+        if self.select.select_keys.cycle_bga() == Some(control)
+            || self.select.select_keys.is_ui_key1(control)
+        {
+            self.cycle_bga_option();
+            true
+        } else if let Some(delta) = green_number_delta_control(control, &self.select.select_keys) {
+            self.adjust_select_green_number(delta)
+        } else if let Some(delta_ms) =
+            visual_offset_delta_control(control, &self.select.select_keys)
+        {
+            self.adjust_visual_offset_ms(delta_ms)
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn adjust_select_green_number(&mut self, delta: i32) -> bool {
+        let current = self.boot.profile_config.lane.target_green_number.max(1);
+        let next = adjusted_green_number(current, delta);
+        if current == next {
+            return false;
+        }
+        self.boot.profile_config.lane.target_green_number = next;
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.sync_realtime_profile_settings();
+        tracing::info!(target_green_number = next, "select green number changed");
+        true
+    }
+
+    pub(super) fn adjust_visual_offset_ms(&mut self, delta_ms: i32) -> bool {
+        let changed = crate::config::settings_registry::adjust_settings_value(
+            &mut self.boot.profile_config,
+            SettingsEntryId::VisualOffsetMs,
+            delta_ms,
+        );
+        if changed {
+            self.boot.profile_config.updated_at = now_unix_seconds();
+            self.sync_realtime_profile_settings();
+            tracing::info!(
+                visual_offset_ms = self.boot.profile_config.judge.visual_offset_us / 1_000,
+                "visual judge offset changed"
+            );
+        }
+        changed
+    }
+
+    pub(super) fn apply_select_action(&mut self, action: SelectAction, hold_control: Option<&str>) {
+        match action {
+            SelectAction::EnterOrPlay => self.enter_or_play_selected(),
+            SelectAction::ExitFolder => self.exit_folder(),
+            SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
+            SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
+            SelectAction::SameFolder => self.open_same_folder_for_selected(),
+            SelectAction::Move(select_move) => {
+                self.move_selection(select_move);
+                if matches!(
+                    select_move,
+                    SelectMove::Previous
+                        | SelectMove::Next
+                        | SelectMove::PagePrevious
+                        | SelectMove::PageNext
+                ) && let Some(control) = hold_control
+                {
+                    self.start_select_hold_move(select_move, control.to_string());
+                }
+            }
+        }
+    }
+
+    pub(super) fn apply_result_action(&mut self, action: ResultAction, course_result: bool) {
+        match (course_result, action) {
+            (false, ResultAction::Retry) => {
+                self.begin_result_exit(ResultExitAction::Retry(ResultRetryMode::SameArrange))
+            }
+            (true, ResultAction::Retry) => {
+                self.begin_result_exit(ResultExitAction::RetryCourseSameArrange)
+            }
+            (_, ResultAction::Leave) => self.begin_result_exit(ResultExitAction::Leave),
+        }
+    }
+}
