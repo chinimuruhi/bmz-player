@@ -9,10 +9,6 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use bmz_audio::ffmpeg_loader::FfmpegSampleLoader;
-use bmz_audio::loader::SampleLoader;
-use bmz_audio::loudness::analyze_preview_loudness;
-use bmz_audio::sample::DecodedSample;
 use bmz_chart::model::{BgaAssetRef, PlayableChart};
 use bmz_core::clear::{ClearType, GaugeType};
 use bmz_core::input::{InputKind, ScratchDirection};
@@ -52,11 +48,6 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::monitor::{MonitorHandle, VideoModeHandle};
 use winit::window::{Fullscreen, Icon, Window, WindowAttributes, WindowId};
 
-#[cfg(windows)]
-use windows_sys::Win32::System::Threading::{
-    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
-};
-
 use crate::audio::{AppAudioOutput, AudioOutputDiagnostics, AudioRuntime};
 use crate::bootstrap::{self, BootstrappedApp};
 use crate::chart_preview::SelectChartPreview;
@@ -88,10 +79,7 @@ use crate::config::profile_config::{
 use crate::config::save::{save_app_config, save_profile_config};
 use crate::config::settings_registry::SettingsEntryId;
 use crate::discord_presence::{DiscordPresence, DiscordPresenceConfig, DiscordPresenceHandle};
-use crate::generated_preview::{
-    fallback_preview_start_ms, generated_preview_cache_key, parse_generated_preview_cache_key,
-    render_generated_preview_for_chart,
-};
+use crate::generated_preview::{fallback_preview_start_ms, generated_preview_cache_key};
 use crate::i18n::{FluentArgs, Localizer};
 use crate::input::shared::SharedInputBackend;
 use crate::input::winit::{
@@ -239,8 +227,8 @@ use scene_input::{
     result_action as scene_result_action, select_action as scene_select_action,
 };
 use select_assets::{
-    PreparedSelectPreview, SelectAssetRuntime, SelectMetaImageCacheEntry, SelectMetaImageResult,
-    SelectMetaImageSlot, SelectPreviewCacheEntry, SelectPreviewFade, SelectPreviewResult,
+    PreparedSelectPreview, SelectAssetRuntime, SelectMetaImageSlot, SelectPreviewFade,
+    SelectPreviewSyncAction, select_preview_fade_factor,
 };
 use select_folder_summary::SelectFolderSummaryRuntime;
 use select_search::{SearchInputAction, SelectSearchRuntime};
@@ -255,9 +243,11 @@ use crate::input::winit::physical_key_to_device_input;
 #[cfg(test)]
 use crate::screens::result_model::ResultFastSlowJudgeCounts;
 #[cfg(test)]
+use bmz_audio::sample::DecodedSample;
+#[cfg(test)]
 use result_runtime::debug_boot_result_summary;
 #[cfg(test)]
-use select_assets::SelectPreviewLoadQueue;
+use select_assets::{SELECT_PREVIEW_FADE_DURATION, SelectPreviewLoadQueue, prepare_select_preview};
 #[cfg(test)]
 use skin_pipeline::MAX_PENDING_SKIN_UPLOADS;
 
@@ -1265,10 +1255,8 @@ const PLAY_START_DOUBLE_PRESS_WINDOW: Duration = Duration::from_millis(400);
 const RESULT_EXIT_AUDIO_FADE: Duration = Duration::from_millis(1_500);
 const AUDIO_DIAGNOSTICS_LOG_INTERVAL: Duration = Duration::from_secs(1);
 /// beatoraja PreviewMusicProcessor fades select BGM over 10 * 15ms steps.
-const SELECT_PREVIEW_FADE_DURATION: Duration = Duration::from_millis(150);
 /// beatoraja MusicSelector waits this long after a song-bar change before preview starts.
 const SELECT_PREVIEW_START_DELAY: Duration = Duration::from_millis(400);
-const SELECT_PREVIEW_CACHE_LIMIT: usize = 8;
 /// レーンカバー / LIFT を上下キーで動かす際のステップ幅。
 const LANE_COVER_STEP: f32 = 0.001;
 const LANE_COVER_REPEAT_STEP: f32 = 0.01;
@@ -1716,6 +1704,8 @@ impl WinitApp {
             system_audio.as_ref().map(|audio| system_sound_manager_from_boot(&boot, audio));
         let select_preview =
             system_audio.as_ref().map(|audio| SelectChartPreview::new(audio.engine()));
+        let select_assets =
+            SelectAssetRuntime::new(select_preview, boot.app_paths.library_db.clone());
         let audio_output_open_attempted = audio_runtime.is_some();
         let player_stats = player_stats_snapshot(
             &boot.score_db,
@@ -1877,7 +1867,7 @@ impl WinitApp {
             system_sound,
             result_skin_audio: None,
             select_exit_hold_started_at: None,
-            select_assets: SelectAssetRuntime::new(select_preview),
+            select_assets,
             play_stagefile_source: None,
             play_stagefile_loaded: false,
             play_stagefile_size: None,
@@ -2847,70 +2837,13 @@ impl WinitApp {
     }
 
     fn poll_select_asset_loads(&mut self) {
-        while let Ok(result) = self.select_assets.meta_image_rx.try_recv() {
-            let is_current =
-                self.select_meta_image_source(result.slot).as_deref() == Some(result.key.as_str());
-            match result.result {
-                Ok(image) => {
-                    if is_current {
-                        let loaded = self.upload_select_meta_image(result.slot, &image);
-                        self.set_select_meta_image_loaded(result.slot, loaded);
-                    }
-                    self.select_assets
-                        .meta_image_cache
-                        .insert(result.key, SelectMetaImageCacheEntry::Ready(image));
-                }
-                Err(error) => {
-                    if let Some(path) = result.path {
-                        tracing::debug!(path = %path.display(), %error, "skipping select meta image");
-                    } else {
-                        tracing::debug!(%error, "skipping select meta image");
-                    }
-                    if is_current {
-                        self.set_select_meta_image_loaded(result.slot, false);
-                    }
-                    self.select_assets
-                        .meta_image_cache
-                        .insert(result.key, SelectMetaImageCacheEntry::Missing);
-                }
-            }
+        let (image_uploads, previews) = self.select_assets.poll_loads();
+        for upload in image_uploads {
+            self.upload_select_meta_image(upload.slot, &upload.image);
         }
-
-        while let Ok(result) = self.select_assets.preview_rx.try_recv() {
-            let was_generated_preview = parse_generated_preview_cache_key(&result.key).is_some();
-            if was_generated_preview {
-                self.select_assets.generated_preview_loading = false;
-            }
-            let is_current =
-                self.select_assets.preview_source.as_deref() == Some(result.key.as_str());
-            match result.result {
-                Ok(prepared) => {
-                    if is_current {
-                        let loaded = self.play_select_preview_sample(prepared.clone(), 0.0);
-                        self.select_assets.preview_playing = loaded;
-                        if loaded {
-                            self.begin_select_preview_fade_in();
-                        }
-                    }
-                    self.insert_select_preview_cache(
-                        result.key,
-                        SelectPreviewCacheEntry::Ready(prepared),
-                    );
-                }
-                Err(error) => {
-                    if let Some(path) = result.path {
-                        tracing::debug!(path = %path.display(), %error, "skipping chart preview audio");
-                    } else {
-                        tracing::debug!(%error, "skipping chart preview audio");
-                    }
-                    if is_current {
-                        self.select_assets.preview_playing = false;
-                    }
-                    self.insert_select_preview_cache(result.key, SelectPreviewCacheEntry::Missing);
-                }
-            }
-            if let Some(next) = self.select_assets.preview_load_queue.finish() {
-                self.start_select_preview_load(next);
+        for prepared in previews {
+            if self.play_select_preview_sample(prepared, 0.0) {
+                self.apply_select_preview_audio_mix();
             }
         }
     }
@@ -2919,10 +2852,7 @@ impl WinitApp {
         match self.select_items.get(self.selected_index) {
             Some(SelectItem::Chart(row)) => row.chart.as_ref().is_some_and(|chart| {
                 let explicit_key = format!("{}|{}", chart.folder_path, chart.preview_file);
-                let explicit_missing = matches!(
-                    self.select_assets.preview_cache.get(&explicit_key),
-                    Some(SelectPreviewCacheEntry::Missing)
-                );
+                let explicit_missing = self.select_assets.explicit_preview_missing(&explicit_key);
                 should_use_generated_preview(&chart.preview_file, explicit_missing)
             }),
             _ => false,
@@ -2934,10 +2864,7 @@ impl WinitApp {
             Some(SelectItem::Chart(row)) => {
                 let chart = row.chart.as_ref()?;
                 let explicit_key = format!("{}|{}", chart.folder_path, chart.preview_file);
-                let explicit_missing = matches!(
-                    self.select_assets.preview_cache.get(&explicit_key),
-                    Some(SelectPreviewCacheEntry::Missing)
-                );
+                let explicit_missing = self.select_assets.explicit_preview_missing(&explicit_key);
                 if !should_use_generated_preview(&chart.preview_file, explicit_missing) {
                     return Some(explicit_key);
                 }
@@ -2960,83 +2887,19 @@ impl WinitApp {
             self.select_bar_started_at.elapsed(),
             SELECT_PREVIEW_START_DELAY,
         );
-        if cache_key.as_deref() == self.select_assets.preview_source.as_deref() {
-            if !self.select_assets.preview_playing
-                && let Some(key) = cache_key.as_deref()
-                && let Some(prepared) =
-                    self.select_assets.preview_cache.get(key).and_then(|entry| match entry {
-                        SelectPreviewCacheEntry::Ready(prepared) => Some(prepared.clone()),
-                        _ => None,
-                    })
-            {
-                self.select_assets.preview_playing = self.play_select_preview_sample(prepared, 0.0);
-                if self.select_assets.preview_playing {
-                    self.begin_select_preview_fade_in();
+        match self.select_assets.sync_preview(cache_key, Instant::now()) {
+            SelectPreviewSyncAction::None => {}
+            SelectPreviewSyncAction::Play(prepared) => {
+                if self.play_select_preview_sample(prepared, 0.0) {
+                    self.apply_select_preview_audio_mix();
                 }
             }
-            return;
+            SelectPreviewSyncAction::ApplyMix => self.apply_select_preview_audio_mix(),
         }
-        let had_preview = self.select_assets.preview_playing;
-        self.select_assets.preview_source = cache_key.clone();
-
-        let mut fading_out = false;
-        let loaded = match cache_key.as_deref() {
-            Some(_) if self.select_assets.preview.is_none() => false,
-            Some(key) => match self.select_assets.preview_cache.get(key) {
-                Some(SelectPreviewCacheEntry::Ready(_)) if had_preview => {
-                    self.begin_select_preview_fade_out();
-                    fading_out = true;
-                    false
-                }
-                Some(SelectPreviewCacheEntry::Ready(prepared)) => {
-                    let prepared = prepared.clone();
-                    let loaded = self.play_select_preview_sample(prepared, 0.0);
-                    if loaded {
-                        self.begin_select_preview_fade_in();
-                    }
-                    loaded
-                }
-                Some(SelectPreviewCacheEntry::Loading) | Some(SelectPreviewCacheEntry::Missing) => {
-                    if had_preview {
-                        self.begin_select_preview_fade_out();
-                        fading_out = true;
-                    } else if let Some(preview) = &self.select_assets.preview {
-                        preview.stop();
-                    }
-                    false
-                }
-                None => {
-                    if had_preview {
-                        self.begin_select_preview_fade_out();
-                        fading_out = true;
-                    } else if let Some(preview) = &self.select_assets.preview {
-                        preview.stop();
-                    }
-                    self.spawn_select_preview_load(key.to_string());
-                    false
-                }
-            },
-            None => {
-                if had_preview {
-                    self.begin_select_preview_fade_out();
-                    fading_out = true;
-                } else if let Some(preview) = &self.select_assets.preview {
-                    preview.stop();
-                }
-                false
-            }
-        };
-
-        self.select_assets.preview_playing = loaded || fading_out;
     }
 
     fn stop_select_preview(&mut self) {
-        if let Some(preview) = &self.select_assets.preview {
-            preview.stop();
-        }
-        self.select_assets.preview_source = None;
-        self.select_assets.preview_playing = false;
-        self.select_assets.preview_fade = SelectPreviewFade::Silent;
+        self.select_assets.stop_preview();
         self.set_select_bgm_volume_factor(1.0);
     }
 
@@ -3064,59 +2927,9 @@ impl WinitApp {
             }),
             _ => None,
         };
-        if cache_key.as_deref() == self.select_meta_image_source(slot).as_deref() {
-            if !self.select_meta_image_loaded(slot)
-                && let Some(key) = cache_key.as_deref()
-                && let Some(SelectMetaImageCacheEntry::Ready(image)) =
-                    self.select_assets.meta_image_cache.get(key)
-            {
-                let image = image.clone();
-                let loaded = self.upload_select_meta_image(slot, &image);
-                self.set_select_meta_image_loaded(slot, loaded);
-            }
-            return;
+        if let Some(image) = self.select_assets.sync_meta_image(slot, cache_key) {
+            self.upload_select_meta_image(slot, &image);
         }
-        self.set_select_meta_image_source(slot, cache_key.clone());
-        self.set_select_meta_image_loaded(slot, false);
-        self.set_select_meta_image_size(slot, None);
-        let Some(key) = cache_key else {
-            return;
-        };
-
-        match self.select_assets.meta_image_cache.get(&key) {
-            Some(SelectMetaImageCacheEntry::Ready(image)) => {
-                let image = image.clone();
-                let loaded = self.upload_select_meta_image(slot, &image);
-                self.set_select_meta_image_loaded(slot, loaded);
-            }
-            Some(SelectMetaImageCacheEntry::Loading) | Some(SelectMetaImageCacheEntry::Missing) => {
-            }
-            None => self.spawn_select_meta_image_load(slot, key),
-        }
-    }
-
-    fn select_meta_image_source(&self, slot: SelectMetaImageSlot) -> &Option<String> {
-        self.select_assets.meta_image_source(slot)
-    }
-
-    fn set_select_meta_image_source(&mut self, slot: SelectMetaImageSlot, source: Option<String>) {
-        self.select_assets.set_meta_image_source(slot, source);
-    }
-
-    fn select_meta_image_loaded(&self, slot: SelectMetaImageSlot) -> bool {
-        self.select_assets.meta_image_loaded(slot)
-    }
-
-    fn set_select_meta_image_loaded(&mut self, slot: SelectMetaImageSlot, loaded: bool) {
-        self.select_assets.set_meta_image_loaded(slot, loaded);
-    }
-
-    fn set_select_meta_image_size(
-        &mut self,
-        slot: SelectMetaImageSlot,
-        size: Option<SkinImageSize>,
-    ) {
-        self.select_assets.set_meta_image_size(slot, size);
     }
 
     fn upload_select_meta_image(
@@ -3131,10 +2944,10 @@ impl WinitApp {
         };
         if let Err(error) = self.renderer.upsert_image_asset(texture_id, image) {
             tracing::warn!(%error, "failed to upload select meta image");
-            self.set_select_meta_image_size(slot, None);
+            self.select_assets.finish_meta_image_upload(slot, None);
             false
         } else {
-            self.set_select_meta_image_size(
+            self.select_assets.finish_meta_image_upload(
                 slot,
                 Some(SkinImageSize { width: image.width as f32, height: image.height as f32 }),
             );
@@ -3142,22 +2955,8 @@ impl WinitApp {
         }
     }
 
-    fn spawn_select_meta_image_load(&mut self, slot: SelectMetaImageSlot, key: String) {
-        self.select_assets.meta_image_cache.insert(key.clone(), SelectMetaImageCacheEntry::Loading);
-        let tx = self.select_assets.meta_image_tx.clone();
-        thread::spawn(move || {
-            let (folder, file) = key.split_once('|').unwrap_or(("", ""));
-            let path = crate::chart_asset::resolve_chart_asset_path(folder, file);
-            let result = match path.as_ref() {
-                Some(path) => load_static_rgba_image(path).map_err(|error| error.to_string()),
-                None => Err("select meta image file not found".to_string()),
-            };
-            let _ = tx.send(SelectMetaImageResult { slot, key, path, result });
-        });
-    }
-
     fn select_preview_volume(&self) -> f32 {
-        self.select_preview_volume_for_gain(self.select_assets.preview_normalization_gain)
+        self.select_preview_volume_for_gain(self.select_assets.preview_normalization_gain())
     }
 
     fn select_preview_volume_for_gain(&self, analyzed_gain: f32) -> f32 {
@@ -3175,58 +2974,22 @@ impl WinitApp {
     ) -> bool {
         let volume = self.select_preview_volume_for_gain(prepared.normalization_gain)
             * volume_factor.clamp(0.0, 1.0);
-        let loaded = self
-            .select_assets
-            .preview
-            .as_ref()
-            .is_some_and(|preview| preview.play_sample(prepared.sample, volume));
+        let loaded = self.select_assets.play_preview(prepared, volume, Instant::now());
         if loaded {
-            self.select_assets.preview_normalization_gain = prepared.normalization_gain;
             self.start_audio_output_stream();
         }
         loaded
     }
 
-    fn begin_select_preview_fade_in(&mut self) {
-        self.select_assets.preview_fade =
-            SelectPreviewFade::FadingIn { started_at: Instant::now() };
-        self.apply_select_preview_audio_mix();
-    }
-
-    fn begin_select_preview_fade_out(&mut self) {
-        self.select_assets.preview_fade =
-            SelectPreviewFade::FadingOut { started_at: Instant::now() };
-        self.apply_select_preview_audio_mix();
-    }
-
     fn update_select_preview_fade(&mut self) {
         let now = Instant::now();
-        match self.select_assets.preview_fade {
-            SelectPreviewFade::FadingIn { started_at }
-                if now.duration_since(started_at) >= SELECT_PREVIEW_FADE_DURATION =>
-            {
-                self.select_assets.preview_fade = SelectPreviewFade::Playing;
-            }
-            SelectPreviewFade::FadingOut { started_at }
-                if now.duration_since(started_at) >= SELECT_PREVIEW_FADE_DURATION =>
-            {
-                if let Some(preview) = &self.select_assets.preview {
-                    preview.stop();
-                }
-                self.select_assets.preview_playing = false;
-                self.select_assets.preview_fade = SelectPreviewFade::Silent;
-            }
-            _ => {}
-        }
+        self.select_assets.advance_preview_fade(now);
         self.apply_select_preview_audio_mix();
     }
 
     fn apply_select_preview_audio_mix(&self) {
-        let preview_factor =
-            select_preview_fade_factor(self.select_assets.preview_fade, Instant::now());
-        if let Some(preview) = &self.select_assets.preview {
-            preview.set_volume(self.select_preview_volume() * preview_factor);
-        }
+        let preview_factor = self.select_assets.preview_fade_factor(Instant::now());
+        self.select_assets.set_preview_volume(self.select_preview_volume() * preview_factor);
         self.set_select_bgm_volume_factor(1.0 - preview_factor);
     }
 
@@ -3239,86 +3002,6 @@ impl WinitApp {
             crate::system_sound::SoundType::Select,
         ) * factor.clamp(0.0, 1.0);
         manager.set_volume(crate::system_sound::SoundType::Select, volume);
-    }
-
-    fn insert_select_preview_cache(&mut self, key: String, entry: SelectPreviewCacheEntry) {
-        self.select_assets.preview_cache.insert(key, entry);
-        while self.select_assets.preview_cache.len() > SELECT_PREVIEW_CACHE_LIMIT {
-            let current = self.select_assets.preview_source.as_deref();
-            let removable_key = self
-                .select_assets
-                .preview_cache
-                .iter()
-                .find(|(candidate, entry)| {
-                    Some(candidate.as_str()) != current
-                        && !matches!(entry, SelectPreviewCacheEntry::Loading)
-                })
-                .map(|(candidate, _)| candidate.clone());
-            let Some(removable_key) = removable_key else {
-                break;
-            };
-            self.select_assets.preview_cache.remove(&removable_key);
-        }
-    }
-
-    fn spawn_select_preview_load(&mut self, key: String) {
-        self.insert_select_preview_cache(key.clone(), SelectPreviewCacheEntry::Loading);
-        let Some(key) = self.select_assets.preview_load_queue.request(key) else {
-            return;
-        };
-        self.start_select_preview_load(key);
-    }
-
-    fn start_select_preview_load(&mut self, key: String) {
-        self.select_assets.generated_preview_loading = false;
-        let tx = self.select_assets.preview_tx.clone();
-        if let Some(generated) = parse_generated_preview_cache_key(&key) {
-            self.select_assets.generated_preview_loading = true;
-            let library_db_path = self.boot.app_paths.library_db.clone();
-            let sample_rate = self
-                .select_assets
-                .preview
-                .as_ref()
-                .map(SelectChartPreview::output_sample_rate)
-                .unwrap_or(48_000);
-            let result_key = key.clone();
-            if let Err(error) = thread::Builder::new()
-                .name(format!("select-preview-{}", generated.chart_id))
-                .spawn(move || {
-                    lower_current_thread_priority();
-                    let result = render_generated_preview_for_chart(
-                        &library_db_path,
-                        generated.chart_id,
-                        generated.start_ms,
-                        sample_rate,
-                    )
-                    .map(prepare_select_preview)
-                    .map_err(|error| format!("{error:#}"));
-                    let _ = tx.send(SelectPreviewResult { key: result_key, path: None, result });
-                })
-            {
-                tracing::warn!(%error, "failed to spawn generated chart preview loader");
-                self.select_assets.generated_preview_loading = false;
-                self.insert_select_preview_cache(key, SelectPreviewCacheEntry::Missing);
-                if let Some(next) = self.select_assets.preview_load_queue.finish() {
-                    self.start_select_preview_load(next);
-                }
-            }
-            return;
-        }
-
-        thread::spawn(move || {
-            let (folder, file) = key.split_once('|').unwrap_or(("", ""));
-            let path = crate::chart_asset::resolve_preview_file(Path::new(folder), file);
-            let result = match path.as_ref() {
-                Some(path) => {
-                    let mut loader = FfmpegSampleLoader::default();
-                    loader.load(path).map(prepare_select_preview).map_err(|error| error.to_string())
-                }
-                None => Err("chart preview audio file not found".to_string()),
-            };
-            let _ = tx.send(SelectPreviewResult { key, path, result });
-        });
     }
 
     fn should_exit_via_select_hold(&mut self) -> bool {
@@ -7951,7 +7634,7 @@ impl WinitApp {
             command_engine_lock_misses,
             callback_over_budget,
             clipped_samples,
-            self.select_assets.generated_preview_loading,
+            self.select_assets.generated_preview_loading(),
         );
 
         if stream_errors == 0
@@ -7986,11 +7669,11 @@ impl WinitApp {
             command_engine_lock_misses,
             command_queue_max_depth = snapshot.command_queue_max_depth,
             suspected_cause = suspected_cause.as_str(),
-            generated_preview_loading = self.select_assets.generated_preview_loading,
-            select_preview_playing = self.select_assets.preview_playing,
-            select_preview_fade = select_preview_fade_name(self.select_assets.preview_fade),
+            generated_preview_loading = self.select_assets.generated_preview_loading(),
+            select_preview_playing = self.select_assets.preview_playing(),
+            select_preview_fade = select_preview_fade_name(self.select_assets.preview_fade()),
             select_preview_factor =
-                select_preview_fade_factor(self.select_assets.preview_fade, now),
+                select_preview_fade_factor(self.select_assets.preview_fade(), now),
             clipped_samples,
             peak_abs = snapshot.peak_abs,
             max_callback_us = snapshot.max_callback_ns / 1_000,
@@ -8052,8 +7735,8 @@ impl WinitApp {
         if self.system_sound.is_none() {
             self.system_sound = Some(system_sound_manager_from_boot(&self.boot, &system_audio));
         }
-        if self.select_assets.preview.is_none() {
-            self.select_assets.preview = Some(SelectChartPreview::new(system_audio.engine()));
+        if !self.select_assets.has_preview() {
+            self.select_assets.install_preview(SelectChartPreview::new(system_audio.engine()));
         }
         self.system_audio = Some(system_audio);
     }
@@ -12905,7 +12588,7 @@ impl WinitApp {
         if let Some(manager) = &self.system_sound {
             let mix = self.boot.profile_config.audio_mix.clone();
             let preview_factor =
-                select_preview_fade_factor(self.select_assets.preview_fade, Instant::now());
+                select_preview_fade_factor(self.select_assets.preview_fade(), Instant::now());
             manager.refresh_volumes(|sound_type| {
                 let volume = system_sound_volume_from_mix(&mix, sound_type);
                 if sound_type == crate::system_sound::SoundType::Select {
@@ -13947,7 +13630,7 @@ impl WinitApp {
         }
         match scene_kind {
             AppSceneKind::Select
-                if should_play_select_bgm_on_enter(self.select_assets.preview_playing) =>
+                if should_play_select_bgm_on_enter(self.select_assets.preview_playing()) =>
             {
                 self.play_system_sound(SoundType::Select);
             }
@@ -14067,20 +13750,6 @@ fn system_bgm_stop_targets_on_scene_enter(
     }
 }
 
-fn select_preview_fade_factor(fade: SelectPreviewFade, now: Instant) -> f32 {
-    match fade {
-        SelectPreviewFade::Silent => 0.0,
-        SelectPreviewFade::Playing => 1.0,
-        SelectPreviewFade::FadingIn { started_at } => {
-            fade_progress(started_at, now, SELECT_PREVIEW_FADE_DURATION)
-        }
-        SelectPreviewFade::FadingOut { started_at } => {
-            1.0 - fade_progress(started_at, now, SELECT_PREVIEW_FADE_DURATION)
-        }
-    }
-    .clamp(0.0, 1.0)
-}
-
 fn select_preview_fade_name(fade: SelectPreviewFade) -> &'static str {
     match fade {
         SelectPreviewFade::Silent => "silent",
@@ -14152,45 +13821,12 @@ fn classify_audio_output_issue(
     }
 }
 
-fn prepare_select_preview(sample: DecodedSample) -> PreparedSelectPreview {
-    let normalization_gain = analyze_preview_loudness(&sample)
-        .map(|analysis| {
-            tracing::debug!(
-                loudness_lufs = analysis.loudness_lufs,
-                normalization_gain = analysis.normalization_gain,
-                "analyzed select preview loudness"
-            );
-            analysis.normalization_gain
-        })
-        .unwrap_or(1.0);
-    PreparedSelectPreview { sample, normalization_gain }
-}
-
 fn select_preview_normalization_gain(enabled: bool, analyzed_gain: f32) -> f32 {
     if enabled && analyzed_gain.is_finite() { analyzed_gain.clamp(0.0, 1.0) } else { 1.0 }
 }
 
 fn should_use_generated_preview(preview_file: &str, explicit_preview_missing: bool) -> bool {
     preview_file.is_empty() || explicit_preview_missing
-}
-
-#[cfg(windows)]
-fn lower_current_thread_priority() {
-    // 生成中の FFmpeg decode が短い ASIO callback の実行期限を奪わないようにする。
-    let updated = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL) };
-    if updated == 0 {
-        tracing::debug!("failed to lower generated preview worker priority");
-    }
-}
-
-#[cfg(not(windows))]
-fn lower_current_thread_priority() {}
-
-fn fade_progress(started_at: Instant, now: Instant, duration: Duration) -> f32 {
-    if duration == Duration::ZERO {
-        return 1.0;
-    }
-    now.saturating_duration_since(started_at).as_secs_f32() / duration.as_secs_f32()
 }
 
 fn result_exit_audio_gain(elapsed: Duration, fadeout: Duration) -> f32 {
