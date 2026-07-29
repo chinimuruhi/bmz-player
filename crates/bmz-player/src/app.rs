@@ -199,6 +199,7 @@ use bmz_render::skin::{
 mod bga_runtime;
 mod frame_runtime;
 mod input_runtime;
+mod play_control;
 mod result_runtime;
 mod scene_input;
 mod select_assets;
@@ -217,6 +218,10 @@ use frame_runtime::{
     SkinVideoFrameProfile,
 };
 use input_runtime::{AppInputRuntime, ControlInputEvent};
+use play_control::{
+    GreenNumberChange, HispeedChange, LaneCoverChange, PlayAnalogOptionMode, PlayLaneAction,
+    PlayOptionControl, keyboard_lane_action, lane_action_from_option,
+};
 use result_runtime::{
     course_result_skin_snapshot, course_result_summary_for_skin, debug_boot_finished_play_session,
     mark_course_replay_slot_saved, result_main_bpm, result_max_bpm, result_min_bpm,
@@ -797,7 +802,7 @@ struct PendingPlayStart {
     chart_id: i64,
     options: PlayStartOptions,
     lane: PendingPlayLaneState,
-    lane_actions: Vec<PendingPlayLaneAction>,
+    lane_actions: Vec<PlayLaneAction>,
     visual_input: PendingPlayVisualInput,
 }
 
@@ -934,15 +939,6 @@ impl PendingPlayLaneState {
             .round()
             .clamp(0.0, i32::MAX as f32) as i32;
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum PendingPlayLaneAction {
-    ToggleHispeedMode,
-    Hispeed(HispeedChange),
-    LaneCoverDelta(f32),
-    GreenNumberDelta(i32),
-    ToggleLaneCoverVisibility,
 }
 
 #[derive(Debug, Clone)]
@@ -4116,88 +4112,36 @@ impl WinitApp {
         {
             self.route_play_device_input(device_event);
         }
-        let play_option_control = if event.state == ElementState::Pressed && !event.repeat {
-            play_physical_control.as_ref().and_then(|control| {
-                play_option_control_for_input(
-                    W_KEYBOARD_DEVICE_ID,
-                    control,
-                    self.play_e1_held,
-                    self.play_e2_held,
-                    self.play_option_input.as_ref(),
-                    &self.boot.profile_config.input,
-                )
-            })
+        let play_option_lane_action = if event.state == ElementState::Pressed && !event.repeat {
+            play_physical_control
+                .as_ref()
+                .and_then(|control| {
+                    play_option_control_for_input(
+                        W_KEYBOARD_DEVICE_ID,
+                        control,
+                        self.play_e1_held,
+                        self.play_e2_held,
+                        self.play_option_input.as_ref(),
+                        &self.boot.profile_config.input,
+                    )
+                })
+                .and_then(|action| lane_action_from_option(action, false))
         } else {
             None
         };
-        if let Some(active_play) = &mut self.active_play {
-            if active_play.running.session.lane_cover_changing
-                && let Some(action) = play_option_control
-            {
-                let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-                    c.definition.constraints.speed
-                        == bmz_core::course::CourseSpeedConstraint::NoSpeed
-                });
-                let hispeed_step = hispeed_step_for_profile(
-                    &self.boot.profile_config,
-                    active_play.running.session.hispeed_mode,
-                );
-                if apply_play_option_control_to_session(
-                    &mut active_play.running.session,
-                    action,
-                    speed_locked,
-                    hispeed_step,
-                ) {
-                    tracing::info!(
-                        hispeed = active_play.running.session.hispeed,
-                        hispeed_mode = ?active_play.running.session.hispeed_mode,
-                        target_green_number = active_play.running.session.target_green_number,
-                        lane_cover = active_play.running.session.lane_cover,
-                        "adjusted play option"
-                    );
-                } else {
-                    tracing::debug!("play option change ignored: course NoSpeed constraint");
-                }
-                update_pre_ready_play_snapshot_options_for_session(
-                    self.play_ready_sound_started_at,
-                    &mut self.last_play_snapshot,
-                    &active_play.running.session,
-                    &active_play.running.applied_arrange,
-                );
+        let fixed_play_lane_action = keyboard_lane_action(&control_event);
+        if self.active_play.is_some() {
+            let lane_cover_changing = self
+                .active_play
+                .as_ref()
+                .is_some_and(|play| play.running.session.lane_cover_changing);
+            if lane_cover_changing && let Some(action) = play_option_lane_action {
+                self.apply_play_lane_action(action);
                 // E1+lane keys should still reach gameplay input so notes are judged
                 // and key beams render while changing play options.
             }
-            if let Some(change) = hispeed_action(event.physical_key, event.state, event.repeat) {
-                // Beatoraja: NoSpeed constraint locks the hispeed during course play.
-                let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-                    c.definition.constraints.speed
-                        == bmz_core::course::CourseSpeedConstraint::NoSpeed
-                });
-                if speed_locked {
-                    tracing::debug!("hispeed change ignored: course NoSpeed constraint");
-                    return;
-                }
-                let hispeed_step = hispeed_step_for_profile(
-                    &self.boot.profile_config,
-                    active_play.running.session.hispeed_mode,
-                );
-                apply_hispeed_change_to_session(
-                    &mut active_play.running.session,
-                    change,
-                    hispeed_step,
-                );
-                tracing::info!(
-                    hispeed = active_play.running.session.hispeed,
-                    hispeed_mode = ?active_play.running.session.hispeed_mode,
-                    target_green_number = active_play.running.session.target_green_number,
-                    "adjusted hispeed"
-                );
-                update_pre_ready_play_snapshot_options_for_session(
-                    self.play_ready_sound_started_at,
-                    &mut self.last_play_snapshot,
-                    &active_play.running.session,
-                    &active_play.running.applied_arrange,
-                );
+            if let Some(action) = fixed_play_lane_action {
+                self.apply_play_lane_action(action);
                 return;
             }
             if event.physical_key == PhysicalKey::Code(KeyCode::Escape)
@@ -4207,46 +4151,13 @@ impl WinitApp {
                 self.stop_active_play_like_escape("escape pressed during play");
                 return;
             }
-            if let Some(delta) = lane_cover_step(event.physical_key, event.state, event.repeat) {
-                let session = &mut active_play.running.session;
-                let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-                    c.definition.constraints.speed
-                        == bmz_core::course::CourseSpeedConstraint::NoSpeed
-                });
-                apply_lane_cover_step_to_session(session, delta, speed_locked);
-                tracing::info!(
-                    lane_cover = session.lane_cover,
-                    lift = session.lift,
-                    hispeed = session.hispeed,
-                    "adjusted lane cover"
-                );
-                self.update_pre_ready_play_snapshot_options();
-                return;
-            }
             // Start / E1 の2回連続押し → レーンカバー表示切替
-            if event.state == ElementState::Pressed
-                && !event.repeat
-                && let Some(control) = physical_key_name(event.physical_key)
-                && self.select_keys.is_start(&control)
+            if control_event.pressed
+                && !control_event.repeat
+                && let Some(control) = play_control
+                && self.select_keys.is_start(control)
             {
-                let now = Instant::now();
-                if register_play_start_double_press(&mut self.last_play_start_press_at, now) {
-                    let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-                        c.definition.constraints.speed
-                            == bmz_core::course::CourseSpeedConstraint::NoSpeed
-                    });
-                    toggle_lane_cover_visibility(&mut active_play.running.session, speed_locked);
-                    tracing::info!(
-                        lane_cover_visible = active_play.running.session.lane_cover_visible,
-                        "toggled lane cover visibility",
-                    );
-                    update_pre_ready_play_snapshot_options_for_session(
-                        self.play_ready_sound_started_at,
-                        &mut self.last_play_snapshot,
-                        &active_play.running.session,
-                        &active_play.running.applied_arrange,
-                    );
-                }
+                self.handle_play_start_double_press();
                 // Start キーはゲームプレイ入力としても通すのでフォールスルー
             }
             return;
@@ -4269,16 +4180,12 @@ impl WinitApp {
         }
 
         if self.pending_play_start.is_some() {
-            if let Some(change) = hispeed_action(event.physical_key, event.state, event.repeat) {
-                self.apply_pending_play_hispeed_change(change);
+            if let Some(action) = fixed_play_lane_action {
+                self.apply_play_lane_action(action);
                 return;
             }
-            if let Some(delta) = lane_cover_step(event.physical_key, event.state, event.repeat) {
-                self.apply_pending_play_lane_action(PendingPlayLaneAction::LaneCoverDelta(delta));
-                return;
-            }
-            if let Some(action) = play_option_control {
-                self.apply_pending_play_option_control(action, false);
+            if let Some(action) = play_option_lane_action {
+                self.apply_play_lane_action(action);
                 return;
             }
             if event.state == ElementState::Pressed
@@ -4785,57 +4692,17 @@ impl WinitApp {
             return true;
         }
 
-        let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-            c.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
-        });
         let change = if steps > 0 { LaneCoverChange::Down } else { LaneCoverChange::Up };
-        if let Some(active_play) = &mut self.active_play {
-            let session = &mut active_play.running.session;
-            match mode {
-                PlayAnalogOptionMode::LaneCover => {
-                    let delta = lane_cover_change_step(change) * steps.abs() as f32;
-                    apply_lane_cover_step_to_session(session, delta, speed_locked);
-                    tracing::info!(
-                        lane_cover = session.lane_cover,
-                        lift = session.lift,
-                        hispeed = session.hispeed,
-                        "adjusted lane cover from analog scratch"
-                    );
-                }
-                PlayAnalogOptionMode::GreenNumber => {
-                    let delta =
-                        green_number_change_step(green_number_change_from_analog_steps(steps))
-                            * steps.abs();
-                    if apply_green_number_step_to_session(session, delta, speed_locked) {
-                        tracing::info!(
-                            hispeed = session.hispeed,
-                            target_green_number = session.target_green_number,
-                            "adjusted green number from analog scratch"
-                        );
-                    } else {
-                        tracing::debug!("green number change ignored: course NoSpeed constraint");
-                    }
-                }
+        let action = match mode {
+            PlayAnalogOptionMode::LaneCover => {
+                PlayLaneAction::LaneCoverDelta(lane_cover_change_step(change) * steps.abs() as f32)
             }
-        } else {
-            match mode {
-                PlayAnalogOptionMode::LaneCover => {
-                    let delta = lane_cover_change_step(change) * steps.abs() as f32;
-                    self.apply_pending_play_lane_action(PendingPlayLaneAction::LaneCoverDelta(
-                        delta,
-                    ));
-                }
-                PlayAnalogOptionMode::GreenNumber => {
-                    let delta =
-                        green_number_change_step(green_number_change_from_analog_steps(steps))
-                            * steps.abs();
-                    self.apply_pending_play_lane_action(PendingPlayLaneAction::GreenNumberDelta(
-                        delta,
-                    ));
-                }
-            }
-        }
-        self.update_pre_ready_play_snapshot_options();
+            PlayAnalogOptionMode::GreenNumber => PlayLaneAction::GreenNumberDelta(
+                green_number_change_step(green_number_change_from_analog_steps(steps))
+                    * steps.abs(),
+            ),
+        };
+        self.apply_play_lane_action(action);
         true
     }
 
@@ -4964,43 +4831,18 @@ impl WinitApp {
             )
         });
         let play_option_control = play_option_control.flatten();
+        let play_option_lane_action = play_option_control
+            .and_then(|action| lane_action_from_option(action, button.starts_with("Axis")));
         if pressed {
-            let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-                c.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
-            });
-            if let Some(active_play) = &mut self.active_play
-                && active_play.running.session.lane_cover_changing
-                && let Some(action) = play_option_control
-            {
-                if button.starts_with("Axis")
-                    && matches!(
-                        action,
-                        PlayOptionControl::LaneCover(_) | PlayOptionControl::GreenNumber(_)
-                    )
-                {
+            let lane_cover_changing = self
+                .active_play
+                .as_ref()
+                .is_some_and(|play| play.running.session.lane_cover_changing);
+            if lane_cover_changing && play_option_control.is_some() {
+                let Some(action) = play_option_lane_action else {
                     return;
-                }
-                let hispeed_step = hispeed_step_for_profile(
-                    &self.boot.profile_config,
-                    active_play.running.session.hispeed_mode,
-                );
-                if apply_play_option_control_to_session(
-                    &mut active_play.running.session,
-                    action,
-                    speed_locked,
-                    hispeed_step,
-                ) {
-                    tracing::info!(
-                        hispeed = active_play.running.session.hispeed,
-                        hispeed_mode = ?active_play.running.session.hispeed_mode,
-                        target_green_number = active_play.running.session.target_green_number,
-                        lane_cover = active_play.running.session.lane_cover,
-                        "adjusted play option"
-                    );
-                } else {
-                    tracing::debug!("play option change ignored: course NoSpeed constraint");
-                }
-                self.update_pre_ready_play_snapshot_options();
+                };
+                self.apply_play_lane_action(action);
                 // Gamepad play input was already queued in poll_gamepad_events.
             }
         }
@@ -5040,8 +4882,10 @@ impl WinitApp {
         }
 
         if self.pending_play_start.is_some() {
-            if let Some(action) = play_option_control {
-                self.apply_pending_play_option_control(action, button.starts_with("Axis"));
+            if play_option_control.is_some() {
+                if let Some(action) = play_option_lane_action {
+                    self.apply_play_lane_action(action);
+                }
                 return;
             }
             if play_e1_control {
@@ -5208,33 +5052,13 @@ impl WinitApp {
     }
 
     fn route_mouse_wheel(&mut self, delta: MouseScrollDelta) {
-        if let Some(change) = lane_cover_wheel_change(delta) {
-            if let Some(active_play) = &mut self.active_play {
-                let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-                    c.definition.constraints.speed
-                        == bmz_core::course::CourseSpeedConstraint::NoSpeed
-                });
-                let session = &mut active_play.running.session;
-                apply_lane_cover_step_to_session(
-                    session,
-                    lane_cover_change_step(change),
-                    speed_locked,
-                );
-                tracing::info!(
-                    lane_cover = session.lane_cover,
-                    lift = session.lift,
-                    hispeed = session.hispeed,
-                    "adjusted lane cover from mouse wheel"
-                );
-                self.update_pre_ready_play_snapshot_options();
-                return;
-            }
-            if self.pending_play_start.is_some() {
-                self.apply_pending_play_lane_action(PendingPlayLaneAction::LaneCoverDelta(
-                    lane_cover_change_step(change),
-                ));
-                return;
-            }
+        if let Some(change) = lane_cover_wheel_change(delta)
+            && (self.active_play.is_some() || self.pending_play_start.is_some())
+        {
+            self.apply_play_lane_action(PlayLaneAction::LaneCoverDelta(lane_cover_change_step(
+                change,
+            )));
+            return;
         }
         if !matches!(self.view_state(), AppViewState::Select) {
             return;
@@ -12356,39 +12180,48 @@ impl WinitApp {
         );
     }
 
-    fn update_pre_ready_play_snapshot_options(&mut self) {
-        let Some(active_play) = &self.active_play else {
-            return;
+    fn apply_play_lane_action(&mut self, action: PlayLaneAction) -> bool {
+        if self.active_play.is_none() {
+            return self.apply_pending_play_lane_action(action);
+        }
+        let speed_locked = self.active_course.as_ref().is_some_and(|course| {
+            course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
+        });
+        let Some(active_play) = &mut self.active_play else {
+            return false;
         };
+        let hispeed_step = hispeed_step_for_profile(
+            &self.boot.profile_config,
+            active_play.running.session.hispeed_mode,
+        );
+        if !apply_play_lane_action_to_session(
+            &mut active_play.running.session,
+            action,
+            speed_locked,
+            hispeed_step,
+        ) {
+            tracing::debug!("play lane change ignored: course NoSpeed constraint");
+            return false;
+        }
+        tracing::info!(
+            hispeed = active_play.running.session.hispeed,
+            hispeed_mode = ?active_play.running.session.hispeed_mode,
+            target_green_number = active_play.running.session.target_green_number,
+            lane_cover = active_play.running.session.lane_cover,
+            lift = active_play.running.session.lift,
+            lane_cover_visible = active_play.running.session.lane_cover_visible,
+            "adjusted play lane settings"
+        );
         update_pre_ready_play_snapshot_options_for_session(
             self.play_ready_sound_started_at,
             &mut self.last_play_snapshot,
             &active_play.running.session,
             &active_play.running.applied_arrange,
         );
+        true
     }
 
-    fn apply_pending_play_hispeed_change(&mut self, change: HispeedChange) {
-        self.apply_pending_play_lane_action(PendingPlayLaneAction::Hispeed(change));
-    }
-
-    fn apply_pending_play_option_control(&mut self, action: PlayOptionControl, is_axis: bool) {
-        let pending_action = match action {
-            PlayOptionControl::ToggleHispeedMode => PendingPlayLaneAction::ToggleHispeedMode,
-            PlayOptionControl::Hispeed(change) => PendingPlayLaneAction::Hispeed(change),
-            PlayOptionControl::LaneCover(_) if is_axis => return,
-            PlayOptionControl::LaneCover(change) => {
-                PendingPlayLaneAction::LaneCoverDelta(lane_cover_change_step(change))
-            }
-            PlayOptionControl::GreenNumber(_) if is_axis => return,
-            PlayOptionControl::GreenNumber(change) => {
-                PendingPlayLaneAction::GreenNumberDelta(green_number_change_step(change))
-            }
-        };
-        self.apply_pending_play_lane_action(pending_action);
-    }
-
-    fn apply_pending_play_lane_action(&mut self, action: PendingPlayLaneAction) -> bool {
+    fn apply_pending_play_lane_action(&mut self, action: PlayLaneAction) -> bool {
         let speed_locked = self.active_course.as_ref().is_some_and(|course| {
             course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
         });
@@ -12568,28 +12401,7 @@ impl WinitApp {
         if !register_play_start_double_press(&mut self.last_play_start_press_at, now) {
             return false;
         }
-        if self.active_play.is_none() {
-            return self
-                .apply_pending_play_lane_action(PendingPlayLaneAction::ToggleLaneCoverVisibility);
-        }
-        let speed_locked = self.active_course.as_ref().is_some_and(|c| {
-            c.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
-        });
-        let Some(active_play) = &mut self.active_play else {
-            return false;
-        };
-        toggle_lane_cover_visibility(&mut active_play.running.session, speed_locked);
-        tracing::info!(
-            lane_cover_visible = active_play.running.session.lane_cover_visible,
-            "toggled lane cover visibility",
-        );
-        update_pre_ready_play_snapshot_options_for_session(
-            self.play_ready_sound_started_at,
-            &mut self.last_play_snapshot,
-            &active_play.running.session,
-            &active_play.running.applied_arrange,
-        );
-        true
+        self.apply_play_lane_action(PlayLaneAction::ToggleLaneCoverVisibility)
     }
 
     fn update_play_exit_control_state(
@@ -19503,50 +19315,14 @@ fn select_move_scroll_direction(select_move: SelectMove) -> i32 {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HispeedChange {
-    Down,
-    Up,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlayOptionControl {
-    ToggleHispeedMode,
-    Hispeed(HispeedChange),
-    LaneCover(LaneCoverChange),
-    GreenNumber(GreenNumberChange),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlayAnalogOptionMode {
-    LaneCover,
-    GreenNumber,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LaneCoverChange {
-    Up,
-    Down,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GreenNumberChange {
-    Up,
-    Down,
-}
-
+#[cfg(test)]
 fn hispeed_action(
     physical_key: PhysicalKey,
     state: ElementState,
-    _repeat: bool,
+    repeat: bool,
 ) -> Option<HispeedChange> {
-    if state != ElementState::Pressed {
-        return None;
-    }
-
-    match physical_key {
-        PhysicalKey::Code(KeyCode::ArrowLeft) => Some(HispeedChange::Down),
-        PhysicalKey::Code(KeyCode::ArrowRight) => Some(HispeedChange::Up),
+    match keyboard_lane_action(&ControlInputEvent::keyboard_parts(physical_key, state, repeat)) {
+        Some(PlayLaneAction::Hispeed(change)) => Some(change),
         _ => None,
     }
 }
@@ -19635,15 +19411,10 @@ fn green_number_delta_control(control: &str, bindings: &SelectKeyBindings) -> Op
     }
 }
 
+#[cfg(test)]
 fn lane_cover_step(physical_key: PhysicalKey, state: ElementState, repeat: bool) -> Option<f32> {
-    if state != ElementState::Pressed {
-        return None;
-    }
-    let step = if repeat { LANE_COVER_REPEAT_STEP } else { LANE_COVER_STEP };
-    match physical_key {
-        // 上キー: カバー位置を上げる(下方向への余白を縮める = 値を増やす)
-        PhysicalKey::Code(KeyCode::ArrowUp) => Some(step),
-        PhysicalKey::Code(KeyCode::ArrowDown) => Some(-step),
+    match keyboard_lane_action(&ControlInputEvent::keyboard_parts(physical_key, state, repeat)) {
+        Some(PlayLaneAction::LaneCoverDelta(delta)) => Some(delta),
         _ => None,
     }
 }
@@ -19689,13 +19460,13 @@ fn adjusted_hispeed(current: f32, change: HispeedChange, step: f32) -> f32 {
 
 fn apply_pending_play_lane_action_to_state(
     lane: &mut PendingPlayLaneState,
-    action: PendingPlayLaneAction,
+    action: PlayLaneAction,
     profile: &ProfileConfig,
     now_bpm: f32,
     speed_locked: bool,
 ) -> bool {
     match action {
-        PendingPlayLaneAction::ToggleHispeedMode => match lane.hispeed_mode {
+        PlayLaneAction::ToggleHispeedMode => match lane.hispeed_mode {
             HispeedMode::Normal => {
                 lane.target_green_number = lane.current_green_number(now_bpm);
                 lane.hispeed_mode = HispeedMode::Floating;
@@ -19705,14 +19476,14 @@ fn apply_pending_play_lane_action_to_state(
                 lane.hispeed_mode = HispeedMode::Normal;
             }
         },
-        PendingPlayLaneAction::Hispeed(change) => {
+        PlayLaneAction::Hispeed(change) => {
             if speed_locked {
                 return false;
             }
             let step = hispeed_step_for_profile(profile, lane.hispeed_mode);
             lane.hispeed = adjusted_hispeed(lane.hispeed, change, step);
         }
-        PendingPlayLaneAction::LaneCoverDelta(delta) => {
+        PlayLaneAction::LaneCoverDelta(delta) => {
             if lane.lane_cover_visible {
                 lane.lane_cover = (lane.lane_cover - delta)
                     .clamp(0.0, crate::config::play::lane_cover_max_for_lift(lane.lift));
@@ -19724,7 +19495,7 @@ fn apply_pending_play_lane_action_to_state(
                 }
             }
         }
-        PendingPlayLaneAction::GreenNumberDelta(delta) => {
+        PlayLaneAction::GreenNumberDelta(delta) => {
             if speed_locked {
                 return false;
             }
@@ -19736,7 +19507,7 @@ fn apply_pending_play_lane_action_to_state(
             lane.hispeed_mode = HispeedMode::Floating;
             lane.refresh_floating_hispeed(now_bpm, speed_locked);
         }
-        PendingPlayLaneAction::ToggleLaneCoverVisibility => {
+        PlayLaneAction::ToggleLaneCoverVisibility => {
             let was_visible = lane.lane_cover_visible;
             lane.lane_cover_visible = !lane.lane_cover_visible;
             if !was_visible && lane.lane_cover_visible {
@@ -19767,14 +19538,14 @@ fn apply_hispeed_change_to_session(
     session.hispeed = adjusted_hispeed(session.hispeed, change, step);
 }
 
-fn apply_play_option_control_to_session(
+fn apply_play_lane_action_to_session(
     session: &mut bmz_gameplay::session::GameSession,
-    action: PlayOptionControl,
+    action: PlayLaneAction,
     speed_locked: bool,
     hispeed_step: f32,
 ) -> bool {
     match action {
-        PlayOptionControl::ToggleHispeedMode => {
+        PlayLaneAction::ToggleHispeedMode => {
             match session.hispeed_mode {
                 HispeedMode::Normal => {
                     let now = session.audio_clock.now();
@@ -19788,60 +19559,50 @@ fn apply_play_option_control_to_session(
             }
             true
         }
-        PlayOptionControl::Hispeed(change) => {
+        PlayLaneAction::Hispeed(change) => {
             if speed_locked {
                 return false;
             }
             apply_hispeed_change_to_session(session, change, hispeed_step);
             true
         }
-        PlayOptionControl::LaneCover(change) => {
-            apply_lane_cover_step_to_session(session, lane_cover_change_step(change), speed_locked)
+        PlayLaneAction::LaneCoverDelta(delta) => {
+            apply_lane_cover_step_to_session(session, delta, speed_locked)
         }
-        PlayOptionControl::GreenNumber(change) => apply_green_number_step_to_session(
-            session,
-            green_number_change_step(change),
-            speed_locked,
-        ),
+        PlayLaneAction::GreenNumberDelta(delta) => {
+            apply_green_number_step_to_session(session, delta, speed_locked)
+        }
+        PlayLaneAction::ToggleLaneCoverVisibility => {
+            toggle_lane_cover_visibility(session, speed_locked);
+            true
+        }
     }
+}
+
+#[cfg(test)]
+fn apply_play_option_control_to_session(
+    session: &mut bmz_gameplay::session::GameSession,
+    action: PlayOptionControl,
+    speed_locked: bool,
+    hispeed_step: f32,
+) -> bool {
+    apply_play_lane_action_to_session(
+        session,
+        lane_action_from_option(action, false).expect("button option always maps to a lane action"),
+        speed_locked,
+        hispeed_step,
+    )
 }
 
 fn replay_pending_play_lane_actions(
     session: &mut bmz_gameplay::session::GameSession,
-    actions: &[PendingPlayLaneAction],
+    actions: &[PlayLaneAction],
     profile: &ProfileConfig,
     speed_locked: bool,
 ) {
-    for action in actions {
-        match *action {
-            PendingPlayLaneAction::ToggleHispeedMode => {
-                let step = hispeed_step_for_profile(profile, session.hispeed_mode);
-                apply_play_option_control_to_session(
-                    session,
-                    PlayOptionControl::ToggleHispeedMode,
-                    speed_locked,
-                    step,
-                );
-            }
-            PendingPlayLaneAction::Hispeed(change) => {
-                let step = hispeed_step_for_profile(profile, session.hispeed_mode);
-                apply_play_option_control_to_session(
-                    session,
-                    PlayOptionControl::Hispeed(change),
-                    speed_locked,
-                    step,
-                );
-            }
-            PendingPlayLaneAction::LaneCoverDelta(delta) => {
-                apply_lane_cover_step_to_session(session, delta, speed_locked);
-            }
-            PendingPlayLaneAction::GreenNumberDelta(delta) => {
-                apply_green_number_step_to_session(session, delta, speed_locked);
-            }
-            PendingPlayLaneAction::ToggleLaneCoverVisibility => {
-                toggle_lane_cover_visibility(session, speed_locked);
-            }
-        }
+    for &action in actions {
+        let step = hispeed_step_for_profile(profile, session.hispeed_mode);
+        let _ = apply_play_lane_action_to_session(session, action, speed_locked, step);
     }
 }
 
@@ -24801,7 +24562,7 @@ mod tests {
 
         assert!(apply_pending_play_lane_action_to_state(
             &mut lane,
-            PendingPlayLaneAction::Hispeed(HispeedChange::Up),
+            PlayLaneAction::Hispeed(HispeedChange::Up),
             &profile,
             120.0,
             false,
@@ -24829,7 +24590,7 @@ mod tests {
 
         assert!(apply_pending_play_lane_action_to_state(
             &mut lane,
-            PendingPlayLaneAction::GreenNumberDelta(1),
+            PlayLaneAction::GreenNumberDelta(1),
             &profile,
             120.0,
             false,
@@ -24859,14 +24620,14 @@ mod tests {
 
         assert!(!apply_pending_play_lane_action_to_state(
             &mut lane,
-            PendingPlayLaneAction::Hispeed(HispeedChange::Up),
+            PlayLaneAction::Hispeed(HispeedChange::Up),
             &profile,
             120.0,
             true,
         ));
         assert!(apply_pending_play_lane_action_to_state(
             &mut lane,
-            PendingPlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP),
+            PlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP),
             &profile,
             120.0,
             true,
@@ -24890,7 +24651,7 @@ mod tests {
 
         replay_pending_play_lane_actions(
             &mut session,
-            &[PendingPlayLaneAction::Hispeed(HispeedChange::Up)],
+            &[PlayLaneAction::Hispeed(HispeedChange::Up)],
             &profile,
             false,
         );
@@ -24898,7 +24659,7 @@ mod tests {
         assert_eq!(session.hispeed, initial_hispeed + hispeed_step);
         replay_pending_play_lane_actions(
             &mut session,
-            &[PendingPlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP)],
+            &[PlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP)],
             &profile,
             false,
         );
