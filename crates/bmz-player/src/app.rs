@@ -200,6 +200,7 @@ mod bga_runtime;
 mod frame_runtime;
 mod input_runtime;
 mod result_runtime;
+mod scene_input;
 mod select_assets;
 mod select_folder_summary;
 mod select_search;
@@ -219,6 +220,10 @@ use input_runtime::{AppInputRuntime, ControlInputEvent};
 use result_runtime::{
     course_result_skin_snapshot, course_result_summary_for_skin, debug_boot_finished_play_session,
     mark_course_replay_slot_saved, result_main_bpm, result_max_bpm, result_min_bpm,
+};
+use scene_input::{
+    DecideAction, ResultAction, SelectAction, SelectMove, decide_action as scene_decide_action,
+    result_action as scene_result_action, select_action as scene_select_action,
 };
 use select_assets::{
     PreparedSelectPreview, SelectAssetRuntime, SelectMetaImageCacheEntry, SelectMetaImageResult,
@@ -4014,6 +4019,41 @@ impl WinitApp {
         changed
     }
 
+    fn apply_select_action(&mut self, action: SelectAction, hold_control: Option<&str>) {
+        match action {
+            SelectAction::EnterOrPlay => self.enter_or_play_selected(),
+            SelectAction::ExitFolder => self.exit_folder(),
+            SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
+            SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
+            SelectAction::SameFolder => self.open_same_folder_for_selected(),
+            SelectAction::Move(select_move) => {
+                self.move_selection(select_move);
+                if matches!(
+                    select_move,
+                    SelectMove::Previous
+                        | SelectMove::Next
+                        | SelectMove::PagePrevious
+                        | SelectMove::PageNext
+                ) && let Some(control) = hold_control
+                {
+                    self.start_select_hold_move(select_move, control.to_string());
+                }
+            }
+        }
+    }
+
+    fn apply_result_action(&mut self, action: ResultAction, course_result: bool) {
+        match (course_result, action) {
+            (false, ResultAction::Retry) => {
+                self.begin_result_exit(ResultExitAction::Retry(ResultRetryMode::SameArrange))
+            }
+            (true, ResultAction::Retry) => {
+                self.begin_result_exit(ResultExitAction::RetryCourseSameArrange)
+            }
+            (_, ResultAction::Leave) => self.begin_result_exit(ResultExitAction::Leave),
+        }
+    }
+
     fn route_keyboard_input(&mut self, event: &winit::event::KeyEvent) {
         if !event.repeat
             && let Some(device_event) = key_event_to_device_input(event)
@@ -4021,10 +4061,7 @@ impl WinitApp {
         {
             return;
         }
-        let control_event = ControlInputEvent::keyboard(
-            event,
-            (!event.repeat).then(|| physical_key_name(event.physical_key)).flatten(),
-        );
+        let control_event = ControlInputEvent::keyboard(event);
         self.input.track_control(&control_event);
         let play_control = control_event.name.as_deref();
         let play_physical_control = control_event.physical.as_ref();
@@ -4216,24 +4253,16 @@ impl WinitApp {
         }
 
         if self.pending_decide.is_some() {
-            if let Some(control) = physical_key_name(event.physical_key)
+            if let Some(control) = control_event.name.as_deref()
                 && !event.repeat
                 && self.update_decide_cancel_control_state(
-                    &control,
+                    control,
                     event.state == ElementState::Pressed,
                 )
             {
                 return;
             }
-            if let Some(action) = decide_action(event.physical_key, event.state, event.repeat) {
-                self.begin_decide_fadeout(matches!(action, DecideAction::Cancel));
-                return;
-            }
-            if event.state == ElementState::Pressed
-                && !event.repeat
-                && let Some(control) = physical_key_name(event.physical_key)
-                && let Some(action) = decide_control_action(&control, &self.select_keys)
-            {
+            if let Some(action) = scene_decide_action(&control_event, &self.select_keys) {
                 self.begin_decide_fadeout(matches!(action, DecideAction::Cancel));
             }
             return;
@@ -4293,7 +4322,7 @@ impl WinitApp {
             }
             if self.result_exit.is_none()
                 && self.result_input_ready()
-                && result_action(event.physical_key, event.state, event.repeat).is_some()
+                && scene_result_action(&control_event).is_some()
             {
                 // R / Enter / Escape いずれも次の曲へ進むだけ (retry/leave 区別なし)。
                 self.begin_result_exit(self.course_intermediate_exit_action());
@@ -4334,13 +4363,9 @@ impl WinitApp {
             }
             if self.result_exit.is_none()
                 && self.result_input_ready()
-                && let Some(action) = result_action(event.physical_key, event.state, event.repeat)
+                && let Some(action) = scene_result_action(&control_event)
             {
-                match action {
-                    ResultAction::Retry => self
-                        .begin_result_exit(ResultExitAction::Retry(ResultRetryMode::SameArrange)),
-                    ResultAction::Leave => self.begin_result_exit(ResultExitAction::Leave),
-                }
+                self.apply_result_action(action, false);
             }
             return;
         }
@@ -4376,14 +4401,9 @@ impl WinitApp {
             }
             if self.result_exit.is_none()
                 && self.result_input_ready()
-                && let Some(action) = result_action(event.physical_key, event.state, event.repeat)
+                && let Some(action) = scene_result_action(&control_event)
             {
-                match action {
-                    ResultAction::Retry => {
-                        self.begin_result_exit(ResultExitAction::RetryCourseSameArrange)
-                    }
-                    ResultAction::Leave => self.begin_result_exit(ResultExitAction::Leave),
-                }
+                self.apply_result_action(action, true);
             }
             return;
         }
@@ -4636,37 +4656,12 @@ impl WinitApp {
         }
 
         if matches!(self.view_state(), AppViewState::Select) {
-            if event.state == ElementState::Pressed && !event.repeat {
-                if let Some(action) =
-                    select_action(event.physical_key, event.state, event.repeat, &self.select_keys)
-                {
-                    match action {
-                        SelectAction::EnterOrPlay => self.enter_or_play_selected(),
-                        SelectAction::ExitFolder => self.exit_folder(),
-                        SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
-                        SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
-                        SelectAction::SameFolder => self.open_same_folder_for_selected(),
-                        SelectAction::Move(select_move) => {
-                            self.move_selection(select_move);
-                            if matches!(
-                                select_move,
-                                SelectMove::Previous
-                                    | SelectMove::Next
-                                    | SelectMove::PagePrevious
-                                    | SelectMove::PageNext
-                            ) {
-                                let control_name = physical_key_name(event.physical_key);
-                                if let Some(control_name) = control_name {
-                                    self.start_select_hold_move(select_move, control_name);
-                                }
-                            }
-                        }
-                    }
-                }
+            if let Some(action) = scene_select_action(&control_event, &self.select_keys) {
+                self.apply_select_action(action, control_event.name.as_deref());
             } else if event.state == ElementState::Released
-                && let Some(control_name) = physical_key_name(event.physical_key)
+                && let Some(control_name) = control_event.name.as_deref()
             {
-                self.clear_select_hold_control(&control_name);
+                self.clear_select_hold_control(control_name);
             }
         }
     }
@@ -5038,13 +5033,8 @@ impl WinitApp {
             if self.update_decide_cancel_control_state(button, pressed) {
                 return;
             }
-            match button {
-                "Button1" => self.begin_decide_fadeout(false),
-                _ => {
-                    if self.select_keys.is_enter(button) {
-                        self.begin_decide_fadeout(false);
-                    }
-                }
+            if let Some(action) = scene_decide_action(&control_event, &self.select_keys) {
+                self.begin_decide_fadeout(matches!(action, DecideAction::Cancel));
             }
             return;
         }
@@ -5071,10 +5061,7 @@ impl WinitApp {
                 if self.handle_course_intermediate_control(&control, pressed, false) {
                     return;
                 }
-                if pressed
-                    && self.result_input_ready()
-                    && matches!(button, "Button1" | "Start" | "Button2" | "Select")
-                {
+                if self.result_input_ready() && scene_result_action(&control_event).is_some() {
                     self.begin_result_exit(self.course_intermediate_exit_action());
                 }
             }
@@ -5094,16 +5081,10 @@ impl WinitApp {
                 if self.handle_result_control(&control, pressed, false) {
                     return;
                 }
-                if self.result_input_ready() {
-                    match button {
-                        "Button1" | "Start" if pressed => self.begin_result_exit(
-                            ResultExitAction::Retry(ResultRetryMode::SameArrange),
-                        ),
-                        "Button2" | "Select" if pressed => {
-                            self.begin_result_exit(ResultExitAction::Leave)
-                        }
-                        _ => {}
-                    }
+                if self.result_input_ready()
+                    && let Some(action) = scene_result_action(&control_event)
+                {
+                    self.apply_result_action(action, false);
                 }
             }
             return;
@@ -5121,12 +5102,10 @@ impl WinitApp {
                 if self.handle_course_result_control(&control, pressed, false) {
                     return;
                 }
-                if pressed && self.result_input_ready() {
-                    if matches!(button, "Button1" | "Start") {
-                        self.begin_result_exit(ResultExitAction::RetryCourseSameArrange);
-                    } else if matches!(button, "Button2" | "Select") {
-                        self.begin_result_exit(ResultExitAction::Leave);
-                    }
+                if self.result_input_ready()
+                    && let Some(action) = scene_result_action(&control_event)
+                {
+                    self.apply_result_action(action, true);
                 }
             }
             return;
@@ -5222,31 +5201,8 @@ impl WinitApp {
             {
                 return;
             }
-            if pressed {
-                let action = select_control_action(button, &self.select_keys);
-                if let Some(action) = action {
-                    match action {
-                        SelectAction::EnterOrPlay => self.enter_or_play_selected(),
-                        SelectAction::ExitFolder => self.exit_folder(),
-                        SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
-                        SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
-                        SelectAction::SameFolder => self.open_same_folder_for_selected(),
-                        SelectAction::Move(select_move) => {
-                            self.move_selection(select_move);
-                            if matches!(
-                                select_move,
-                                SelectMove::Previous
-                                    | SelectMove::Next
-                                    | SelectMove::PagePrevious
-                                    | SelectMove::PageNext
-                            ) {
-                                self.start_select_hold_move(select_move, button.to_string());
-                            }
-                        }
-                    }
-                }
-            } else {
-                self.clear_select_hold_control(button);
+            if let Some(action) = scene_select_action(&control_event, &self.select_keys) {
+                self.apply_select_action(action, Some(button));
             }
         }
     }
@@ -19264,26 +19220,6 @@ fn select_snapshot_rows(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SelectAction {
-    EnterOrPlay,
-    ExitFolder,
-    FavoriteSong,
-    FavoriteChart,
-    SameFolder,
-    Move(SelectMove),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SelectMove {
-    Previous,
-    Next,
-    PagePrevious,
-    PageNext,
-    First,
-    Last,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SelectRowClickAction {
     Select(usize),
     EnterOrPlay,
@@ -19359,98 +19295,19 @@ fn log_gamepad_key_config_raw_event(backend: &str, event: &crate::input::gamepad
     );
 }
 
+#[cfg(test)]
 fn select_control_action(control: &str, bindings: &SelectKeyBindings) -> Option<SelectAction> {
-    match control {
-        "DPadUp" => Some(SelectAction::Move(SelectMove::Previous)),
-        "DPadDown" => Some(SelectAction::Move(SelectMove::Next)),
-        "Select" => Some(SelectAction::ExitFolder),
-        "Button1" => Some(SelectAction::EnterOrPlay),
-        _ => {
-            if bindings.is_select_scratch_up(control) {
-                if bindings.is_select_scratch_down(control) {
-                    Some(SelectAction::Move(SelectMove::Next))
-                } else {
-                    Some(SelectAction::Move(SelectMove::Previous))
-                }
-            } else if bindings.is_select_scratch_down(control) {
-                Some(SelectAction::Move(SelectMove::Next))
-            } else if bindings.is_enter(control) {
-                Some(SelectAction::EnterOrPlay)
-            } else if bindings.is_back(control) {
-                Some(SelectAction::ExitFolder)
-            } else if bindings.is_favorite_song(control) {
-                Some(SelectAction::FavoriteSong)
-            } else if bindings.is_favorite_chart(control) {
-                Some(SelectAction::FavoriteChart)
-            } else if bindings.is_same_folder(control) {
-                Some(SelectAction::SameFolder)
-            } else {
-                None
-            }
-        }
-    }
+    scene_select_action(&ControlInputEvent::gamepad(DeviceId(1), control, true), bindings)
 }
 
+#[cfg(test)]
 fn select_action(
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
     bindings: &SelectKeyBindings,
 ) -> Option<SelectAction> {
-    if state != ElementState::Pressed || repeat {
-        return None;
-    }
-
-    // Fixed system keys always apply regardless of key config
-    match physical_key {
-        PhysicalKey::Code(KeyCode::Enter | KeyCode::Space | KeyCode::ArrowRight) => {
-            return Some(SelectAction::EnterOrPlay);
-        }
-        PhysicalKey::Code(KeyCode::ArrowLeft) => return Some(SelectAction::ExitFolder),
-        PhysicalKey::Code(KeyCode::ArrowUp) => {
-            return Some(SelectAction::Move(SelectMove::Previous));
-        }
-        PhysicalKey::Code(KeyCode::ArrowDown) => {
-            return Some(SelectAction::Move(SelectMove::Next));
-        }
-        PhysicalKey::Code(KeyCode::PageUp) => {
-            return Some(SelectAction::Move(SelectMove::PagePrevious));
-        }
-        PhysicalKey::Code(KeyCode::PageDown) => {
-            return Some(SelectAction::Move(SelectMove::PageNext));
-        }
-        PhysicalKey::Code(KeyCode::Home) => return Some(SelectAction::Move(SelectMove::First)),
-        PhysicalKey::Code(KeyCode::End) => return Some(SelectAction::Move(SelectMove::Last)),
-        _ => {}
-    }
-
-    // Binding-based lane keys
-    let control = physical_key_name(physical_key)?;
-    if bindings.is_enter(&control) {
-        Some(SelectAction::EnterOrPlay)
-    } else if bindings.is_back(&control) {
-        Some(SelectAction::ExitFolder)
-    } else if bindings.is_favorite_song(&control) {
-        Some(SelectAction::FavoriteSong)
-    } else if bindings.is_favorite_chart(&control) {
-        Some(SelectAction::FavoriteChart)
-    } else if bindings.is_same_folder(&control) {
-        Some(SelectAction::SameFolder)
-    } else if bindings.is_select_scratch_down(&control) {
-        Some(SelectAction::Move(SelectMove::Next))
-    } else if bindings.is_select_scratch_up(&control) {
-        Some(SelectAction::Move(SelectMove::Previous))
-    } else if bindings.is_select_previous(&control) {
-        if bindings.is_select_next(&control) {
-            Some(SelectAction::Move(SelectMove::Next))
-        } else {
-            Some(SelectAction::Move(SelectMove::Previous))
-        }
-    } else if bindings.is_select_next(&control) {
-        Some(SelectAction::Move(SelectMove::Next))
-    } else {
-        None
-    }
+    scene_select_action(&ControlInputEvent::keyboard_parts(physical_key, state, repeat), bindings)
 }
 
 fn select_wheel_move(delta: MouseScrollDelta) -> Option<SelectMove> {
@@ -19644,18 +19501,6 @@ fn select_move_scroll_direction(select_move: SelectMove) -> i32 {
         SelectMove::Next | SelectMove::PageNext => 1,
         SelectMove::First | SelectMove::Last => 0,
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ResultAction {
-    Retry,
-    Leave,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DecideAction {
-    Confirm,
-    Cancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20232,20 +20077,13 @@ fn hispeed_for_green_number_values(
     )
 }
 
+#[cfg(test)]
 fn result_action(
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
 ) -> Option<ResultAction> {
-    if state != ElementState::Pressed || repeat {
-        return None;
-    }
-
-    match physical_key {
-        PhysicalKey::Code(KeyCode::KeyR) => Some(ResultAction::Retry),
-        PhysicalKey::Code(KeyCode::Enter | KeyCode::Escape) => Some(ResultAction::Leave),
-        _ => None,
-    }
+    scene_result_action(&ControlInputEvent::keyboard_parts(physical_key, state, repeat))
 }
 
 fn result_exit_skip_key(physical_key: PhysicalKey, state: ElementState, repeat: bool) -> bool {
@@ -20266,24 +20104,9 @@ fn result_exit_transition_ready(
     elapsed >= required_duration && (!skip_requested || skip_final_frame_held)
 }
 
-fn decide_action(
-    physical_key: PhysicalKey,
-    state: ElementState,
-    repeat: bool,
-) -> Option<DecideAction> {
-    if state != ElementState::Pressed || repeat {
-        return None;
-    }
-
-    match physical_key {
-        PhysicalKey::Code(KeyCode::Enter | KeyCode::Space) => Some(DecideAction::Confirm),
-        PhysicalKey::Code(KeyCode::Escape) => Some(DecideAction::Cancel),
-        _ => None,
-    }
-}
-
+#[cfg(test)]
 fn decide_control_action(control: &str, bindings: &SelectKeyBindings) -> Option<DecideAction> {
-    bindings.is_enter(control).then_some(DecideAction::Confirm)
+    scene_decide_action(&ControlInputEvent::gamepad(DeviceId(1), control, true), bindings)
 }
 
 fn decide_cancel_chord_pressed(e1_held: bool, e2_held: bool, e3_held: bool) -> bool {

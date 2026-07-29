@@ -18,13 +18,28 @@ pub(super) struct ControlInputEvent {
 }
 
 impl ControlInputEvent {
-    pub(super) fn keyboard(event: &KeyEvent, name: Option<String>) -> Self {
+    pub(super) fn keyboard(event: &KeyEvent) -> Self {
+        Self::keyboard_parts(event.physical_key, event.state, event.repeat)
+    }
+
+    pub(super) fn keyboard_parts(
+        physical_key: PhysicalKey,
+        state: ElementState,
+        repeat: bool,
+    ) -> Self {
+        let physical = physical_key_to_control(physical_key);
+        let name = (!repeat)
+            .then(|| match physical.as_ref()? {
+                PhysicalControl::KeyboardKey(name) => Some(name.clone()),
+                _ => None,
+            })
+            .flatten();
         Self {
             device: W_KEYBOARD_DEVICE_ID,
             name,
-            physical: physical_key_to_control(event.physical_key),
-            pressed: event.state == ElementState::Pressed,
-            repeat: event.repeat,
+            physical,
+            pressed: state == ElementState::Pressed,
+            repeat,
         }
     }
 
