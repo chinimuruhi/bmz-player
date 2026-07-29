@@ -1,0 +1,51 @@
+use super::*;
+
+impl ScoreDatabase {
+    /// IR replay upload 用に、score_history 行の replay_path を引く。
+    /// 行が無い / 空文字なら None。
+    pub fn replay_path_for_history(&self, score_history_id: i64) -> Result<Option<String>> {
+        let path: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT replay_path FROM score_history WHERE id = ?1",
+                params![score_history_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(path.filter(|path| !path.is_empty()))
+    }
+
+    pub fn recent_history(&self, limit: u32, offset: u32) -> Result<Vec<ScoreHistoryEntry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                id,
+                chart_sha256,
+                played_at,
+                clear_type,
+                gauge_type,
+                gauge_value,
+                total_notes,
+                ex_score,
+                bp,
+                cb,
+                max_combo,
+                autoplay,
+                replay_path,
+                course_score_id,
+                ln_policy,
+                old_clear_type,
+                old_ex_score,
+                old_max_combo,
+                old_bp,
+                old_cb,
+                device_type,
+                source_kind,
+                applied_double_option
+            FROM score_history
+            ORDER BY played_at DESC, id DESC
+            LIMIT ?1 OFFSET ?2",
+        )?;
+        let rows = stmt.query_map(params![limit, offset], score_history_entry_from_row)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+}
