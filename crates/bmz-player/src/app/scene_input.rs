@@ -1,7 +1,7 @@
 use bmz_gameplay::input::backend::PhysicalControl;
 
-use super::SelectKeyBindings;
 use super::input_runtime::ControlInputEvent;
+use super::select_key_bindings::SelectKeyBindings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SelectAction {
