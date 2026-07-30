@@ -1,0 +1,290 @@
+use super::*;
+use crate::storage::common::configure_connection;
+use crate::storage::migration::{NETWORK_MIGRATIONS, SCORE_MIGRATIONS, run_migrations};
+use crate::storage::network_db::{IrJobKind, NewIrScoreJob, NewIrScoreSubmission};
+use rusqlite::Connection;
+
+fn open_score_db() -> ScoreDatabase {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    ScoreDatabase::from_connection(conn)
+}
+
+fn open_network_db() -> NetworkDatabase {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, NETWORK_MIGRATIONS).unwrap();
+    NetworkDatabase::from_connection(conn)
+}
+
+fn score_entry(id: &str) -> IrOwnScoreHistoryEntry {
+    IrOwnScoreHistoryEntry {
+        score_id: id.to_string(),
+        chart_sha256: "11".repeat(32),
+        clear: "Hard".to_string(),
+        ex_score: 21,
+        max_combo: 12,
+        min_bp: 1,
+        min_cb: 1,
+        bp: 1,
+        cb: 1,
+        gauge: "HARD".to_string(),
+        ln_policy: "ForceLn".to_string(),
+        double_option: "off".to_string(),
+        applied_double_option: "flip".to_string(),
+        source_kind: "beatoraja".to_string(),
+        rule_mode: "Beatoraja".to_string(),
+        judges: IrJudgePayload {
+            fast: super::super::types::IrJudgeSidePayload {
+                pgreat: 10,
+                great: 1,
+                good: 0,
+                bad: 0,
+                poor: 0,
+                empty_poor: 0,
+            },
+            slow: super::super::types::IrJudgeSidePayload {
+                pgreat: 0,
+                great: 0,
+                good: 0,
+                bad: 1,
+                poor: 0,
+                empty_poor: 0,
+            },
+        },
+        notes: 12,
+        pass_notes: 12,
+        duration_ms: Some(123_000),
+        device_type: "controller".to_string(),
+        arrange_1p: Some("random".to_string()),
+        arrange_2p: None,
+        random_seed: Some(123),
+        seed_scheme: "beatoraja_24bit_v1".to_string(),
+        assist_mask: Some(4),
+        played_at: Some(1_700_000_000),
+        server_received_at: 1_700_000_005,
+        verification: "signed".to_string(),
+        replay_hash: None,
+    }
+}
+
+#[test]
+fn score_record_from_ir_preserves_judges_and_options() {
+    let record = score_record_from_ir_entry(&score_entry("remote-1")).unwrap();
+
+    assert_eq!(record.chart_sha256, [0x11; 32]);
+    assert_eq!(record.clear_type, ClearType::Hard);
+    assert_eq!(record.gauge_type, Some(GaugeType::Hard));
+    assert_eq!(record.gauge_value, None);
+    assert_eq!(record.score.ex_score(), 21);
+    assert_eq!(record.score.bp(), 1);
+    assert!(!record.count_unprocessed_notes);
+    assert_eq!(record.random_seed, Some(123));
+    assert_eq!(record.playtime_seconds, 123);
+    assert_eq!(record.seed_scheme, "beatoraja_24bit_v1");
+    assert_eq!(record.arrange, "Random");
+    assert_eq!(record.applied_double_option, DoubleOption::Flip);
+    assert_eq!(record.source_kind, ScoreSourceKind::Beatoraja);
+    assert_eq!(record.assist_mask, 4);
+    assert_eq!(record.device_type, InputDeviceKind::Controller);
+}
+
+#[test]
+fn score_record_from_ir_reconstructs_unprocessed_failed_bp() {
+    let mut entry = score_entry("remote-1");
+    entry.clear = "Failed".to_string();
+    entry.gauge = "HARD".to_string();
+    entry.notes = 20;
+    entry.pass_notes = 12;
+    entry.min_bp = 9;
+    entry.min_cb = 9;
+
+    let record = score_record_from_ir_entry(&entry).unwrap();
+
+    assert!(record.count_unprocessed_notes);
+    assert_eq!(record.score.bp_with_unprocessed_notes(record.total_notes), 9);
+    assert_eq!(record.score.cb_with_unprocessed_notes(record.total_notes), 9);
+}
+
+#[test]
+fn import_ir_score_entries_inserts_once_and_skips_source_duplicate() {
+    let mut score_db = open_score_db();
+    let network_db = open_network_db();
+    let mut report = IrScoreDownloadReport::default();
+
+    import_ir_score_entries(
+        &mut score_db,
+        &network_db,
+        "provider-1",
+        "account-1",
+        &[score_entry("remote-1")],
+        false,
+        1_800_000_000,
+        &mut report,
+    )
+    .unwrap();
+    import_ir_score_entries(
+        &mut score_db,
+        &network_db,
+        "provider-1",
+        "account-1",
+        &[score_entry("remote-1")],
+        false,
+        1_800_000_000,
+        &mut report,
+    )
+    .unwrap();
+
+    assert_eq!(report.imported, 1);
+    assert_eq!(report.skipped_existing, 1);
+    let count: i64 = score_db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM score_history", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 1);
+    let history_gauge: Option<f32> = score_db
+        .conn()
+        .query_row("SELECT gauge_value FROM score_history", [], |row| row.get(0))
+        .unwrap();
+    let best_gauge: Option<f32> = score_db
+        .conn()
+        .query_row("SELECT gauge_value FROM score_best", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(history_gauge, None);
+    assert_eq!(best_gauge, None);
+}
+
+#[test]
+fn import_ir_score_entries_links_previously_uploaded_local_score() {
+    let mut score_db = open_score_db();
+    let mut network_db = open_network_db();
+    let mut local_record = score_record_from_ir_entry(&score_entry("local")).unwrap();
+    local_record.gauge_value = Some(64.0);
+    let local_history_id = score_db.insert_score(&local_record).unwrap();
+    let job_id = network_db
+        .enqueue_ir_score_job(&NewIrScoreJob {
+            provider: "provider-1".to_string(),
+            account_id: "account-1".to_string(),
+            kind: IrJobKind::Score,
+            local_score_id: local_history_id,
+            chart_sha256: [0x11; 32],
+            ln_policy: LnScorePolicy::ForceLn,
+            payload_json: "{}".to_string(),
+            now: 1,
+        })
+        .unwrap();
+    network_db
+        .insert_ir_score_submission(&NewIrScoreSubmission {
+            job_id,
+            provider: "provider-1".to_string(),
+            account_id: "account-1".to_string(),
+            kind: IrJobKind::Score,
+            local_score_id: local_history_id,
+            remote_score_id: "remote-1".to_string(),
+            status: "succeeded".to_string(),
+            submitted_at: 2,
+            log_path: String::new(),
+            error: String::new(),
+        })
+        .unwrap();
+    let mut report = IrScoreDownloadReport::default();
+
+    import_ir_score_entries(
+        &mut score_db,
+        &network_db,
+        "provider-1",
+        "account-1",
+        &[score_entry("remote-1")],
+        false,
+        1_800_000_000,
+        &mut report,
+    )
+    .unwrap();
+
+    assert_eq!(report.imported, 0);
+    assert_eq!(report.linked_existing, 1);
+    let count: i64 = score_db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM score_history", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn import_limit_skips_known_scores_before_importing_next_candidate() {
+    let mut score_db = open_score_db();
+    let network_db = open_network_db();
+    let entries = [
+        score_entry("remote-1"),
+        score_entry("remote-2"),
+        score_entry("remote-3"),
+        score_entry("remote-4"),
+    ];
+    let mut initial_report = IrScoreDownloadReport::default();
+    import_ir_score_entries(
+        &mut score_db,
+        &network_db,
+        "provider-1",
+        "account-1",
+        &entries[..2],
+        false,
+        1_800_000_000,
+        &mut initial_report,
+    )
+    .unwrap();
+    let mut next_report = IrScoreDownloadReport::default();
+
+    let consumed = import_ir_score_entries_up_to(
+        &mut score_db,
+        &network_db,
+        "provider-1",
+        "account-1",
+        &entries,
+        false,
+        1_800_000_001,
+        &mut next_report,
+        Some(1),
+    )
+    .unwrap();
+
+    assert_eq!(consumed, 3);
+    assert_eq!(next_report.scanned, 3);
+    assert_eq!(next_report.skipped_existing, 2);
+    assert_eq!(next_report.imported, 1);
+    let count: i64 = score_db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM score_history", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 3);
+}
+
+#[test]
+fn dry_run_reports_invalid_scores_without_counting_them_as_candidates() {
+    let mut score_db = open_score_db();
+    let network_db = open_network_db();
+    let mut invalid = score_entry("remote-invalid");
+    invalid.ex_score += 1;
+    let mut report = IrScoreDownloadReport::default();
+
+    import_ir_score_entries(
+        &mut score_db,
+        &network_db,
+        "provider-1",
+        "account-1",
+        &[invalid],
+        true,
+        1_800_000_000,
+        &mut report,
+    )
+    .unwrap();
+
+    assert_eq!(report.candidates, 0);
+    assert_eq!(report.failed, 1);
+    assert_eq!(report.messages.len(), 1);
+    let count: i64 = score_db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM score_history", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 0);
+}
