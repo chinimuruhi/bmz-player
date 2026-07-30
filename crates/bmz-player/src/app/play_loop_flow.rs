@@ -281,6 +281,21 @@ impl WinitApp {
         self.refresh_pending_play_visual_snapshot(play_elapsed_time);
     }
 
+    pub(super) fn play_preload_prepared_chart(&self, chart_id: i64) -> Option<PreparedPlayChart> {
+        self.play
+            .preloaded_play_session
+            .as_ref()
+            .filter(|preloaded| preloaded.chart_id == chart_id)
+            .map(|preloaded| preloaded.preloaded.prepared_chart())
+            .or_else(|| {
+                self.play
+                    .pending_play_preload
+                    .as_ref()
+                    .filter(|pending| pending.chart_id == chart_id)
+                    .and_then(|pending| pending.prepared_chart.get().cloned())
+            })
+    }
+
     pub(super) fn play_preload_applied_arrange(&self, chart_id: i64) -> Option<AppliedArrange> {
         self.play
             .preloaded_play_session
@@ -292,7 +307,9 @@ impl WinitApp {
                     .pending_play_preload
                     .as_ref()
                     .filter(|pending| pending.chart_id == chart_id)
-                    .and_then(|pending| pending.applied_arrange.get().cloned())
+                    .and_then(|pending| {
+                        pending.prepared_chart.get().map(|chart| chart.applied_arrange.clone())
+                    })
             })
     }
 

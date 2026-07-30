@@ -13,6 +13,7 @@ use bmz_core::lane::{KeyMode, LANE_COUNT, Lane};
 use bmz_core::time::{ChartTick, TimeUs};
 use bmz_gameplay::gauge::gauge_total_for_chart;
 use bmz_gameplay::judge::model::JudgementEvent;
+use bmz_gameplay::score::scored_note_count;
 use bmz_gameplay::session::GameSession;
 use bmz_render::chart_graph::{
     build_bpm_graph_segments, build_judge_graph_density, compute_adjusted_cover_progress,
@@ -45,8 +46,8 @@ mod visuals;
 pub use bga::{bga_texture_id, display_bga_frame, display_video_bga_frame};
 pub(crate) use bga::{display_duration_ms_for_bpm_hispeed, hispeed_for_green_number_values};
 pub use build::{
-    build_render_snapshot, build_render_snapshot_with_bga_frames,
-    build_render_snapshot_with_target_and_bga_frames,
+    apply_prepared_chart_to_render_snapshot, build_render_snapshot,
+    build_render_snapshot_with_bga_frames, build_render_snapshot_with_target_and_bga_frames,
     build_render_snapshot_with_target_and_bga_frames_cached, update_render_snapshot_play_options,
 };
 pub use cache::PlayRenderSnapshotCache;

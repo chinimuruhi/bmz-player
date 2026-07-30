@@ -22,6 +22,7 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
         Arc::clone(&chart),
         48_000,
         0.75,
+        crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&chart),
         normal_applied_arrange(0, false),
         score_key,
         |loaded, total| progress.push((loaded, total)),

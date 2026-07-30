@@ -56,6 +56,8 @@ impl DecideTransition {
 pub(super) struct PendingPlayStart {
     pub(super) chart_id: i64,
     pub(super) options: PlayStartOptions,
+    /// 変換済み譜面の静的 skin 値を placeholder snapshot へ反映済みか。
+    pub(super) prepared_chart_applied: bool,
     pub(super) lane: PendingPlayLaneState,
     pub(super) lane_actions: Vec<PlayLaneAction>,
     pub(super) visual_input: PendingPlayVisualInput,
@@ -79,6 +81,7 @@ impl PendingPlayStart {
         Self {
             chart_id,
             options,
+            prepared_chart_applied: false,
             lane: PendingPlayLaneState::from_snapshot(
                 snapshot,
                 profile.lane.target_green_number,
@@ -160,6 +163,16 @@ impl PendingPlayLaneState {
     pub(super) fn refresh_cover_hispeed(&mut self, now_bpm: f32, speed_locked: bool) {
         let target_bpm = if self.hispeed_auto_adjust { now_bpm } else { self.hsfix_base_bpm };
         self.refresh_floating_hispeed(target_bpm, speed_locked);
+    }
+
+    pub(super) fn sync_chart_bpm(&mut self, snapshot: &RenderSnapshot, hs_fix: HsFixOption) {
+        self.hsfix_base_bpm = match hs_fix {
+            HsFixOption::Off | HsFixOption::StartBpm => snapshot.now_bpm,
+            HsFixOption::MaxBpm => snapshot.max_bpm,
+            HsFixOption::MainBpm => snapshot.main_bpm,
+            HsFixOption::MinBpm => snapshot.min_bpm,
+        }
+        .max(1.0);
     }
 
     pub(super) fn current_green_number(self, now_bpm: f32) -> u32 {

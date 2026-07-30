@@ -9,7 +9,7 @@ use bmz_audio::loudness::{analyze_chart_loudness, play_normalization_gain_for_lo
 use bmz_chart::import::{
     BmsRandomSource, ImportResult, import_bms_chart, import_bms_chart_with_random_source,
 };
-use bmz_chart::model::{BgaAssetRef, NoteEvent, NoteKind, PlayableChart, TimingEventKind};
+use bmz_chart::model::{NoteEvent, NoteKind, PlayableChart, TimingEventKind};
 use bmz_chart::start_margin::apply_start_note_margin;
 use bmz_core::clear::GaugeType;
 use bmz_core::ids::NoteId;
@@ -161,6 +161,7 @@ pub struct PreparedPlaySession {
     pub session: GameSession,
     pub audio: AudioEngine,
     pub sample_report: Vec<LoadedSampleReport>,
+    pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
     pub target_option: TargetOption,
@@ -168,13 +169,37 @@ pub struct PreparedPlaySession {
     pub practice_mode: bool,
 }
 
+/// 譜面 parse・オプション適用までが完了し、WAV/BMP ロードを開始できる状態。
+///
+/// beatoraja の `BMSModel` と同様、メディアロード完了前から Play skin へ
+/// 静的な譜面情報を供給するために main thread へ先行公開する。
+#[derive(Debug, Clone)]
+pub struct PreparedPlayChart {
+    pub chart: Arc<PlayableChart>,
+    pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
+    pub applied_arrange: AppliedArrange,
+    pub score_key: ScoreKey,
+}
+
 pub struct PreloadedPlaySession {
     pub chart: Arc<PlayableChart>,
     pub audio: AudioEngine,
     pub sample_report: Vec<LoadedSampleReport>,
     pub chart_normalization_gain: f32,
+    pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
+}
+
+impl PreloadedPlaySession {
+    pub fn prepared_chart(&self) -> PreparedPlayChart {
+        PreparedPlayChart {
+            chart: Arc::clone(&self.chart),
+            render_snapshot_cache: self.render_snapshot_cache.clone(),
+            applied_arrange: self.applied_arrange.clone(),
+            score_key: self.score_key,
+        }
+    }
 }
 
 impl Default for PlaySessionOptions {
@@ -230,11 +255,11 @@ pub use build::{
 };
 pub use preload::{
     build_audio_engine_for_chart, build_practice_prepared_from_preloaded,
-    build_prepared_play_session_from_preloaded, load_chart_bga_assets_for_chart,
-    load_game_session_for_chart, load_game_session_for_chart_with_input_backend,
-    load_prepared_play_session_for_chart, load_prepared_play_session_for_chart_with_input_backend,
-    load_source_chart_for_chart, preload_play_session_for_chart,
-    preload_play_session_for_chart_with_callbacks, preload_play_session_for_chart_with_progress,
+    build_prepared_play_session_from_preloaded, load_game_session_for_chart,
+    load_game_session_for_chart_with_input_backend, load_prepared_play_session_for_chart,
+    load_prepared_play_session_for_chart_with_input_backend, load_source_chart_for_chart,
+    preload_play_session_for_chart, preload_play_session_for_chart_with_callbacks,
+    preload_play_session_for_chart_with_progress,
     preload_play_session_reloading_audio_with_progress, scored_note_count_for_chart,
 };
 

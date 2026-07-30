@@ -257,7 +257,7 @@ pub fn open_prepared_play_audio(
     let target_ex_score = prepared.target_option.target_ex_score(session.scored_total_notes);
 
     RunningPlaySession {
-        render_snapshot_cache: PlayRenderSnapshotCache::from_chart(&session.chart),
+        render_snapshot_cache: prepared.render_snapshot_cache,
         session,
         audio,
         pending_audio: ScheduledSoundQueue::new(),

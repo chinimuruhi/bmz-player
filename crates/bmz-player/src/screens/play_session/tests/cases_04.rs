@@ -436,7 +436,7 @@ fn load_prepared_play_session_for_chart_loads_audio_samples() {
 }
 
 #[test]
-fn preload_reports_applied_arrange_before_audio_progress() {
+fn preload_reports_prepared_chart_before_audio_progress() {
     let (path, wav_path) = write_temp_bms_with_wav(
         "\
 #TITLE Arrange preview
@@ -460,7 +460,7 @@ fn preload_reports_applied_arrange_before_audio_progress() {
             chart: &imported.chart,
         })
         .unwrap();
-    let reported_arrange = RefCell::new(None);
+    let reported_chart = RefCell::new(None);
 
     let preloaded = preload_play_session_for_chart_with_callbacks(
         &library_db,
@@ -470,21 +470,33 @@ fn preload_reports_applied_arrange_before_audio_progress() {
             arrange_seed: Some(42),
             ..Default::default()
         },
-        |arrange| {
-            *reported_arrange.borrow_mut() = Some(arrange.clone());
+        |chart| {
+            *reported_chart.borrow_mut() = Some(chart.clone());
         },
         |_, _| {
             assert!(
-                reported_arrange.borrow().is_some(),
-                "arrange must be available before WAV progress"
+                reported_chart.borrow().is_some(),
+                "prepared chart must be available before WAV progress"
             );
         },
     )
     .unwrap();
 
-    let reported_arrange = reported_arrange.into_inner().expect("reported arrange");
-    assert_eq!(reported_arrange.pattern, preloaded.applied_arrange.pattern);
-    assert_eq!(reported_arrange.arrange, ArrangeOption::Random);
+    let reported_chart = reported_chart.into_inner().expect("reported chart");
+    assert!(Arc::ptr_eq(&reported_chart.chart, &preloaded.chart));
+    assert_eq!(reported_chart.applied_arrange.pattern, preloaded.applied_arrange.pattern);
+    assert_eq!(reported_chart.applied_arrange.arrange, ArrangeOption::Random);
+
+    let mut snapshot = bmz_render::snapshot::RenderSnapshot::default();
+    crate::screens::play_snapshot::apply_prepared_chart_to_render_snapshot(
+        &mut snapshot,
+        &reported_chart.chart,
+        &reported_chart.render_snapshot_cache,
+        false,
+    );
+    assert_eq!(snapshot.total_notes, 1);
+    assert!(!snapshot.judge_graph_density.is_empty());
+    assert!(!snapshot.bpm_graph_segments.is_empty());
 
     std::fs::remove_file(path).unwrap();
     std::fs::remove_file(wav_path).unwrap();

@@ -92,7 +92,6 @@ impl WinitApp {
         self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
         let generation = self.play.play_preload_generation;
         self.play.preloaded_play_session = None;
-        let bga_options = options.clone();
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
@@ -102,8 +101,8 @@ impl WinitApp {
         let preload_input = input.clone();
         let audio_progress = Arc::new(AtomicU32::new(0));
         let worker_audio_progress = Arc::clone(&audio_progress);
-        let applied_arrange = Arc::new(OnceLock::new());
-        let worker_applied_arrange = Arc::clone(&applied_arrange);
+        let prepared_chart = Arc::new(OnceLock::new());
+        let worker_prepared_chart = Arc::clone(&prepared_chart);
         thread::Builder::new()
             .name(format!("play-preload-{chart_id}"))
             .spawn(move || {
@@ -122,8 +121,8 @@ impl WinitApp {
                             &library_db,
                             chart_id,
                             session_options.clone(),
-                            |arrange| {
-                                let _ = worker_applied_arrange.set(arrange.clone());
+                            |chart| {
+                                let _ = worker_prepared_chart.set(chart.clone());
                             },
                             |loaded, total| {
                                 worker_audio_progress.store(
@@ -148,11 +147,13 @@ impl WinitApp {
             chart_id,
             input,
             audio_progress,
-            applied_arrange,
+            prepared_chart,
             rx,
         });
+        // 譜面変換結果を受け取ってから、その同じ chart manifest で BMP/BGA を開始する。
+        // ここでは対象だけを予約し、従来の BGA worker による BMS 二重 parse は行わない。
+        self.play.bga_preload.begin_unresolved(chart_id);
         tracing::info!(chart_id, generation, "play preload started");
-        self.start_chart_bga_texture_preload(chart_id, bga_options);
     }
 
     pub(super) fn invalidate_play_preload(&mut self) {

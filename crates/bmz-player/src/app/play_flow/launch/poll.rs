@@ -68,6 +68,8 @@ impl WinitApp {
             }
         }
 
+        self.publish_prepared_play_chart();
+
         // 2) Play 入場が確定 (pending_play_start) しており、バッファに preload があれば install。
         if self
             .play
@@ -116,6 +118,72 @@ impl WinitApp {
                 self.abort_pending_play_start();
             }
         }
+    }
+
+    /// 変換済み譜面を WAV 完了前に Play skin と BGA loader へ公開する。
+    fn publish_prepared_play_chart(&mut self) {
+        let chart_id = self
+            .play
+            .pending_play_preload
+            .as_ref()
+            .map(|pending| pending.chart_id)
+            .or_else(|| {
+                self.play.preloaded_play_session.as_ref().map(|preloaded| preloaded.chart_id)
+            })
+            .or_else(|| self.play.pending_play_start.as_ref().map(|pending| pending.chart_id));
+        let Some(chart_id) = chart_id else {
+            return;
+        };
+        let Some(prepared) = self.play_preload_prepared_chart(chart_id) else {
+            return;
+        };
+
+        // BMP/BGA は WAV worker と同じ変換済み chart の manifest から開始する。
+        // assets=None は begin_unresolved 後、まだ worker を起動していない状態を表す。
+        if self.play.bga_preload.chart_id == Some(chart_id)
+            && self.play.bga_preload.assets.is_none()
+        {
+            let frames = self.start_chart_bga_texture_load_for_chart(chart_id, &prepared.chart);
+            if !frames.is_empty() {
+                self.play.bga_preload.frames = frames;
+            }
+        }
+
+        let pending_options = self
+            .play
+            .pending_play_start
+            .as_ref()
+            .filter(|pending| pending.chart_id == chart_id && !pending.prepared_chart_applied)
+            .map(|pending| pending.options.clone());
+        let Some(options) = pending_options else {
+            return;
+        };
+        let Some(snapshot) = &mut self.play.last_play_snapshot else {
+            return;
+        };
+        apply_prepared_chart_to_render_snapshot(
+            snapshot,
+            &prepared.chart,
+            &prepared.render_snapshot_cache,
+            options.session_mode.is_battle(),
+        );
+        apply_play_arrange_to_snapshot(snapshot, &prepared.applied_arrange);
+        snapshot.target = options.target.as_string();
+        snapshot.target_ex_score = options.target.target_ex_score(snapshot.total_notes);
+
+        if let Some(pending) =
+            self.play.pending_play_start.as_mut().filter(|pending| pending.chart_id == chart_id)
+        {
+            pending.lane.sync_chart_bpm(snapshot, pending.options.hs_fix);
+            pending.prepared_chart_applied = true;
+        }
+        tracing::info!(
+            chart_id,
+            total_notes = snapshot.total_notes,
+            judge_graph_seconds = snapshot.judge_graph_density.len(),
+            bpm_graph_segments = snapshot.bpm_graph_segments.len(),
+            "published prepared chart to play skin before media completion"
+        );
     }
 
     pub(super) fn abort_pending_play_start(&mut self) {

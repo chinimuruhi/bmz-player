@@ -150,17 +150,19 @@ impl WinitApp {
     ) -> Option<PlayMediaCache> {
         let active = self.play.active_play.as_mut()?;
         let video_bga_decoders = std::mem::take(&mut active.running.video_bga_decoders);
-        let (chart, applied_arrange, score_key) = match mode {
+        let (chart, render_snapshot_cache, applied_arrange, score_key) = match mode {
             ResultRetryMode::SameArrange => (
                 Some(Arc::clone(&active.running.session.chart)),
+                Some(active.running.render_snapshot_cache.clone()),
                 Some(active.running.applied_arrange.clone()),
                 Some(active.running.score_key),
             ),
-            ResultRetryMode::DifferentArrange => (None, None, None),
+            ResultRetryMode::DifferentArrange => (None, None, None, None),
         };
         Some(PlayMediaCache {
             chart_id,
             chart,
+            render_snapshot_cache,
             chart_normalization_gain: active.running.session.audio_mix.chart_normalization_gain,
             applied_arrange,
             score_key,
@@ -179,6 +181,7 @@ impl WinitApp {
         self.play.play_media_cache = Some(PlayMediaCache {
             chart_id,
             chart: Some(Arc::clone(&running.session.chart)),
+            render_snapshot_cache: Some(running.render_snapshot_cache.clone()),
             chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
             applied_arrange: Some(running.applied_arrange.clone()),
             score_key: Some(running.score_key),
@@ -211,6 +214,7 @@ impl WinitApp {
         mut cache: PlayMediaCache,
     ) {
         cache.chart = None;
+        cache.render_snapshot_cache = None;
         cache.applied_arrange = None;
         cache.score_key = None;
         self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
@@ -228,8 +232,8 @@ impl WinitApp {
         let preload_input = input.clone();
         let audio_progress = Arc::new(AtomicU32::new(0));
         let worker_audio_progress = Arc::clone(&audio_progress);
-        let applied_arrange = Arc::new(OnceLock::new());
-        let worker_applied_arrange = Arc::clone(&applied_arrange);
+        let prepared_chart = Arc::new(OnceLock::new());
+        let worker_prepared_chart = Arc::clone(&prepared_chart);
         thread::Builder::new()
             .name(format!("play-preload-reuse-bga-{chart_id}"))
             .spawn(move || {
@@ -248,8 +252,8 @@ impl WinitApp {
                             &library_db,
                             chart_id,
                             session_options.clone(),
-                            |arrange| {
-                                let _ = worker_applied_arrange.set(arrange.clone());
+                            |chart| {
+                                let _ = worker_prepared_chart.set(chart.clone());
                             },
                             |loaded, total| {
                                 worker_audio_progress.store(
@@ -274,7 +278,7 @@ impl WinitApp {
             chart_id,
             input,
             audio_progress,
-            applied_arrange,
+            prepared_chart,
             rx,
         });
         tracing::info!(chart_id, generation, "play preload with reused BGA started");
@@ -287,6 +291,10 @@ impl WinitApp {
         cache: PlayMediaCache,
     ) {
         let chart = Arc::clone(cache.chart.as_ref().expect("SameArrange cache includes chart"));
+        let render_snapshot_cache = cache
+            .render_snapshot_cache
+            .clone()
+            .expect("SameArrange cache includes render snapshot cache");
         let applied_arrange =
             cache.applied_arrange.clone().expect("SameArrange cache includes applied arrange");
         let score_key = cache.score_key.expect("SameArrange cache includes score key");
@@ -306,8 +314,13 @@ impl WinitApp {
         let preload_input = input.clone();
         let audio_progress = Arc::new(AtomicU32::new(0));
         let worker_audio_progress = Arc::clone(&audio_progress);
-        let preview_applied_arrange = Arc::new(OnceLock::new());
-        let _ = preview_applied_arrange.set(applied_arrange.clone());
+        let preview_prepared_chart = Arc::new(OnceLock::new());
+        let _ = preview_prepared_chart.set(PreparedPlayChart {
+            chart: Arc::clone(&chart),
+            render_snapshot_cache: render_snapshot_cache.clone(),
+            applied_arrange: applied_arrange.clone(),
+            score_key,
+        });
         let sample_rate = session_options.sample_rate;
         let (tx, rx) = mpsc::channel();
         thread::Builder::new()
@@ -318,6 +331,7 @@ impl WinitApp {
                         chart,
                         sample_rate,
                         chart_normalization_gain,
+                        render_snapshot_cache,
                         applied_arrange,
                         score_key,
                         |loaded, total| {
@@ -345,7 +359,7 @@ impl WinitApp {
             chart_id,
             input,
             audio_progress,
-            applied_arrange: preview_applied_arrange,
+            prepared_chart: preview_prepared_chart,
             rx,
         });
         tracing::info!(chart_id, generation, "quick retry audio preload started");

@@ -136,6 +136,9 @@ impl WinitApp {
             self.restart_select_bar_timer_without_scroll(now);
         } else {
             self.enter_play_scene(decide.chart_id, decide.options, decide.snapshot);
+            // Decide 中に WAV preload が完了済みなら同一フレームで active session を
+            // install し、不要な placeholder 1 フレームを挟まない。
+            self.poll_play_preload();
         }
     }
 

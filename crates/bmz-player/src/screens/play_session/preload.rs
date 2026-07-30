@@ -124,36 +124,50 @@ pub fn preload_play_session_for_chart_with_progress(
     )
 }
 
-/// 譜面変換と配置確定が終わった時点で `on_arrange` を呼び、その後にWAVをロードする。
+/// 譜面変換と配置確定が終わった時点で `on_chart` を呼び、その後にWAVをロードする。
 ///
-/// Play画面はこの通知を使って、重い音源ロードの完了を待たずに実配置を表示できる。
+/// Play画面とBMP loaderはこの通知を使って、重い音源ロードの完了を待たずに
+/// 完成済み譜面と実配置を参照できる。
 pub fn preload_play_session_for_chart_with_callbacks(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
-    on_arrange: impl FnOnce(&AppliedArrange),
+    on_chart: impl FnOnce(&PreparedPlayChart),
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
     let imported = load_transformed_chart_for_play(library_db, chart_id, &options)?;
-    on_arrange(&imported.applied_arrange);
     let chart = Arc::new(imported.chart);
+    let prepared_chart = PreparedPlayChart {
+        render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(
+            &chart,
+        ),
+        chart,
+        applied_arrange: imported.applied_arrange,
+        score_key: imported.score_key,
+    };
+    on_chart(&prepared_chart);
     let mut loader = FfmpegSampleLoader::default();
     let (audio, sample_report) = build_audio_engine_for_chart_with_progress(
-        &chart,
+        &prepared_chart.chart,
         options.sample_rate,
         &mut loader,
         on_progress,
     );
-    let chart_normalization_gain =
-        load_or_compute_chart_normalization_gain(library_db, chart_id, &chart, &audio)?;
+    let chart_normalization_gain = load_or_compute_chart_normalization_gain(
+        library_db,
+        chart_id,
+        &prepared_chart.chart,
+        &audio,
+    )?;
 
     Ok(PreloadedPlaySession {
-        chart,
+        chart: prepared_chart.chart,
         audio,
         sample_report,
         chart_normalization_gain,
-        applied_arrange: imported.applied_arrange,
-        score_key: imported.score_key,
+        render_snapshot_cache: prepared_chart.render_snapshot_cache,
+        applied_arrange: prepared_chart.applied_arrange,
+        score_key: prepared_chart.score_key,
     })
 }
 
@@ -167,6 +181,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
     chart: Arc<PlayableChart>,
     sample_rate: u32,
     chart_normalization_gain: f32,
+    render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     applied_arrange: AppliedArrange,
     score_key: ScoreKey,
     on_progress: impl FnMut(usize, usize),
@@ -179,6 +194,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
         audio,
         sample_report,
         chart_normalization_gain,
+        render_snapshot_cache,
         applied_arrange,
         score_key,
     }
@@ -298,14 +314,6 @@ pub fn scored_note_count_for_chart(
     Ok(scored_note_count(&imported.chart))
 }
 
-pub fn load_chart_bga_assets_for_chart(
-    library_db: &LibraryDatabase,
-    chart_id: i64,
-    options: &PlaySessionOptions,
-) -> Result<Vec<BgaAssetRef>> {
-    Ok(load_source_chart_import_for_play(library_db, chart_id, options)?.chart.bga_assets)
-}
-
 pub fn build_practice_prepared_from_preloaded(
     preloaded: PreloadedPlaySession,
     profile: &ProfileConfig,
@@ -327,10 +335,13 @@ pub fn build_practice_prepared_from_preloaded(
         build_game_session_with_input_backend(Arc::new(chart), profile, options, input_backend);
     session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
     apply_practice_start_gauge(&mut session.gauge, property.start_gauge);
+    let render_snapshot_cache =
+        crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&session.chart);
     PreparedPlaySession {
         session,
         audio: preloaded.audio,
         sample_report: preloaded.sample_report,
+        render_snapshot_cache,
         applied_arrange,
         score_key: preloaded.score_key,
         target_option: TargetOption::None,
@@ -357,6 +368,7 @@ pub fn build_prepared_play_session_from_preloaded(
         session,
         audio: preloaded.audio,
         sample_report: preloaded.sample_report,
+        render_snapshot_cache: preloaded.render_snapshot_cache,
         applied_arrange: preloaded.applied_arrange,
         score_key: preloaded.score_key,
         target_option,

@@ -4,6 +4,78 @@ mod visible;
 
 use visible::populate_visible_playfield;
 
+/// WAV/BMP の完了を待たず、オプション適用済み譜面から確定できる Play skin 値を
+/// placeholder snapshot へ反映する。
+///
+/// 入力で変化するレーン設定やリソース進捗は保持する。これにより PRELOAD 中でも
+/// beatoraja と同様にノーツ分布、BPM graph、譜面メタデータを利用できる。
+pub fn apply_prepared_chart_to_render_snapshot(
+    snapshot: &mut RenderSnapshot,
+    chart: &PlayableChart,
+    cache: &PlayRenderSnapshotCache,
+    battle: bool,
+) {
+    let total_notes = if battle { scored_note_count(chart) / 2 } else { scored_note_count(chart) };
+    snapshot.duration = chart.end_time;
+    snapshot.title.clone_from(&chart.metadata.title);
+    snapshot.subtitle.clone_from(&chart.metadata.subtitle);
+    snapshot.artist.clone_from(&chart.metadata.artist);
+    snapshot.subartist.clone_from(&chart.metadata.subartist);
+    snapshot.genre.clone_from(&chart.metadata.genre);
+    snapshot.difficulty_name.clone_from(&chart.metadata.difficulty_name);
+    snapshot.judge_rank = chart.metadata.judge_rank;
+    snapshot.play_level.clone_from(&chart.metadata.play_level);
+    snapshot.total_notes = total_notes;
+    snapshot.chart_total_gauge = gauge_total_for_chart(chart.metadata.total, total_notes) as f32;
+    snapshot.now_bpm = chart.metadata.initial_bpm as f32;
+    snapshot.main_bpm = chart.metadata.initial_bpm as f32;
+    snapshot.min_bpm = cache.min_bpm;
+    snapshot.max_bpm = cache.max_bpm;
+    snapshot.has_bga = chart.metadata.has_bga;
+    snapshot.has_bpm_stop = cache.has_bpm_stop;
+    snapshot.key_mode = chart.metadata.key_mode;
+    let primary_key_mode = if battle {
+        match chart.metadata.key_mode {
+            KeyMode::K10 => KeyMode::K5,
+            KeyMode::K14 => KeyMode::K7,
+            key_mode => key_mode,
+        }
+    } else {
+        chart.metadata.key_mode
+    };
+    snapshot.fs_threshold_ms = rm_skin_fs_threshold_ms(chart.metadata.judge_rank, primary_key_mode);
+    snapshot.judge_graph_density = Arc::clone(&cache.judge_graph_density);
+    snapshot.bpm_graph_segments = Arc::clone(&cache.bpm_graph_segments);
+
+    snapshot.note_display_duration_ms = display_duration_ms_for_bpm_hispeed(
+        snapshot.now_bpm,
+        snapshot.hispeed,
+        snapshot.lane_cover,
+        snapshot.lift,
+        1.0,
+    )
+    .round()
+    .clamp(0.0, i32::MAX as f32) as i32;
+    snapshot.adjusted_cover_progress = compute_adjusted_cover_progress(
+        snapshot.hidden_enabled,
+        snapshot.lane_cover,
+        snapshot.lift,
+        snapshot.hsfix_index,
+        snapshot.now_bpm,
+        snapshot.max_bpm,
+        snapshot.main_bpm,
+    );
+    snapshot.adjusted_rate = compute_adjusted_rate(
+        snapshot.hidden_enabled,
+        snapshot.lanecover_enabled,
+        snapshot.hsfix_index,
+        snapshot.now_bpm,
+        snapshot.max_bpm,
+        snapshot.main_bpm,
+    );
+    snapshot.adjusted_rate_adot = snapshot.adjusted_rate.map(|rate| (rate * 100.0).floor() as i32);
+}
+
 pub fn build_render_snapshot(
     session: &GameSession,
     chart_now: TimeUs,

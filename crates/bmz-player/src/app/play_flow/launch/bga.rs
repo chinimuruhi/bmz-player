@@ -1,47 +1,6 @@
 use super::*;
 
 impl WinitApp {
-    pub(super) fn start_chart_bga_texture_preload(
-        &mut self,
-        chart_id: i64,
-        options: PlayStartOptions,
-    ) {
-        let generation = self.play.bga_preload.begin_unresolved(chart_id);
-        let Some(uploader) = self.renderer.gpu_uploader() else {
-            tracing::warn!(chart_id, "skipping BGA preload because GPU uploader is unavailable");
-            self.play.bga_preload.status = BgaImageLoadStatus::skipped(generation, chart_id);
-            return;
-        };
-
-        let library_db_path = self.boot.app_paths.library_db.clone();
-        let app_config = self.play_session_app_config();
-        thread::Builder::new()
-            .name(format!("bga-image-load-{chart_id}"))
-            .spawn({
-                let (tx, rx) = bounded_gpu_upload_channel(MAX_PENDING_BGA_TEXTURE_UPLOADS);
-                self.play.bga_preload.rx = Some(rx);
-                move || {
-                    let session_options =
-                        crate::screens::play_start::play_session_options_from_start(
-                            &app_config,
-                            options,
-                        );
-                    let assets = (|| -> Result<Vec<bmz_chart::model::BgaAssetRef>> {
-                        let library_db =
-                            crate::storage::library_db::LibraryDatabase::open(&library_db_path)?;
-                        crate::screens::play_session::load_chart_bga_assets_for_chart(
-                            &library_db,
-                            chart_id,
-                            &session_options,
-                        )
-                    })();
-                    chart_bga_texture_preload_worker(generation, chart_id, assets, tx, uploader);
-                }
-            })
-            .expect("failed to spawn BGA image load thread");
-        tracing::info!(chart_id, generation, "BGA image preload started");
-    }
-
     pub(super) fn invalidate_chart_bga_texture_preload(&mut self) {
         self.play.bga_preload.invalidate();
     }
@@ -87,19 +46,6 @@ impl WinitApp {
         let mut keep_rx = true;
         for _ in 0..MAX_BGA_TEXTURE_RESULTS_PER_REDRAW {
             match rx.try_recv() {
-                Ok(PendingBgaImageResult::Manifest { generation, assets }) => {
-                    if generation != self.play.bga_preload.generation {
-                        continue;
-                    }
-                    self.play.bga_preload.total_assets = assets
-                        .iter()
-                        .filter(|asset| asset.kind == bmz_chart::model::BgaAssetKind::Static)
-                        .count()
-                        .min(u32::MAX as usize)
-                        as u32;
-                    self.play.bga_preload.completed_assets = 0;
-                    self.play.bga_preload.assets = Some(assets);
-                }
                 Ok(PendingBgaImageResult::Loaded(image)) => {
                     if image.generation != self.play.bga_preload.generation {
                         continue;
@@ -153,15 +99,6 @@ impl WinitApp {
                         error,
                         "skipping unreadable BGA image"
                     );
-                }
-                Ok(PendingBgaImageResult::PreloadFailed { generation, chart_id, error }) => {
-                    if generation != self.play.bga_preload.generation {
-                        continue;
-                    }
-                    self.play.bga_preload.status = BgaImageLoadStatus::failed(generation, chart_id);
-                    tracing::warn!(chart_id, error, "BGA image preload failed");
-                    keep_rx = false;
-                    break;
                 }
                 Ok(PendingBgaImageResult::Finished { generation, stats }) => {
                     if generation == self.play.bga_preload.generation {

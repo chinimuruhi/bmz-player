@@ -100,11 +100,11 @@ use crate::screens::play_loop::{
     PlayEndingSkinTimers, advance_running_play_session, apply_play_arrange_to_snapshot,
     refresh_play_ending_snapshot,
 };
-use crate::screens::play_session::AppliedArrange;
 use crate::screens::play_session::build_practice_prepared_from_preloaded;
+use crate::screens::play_session::{AppliedArrange, PreparedPlayChart};
 use crate::screens::play_snapshot::{
-    BgaFrameCatalog, apply_fast_slow_display_filter, bga_texture_id,
-    build_render_snapshot_with_target_and_bga_frames_cached, display_bga_frame,
+    BgaFrameCatalog, apply_fast_slow_display_filter, apply_prepared_chart_to_render_snapshot,
+    bga_texture_id, build_render_snapshot_with_target_and_bga_frames_cached, display_bga_frame,
 };
 use crate::screens::play_start::{
     PlayStartOptions, PreloadedInputPlaySession, PreparedInputPlaySession, StartedInputPlaySession,
@@ -292,7 +292,7 @@ use crate::config::profile_config::{LaneConfig, SelectInputModeConfig};
 use bga_runtime::{
     BgaImageLoadStatus, BgaPreloadRuntime, PendingBgaImageResult, RESOURCE_LOAD_PROGRESS_SCALE,
     combined_resource_load_progress, load_worker as chart_bga_texture_load_worker,
-    preload_worker as chart_bga_texture_preload_worker, resource_load_progress_units,
+    resource_load_progress_units,
 };
 use chart_assets::*;
 use frame_runtime::{

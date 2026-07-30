@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::time::Instant;
 
-use anyhow::Result;
 use bmz_chart::model::{BgaAssetId, BgaAssetKind, BgaAssetRef};
 use bmz_render::assets::load_chart_bga_image;
 use bmz_render::plan::TextureId;
@@ -57,10 +56,6 @@ pub(super) enum BgaImageLoadStatus {
         generation: u64,
         chart_id: i64,
     },
-    Skipped {
-        generation: u64,
-        chart_id: i64,
-    },
 }
 
 impl BgaImageLoadStatus {
@@ -76,32 +71,18 @@ impl BgaImageLoadStatus {
         Self::Failed { generation, chart_id }
     }
 
-    pub(super) fn skipped(generation: u64, chart_id: i64) -> Self {
-        Self::Skipped { generation, chart_id }
-    }
-
     pub(super) fn is_ready_for(self, generation: u64, chart_id: i64) -> bool {
         matches!(
             self,
             Self::Ready { generation: ready_generation, chart_id: ready_chart_id }
                 | Self::Failed { generation: ready_generation, chart_id: ready_chart_id }
-                | Self::Skipped { generation: ready_generation, chart_id: ready_chart_id }
                 if ready_generation == generation && ready_chart_id == chart_id
         )
     }
 }
 
 pub(super) enum PendingBgaImageResult {
-    Manifest {
-        generation: u64,
-        assets: Vec<BgaAssetRef>,
-    },
     Loaded(PendingBgaImage),
-    PreloadFailed {
-        generation: u64,
-        chart_id: i64,
-        error: String,
-    },
     Failed {
         generation: u64,
         asset_id: BgaAssetId,
@@ -291,33 +272,6 @@ fn asset_manifests_match(preloaded: &[BgaAssetRef], active: &[BgaAssetRef]) -> b
     })
 }
 
-pub(super) fn preload_worker(
-    generation: u64,
-    chart_id: i64,
-    assets: Result<Vec<BgaAssetRef>>,
-    tx: SyncSender<PendingBgaImageResult>,
-    uploader: GpuUploader,
-) {
-    match assets {
-        Ok(assets) => {
-            if tx
-                .send(PendingBgaImageResult::Manifest { generation, assets: assets.clone() })
-                .is_err()
-            {
-                return;
-            }
-            load_worker(generation, assets, tx, uploader);
-        }
-        Err(error) => {
-            let _ = tx.send(PendingBgaImageResult::PreloadFailed {
-                generation,
-                chart_id,
-                error: error.to_string(),
-            });
-        }
-    }
-}
-
 pub(super) fn load_worker(
     generation: u64,
     assets: Vec<BgaAssetRef>,
@@ -430,11 +384,7 @@ mod tests {
             Some(42),
             true,
         ));
-        for status in [
-            BgaImageLoadStatus::ready(7, 42),
-            BgaImageLoadStatus::failed(7, 42),
-            BgaImageLoadStatus::skipped(7, 42),
-        ] {
+        for status in [BgaImageLoadStatus::ready(7, 42), BgaImageLoadStatus::failed(7, 42)] {
             assert!(images_ready_for_ready_phase(status, 7, Some(42), true));
         }
         assert!(images_ready_for_ready_phase(

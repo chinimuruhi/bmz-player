@@ -1,6 +1,49 @@
 use super::*;
 
 #[test]
+fn prepared_chart_populates_play_skin_data_without_marking_media_ready() {
+    use bmz_chart::model::{TimingEvent, TimingEventKind};
+
+    let mut chart = chart();
+    chart.metadata.title = "Prepared title".to_string();
+    chart.metadata.subtitle = "Prepared subtitle".to_string();
+    chart.metadata.artist = "Prepared artist".to_string();
+    chart.metadata.has_bga = true;
+    chart.metadata.judge_rank = Some(75);
+    chart.end_time = TimeUs(3_000_000);
+    chart.timing_events.push(TimingEvent {
+        tick: ChartTick(960),
+        time: TimeUs(250_000),
+        kind: TimingEventKind::Stop { duration_us: 125_000 },
+    });
+    let cache = PlayRenderSnapshotCache::from_chart(&chart);
+    let mut snapshot = bmz_render::snapshot::RenderSnapshot {
+        resources_loaded: false,
+        resource_load_progress: 0.25,
+        hispeed: 2.0,
+        ..Default::default()
+    };
+
+    apply_prepared_chart_to_render_snapshot(&mut snapshot, &chart, &cache, false);
+
+    assert_eq!(snapshot.title, "Prepared title");
+    assert_eq!(snapshot.subtitle, "Prepared subtitle");
+    assert_eq!(snapshot.artist, "Prepared artist");
+    assert_eq!(snapshot.duration, TimeUs(3_000_000));
+    assert_eq!(snapshot.total_notes, 1);
+    assert_eq!(snapshot.chart_total_gauge, 160.0);
+    assert_eq!(snapshot.now_bpm, 120.0);
+    assert_eq!(snapshot.min_bpm, 120.0);
+    assert_eq!(snapshot.max_bpm, 120.0);
+    assert!(snapshot.has_bga);
+    assert!(snapshot.has_bpm_stop);
+    assert!(!snapshot.judge_graph_density.is_empty());
+    assert!(!snapshot.bpm_graph_segments.is_empty());
+    assert!(!snapshot.resources_loaded);
+    assert_eq!(snapshot.resource_load_progress, 0.25);
+}
+
+#[test]
 fn refresh_play_skin_visuals_with_input_elapsed_tracks_short_pre_ready_keybeam() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut session =

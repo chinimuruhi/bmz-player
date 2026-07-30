@@ -168,6 +168,15 @@ impl WinitApp {
         snapshot.stagefile_background = self.play.play_stagefile_loaded;
         snapshot.stagefile_image_size = self.play.play_stagefile_size;
         snapshot.backbmp_background = self.play.play_backbmp_loaded;
+        let prepared_chart = self.play_preload_prepared_chart(chart_id);
+        if let Some(prepared) = &prepared_chart {
+            apply_prepared_chart_to_render_snapshot(
+                &mut snapshot,
+                &prepared.chart,
+                &prepared.render_snapshot_cache,
+                options.session_mode.is_battle(),
+            );
+        }
         // preload 完了で install_active_play がフル snapshot に置き換えるまでの間、
         // 初期ゲージや緑数字が空表示にならないようセッション開始時相当の値を埋める。
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
@@ -179,12 +188,22 @@ impl WinitApp {
             key_mode,
             &session_options,
         );
+        // placeholder 初期値の算出には上で反映した正確な TOTAL / BPM を使い、
+        // その後に chart 依存の派生値を実セッションと同じ値へ揃える。
+        if let Some(prepared) = &prepared_chart {
+            apply_prepared_chart_to_render_snapshot(
+                &mut snapshot,
+                &prepared.chart,
+                &prepared.render_snapshot_cache,
+                session_options.session_mode.is_battle(),
+            );
+        }
         // 譜面変換はWAVロードより先に完了する。preload workerが先行公開した
         // 実配置を使い、Play入場直後のロード画面からRANDOM refを表示する。
-        if let Some(applied_arrange) = self.play_preload_applied_arrange(chart_id) {
-            apply_play_arrange_to_snapshot(&mut snapshot, &applied_arrange);
+        if let Some(prepared) = &prepared_chart {
+            apply_play_arrange_to_snapshot(&mut snapshot, &prepared.applied_arrange);
         }
-        let pending_play_start = PendingPlayStart::from_snapshot(
+        let mut pending_play_start = PendingPlayStart::from_snapshot(
             chart_id,
             options,
             &snapshot,
@@ -192,6 +211,7 @@ impl WinitApp {
             key_mode,
             session_options.gamepad_slots,
         );
+        pending_play_start.prepared_chart_applied = prepared_chart.is_some();
         pending_play_start.lane.apply_to_snapshot(&mut snapshot);
         self.play.play_option_input = Some(PlayOptionInput::new(
             key_mode,

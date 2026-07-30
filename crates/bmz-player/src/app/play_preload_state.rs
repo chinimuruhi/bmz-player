@@ -5,7 +5,7 @@ pub(super) struct PendingPlayPreload {
     pub(super) chart_id: i64,
     pub(super) input: SharedInputBackend,
     pub(super) audio_progress: Arc<AtomicU32>,
-    pub(super) applied_arrange: Arc<OnceLock<AppliedArrange>>,
+    pub(super) prepared_chart: Arc<OnceLock<PreparedPlayChart>>,
     pub(super) rx: Receiver<PlayPreloadResult>,
 }
 
@@ -21,6 +21,8 @@ pub(super) struct PlayMediaCache {
     pub(super) chart_id: i64,
     /// Present for SameArrange reuse of the exact chart Arc.
     pub(super) chart: Option<std::sync::Arc<PlayableChart>>,
+    pub(super) render_snapshot_cache:
+        Option<crate::screens::play_snapshot::PlayRenderSnapshotCache>,
     pub(super) chart_normalization_gain: f32,
     pub(super) applied_arrange: Option<crate::screens::play_session::AppliedArrange>,
     pub(super) score_key: Option<crate::storage::score_db::ScoreKey>,
