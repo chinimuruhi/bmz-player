@@ -213,11 +213,18 @@ impl Default for PlaySessionOptions {
     }
 }
 
-mod arrange;
+#[path = "play_session/arrange/algorithm.rs"]
+mod arrange_algorithm;
+#[path = "play_session/arrange/permutation.rs"]
+mod arrange_permutation;
+#[path = "play_session/arrange/pipeline.rs"]
+mod arrange_pipeline;
+#[path = "play_session/arrange/rng.rs"]
+mod arrange_rng;
 mod build;
 mod preload;
 
-pub use arrange::{apply_arrange, apply_arrange_pair, generate_arrange_seed};
+pub use arrange_pipeline::{apply_arrange, apply_arrange_pair, generate_arrange_seed};
 pub use build::{
     apply_placeholder_session_visuals, build_game_session, build_game_session_with_input_backend,
 };
@@ -231,7 +238,10 @@ pub use preload::{
     preload_play_session_reloading_audio_with_progress, scored_note_count_for_chart,
 };
 
-use arrange::*;
+use arrange_algorithm::*;
+use arrange_permutation::*;
+use arrange_pipeline::*;
+use arrange_rng::*;
 #[cfg(test)]
 use build::*;
 #[cfg(test)]

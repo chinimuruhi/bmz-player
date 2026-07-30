@@ -296,7 +296,9 @@ pub struct SelectExecutableRow {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(clippy::large_enum_variant)]
+// SelectItem は長寿命の選曲リストに格納され、全 variant を頻繁に走査する。
+// variant ごとの Box 化は行単位の割当とポインタ追跡を増やすため、連続配置を優先する。
+#[expect(clippy::large_enum_variant, reason = "選曲リストの連続配置と走査局所性を優先する")]
 pub enum SelectItem {
     Folder {
         path: String,

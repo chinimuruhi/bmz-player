@@ -108,13 +108,23 @@ fn create_lr2_source(conn: &Connection, md5: &[u8; 16]) {
 
 fn create_lr2_source_with_hash(conn: &Connection, hash: &str) {
     // `poor` includes Empty Poor in LR2 and may make the judge sum exceed totalnotes.
-    create_lr2_source_with_score(conn, hash, 128, 64, 100, 22, 3, 2, 10);
+    create_lr2_source_with_score(
+        conn,
+        hash,
+        Lr2ScoreFixture {
+            total_notes: 128,
+            max_combo: 64,
+            perfect: 100,
+            great: 22,
+            good: 3,
+            bad: 2,
+            poor: 10,
+        },
+    );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn create_lr2_source_with_score(
-    conn: &Connection,
-    hash: &str,
+#[derive(Debug, Clone, Copy)]
+struct Lr2ScoreFixture {
     total_notes: u32,
     max_combo: u32,
     perfect: u32,
@@ -122,7 +132,9 @@ fn create_lr2_source_with_score(
     good: u32,
     bad: u32,
     poor: u32,
-) {
+}
+
+fn create_lr2_source_with_score(conn: &Connection, hash: &str, score: Lr2ScoreFixture) {
     conn.execute_batch(
         "CREATE TABLE score (
                 hash TEXT, clear INTEGER, perfect INTEGER, great INTEGER,
@@ -134,7 +146,16 @@ fn create_lr2_source_with_score(
     .unwrap();
     conn.execute(
         "INSERT INTO score VALUES (?1, 4, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 3, 2, 1, '', 123, 0)",
-        params![hash, perfect, great, good, bad, poor, total_notes, max_combo],
+        params![
+            hash,
+            score.perfect,
+            score.great,
+            score.good,
+            score.bad,
+            score.poor,
+            score.total_notes,
+            score.max_combo
+        ],
     )
     .unwrap();
 }
@@ -145,24 +166,39 @@ fn create_beatoraja_source(conn: &Connection, sha256: &[u8; 32], date: i64, mode
 
 fn create_beatoraja_source_with_sha256(conn: &Connection, sha256: &str, date: i64, mode: i64) {
     // Default no-LN chart expects 128 scored notes.
-    create_beatoraja_source_with_score(conn, sha256, date, mode, 7, 128, 128, 80);
+    create_beatoraja_source_with_score(
+        conn,
+        sha256,
+        BeatorajaScoreFixture {
+            date,
+            mode,
+            clear: 7,
+            total_notes: 128,
+            judged: 128,
+            max_combo: 80,
+        },
+    );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn create_beatoraja_source_with_score(
-    conn: &Connection,
-    sha256: &str,
+#[derive(Debug, Clone, Copy)]
+struct BeatorajaScoreFixture {
     date: i64,
     mode: i64,
     clear: i64,
     total_notes: u32,
     judged: u32,
     max_combo: u32,
+}
+
+fn create_beatoraja_source_with_score(
+    conn: &Connection,
+    sha256: &str,
+    score: BeatorajaScoreFixture,
 ) {
     // Split judged across fast/slow buckets for schema coverage; empty poor
     // (ems/lms) is excluded from the import note-count check.
-    let epg = judged.saturating_sub(28).min(judged);
-    let rem = judged.saturating_sub(epg);
+    let epg = score.judged.saturating_sub(28).min(score.judged);
+    let rem = score.judged.saturating_sub(epg);
     let lpg = rem.min(10);
     let rem = rem.saturating_sub(lpg);
     let egr = rem.min(5);
@@ -205,8 +241,8 @@ fn create_beatoraja_source_with_score(
             )",
             params![
                 sha256,
-                mode,
-                clear,
+                score.mode,
+                score.clear,
                 epg,
                 lpg,
                 egr,
@@ -217,9 +253,9 @@ fn create_beatoraja_source_with_score(
                 lbd,
                 epr,
                 lpr,
-                total_notes,
-                max_combo,
-                date
+                score.total_notes,
+                score.max_combo,
+                score.date
             ],
         )
         .unwrap();

@@ -331,12 +331,14 @@ fn beatoraja_import_mode_cn_on_undefined_ln_sets_force_cn() {
     create_beatoraja_source_with_score(
         &source,
         &hash_to_hex(&sha256),
-        1_700_000_001_000,
-        1,
-        7,
-        4,
-        4,
-        4,
+        BeatorajaScoreFixture {
+            date: 1_700_000_001_000,
+            mode: 1,
+            clear: 7,
+            total_notes: 4,
+            judged: 4,
+            max_combo: 4,
+        },
     );
 
     let report = import_beatoraja_scores(
@@ -368,12 +370,14 @@ fn beatoraja_import_falls_back_to_force_ln_when_only_ln_expected_matches() {
     create_beatoraja_source_with_score(
         &source,
         &hash_to_hex(&sha256),
-        1_700_000_001_000,
-        1,
-        7,
-        2,
-        2,
-        2,
+        BeatorajaScoreFixture {
+            date: 1_700_000_001_000,
+            mode: 1,
+            clear: 7,
+            total_notes: 2,
+            judged: 2,
+            max_combo: 2,
+        },
     );
 
     let report = import_beatoraja_scores(
@@ -403,12 +407,14 @@ fn beatoraja_import_fails_when_source_note_count_mismatches_all_policies() {
     create_beatoraja_source_with_score(
         &source,
         &hash_to_hex(&sha256),
-        1_700_000_001_000,
-        1,
-        7,
-        3,
-        3,
-        3,
+        BeatorajaScoreFixture {
+            date: 1_700_000_001_000,
+            mode: 1,
+            clear: 7,
+            total_notes: 3,
+            judged: 3,
+            max_combo: 3,
+        },
     );
 
     let report = import_beatoraja_scores(
@@ -434,12 +440,14 @@ fn beatoraja_import_accepts_failed_row_with_fewer_judgements() {
     create_beatoraja_source_with_score(
         &source,
         &hash_to_hex(&sha256),
-        1_700_000_001_000,
-        1,
-        1,
-        4,
-        3,
-        3,
+        BeatorajaScoreFixture {
+            date: 1_700_000_001_000,
+            mode: 1,
+            clear: 1,
+            total_notes: 4,
+            judged: 3,
+            max_combo: 3,
+        },
     );
 
     let report = import_beatoraja_scores(
@@ -467,12 +475,14 @@ fn beatoraja_import_accepts_more_judgements_than_source_notes() {
     create_beatoraja_source_with_score(
         &source,
         &hash_to_hex(&sha256),
-        1_700_000_001_000,
-        0,
-        7,
-        128,
-        129,
-        80,
+        BeatorajaScoreFixture {
+            date: 1_700_000_001_000,
+            mode: 0,
+            clear: 7,
+            total_notes: 128,
+            judged: 129,
+            max_combo: 80,
+        },
     );
 
     let report = import_beatoraja_scores(
@@ -491,7 +501,19 @@ fn beatoraja_import_accepts_more_judgements_than_source_notes() {
 fn lr2_import_accepts_empty_poor_in_judge_total() {
     let (mut library_db, mut score_db, _, md5) = open_test_databases();
     let source = Connection::open_in_memory().unwrap();
-    create_lr2_source_with_score(&source, &hash_to_hex(&md5), 128, 64, 100, 22, 3, 2, 20);
+    create_lr2_source_with_score(
+        &source,
+        &hash_to_hex(&md5),
+        Lr2ScoreFixture {
+            total_notes: 128,
+            max_combo: 64,
+            perfect: 100,
+            great: 22,
+            good: 3,
+            bad: 2,
+            poor: 20,
+        },
+    );
 
     let report = import_lr2_scores(
         &source,
@@ -509,7 +531,19 @@ fn lr2_import_accepts_empty_poor_in_judge_total() {
 fn lr2_import_fails_when_source_note_count_mismatches() {
     let (mut library_db, mut score_db, _, md5) = open_test_databases();
     let source = Connection::open_in_memory().unwrap();
-    create_lr2_source_with_score(&source, &hash_to_hex(&md5), 127, 64, 100, 20, 3, 2, 1);
+    create_lr2_source_with_score(
+        &source,
+        &hash_to_hex(&md5),
+        Lr2ScoreFixture {
+            total_notes: 127,
+            max_combo: 64,
+            perfect: 100,
+            great: 20,
+            good: 3,
+            bad: 2,
+            poor: 1,
+        },
+    );
 
     let report = import_lr2_scores(
         &source,

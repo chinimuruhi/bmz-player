@@ -1,5 +1,9 @@
 use super::*;
 
+mod visible;
+
+use visible::populate_visible_playfield;
+
 pub fn build_render_snapshot(
     session: &GameSession,
     chart_now: TimeUs,
@@ -342,155 +346,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             .to_string(),
     };
 
-    // beatoraja の LaneRenderer と同様、playstart 中 (lane_render_now < 0) は
-    // レーンスクロールの基準時刻を 0 に固定する。音声の chart_zero_time は
-    // マイナスのまま維持し、見た目だけ clamp する。
-    // レーン描画時刻が 0 未満の間は譜面オブジェクトを出さない (beatoraja の
-    // TIMER_PLAY 開始前と同じ)。
-    let scroll_time = scroll_render_time(lane_render_now);
-    if lane_render_now.0 >= 0 {
-        let scroll = ScrollContext::new(session, cache);
-        let cursor_tick = scroll.cursor_tick(scroll_time);
-        let simple_tick_upper_bound = scroll.simple_tick_upper_bound(cursor_tick);
-        let note_lower_time = (snapshot.key_mode != KeyMode::K9).then_some(lane_render_now);
-
-        for lane in Lane::ALL {
-            for note in visible_lane_notes(
-                session.chart.notes_for_lane(lane),
-                note_lower_time,
-                simple_tick_upper_bound,
-            ) {
-                let processed_judge = session.judge.judged_notes.get(&note.id).copied();
-                let falling_pms_poor = snapshot.key_mode == KeyMode::K9
-                    && note.kind == NoteKind::Tap
-                    && processed_judge == Some(Judge::Poor)
-                    && note.time < lane_render_now;
-                if note.time < lane_render_now && !falling_pms_poor {
-                    continue;
-                }
-                match note.kind {
-                    NoteKind::Invisible => continue,
-                    NoteKind::Mine => {
-                        if let Some(y) = scroll.note_y(note.time, cursor_tick) {
-                            snapshot.visible_mines[lane.index()].push(VisibleMine {
-                                lane,
-                                time: note.time,
-                                y,
-                                damage: note.damage.unwrap_or(0),
-                            });
-                        }
-                    }
-                    // LN START/END のキャップは beatoraja の drawLongNote 同様、
-                    // visible_long_notes 側でロングノート本体と一緒に描画する。
-                    NoteKind::LongStart | NoteKind::LongEnd => continue,
-                    NoteKind::Tap => {
-                        let y = if falling_pms_poor {
-                            Some(-pms_missed_note_fall_progress(
-                                &session.timing_map,
-                                note.tick,
-                                note.time,
-                                session.judge.window_set.note.bad_slow_us.max(0),
-                                lane_render_now,
-                            ))
-                            .filter(|fall| *fall >= -1.0)
-                        } else {
-                            scroll.note_y(note.time, cursor_tick)
-                        };
-                        if let Some(y) = y {
-                            snapshot.visible_notes[lane.index()].push(VisibleNote {
-                                lane,
-                                time: note.time,
-                                y,
-                                kind: NoteVisualKind::Tap,
-                                processed_judge,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        for bar in visible_bar_lines(
-            &session.chart.bar_lines,
-            scroll_time,
-            simple_tick_upper_bound.map(|upper| (cursor_tick, upper)),
-        ) {
-            if let Some(y) = scroll.note_y(bar.time, cursor_tick) {
-                snapshot.bar_lines.push(VisibleBarLine { time: bar.time, y });
-            }
-        }
-
-        for event in visible_timing_events(
-            &session.chart.timing_events,
-            scroll_time,
-            simple_tick_upper_bound.map(|upper| (cursor_tick, upper)),
-        ) {
-            let Some(y) = scroll.note_y(event.time, cursor_tick) else {
-                continue;
-            };
-            let line = VisibleBarLine { time: event.time, y };
-            match event.kind {
-                TimingEventKind::BpmChange { .. } => snapshot.bpm_lines.push(line),
-                TimingEventKind::Stop { .. } => snapshot.stop_lines.push(line),
-            }
-        }
-
-        let end_second = (session.chart.end_time.0.max(0) / 1_000_000).min(21_600);
-        let seconds = visible_time_line_seconds(
-            &session.timing_map,
-            end_second,
-            scroll_time,
-            simple_tick_upper_bound,
-        );
-        for second in seconds {
-            let time = TimeUs(second.saturating_mul(1_000_000));
-            if let Some(y) = scroll.note_y(time, cursor_tick) {
-                snapshot.time_lines.push(VisibleBarLine { time, y });
-            }
-        }
-
-        for (pair_index, long) in visible_long_notes(
-            &session.chart.long_notes,
-            &cache.long_note_prefix_max_end_times,
-            scroll_time,
-            simple_tick_upper_bound.map(|upper| (cursor_tick, upper)),
-        ) {
-            let head = scroll.note_progress(long.start_time, cursor_tick);
-            let tail = scroll.note_progress(long.end_time, cursor_tick);
-            // 終端が判定ラインを過ぎた、または始端が画面上端より奥なら非表示。
-            // lane cover は前面描画で隠すだけで、ノーツのカリング範囲は変えない。
-            if tail < 0.0 || head > 1.0 {
-                continue;
-            }
-            let mode = long.mode.unwrap_or(session.chart.metadata.long_note_mode);
-            // beatoraja drawLongNote の longImage 選択に対応する状態判定:
-            // processing == pair → Processing。HCN は passing 中 (区間内かつ始端判定
-            // 済み) なら押下状態で HcnActive / HcnDamage。それ以外は Inactive。
-            // 物理キー状態は processing 判定には使わない。
-            let lane_index = long.lane.index();
-            let is_processing = session.judge.lanes[lane_index]
-                .active_long
-                .is_some_and(|active| active.pair_index == pair_index);
-            let body_state = if is_processing {
-                LongBodyState::Processing
-            } else if mode == LongNoteMode::Hcn
-                && chart_now.0 >= long.start_time.0
-                && chart_now.0 < long.end_time.0
-                && let Some(timer) = session.lane_hcn_timer[lane_index]
-            {
-                if timer.inclease { LongBodyState::HcnActive } else { LongBodyState::HcnDamage }
-            } else {
-                LongBodyState::Inactive
-            };
-            snapshot.visible_long_notes.push(VisibleLongNote {
-                lane: long.lane,
-                mode,
-                head_y: head.clamp(0.0, 1.0),
-                tail_y: tail.clamp(0.0, 1.0),
-                body_state,
-            });
-        }
-    }
+    populate_visible_playfield(&mut snapshot, session, chart_now, cache, lane_render_now);
 
     snapshot
 }
