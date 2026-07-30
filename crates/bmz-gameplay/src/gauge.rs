@@ -448,11 +448,15 @@ impl GaugeState {
 
 mod compile;
 mod definitions;
+mod definitions_common;
+mod definitions_dx;
 mod state;
 mod totals;
 
 pub use compile::*;
 pub use definitions::*;
+use definitions_common::*;
+use definitions_dx::*;
 use state::*;
 pub use totals::*;
 
