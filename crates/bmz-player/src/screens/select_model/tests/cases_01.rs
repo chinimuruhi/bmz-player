@@ -26,6 +26,58 @@ fn load_select_items_in_folder_attaches_best_scores_by_hash() {
 }
 
 #[test]
+fn virtual_folder_profile_query_filters_library_charts() {
+    let (mut library_db, score_db) = open_in_memory_dbs();
+    let mut low = chart("Low");
+    low.metadata.play_level = "5".to_string();
+    let mut high = chart("High");
+    high.metadata.play_level = "12".to_string();
+    library_db.upsert_chart_import(&record_for_chart("/songs/low.bms", &low)).unwrap();
+    library_db.upsert_chart_import(&record_for_chart("/songs/high.bms", &high)).unwrap();
+
+    let profile_root = std::env::temp_dir().join(format!(
+        "bmz-virtual-query-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    std::fs::create_dir_all(&profile_root).unwrap();
+    std::fs::write(
+        profile_root.join(VIRTUAL_FOLDER_CONFIG_FILE),
+        r#"
+version = 1
+
+[[folders]]
+id = "custom"
+name = "CUSTOM"
+query = "mode == '7K' && level >= 10"
+"#,
+    )
+    .unwrap();
+
+    let items = load_select_items_in_virtual_folder(
+        &library_db,
+        &score_db,
+        &profile_root,
+        "bmz-filter:custom",
+        LnPolicySetting::AutoLn,
+        RuleMode::Beatoraja,
+        &[],
+        None,
+        None,
+    )
+    .unwrap();
+    let titles = items
+        .iter()
+        .filter_map(|item| match item {
+            SelectItem::Chart(row) => Some(row.display_title()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(titles, ["High"]);
+    std::fs::remove_dir_all(profile_root).unwrap();
+}
+
+#[test]
 fn load_select_items_in_folder_attaches_replay_slots_from_replay_slots_table() {
     let (mut library_db, mut score_db) = open_in_memory_dbs();
     let alpha = chart("Alpha");

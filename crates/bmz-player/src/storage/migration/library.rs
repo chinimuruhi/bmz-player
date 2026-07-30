@@ -497,4 +497,14 @@ pub const LIBRARY_MIGRATIONS: &[Migration] = &[
         // 正規化ゲインは loudness_lufs と再生目標から導出できるため保存しない。
         statements: &["ALTER TABLE chart_analysis DROP COLUMN normalization_gain;"],
     },
+    Migration {
+        version: 29,
+        // `scanned_at` は再スキャンごとに更新されるため NEW フォルダには使えない。
+        // 初回発見時刻を別に保持し、既存行は現在保存されている scan 時刻で初期化する。
+        statements: &[
+            "ALTER TABLE chart_files ADD COLUMN first_seen_at INTEGER NOT NULL DEFAULT 0;",
+            "UPDATE chart_files SET first_seen_at = scanned_at WHERE first_seen_at = 0;",
+            "CREATE INDEX idx_chart_files_first_seen_at ON chart_files(first_seen_at DESC);",
+        ],
+    },
 ];

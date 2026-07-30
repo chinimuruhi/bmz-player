@@ -132,6 +132,17 @@ pub struct DailyPlayerStats {
     pub miss_count_update_count: u64,
 }
 
+/// Local play timestamps where a chart improved its lamp or EX score.
+///
+/// The map returned by [`ScoreDatabase::chart_update_times_since`] is keyed by
+/// the same score aggregation dimensions as `score_best`, so LN policy and
+/// rule mode changes do not leak into a virtual folder.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChartUpdateTimes {
+    pub lamp: Vec<i64>,
+    pub score: Vec<i64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScoreKey {
     pub chart_sha256: [u8; 32],

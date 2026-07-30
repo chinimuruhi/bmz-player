@@ -94,6 +94,28 @@ fn upsert_chart_import_persists_file_chart_and_link() {
 }
 
 #[test]
+fn upsert_chart_import_preserves_first_seen_time_across_rescan() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut db = LibraryDatabase { conn };
+    let chart = chart("first seen");
+    let mut first = record_for_chart("/songs/first-seen.bms", &chart);
+    first.scanned_at = 100;
+    let chart_id = db.upsert_chart_import(&first).unwrap();
+
+    let mut rescan = record_for_chart("/songs/first-seen.bms", &chart);
+    rescan.scanned_at = 200;
+    db.upsert_chart_import(&rescan).unwrap();
+
+    let first_seen = db.chart_first_seen_at_by_chart_ids(&[chart_id]).unwrap();
+    assert_eq!(first_seen.get(&chart_id), Some(&100));
+    let scanned_at: i64 =
+        db.conn().query_row("SELECT scanned_at FROM chart_files", [], |row| row.get(0)).unwrap();
+    assert_eq!(scanned_at, 200);
+}
+
+#[test]
 fn upsert_chart_import_backfills_unresolved_course_entries() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();

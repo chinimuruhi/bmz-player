@@ -1,6 +1,82 @@
 use super::*;
 
 impl ScoreDatabase {
+    /// Returns local-calendar day ranges, newest first.
+    ///
+    /// Unlike `current_daily_statistics_range`, these ranges intentionally do
+    /// not honor the manual daily-statistics reset marker: virtual folders
+    /// describe calendar history rather than the resettable stats panel.
+    pub fn recent_local_day_ranges(&self, day_count: usize) -> Result<Vec<(i64, i64)>> {
+        let mut ranges = Vec::with_capacity(day_count);
+        for offset in 0..day_count {
+            let modifier = format!("-{offset} days");
+            let range = self.conn.query_row(
+                "SELECT
+                    CAST(strftime('%s', date('now', 'localtime', ?1), 'utc') AS INTEGER),
+                    CAST(strftime(
+                        '%s', date('now', 'localtime', ?1), '+1 day', 'utc'
+                    ) AS INTEGER)",
+                params![modifier],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            ranges.push(range);
+        }
+        Ok(ranges)
+    }
+
+    /// Finds local, non-autoplay score/lamp improvements since `start_at`.
+    pub fn chart_update_times_since(
+        &self,
+        keys: &[ScoreKey],
+        start_at: i64,
+    ) -> Result<HashMap<ScoreKey, ChartUpdateTimes>> {
+        if keys.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let accepted: HashSet<ScoreKey> = keys.iter().copied().collect();
+        let mut updates = HashMap::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                chart_sha256, ln_policy, double_option, rule_mode, played_at,
+                clear_type, old_clear_type, ex_score, old_ex_score
+             FROM score_history
+             WHERE source_kind = 'Local'
+               AND autoplay = 0
+               AND played_at >= ?1
+             ORDER BY played_at ASC, id ASC",
+        )?;
+        let mut rows = stmt.query(params![start_at])?;
+        while let Some(row) = rows.next()? {
+            let chart_sha256 = hex_to_hash::<32>(&row.get::<_, String>(0)?)?;
+            let Some(ln_policy) = LnScorePolicy::from_str_opt(&row.get::<_, String>(1)?) else {
+                continue;
+            };
+            let double_option = DoubleOptionScoreBucket::from_str_or_off(&row.get::<_, String>(2)?);
+            let rule_mode =
+                RuleMode::from_str_opt(&row.get::<_, String>(3)?).unwrap_or(RuleMode::Beatoraja);
+            let key = ScoreKey::with_options(chart_sha256, ln_policy, double_option, rule_mode);
+            if !accepted.contains(&key) {
+                continue;
+            }
+
+            let played_at: i64 = row.get(4)?;
+            let clear_type: String = row.get(5)?;
+            let old_clear_type: Option<String> = row.get(6)?;
+            let ex_score: u32 = row.get(7)?;
+            let old_ex_score: Option<u32> = row.get(8)?;
+            let entry = updates.entry(key).or_insert_with(ChartUpdateTimes::default);
+            if old_clear_type.as_deref().is_none_or(|old| {
+                ClearType::rank_from_label(&clear_type) > ClearType::rank_from_label(old)
+            }) {
+                entry.lamp.push(played_at);
+            }
+            if old_ex_score.is_none_or(|old| ex_score > old) {
+                entry.score.push(played_at);
+            }
+        }
+        Ok(updates)
+    }
+
     pub fn player_info(&self) -> Result<PlayerInfo> {
         self.conn
             .query_row(

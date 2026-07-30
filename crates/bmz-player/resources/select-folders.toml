@@ -1,0 +1,183 @@
+# BMZ built-in virtual folders.
+#
+# A profile can override these in `profiles/<name>/select-folders.toml`.
+# Matching top-level ids replace the built-in entry; `enabled = false` hides it.
+# `query` is BMZ's typed one-line expression language, not SQL.
+version = 1
+
+[[folders]]
+id = "lamp-update"
+name = "LAMP UPDATE"
+[folders.generate]
+values = "0..=29"
+id = "day-{value}"
+name = "{days_ago}"
+query = "lamp_updated_at in local_day({value})"
+
+[[folders]]
+id = "score-update"
+name = "SCORE UPDATE"
+[folders.generate]
+values = "0..=29"
+id = "day-{value}"
+name = "{days_ago}"
+query = "score_updated_at in local_day({value})"
+
+[[folders]]
+id = "my-best"
+name = "MY BEST"
+[folders.query]
+filter = "play_count > 0"
+order_by = "play_count desc"
+limit = 10
+
+[[folders]]
+id = "clear-type"
+name = "CLEAR TYPE"
+items = [
+  { id = "full-combo", name = "FULL COMBO", query = "clear >= 8" },
+  { id = "ex-hard", name = "EX HARD CLEAR", query = "clear == 7" },
+  { id = "hard", name = "HARD CLEAR", query = "clear == 6" },
+  { id = "normal", name = "CLEAR", query = "clear == 5" },
+  { id = "easy", name = "EASY CLEAR", query = "clear == 4" },
+  { id = "assist", name = "ASSIST CLEAR", query = "clear in [2, 3]" },
+  { id = "failed", name = "FAILED", query = "clear == 1" },
+]
+
+[[folders]]
+id = "score-rank"
+name = "SCORE RANK"
+items = [
+  { id = "aaa", name = "RANK AAA", query = "score_rate >= 88.88" },
+  { id = "aa", name = "RANK AA", query = "score_rate >= 77.77 && score_rate < 88.88" },
+  { id = "a", name = "RANK A", query = "score_rate >= 66.66 && score_rate < 77.77" },
+  { id = "b", name = "RANK B", query = "score_rate >= 55.55 && score_rate < 66.66" },
+  { id = "c", name = "RANK C", query = "score_rate >= 44.44 && score_rate < 55.55" },
+  { id = "d", name = "RANK D", query = "score_rate >= 33.33 && score_rate < 44.44" },
+  { id = "e", name = "RANK E", query = "score_rate >= 22.22 && score_rate < 33.33" },
+]
+
+[[folders]]
+id = "density"
+name = "DENSITY"
+
+[[folders.items]]
+id = "average"
+name = "AVERAGE"
+[folders.items.buckets]
+field = "density"
+prefix = "DENSITY"
+cuts = [3, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
+
+[[folders.items]]
+id = "peak"
+name = "PEAK"
+[folders.items.buckets]
+field = "peak_density"
+prefix = "DENSITY"
+cuts = [3, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
+
+[[folders.items]]
+id = "end"
+name = "END"
+[folders.items.buckets]
+field = "end_density"
+prefix = "DENSITY"
+cuts = [3, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
+
+[[folders]]
+id = "feature"
+name = "FEATURE"
+items = [
+  { id = "scratch-10-20", name = "SCRATCH 10% - 20%", query = "scratch_rate >= 0.10 && scratch_rate < 0.20" },
+  { id = "scratch-20", name = "SCRATCH > 20%", query = "scratch_rate >= 0.20" },
+  { id = "ln-10-20", name = "LN 10% - 20%", query = "long_note_rate >= 0.10 && long_note_rate < 0.20" },
+  { id = "ln-20", name = "LN > 20%", query = "long_note_rate >= 0.20" },
+]
+
+[[folders]]
+id = "level"
+name = "LEVEL"
+
+[[folders.items]]
+id = "7k"
+name = "7KEYS"
+items = [
+  { id = "level-0", name = "LEVEL 0", query = "mode == '7K' && level <= 0" },
+  { id = "level-13", name = "LEVEL 13〜", query = "mode == '7K' && level >= 13" },
+]
+[folders.items.generate]
+values = "1..=12"
+id = "level-{value}"
+name = "LEVEL {value}"
+query = "mode == '7K' && level == {value}"
+insert_at = 1
+
+[[folders.items]]
+id = "14k"
+name = "14KEYS"
+items = [
+  { id = "level-0", name = "LEVEL 0", query = "mode == '14K' && level <= 0" },
+  { id = "level-13", name = "LEVEL 13〜", query = "mode == '14K' && level >= 13" },
+]
+[folders.items.generate]
+values = "1..=12"
+id = "level-{value}"
+name = "LEVEL {value}"
+query = "mode == '14K' && level == {value}"
+insert_at = 1
+
+[[folders.items]]
+id = "9k"
+name = "9KEYS"
+items = [
+  { id = "level-0", name = "LEVEL 0", query = "mode == '9K' && level <= 0" },
+  { id = "level-51", name = "LEVEL 51〜", query = "mode == '9K' && level >= 51" },
+]
+[folders.items.generate]
+values = "1..=50"
+id = "level-{value}"
+name = "LEVEL {value}"
+query = "mode == '9K' && level == {value}"
+insert_at = 1
+
+[[folders.items]]
+id = "5k"
+name = "5KEYS"
+items = [
+  { id = "level-0", name = "LEVEL 0", query = "mode == '5K' && level <= 0" },
+  { id = "level-13", name = "LEVEL 13〜", query = "mode == '5K' && level >= 13" },
+]
+[folders.items.generate]
+values = "1..=12"
+id = "level-{value}"
+name = "LEVEL {value}"
+query = "mode == '5K' && level == {value}"
+insert_at = 1
+
+[[folders.items]]
+id = "10k"
+name = "10KEYS"
+items = [
+  { id = "level-0", name = "LEVEL 0", query = "mode == '10K' && level <= 0" },
+  { id = "level-13", name = "LEVEL 13〜", query = "mode == '10K' && level >= 13" },
+]
+[folders.items.generate]
+values = "1..=12"
+id = "level-{value}"
+name = "LEVEL {value}"
+query = "mode == '10K' && level == {value}"
+insert_at = 1
+
+[[folders]]
+id = "new"
+name = "NEW"
+items = [
+  { id = "this-week", name = "THIS WEEK", query = "added_at in local_days(7)" },
+]
+[folders.generate]
+values = "0..=6"
+id = "day-{value}"
+name = "{days_ago}"
+query = "added_at in local_day({value})"
+insert_at = 0

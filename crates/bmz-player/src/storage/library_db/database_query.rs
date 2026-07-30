@@ -173,8 +173,9 @@ impl LibraryDatabase {
         let chart_file_id: i64 = conn
             .prepare_cached(
                 "INSERT INTO chart_files (
-                root_id, path, file_size, modified_at, md5, sha256, scanned_at, parse_status
-            ) VALUES (?1, ?2, ?3, ?4, '', '', ?5, 'Failed')
+                root_id, path, file_size, modified_at, md5, sha256, scanned_at,
+                first_seen_at, parse_status
+            ) VALUES (?1, ?2, ?3, ?4, '', '', ?5, ?5, 'Failed')
             ON CONFLICT(path) DO UPDATE SET
                 root_id = excluded.root_id,
                 file_size = excluded.file_size,
@@ -255,6 +256,48 @@ impl LibraryDatabase {
 
         let rows = stmt.query_map(params![limit, offset], chart_list_item_from_row)?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn list_all_charts(&self) -> Result<Vec<ChartListItem>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {CHART_LIST_ITEM_COLUMNS}
+             FROM charts
+             ORDER BY title COLLATE NOCASE, artist COLLATE NOCASE, play_level COLLATE NOCASE"
+        ))?;
+        let rows = stmt.query_map([], chart_list_item_from_row)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Returns the first time each chart was discovered through any linked file.
+    pub fn chart_first_seen_at_by_chart_ids(&self, chart_ids: &[i64]) -> Result<HashMap<i64, i64>> {
+        if chart_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut unique_ids = chart_ids.to_vec();
+        unique_ids.sort_unstable();
+        unique_ids.dedup();
+        let mut out = HashMap::with_capacity(unique_ids.len());
+        for chunk in unique_ids.chunks(CHART_ANALYSIS_LOOKUP_BATCH_SIZE) {
+            let placeholders = std::iter::repeat_n("?", chunk.len()).collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "SELECT cfl.chart_id, MIN(cf.first_seen_at)
+                 FROM chart_file_links cfl
+                 JOIN chart_files cf ON cf.id = cfl.chart_file_id
+                 WHERE cfl.chart_id IN ({placeholders})
+                 GROUP BY cfl.chart_id"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(rusqlite::params_from_iter(chunk.iter().copied()), |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })?;
+            for row in rows {
+                let (chart_id, first_seen_at) = row?;
+                out.insert(chart_id, first_seen_at);
+            }
+        }
+        Ok(out)
     }
 
     /// Returns distinct immediate child folder names directly under `parent_path`.

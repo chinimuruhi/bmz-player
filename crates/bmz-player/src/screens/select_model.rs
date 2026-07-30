@@ -24,6 +24,7 @@ mod paths;
 mod root;
 mod search;
 mod table;
+mod virtual_folder;
 
 use enrichment::*;
 use paths::*;
@@ -61,6 +62,10 @@ pub use table::{
     load_select_items_in_table_for_rule_mode, load_select_items_in_table_level,
     load_select_items_in_table_level_for_rule_mode, table_folder_items,
     table_folder_items_for_active_sources, table_level_folder_items,
+};
+pub use virtual_folder::{
+    VIRTUAL_FOLDER_CONFIG_FILE, VIRTUAL_FOLDER_PATH_PREFIX, load_select_items_in_virtual_folder,
+    virtual_folder_breadcrumb, virtual_folder_root_items,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

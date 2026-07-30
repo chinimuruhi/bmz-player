@@ -335,6 +335,29 @@ fn score_history_records_previous_best_snapshot() {
 }
 
 #[test]
+fn chart_update_times_separates_lamp_and_ex_score_improvements() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut db = ScoreDatabase { conn };
+
+    let mut first = record(20, ClearType::Normal);
+    first.played_at = 10;
+    db.insert_score(&first).unwrap();
+    let mut lamp_only = record(10, ClearType::Hard);
+    lamp_only.played_at = 20;
+    db.insert_score(&lamp_only).unwrap();
+    let mut score_only = record(30, ClearType::Easy);
+    score_only.played_at = 30;
+    db.insert_score(&score_only).unwrap();
+
+    let updates = db.chart_update_times_since(&[key([7; 32])], 0).unwrap();
+    let updates = updates.get(&key([7; 32])).unwrap();
+    assert_eq!(updates.lamp, [10, 20]);
+    assert_eq!(updates.score, [10, 30]);
+}
+
+#[test]
 fn score_history_previous_best_is_separate_per_ln_policy() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();

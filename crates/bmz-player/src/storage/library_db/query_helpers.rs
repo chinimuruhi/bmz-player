@@ -177,8 +177,9 @@ pub(super) fn upsert_chart_file(conn: &Connection, record: &ChartImportRecord<'_
             md5,
             sha256,
             scanned_at,
+            first_seen_at,
             parse_status
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'Parsed')
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 'Parsed')
         ON CONFLICT(path) DO UPDATE SET
             root_id = excluded.root_id,
             file_size = excluded.file_size,

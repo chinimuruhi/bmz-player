@@ -171,6 +171,29 @@ pub(in crate::app) fn build_select_items_for_stack(
                 }
             }
         }
+        Some(path) if path.starts_with(VIRTUAL_FOLDER_PATH_PREFIX) => {
+            match load_select_items_in_virtual_folder(
+                &boot.library_db,
+                &boot.score_db,
+                &boot.profile_paths.root_dir,
+                path,
+                boot.profile_config.play.ln_mode_policy,
+                boot.profile_config.play.rule_mode,
+                &active_table_sources,
+                Some(&active_song_roots),
+                Some(&active_table_sources),
+            ) {
+                Ok(items) => items,
+                Err(error) => {
+                    tracing::error!(
+                        %error,
+                        path,
+                        "failed to load virtual-folder items"
+                    );
+                    Vec::new()
+                }
+            }
+        }
         Some(path) if path.starts_with(TABLE_ROOT_PATH) => match parse_table_path(path) {
             Some(TablePath::Root) => {
                 match table_folder_items_for_active_sources(
@@ -269,6 +292,12 @@ pub(in crate::app) fn build_select_items_for_stack(
                 Ok(tables) => items.extend(tables),
                 Err(error) => {
                     tracing::error!(%error, "failed to load difficulty table folders");
+                }
+            }
+            match virtual_folder_root_items(&boot.profile_paths.root_dir) {
+                Ok(folders) => items.extend(folders),
+                Err(error) => {
+                    tracing::error!(%error, "failed to load virtual-folder catalog");
                 }
             }
             items.push(settings_root_item_for_locale(boot.profile_config.ui.locale()));

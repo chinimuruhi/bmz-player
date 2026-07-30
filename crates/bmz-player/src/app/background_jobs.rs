@@ -82,6 +82,7 @@ impl WinitApp {
     pub(super) fn song_load_roots_from_stack(&self) -> Vec<PathEntry> {
         if let Some(folder) = self.select.folder_stack.last()
             && !folder.starts_with(TABLE_ROOT_PATH)
+            && !folder.starts_with(VIRTUAL_FOLDER_PATH_PREFIX)
         {
             return vec![PathEntry { path: folder.clone(), enabled: true, recursive: true }];
         }

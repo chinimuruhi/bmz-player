@@ -19,6 +19,14 @@ impl WinitApp {
             Some(path) if parse_favorite_song_detail_path(path).is_some() => {
                 "FAVORITE SONG".to_string()
             }
+            Some(path) if path.starts_with(VIRTUAL_FOLDER_PATH_PREFIX) => {
+                virtual_folder_breadcrumb(&self.boot.profile_paths.root_dir, path)
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(%error, path, "failed to build virtual-folder breadcrumb");
+                        None
+                    })
+                    .unwrap_or_default()
+            }
             Some(path) if let Some(folder) = parse_same_folder_path(path) => {
                 std::path::Path::new(folder)
                     .file_name()
