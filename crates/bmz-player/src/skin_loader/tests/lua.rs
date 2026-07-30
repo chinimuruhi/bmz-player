@@ -4,3 +4,5 @@ use super::*;
 mod cases_01;
 #[path = "lua/cases_02.rs"]
 mod cases_02;
+#[path = "lua/cases_03.rs"]
+mod cases_03;
