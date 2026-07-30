@@ -202,6 +202,7 @@ fn aggregate_course_result_graph(
     for point in &graph.timing_points {
         graph.timing_distribution.add((point.delta_us / 1_000) as i32);
     }
+    graph.refresh_timing_metrics();
 
     graph
 }
@@ -449,6 +450,7 @@ fn debug_boot_result_graph(duration_ms: i32) -> bmz_render::snapshot::ResultGrap
     for point in &graph.timing_points {
         graph.timing_distribution.add((point.delta_us / 1_000) as i32);
     }
+    graph.refresh_timing_metrics();
     graph
 }
 

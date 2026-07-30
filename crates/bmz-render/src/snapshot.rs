@@ -14,16 +14,74 @@ pub use bmz_skin_document::{
     ResultTimingDistribution, ResultTimingPoint,
 };
 
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ResultTimingMetrics {
+    pub initialized: bool,
+    pub stats: Option<(f32, f32)>,
+    pub judged_notes: u32,
+    pub absolute_duration_us: u128,
+}
+
+impl ResultTimingMetrics {
+    pub fn average_duration_us(self, total_notes: u32) -> Option<i64> {
+        if total_notes == 0 || self.judged_notes > total_notes {
+            return None;
+        }
+        const UNJUDGED_DURATION_US: u128 = 1_000_000;
+        let unjudged_notes = total_notes - self.judged_notes;
+        let total_duration = self
+            .absolute_duration_us
+            .saturating_add(u128::from(unjudged_notes).saturating_mul(UNJUDGED_DURATION_US));
+        Some((total_duration / u128::from(total_notes)).min(i64::MAX as u128) as i64)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ResultGraphSnapshot {
     pub gauge_points: Vec<ResultGaugeGraphPoint>,
     pub timing_points: Vec<ResultTimingPoint>,
     pub timing_distribution: ResultTimingDistribution,
+    pub timing_metrics: ResultTimingMetrics,
     pub judge_graph_buckets: Vec<ResultJudgeGraphBucket>,
     pub early_late_graph_buckets: Vec<ResultEarlyLateGraphBucket>,
     pub judge_graph_density: Vec<u8>,
     pub bpm_graph_segments: Vec<BpmGraphSegment>,
     pub hit_error_ring: HitErrorRingSnapshot,
+}
+
+impl ResultGraphSnapshot {
+    pub fn refresh_timing_metrics(&mut self) {
+        let stats =
+            self.timing_distribution.stats().or_else(|| timing_point_stats(&self.timing_points));
+        self.timing_metrics = ResultTimingMetrics {
+            initialized: true,
+            stats,
+            judged_notes: self.timing_points.len().min(u32::MAX as usize) as u32,
+            absolute_duration_us: self
+                .timing_points
+                .iter()
+                .map(|point| u128::from(point.delta_us.unsigned_abs()))
+                .sum(),
+        };
+    }
+}
+
+fn timing_point_stats(points: &[ResultTimingPoint]) -> Option<(f32, f32)> {
+    if points.is_empty() {
+        return None;
+    }
+    let count = points.len() as f32;
+    let average_ms =
+        points.iter().map(|point| point.delta_us as f32 / 1_000.0).sum::<f32>() / count;
+    let variance = points
+        .iter()
+        .map(|point| {
+            let diff = point.delta_us as f32 / 1_000.0 - average_ms;
+            diff * diff
+        })
+        .sum::<f32>()
+        / count;
+    Some((average_ms, variance.sqrt()))
 }
 
 /// beatoraja の OPTION_COURSE_STAGE1..4 / OPTION_COURSE_STAGE_FINAL (280..283 / 289) に対応。

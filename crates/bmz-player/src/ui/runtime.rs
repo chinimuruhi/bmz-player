@@ -99,8 +99,8 @@ impl EguiLayer {
 
     /// 設定 metadata や profile 差分検出を含む完全な egui frame が必要かを返す。
     ///
-    /// Play 中に F1 menu 等が閉じている場合は、winit/egui の入力状態と texture
-    /// delta だけを進める idle frame へ切り替えられる。
+    /// F1 menu 等が閉じている場合は、winit/egui の入力状態と texture delta だけを
+    /// 進める idle frame へ切り替えられる。
     pub fn needs_full_frame(
         &self,
         scene: &str,

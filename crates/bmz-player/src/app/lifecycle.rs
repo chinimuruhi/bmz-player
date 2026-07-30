@@ -219,8 +219,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let post_scene_us = instant_elapsed_us_u64(post_scene_start);
                 let total_us = instant_elapsed_us_u64(redraw_started_at);
                 if let Some(sample) = scene_profile {
-                    let play_loop =
-                        (sample.kind == FrameProfileKind::Play).then_some(PlayLoopFrameTimings {
+                    self.frame.record_profile(
+                        sample,
+                        AppLoopFrameTimings {
                             total_redraw_us: total_us,
                             input_us,
                             background_us,
@@ -228,8 +229,8 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                             egui_us,
                             advance_active_play_us,
                             post_scene_us,
-                        });
-                    self.frame.record_profile(sample, play_loop);
+                        },
+                    );
                 }
                 let pending_skin_after = self.has_pending_skin_reload();
                 if skin_drain_stats.received_count > 0

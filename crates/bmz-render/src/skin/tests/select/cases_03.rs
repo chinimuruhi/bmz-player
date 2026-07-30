@@ -483,6 +483,13 @@ fn select_destination_negative_image_id_renders_runtime_stagefile_source() {
             ..
         } if *texture == SkinTextureId(SELECT_STAGE_TEXTURE.0)
     )));
+
+    let items_without_stage = context.select_document_items(&SelectSnapshot::default());
+    assert!(!items_without_stage.iter().any(|item| matches!(
+        item,
+        SkinRenderItem::Image { texture, .. }
+            if *texture == SkinTextureId(SELECT_STAGE_TEXTURE.0)
+    )));
 }
 
 #[test]

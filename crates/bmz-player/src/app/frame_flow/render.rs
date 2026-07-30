@@ -3,10 +3,13 @@ use super::*;
 impl WinitApp {
     pub(in crate::app) fn render_current_scene(&mut self) -> Option<SceneFrameProfileSample> {
         let select_view = matches!(self.view_state(), AppViewState::Select);
+        let decide_view = matches!(self.view_state(), AppViewState::Decide);
         let play_view = matches!(self.view_state(), AppViewState::Play);
         let result_view = matches!(self.view_state(), AppViewState::Result);
         let profiling_select = select_view
             && tracing::enabled!(target: "bmz_player::select_profile", tracing::Level::DEBUG);
+        let profiling_decide = decide_view
+            && tracing::enabled!(target: "bmz_player::decide_profile", tracing::Level::DEBUG);
         let profiling_play = play_view
             && tracing::enabled!(target: "bmz_player::play_profile", tracing::Level::DEBUG);
         let profiling_result = result_view
@@ -27,7 +30,7 @@ impl WinitApp {
         let video_start = Instant::now();
         let video_profile = self.update_current_skin_video_sources(
             &scene,
-            profiling_select || profiling_play || profiling_result,
+            profiling_select || profiling_decide || profiling_play || profiling_result,
         );
         let video_us = video_start.elapsed().as_micros();
         let scene_kind = scene_kind(&scene);
@@ -53,6 +56,8 @@ impl WinitApp {
         log_render_status(render_status);
         let profile_kind = if profiling_select {
             Some(FrameProfileKind::Select)
+        } else if profiling_decide {
+            Some(FrameProfileKind::Decide)
         } else if profiling_play {
             Some(FrameProfileKind::Play)
         } else if profiling_result {

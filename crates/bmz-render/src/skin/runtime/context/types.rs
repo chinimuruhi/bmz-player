@@ -116,6 +116,7 @@ pub struct SkinContext {
     pub(super) document: Option<SkinDocument>,
     pub(super) lua_draw_runtime: Option<Arc<dyn SkinLuaDrawRuntime>>,
     pub(super) document_sources: HashMap<String, SkinDocumentTexture>,
+    pub(super) runtime_document_sources: Arc<Mutex<HashMap<String, SkinDocumentTexture>>>,
     pub(super) select_settings_dest_index:
         Arc<crate::select_settings_dest::SelectSettingsDestIndex>,
     pub(super) result_render_cache: Arc<Mutex<ResultRenderCache>>,

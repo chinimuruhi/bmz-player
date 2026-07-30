@@ -7,6 +7,7 @@ impl Default for SkinContext {
             document: None,
             lua_draw_runtime: None,
             document_sources: HashMap::new(),
+            runtime_document_sources: Arc::new(Mutex::new(HashMap::new())),
             select_settings_dest_index: Arc::new(
                 crate::select_settings_dest::SelectSettingsDestIndex::default(),
             ),
@@ -22,6 +23,7 @@ impl SkinContext {
             document: None,
             lua_draw_runtime: None,
             document_sources: HashMap::new(),
+            runtime_document_sources: Arc::new(Mutex::new(HashMap::new())),
             select_settings_dest_index: Arc::new(
                 crate::select_settings_dest::SelectSettingsDestIndex::default(),
             ),
@@ -36,14 +38,15 @@ impl SkinContext {
     ) -> Self {
         let select_settings_dest_index =
             Arc::new(crate::select_settings_dest::build_select_settings_dest_index(&document));
+        let document_sources: HashMap<_, _> =
+            document_sources.into_iter().map(|source| (source.source_id.clone(), source)).collect();
+        let runtime_document_sources = Arc::new(Mutex::new(document_sources.clone()));
         Self {
             manifest,
             document: Some(document),
             lua_draw_runtime: None,
-            document_sources: document_sources
-                .into_iter()
-                .map(|source| (source.source_id.clone(), source))
-                .collect(),
+            document_sources,
+            runtime_document_sources,
             select_settings_dest_index,
             result_render_cache: Arc::new(Mutex::new(ResultRenderCache::default())),
         }
@@ -134,7 +137,11 @@ impl SkinContext {
         let Some(document) = &self.document else {
             return Vec::new();
         };
-        let runtime_sources = static_runtime_document_sources(&self.document_sources, state);
+        let runtime_sources = static_runtime_document_sources(
+            &self.document_sources,
+            &self.runtime_document_sources,
+            state,
+        );
         let state = self.state_with_lua_runtime(state, text);
         document.static_render_items(&runtime_sources, &state, text)
     }
@@ -148,7 +155,11 @@ impl SkinContext {
         let Some(document) = &self.document else {
             return Vec::new();
         };
-        let runtime_sources = static_runtime_document_sources(&self.document_sources, state);
+        let runtime_sources = static_runtime_document_sources(
+            &self.document_sources,
+            &self.runtime_document_sources,
+            state,
+        );
         let state = self.state_with_lua_runtime(state, text);
         // A runtime callback may execute arbitrary bounded Lua. Do not hold the
         // result cache lock across that call.
@@ -184,7 +195,11 @@ impl SkinContext {
         let Some(document) = &self.document else {
             return Vec::new();
         };
-        let runtime_sources = select_runtime_document_sources(&self.document_sources, snapshot);
+        let runtime_sources = select_runtime_document_sources(
+            &self.document_sources,
+            &self.runtime_document_sources,
+            snapshot,
+        );
         document.select_render_items_with_dynamic_timers(
             &runtime_sources,
             snapshot,
@@ -243,7 +258,11 @@ impl SkinContext {
         let Some(document) = &self.document else {
             return (Vec::new(), Vec::new(), Vec::new());
         };
-        let runtime_sources = static_runtime_document_sources(&self.document_sources, state);
+        let runtime_sources = static_runtime_document_sources(
+            &self.document_sources,
+            &self.runtime_document_sources,
+            state,
+        );
         let state = self.state_with_lua_runtime(state, text);
         document.static_render_items_split(&runtime_sources, &state, text)
     }
@@ -258,7 +277,11 @@ impl SkinContext {
         let Some(document) = &self.document else {
             return (Vec::new(), Vec::new(), Vec::new());
         };
-        let runtime_sources = static_runtime_document_sources(&self.document_sources, state);
+        let runtime_sources = static_runtime_document_sources(
+            &self.document_sources,
+            &self.runtime_document_sources,
+            state,
+        );
         let state = self.state_with_lua_runtime(state, text);
         document.static_render_items_split_with_graphs(
             &runtime_sources,

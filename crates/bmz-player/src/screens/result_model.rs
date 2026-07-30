@@ -238,7 +238,9 @@ impl ResultGraphCollector {
     }
 
     pub fn snapshot(&self) -> ResultGraphSnapshot {
-        self.graph.clone()
+        let mut graph = self.graph.clone();
+        graph.refresh_timing_metrics();
+        graph
     }
 
     pub fn snapshot_for_session(&self, session: &GameSession) -> ResultGraphSnapshot {
@@ -253,6 +255,7 @@ impl ResultGraphCollector {
             );
         }
         populate_result_note_graphs(&mut graph, &session.chart, &session.result_judgements);
+        graph.refresh_timing_metrics();
         graph
     }
 

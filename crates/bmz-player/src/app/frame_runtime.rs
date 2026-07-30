@@ -9,6 +9,7 @@ pub(super) struct FrameRuntime {
     skip_next_pace: bool,
     fps: SkinFpsCounter,
     select_profiler: SceneFrameProfiler,
+    decide_profiler: SceneFrameProfiler,
     play_profiler: SceneFrameProfiler,
     result_profiler: SceneFrameProfiler,
 }
@@ -25,6 +26,7 @@ impl FrameRuntime {
             skip_next_pace: false,
             fps: SkinFpsCounter::new(now),
             select_profiler: SceneFrameProfiler::default(),
+            decide_profiler: SceneFrameProfiler::default(),
             play_profiler: SceneFrameProfiler::default(),
             result_profiler: SceneFrameProfiler::default(),
         }
@@ -61,10 +63,11 @@ impl FrameRuntime {
     pub(super) fn record_profile(
         &mut self,
         sample: SceneFrameProfileSample,
-        play_loop: Option<PlayLoopFrameTimings>,
+        app_loop: AppLoopFrameTimings,
     ) {
         let profiler = match sample.kind {
             FrameProfileKind::Select => &mut self.select_profiler,
+            FrameProfileKind::Decide => &mut self.decide_profiler,
             FrameProfileKind::Play => &mut self.play_profiler,
             FrameProfileKind::Result => &mut self.result_profiler,
         };
@@ -75,7 +78,7 @@ impl FrameRuntime {
             sample.snapshot_us,
             sample.render_us,
             sample.render_timings,
-            play_loop,
+            app_loop,
         );
     }
 }
@@ -218,7 +221,7 @@ struct SceneFrameProfiler {
 const FRAME_PROFILE_SAMPLE_CAPACITY: usize = 120;
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct PlayLoopFrameTimings {
+pub(super) struct AppLoopFrameTimings {
     pub(super) total_redraw_us: u64,
     pub(super) input_us: u64,
     pub(super) background_us: u64,
@@ -241,6 +244,7 @@ pub(super) struct SceneFrameProfileSample {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum FrameProfileKind {
     Select,
+    Decide,
     Play,
     Result,
 }
@@ -256,7 +260,7 @@ impl SceneFrameProfiler {
         snapshot_us: u128,
         render_us: u128,
         timings: Option<RenderFrameTimings>,
-        play_loop: Option<PlayLoopFrameTimings>,
+        app_loop: AppLoopFrameTimings,
     ) {
         self.frames += 1;
         self.video_us += video_us;
@@ -289,17 +293,15 @@ impl SceneFrameProfiler {
             self.image_instances += timings.image_instances as u128;
             self.text_instances += timings.text_instances as u128;
         }
-        if let Some(timings) = play_loop {
-            self.total_redraw_us += u128::from(timings.total_redraw_us);
-            self.input_us += u128::from(timings.input_us);
-            self.background_us += u128::from(timings.background_us);
-            self.transition_us += u128::from(timings.transition_us);
-            self.egui_us += u128::from(timings.egui_us);
-            self.advance_active_play_us += u128::from(timings.advance_active_play_us);
-            self.post_scene_us += u128::from(timings.post_scene_us);
-            if self.total_redraw_samples_us.len() < FRAME_PROFILE_SAMPLE_CAPACITY {
-                self.total_redraw_samples_us.push(timings.total_redraw_us);
-            }
+        self.total_redraw_us += u128::from(app_loop.total_redraw_us);
+        self.input_us += u128::from(app_loop.input_us);
+        self.background_us += u128::from(app_loop.background_us);
+        self.transition_us += u128::from(app_loop.transition_us);
+        self.egui_us += u128::from(app_loop.egui_us);
+        self.advance_active_play_us += u128::from(app_loop.advance_active_play_us);
+        self.post_scene_us += u128::from(app_loop.post_scene_us);
+        if self.total_redraw_samples_us.len() < FRAME_PROFILE_SAMPLE_CAPACITY {
+            self.total_redraw_samples_us.push(app_loop.total_redraw_us);
         }
         if self.frames >= Self::LOG_EVERY_FRAMES {
             self.log_and_reset(profile);
@@ -346,46 +348,10 @@ impl SceneFrameProfiler {
         let advance_active_play_ms = fmt_profile_ms(self.advance_active_play_us, frames);
         let post_scene_ms = fmt_profile_ms(self.post_scene_us, frames);
         let total_redraw_percentiles = frame_duration_percentiles(&self.total_redraw_samples_us);
-        match profile {
-            FrameProfileKind::Select => {
+        macro_rules! log_frame_profile {
+            ($target:literal, $message:literal) => {
                 tracing::debug!(
-                    target: "bmz_player::select_profile",
-                    frames = self.frames,
-                    video_ms,
-                    video_poll_ms,
-                    video_upload_ms,
-                    video_upload_frame_ms,
-                    video_opened,
-                    video_active_sources,
-                    video_visible_sources,
-                    video_uploaded_frames,
-                    snapshot_ms,
-                    render_ms,
-                    plan_ms,
-                    draw_ms,
-                    text_ms,
-                    geometry_ms,
-                    upload_ms,
-                    submit_ms,
-                    surface_ms,
-                    bind_ms,
-                    encode_ms,
-                    queue_ms,
-                    present_ms,
-                    commands,
-                    steps,
-                    rect_steps,
-                    image_steps,
-                    text_steps,
-                    rect_instances,
-                    image_instances,
-                    text_instances,
-                    "select frame profile"
-                );
-            }
-            FrameProfileKind::Play => {
-                tracing::debug!(
-                    target: "bmz_player::play_profile",
+                    target: $target,
                     frames = self.frames,
                     video_ms,
                     video_poll_ms,
@@ -429,44 +395,22 @@ impl SceneFrameProfiler {
                     rect_instances,
                     image_instances,
                     text_instances,
-                    "play frame profile"
+                    $message
                 );
+            };
+        }
+        match profile {
+            FrameProfileKind::Select => {
+                log_frame_profile!("bmz_player::select_profile", "select frame profile");
+            }
+            FrameProfileKind::Decide => {
+                log_frame_profile!("bmz_player::decide_profile", "decide frame profile");
+            }
+            FrameProfileKind::Play => {
+                log_frame_profile!("bmz_player::play_profile", "play frame profile");
             }
             FrameProfileKind::Result => {
-                tracing::debug!(
-                    target: "bmz_player::result_profile",
-                    frames = self.frames,
-                    video_ms,
-                    video_poll_ms,
-                    video_upload_ms,
-                    video_upload_frame_ms,
-                    video_opened,
-                    video_active_sources,
-                    video_visible_sources,
-                    video_uploaded_frames,
-                    snapshot_ms,
-                    render_ms,
-                    plan_ms,
-                    draw_ms,
-                    text_ms,
-                    geometry_ms,
-                    upload_ms,
-                    submit_ms,
-                    surface_ms,
-                    bind_ms,
-                    encode_ms,
-                    queue_ms,
-                    present_ms,
-                    commands,
-                    steps,
-                    rect_steps,
-                    image_steps,
-                    text_steps,
-                    rect_instances,
-                    image_instances,
-                    text_instances,
-                    "result frame profile"
-                );
+                log_frame_profile!("bmz_player::result_profile", "result frame profile");
             }
         }
         *self = Self::default();

@@ -60,7 +60,7 @@ impl<'a> CachedTextFrameBuilder<'a> {
         let layout_key =
             text_layout_key(TextGlyphKind::Bitmap, font_id, origin, text, &style, surface);
         if let Some(cached) = layout_key.as_ref().and_then(|key| self.atlas.cached_layout(key)) {
-            self.quads.extend(cached);
+            self.quads.extend_from_slice(cached);
             return;
         }
         let quads_before = self.quads.len();
@@ -167,7 +167,7 @@ impl<'a> CachedTextFrameBuilder<'a> {
         let layout_key =
             text_layout_key(TextGlyphKind::Vector, &layout_font_id, origin, text, &style, surface);
         if let Some(cached) = layout_key.as_ref().and_then(|key| self.atlas.cached_layout(key)) {
-            self.quads.extend(cached);
+            self.quads.extend_from_slice(cached);
             return;
         }
         let quads_before = self.quads.len();

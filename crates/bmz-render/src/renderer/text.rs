@@ -210,8 +210,8 @@ impl TextLayoutCache {
         self.entries.clear();
     }
 
-    fn cached(&self, key: &TextLayoutKey) -> Option<Vec<TextQuad>> {
-        self.entries.get(key).cloned()
+    fn cached(&self, key: &TextLayoutKey) -> Option<&[TextQuad]> {
+        self.entries.get(key).map(Vec::as_slice)
     }
 
     fn insert(&mut self, key: TextLayoutKey, quads: &[TextQuad]) {
@@ -286,7 +286,7 @@ impl TextAtlasCache {
         pixels
     }
 
-    pub(super) fn cached_layout(&self, key: &TextLayoutKey) -> Option<Vec<TextQuad>> {
+    pub(super) fn cached_layout(&self, key: &TextLayoutKey) -> Option<&[TextQuad]> {
         self.layouts.cached(key)
     }
 

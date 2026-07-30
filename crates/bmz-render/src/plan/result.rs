@@ -148,11 +148,22 @@ pub(super) fn build_result_skin_draw_state(
         snapshot.gauge_value,
         snapshot.gauge_type,
     );
-    let timing_stats = snapshot
-        .graph
-        .timing_distribution
-        .stats()
-        .or_else(|| result_timing_stats(&snapshot.graph.timing_points));
+    let timing_stats = if snapshot.graph.timing_metrics.initialized {
+        snapshot.graph.timing_metrics.stats
+    } else {
+        snapshot
+            .graph
+            .timing_distribution
+            .stats()
+            .or_else(|| result_timing_stats(&snapshot.graph.timing_points))
+    };
+    let average_duration_us = if snapshot.graph.timing_metrics.initialized
+        && snapshot.graph.timing_metrics.judged_notes <= snapshot.total_notes
+    {
+        snapshot.graph.timing_metrics.average_duration_us(snapshot.total_notes)
+    } else {
+        result_average_duration_us(&snapshot.graph.timing_points, snapshot.total_notes)
+    };
     let elapsed_ms =
         (snapshot.elapsed_time.0 / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
     let result_update_score_ms = if result_ranktime_ms <= 0 {
@@ -252,10 +263,7 @@ pub(super) fn build_result_skin_draw_state(
         hit_error_ring: snapshot.graph.hit_error_ring.values,
         hit_error_ring_index: snapshot.graph.hit_error_ring.index,
         average_timing_ms: timing_stats.map(|stats| stats.0),
-        average_duration_us: result_average_duration_us(
-            &snapshot.graph.timing_points,
-            snapshot.total_notes,
-        ),
+        average_duration_us,
         stddev_timing_ms: timing_stats.map(|stats| stats.1),
         ..crate::skin::SkinDrawState::default()
     }

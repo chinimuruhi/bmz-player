@@ -46,6 +46,35 @@ fn result_skin_state_falls_back_to_timing_points_for_average_timing() {
 }
 
 #[test]
+fn result_skin_state_uses_precomputed_timing_metrics() {
+    let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
+        panic!("sample result scene");
+    };
+    let graph = std::sync::Arc::make_mut(&mut snapshot.graph);
+    graph.timing_points = vec![
+        crate::snapshot::ResultTimingPoint {
+            time_ms: 0,
+            delta_us: -12_000,
+            judge: bmz_core::judge::Judge::Great,
+        },
+        crate::snapshot::ResultTimingPoint {
+            time_ms: 1000,
+            delta_us: 20_000,
+            judge: bmz_core::judge::Judge::PGreat,
+        },
+    ];
+    graph.refresh_timing_metrics();
+    graph.timing_points.clear();
+    graph.timing_distribution = Default::default();
+
+    let state = build_result_skin_draw_state(&snapshot, 0);
+
+    assert_eq!(state.average_timing_ms, Some(4.0));
+    assert_eq!(state.average_duration_us, Some(998_032));
+    assert_eq!(state.stddev_timing_ms, Some(16.0));
+}
+
+#[test]
 fn result_average_duration_uses_absolute_deltas_and_unjudged_penalty() {
     let points = [
         crate::snapshot::ResultTimingPoint {

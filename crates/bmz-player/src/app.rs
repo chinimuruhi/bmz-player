@@ -296,7 +296,7 @@ use bga_runtime::{
 };
 use chart_assets::*;
 use frame_runtime::{
-    FrameProfileKind, FrameRuntime, FrameSchedule, PlayLoopFrameTimings, SceneFrameProfileSample,
+    AppLoopFrameTimings, FrameProfileKind, FrameRuntime, FrameSchedule, SceneFrameProfileSample,
     SkinVideoFrameProfile,
 };
 use input_runtime::{

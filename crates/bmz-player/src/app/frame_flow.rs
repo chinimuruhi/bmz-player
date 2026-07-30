@@ -163,8 +163,8 @@ impl WinitApp {
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        let use_idle_frame = scene_kind == AppSceneKind::Play
-            && self.play.play_ending.is_none()
+        let scene_allows_idle = scene_kind != AppSceneKind::Play || self.play.play_ending.is_none();
+        let use_idle_frame = scene_allows_idle
             && self.ui.egui.as_ref().is_some_and(|egui| {
                 !egui.needs_full_frame(scene, practice_overlay, self.jobs.update_prompt.is_some())
             });
