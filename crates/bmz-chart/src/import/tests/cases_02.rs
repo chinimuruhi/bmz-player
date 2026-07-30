@@ -1,0 +1,443 @@
+use super::*;
+
+#[test]
+fn imports_scroll_and_speed_events() {
+    // SCROLL チャネル (SC) と SPEED チャネル (SP) を含む BMS。
+    // bms-rs は `#SCROLLxx` / `#SPEEDxx` 定義と `#xxxSC` / `#xxxSP` 行を
+    // 解釈して factor を引き出す。
+    let text = "\
+#TITLE Scroll Song
+#BPM 120
+#TOTAL 200
+#SCROLL01 2.0
+#SCROLL02 0.5
+#SPEED01 1.5
+#00111:01
+#001SC:0102
+#001SP:0001
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(
+        result.chart.scroll_events.len(),
+        2,
+        "scroll events: {:?}",
+        result.chart.scroll_events
+    );
+    assert_eq!(result.chart.scroll_events[0].factor, 2.0);
+    assert_eq!(result.chart.scroll_events[1].factor, 0.5);
+    assert_eq!(result.chart.speed_events.len(), 1, "speed events: {:?}", result.chart.speed_events);
+    assert_eq!(result.chart.speed_events[0].factor, 1.5);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_exrank_judge_events() {
+    let text = "\
+#TITLE Exrank Song
+#BPM 120
+#TOTAL 200
+#RANK 3
+#EXRANK01 1
+#EXRANK02 0
+#00111:01
+#001A0:01000000
+#002A0:02000000
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.judge_rank_events.len(), 2);
+    assert_eq!(result.chart.judge_rank_events[0].rank_percent, 50);
+    assert_eq!(result.chart.judge_rank_events[1].rank_percent, 25);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_rank_as_bms_rank_source() {
+    let text = "\
+#TITLE Rank Song
+#BPM 120
+#RANK 4
+#00111:01
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.judge_rank, Some(4));
+    let spec = result.chart.metadata.judge_rank_spec.unwrap();
+    assert_eq!(spec.value, 4);
+    assert_eq!(spec.kind, JudgeRankKind::BmsRank);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_defexrank_as_judge_rank_source() {
+    let text = "\
+#TITLE Defexrank Song
+#BPM 120
+#RANK 3
+#DEFEXRANK 125
+#00111:01
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.judge_rank, Some(125));
+    let spec = result.chart.metadata.judge_rank_spec.unwrap();
+    assert_eq!(spec.value, 125);
+    assert_eq!(spec.kind, JudgeRankKind::DefExRank);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_volwav_and_volume_channels() {
+    let text = "\
+#TITLE Volume Song
+#BPM 120
+#TOTAL 200
+#VOLWAV 50
+#00111:01
+#00197:80
+#00198:40
+#00297:FF
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.volwav_percent, 50);
+    assert_eq!(result.chart.bgm_volume_events.len(), 2);
+    assert_eq!(result.chart.bgm_volume_events[0].value, 0x80);
+    assert_eq!(result.chart.bgm_volume_events[1].value, 0xFF);
+    assert_eq!(result.chart.key_volume_events.len(), 1);
+    assert_eq!(result.chart.key_volume_events[0].value, 0x40);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_text_events() {
+    let text = "\
+#TITLE Text Song
+#BPM 120
+#TOTAL 200
+#TEXT01 Hello World
+#TEXT02 Test Message
+#00111:01
+#00199:01000200
+#00299:02000100
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.text_events.len(), 4);
+    assert!(result.chart.text_events.iter().any(|event| event.text == "Hello World"));
+    assert!(result.chart.text_events.iter().any(|event| event.text == "Test Message"));
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bga_opacity_and_argb_events() {
+    let text = "\
+#TITLE BGA FX Song
+#BPM 120
+#TOTAL 200
+#ARGB01 255,255,0,0
+#00111:01
+#0010B:80
+#001A1:01000000
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.bga_opacity_events.len(), 1);
+    assert_eq!(result.chart.bga_opacity_events[0].opacity, 0x80);
+    assert_eq!(result.chart.bga_argb_events.len(), 1);
+    assert_eq!(result.chart.bga_argb_events[0].red, 255);
+    assert_eq!(result.chart.bga_argb_events[0].green, 0);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bga_layer2_separate_from_layer() {
+    let text = "\
+#TITLE Layer2 Song
+#BPM 120
+#TOTAL 200
+#BMP01 layer.png
+#BMP02 layer2.png
+#00007:0001
+#0010A:0002
+#00011:01
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.bga_events.len(), 2);
+    assert_eq!(result.chart.bga_events[0].kind, BgaEventKind::Layer);
+    assert_eq!(result.chart.bga_events[1].kind, BgaEventKind::Layer2);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_swbga_and_keybound_events() {
+    let text = "\
+#TITLE Keybound Song
+#BPM 120
+#TOTAL 200
+#BMP01 f1.png
+#BMP02 f2.png
+#SWBGA01 100:0:11:0:255,0,0,0 0102
+#000A5:01
+#00011:01
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.swbga_definitions.len(), 1);
+    assert_eq!(result.chart.swbga_definitions[0].pattern_bmp_keys, vec![1, 2]);
+    assert_eq!(result.chart.swbga_definitions[0].line, 11);
+    assert_eq!(result.chart.bga_keybound_events.len(), 1);
+    assert_eq!(result.chart.bga_keybound_events[0].swbga_id, 1);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn sets_base62_obj_ids_metadata() {
+    let text = "\
+#TITLE Base62 Flag
+#BPM 120
+#BASE 62
+";
+    let path = write_temp_bms(text);
+    let mut warnings = Vec::new();
+    let intermediate =
+        super::bms_rs_adapter::import_bms_to_intermediate(&path, None, &mut warnings).unwrap();
+    assert!(intermediate.metadata.base62_obj_ids, "warnings: {warnings:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_base62_swbga_pattern_with_distinct_case_ids() {
+    let text = "\
+#TITLE Base62 SWBGA
+#BPM 120
+#TOTAL 200
+#BASE 62
+#BMPaa aa.png
+#BMPAA AA.png
+#SWBGA01 100:0:11:0:255,0,0,0 aaAA
+#000A5:01
+#00011:01
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.swbga_definitions.len(), 1);
+    assert_eq!(
+        result.chart.swbga_definitions[0].pattern_bmp_keys,
+        vec![36 * 62 + 36, 10 * 62 + 10]
+    );
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_sparse_long_bms_bpm_message_without_dense_expansion() {
+    let mut payload = vec!["00"; 10_000];
+    payload[9_999] = "01";
+    let text = format!(
+        "\
+#TITLE Sparse BPM
+#BPM 120
+#TOTAL 200
+#BPM01 180
+#00108:{}
+#00211:01
+",
+        payload.join("")
+    );
+    let path = write_temp_bms(&text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+
+    assert!(result.warnings.iter().any(|warning| {
+        matches!(
+            warning,
+            ImportWarning::ParserDiagnostic { code, .. } if code == "SparseBmsMessage"
+        )
+    }));
+    assert!(
+        result.chart.timing_events.iter().any(|event| {
+            matches!(event.kind, TimingEventKind::BpmChange { bpm } if bpm == 180.0)
+        })
+    );
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bmson_into_playable_chart() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Bmson Song",
+            "artist": "Test Artist",
+            "genre": "Test",
+            "level": 5,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 200.0,
+            "resolution": 240
+        },
+        "sound_channels": []
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.title, "Bmson Song");
+    assert_eq!(result.chart.metadata.long_note_mode, crate::model::LongNoteMode::Ln);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bmson_title_image_fallback_to_backbmp() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Title Image Song",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "back_image": "",
+            "title_image": "_Back.png"
+        },
+        "sound_channels": []
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.backbmp_file, "_Back.png");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bmson_subartists_into_subartist() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Subartist Song",
+            "artist": "Main",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "subartists": ["music:Alice", "chart:Bob"]
+        },
+        "sound_channels": []
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.subartist, "music:Alice / chart:Bob");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bmson_ln_type_into_long_note_mode() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Hcn Song",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "ln_type": 3
+        },
+        "sound_channels": []
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.long_note_mode, crate::model::LongNoteMode::Hcn);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bmson_irregular_meter_lines() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Irregular",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240
+        },
+        "lines": [
+            { "y": 960 },
+            { "y": 1680 },
+            { "y": 2640 }
+        ],
+        "sound_channels": [
+            {
+                "name": "key.wav",
+                "notes": [
+                    { "x": 1, "y": 1680, "l": 0, "c": false }
+                ]
+            }
+        ]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    let note = result
+        .chart
+        .lane_notes
+        .iter()
+        .flat_map(|lane| lane.iter())
+        .find(|note| note.kind == crate::model::NoteKind::Tap)
+        .expect("note at pulse 1680");
+    assert_eq!(note.tick, bmz_core::time::ChartTick(6_720));
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_bmson_empty_lines_without_bar_lines() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "No Barlines",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240
+        },
+        "lines": [],
+        "sound_channels": [
+            {
+                "name": "key.wav",
+                "notes": [
+                    { "x": 1, "y": 960, "l": 0, "c": false }
+                ]
+            }
+        ]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    assert!(result.chart.bar_lines.is_empty());
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn imports_lnmode_from_bms_header() {
+    let text = "\
+#TITLE Lnmode Song
+#BPM 120
+#TOTAL 200
+#LNMODE 3
+#00011:01
+";
+    let path = write_temp_bms(text);
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.long_note_mode, crate::model::LongNoteMode::Hcn);
+    std::fs::remove_file(&path).unwrap();
+}
