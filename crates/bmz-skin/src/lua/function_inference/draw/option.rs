@@ -1,0 +1,203 @@
+use super::*;
+
+pub(in crate::lua) fn infer_main_state_option_draw_condition(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+) -> Option<String> {
+    {
+        main_state_probe.lock().ok()?.begin_option_call_recording(true);
+    }
+    let _ = function.call::<Value>(()).ok();
+    let calls = {
+        let mut probe = main_state_probe.lock().ok()?;
+        let calls = probe.option_calls.clone();
+        probe.end_recording();
+        calls
+    };
+    let option_id = single_number_call(&calls)?;
+    let off = call_draw_with_option(function, main_state_probe, option_id, false)?;
+    let on = call_draw_with_option(function, main_state_probe, option_id, true)?;
+    match (off, on) {
+        (false, true) => Some(format!("option({option_id})")),
+        (true, false) => Some(format!("!option({option_id})")),
+        _ => None,
+    }
+}
+
+pub(in crate::lua) fn infer_main_state_option_number_draw_condition(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+) -> Option<String> {
+    let option_id = single_number_call(&collect_option_calls(function, main_state_probe)?)?;
+    let mut number_refs =
+        collect_number_refs_with_option_value(function, main_state_probe, option_id, true)?;
+    number_refs.extend(collect_number_refs_with_option_value(
+        function,
+        main_state_probe,
+        option_id,
+        false,
+    )?);
+    number_refs.sort_unstable();
+    number_refs.dedup();
+    let number_ref = single_number_call(&number_refs)?;
+
+    let false_zero =
+        call_draw_with_number_option(function, main_state_probe, number_ref, 0, option_id, false)?;
+    let false_nonzero =
+        call_draw_with_number_option(function, main_state_probe, number_ref, 5, option_id, false)?;
+    let true_zero =
+        call_draw_with_number_option(function, main_state_probe, number_ref, 0, option_id, true)?;
+    let true_nonzero =
+        call_draw_with_number_option(function, main_state_probe, number_ref, 5, option_id, true)?;
+
+    match (false_zero, false_nonzero, true_zero, true_nonzero) {
+        (false, false, false, true) => {
+            Some(format!("option({option_id}) && number({number_ref}) != 0"))
+        }
+        (false, false, true, false) => {
+            Some(format!("option({option_id}) && number({number_ref}) == 0"))
+        }
+        (false, true, false, false) => {
+            Some(format!("!option({option_id}) && number({number_ref}) != 0"))
+        }
+        (true, false, false, false) => {
+            Some(format!("!option({option_id}) && number({number_ref}) == 0"))
+        }
+        _ => None,
+    }
+}
+
+pub(in crate::lua) fn call_draw_with_option(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+    option_id: i32,
+    value: bool,
+) -> Option<bool> {
+    {
+        main_state_probe.lock().ok()?.begin_option_recording_with_value(option_id, value);
+    }
+    let result = function.call::<Value>(()).ok();
+    main_state_probe.lock().ok()?.end_recording();
+    match result? {
+        Value::Boolean(value) => Some(value),
+        _ => None,
+    }
+}
+
+pub(in crate::lua) fn infer_main_state_timer_option_draw_condition(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+) -> Option<String> {
+    {
+        main_state_probe.lock().ok()?.begin_timer_option_call_recording();
+    }
+    let _ = function.call::<Value>(()).ok();
+    let (timer_calls, option_calls) = {
+        let mut probe = main_state_probe.lock().ok()?;
+        let timer_calls = probe.timer_calls.clone();
+        let option_calls = probe.option_calls.clone();
+        probe.end_recording();
+        (timer_calls, option_calls)
+    };
+    let timer_id = single_number_call(&timer_calls)?;
+    let option_id = single_number_call(&option_calls)?;
+    let samples =
+        [(i32::MIN, false), (i32::MIN, true), (0, false), (0, true), (100, false), (100, true)];
+    let observed = samples
+        .iter()
+        .map(|(timer_value, option_value)| {
+            call_draw_with_timer_option(
+                function,
+                main_state_probe,
+                timer_id,
+                *timer_value,
+                option_id,
+                *option_value,
+            )
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let candidates = [
+        (
+            format!("timer({timer_id}) == timer_off and option({option_id})"),
+            samples
+                .iter()
+                .map(|(timer_value, option_value)| *timer_value == i32::MIN && *option_value)
+                .collect::<Vec<_>>(),
+        ),
+        (
+            format!("timer({timer_id}) != timer_off and option({option_id})"),
+            samples
+                .iter()
+                .map(|(timer_value, option_value)| *timer_value != i32::MIN && *option_value)
+                .collect::<Vec<_>>(),
+        ),
+        (
+            format!("timer({timer_id}) > 0 and option({option_id})"),
+            samples
+                .iter()
+                .map(|(timer_value, option_value)| *timer_value > 0 && *option_value)
+                .collect::<Vec<_>>(),
+        ),
+    ];
+    candidates
+        .into_iter()
+        .find_map(|(condition, expected)| (observed == expected).then_some(condition))
+}
+
+pub(in crate::lua) fn infer_main_state_two_options_timer_draw_condition(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+) -> Option<String> {
+    let mut option_calls = collect_option_calls(function, main_state_probe)?;
+    option_calls.sort_unstable();
+    option_calls.dedup();
+    if option_calls.len() != 2 {
+        return None;
+    }
+    let option_a = option_calls[0];
+    let option_b = option_calls[1];
+
+    // Force both option branches open so a timer hidden behind Lua's short-circuit
+    // evaluation is recorded as well.
+    let timer_id = {
+        let mut probe = main_state_probe.lock().ok()?;
+        probe.begin_timer_options_recording_with_values(
+            BTreeMap::new(),
+            BTreeMap::from([(option_a, false), (option_b, true)]),
+        );
+        drop(probe);
+        let _ = function.call::<Value>(()).ok();
+        let mut probe = main_state_probe.lock().ok()?;
+        let timer_calls = probe.timer_calls.clone();
+        probe.end_recording();
+        single_number_call(&timer_calls)?
+    };
+
+    let samples = [
+        (false, false, i32::MIN),
+        (false, false, 100),
+        (false, true, i32::MIN),
+        (false, true, 100),
+        (true, false, i32::MIN),
+        (true, false, 100),
+        (true, true, i32::MIN),
+        (true, true, 100),
+    ];
+    let observed = samples
+        .iter()
+        .map(|(a, b, timer)| {
+            call_draw_with_timer_options(
+                function,
+                main_state_probe,
+                timer_id,
+                *timer,
+                [(option_a, *a), (option_b, *b)],
+            )
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let expected =
+        samples.iter().map(|(a, b, timer)| *a || (*b && *timer == i32::MIN)).collect::<Vec<_>>();
+    (observed == expected).then(|| {
+        format!("option({option_a}) or option({option_b}) and timer({timer_id}) == timer_off")
+    })
+}

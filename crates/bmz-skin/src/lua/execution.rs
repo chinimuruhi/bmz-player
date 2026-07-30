@@ -276,19 +276,19 @@ pub(super) fn execute_lua_skin(
     let lua_runtime = if runtime_draw_paths.is_empty() {
         None
     } else {
-        match build_lua_skin_runtime(
-            &input,
-            &root,
-            &source,
+        match build_lua_skin_runtime(LuaSkinRuntimeRequest {
+            input: &input,
+            root: &root,
+            source: &source,
             options,
-            active_skin_options,
-            &skin_files,
-            &skin_file_dependency_names_from_header(&header_json),
-            &skin_offsets,
+            skin_config_options: active_skin_options,
+            skin_files: &skin_files,
+            skin_file_dependency_names: &skin_file_dependency_names_from_header(&header_json),
+            skin_offsets: &skin_offsets,
             runtime_state,
             virtual_io_files,
-            &runtime_draw_paths,
-        ) {
+            runtime_draw_paths: &runtime_draw_paths,
+        }) {
             Ok(runtime) => Some(runtime),
             Err(error) => {
                 warnings.push(format!(
@@ -314,20 +314,34 @@ pub(super) fn execute_lua_skin(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn build_lua_skin_runtime(
-    input: &Path,
-    root: &Path,
-    source: &str,
-    options: &BTreeMap<String, String>,
-    skin_config_options: &BTreeMap<String, i64>,
-    skin_files: &BTreeMap<String, String>,
-    skin_file_dependency_names: &BTreeMap<String, String>,
-    skin_offsets: &BTreeMap<String, LuaSkinOffsetValue>,
-    runtime_state: &LuaLoadRuntimeState,
-    virtual_io_files: &BTreeMap<String, String>,
-    runtime_draw_paths: &[String],
-) -> Result<LuaSkinRuntime> {
+pub(super) struct LuaSkinRuntimeRequest<'a> {
+    pub(super) input: &'a Path,
+    pub(super) root: &'a Path,
+    pub(super) source: &'a str,
+    pub(super) options: &'a BTreeMap<String, String>,
+    pub(super) skin_config_options: &'a BTreeMap<String, i64>,
+    pub(super) skin_files: &'a BTreeMap<String, String>,
+    pub(super) skin_file_dependency_names: &'a BTreeMap<String, String>,
+    pub(super) skin_offsets: &'a BTreeMap<String, LuaSkinOffsetValue>,
+    pub(super) runtime_state: &'a LuaLoadRuntimeState,
+    pub(super) virtual_io_files: &'a BTreeMap<String, String>,
+    pub(super) runtime_draw_paths: &'a [String],
+}
+
+pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Result<LuaSkinRuntime> {
+    let LuaSkinRuntimeRequest {
+        input,
+        root,
+        source,
+        options,
+        skin_config_options,
+        skin_files,
+        skin_file_dependency_names,
+        skin_offsets,
+        runtime_state,
+        virtual_io_files,
+        runtime_draw_paths,
+    } = request;
     let lua = Lua::new();
     let instruction_budget = install_instruction_limit(&lua);
     // This is a clean runtime VM. Installing the sandbox and evaluating the
