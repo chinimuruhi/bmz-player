@@ -92,17 +92,16 @@ impl WinitApp {
             ((avg_callback_frames / f64::from(sample_rate)) * 1_000_000_000.0).round() as u64;
         let callback_over_budget =
             callback_budget_ns > 0 && snapshot.max_callback_ns > callback_budget_ns;
-        let suspected_cause = classify_audio_output_issue(
+        let suspected_cause = classify_audio_output_issue(AudioOutputIssueMetrics {
             stream_errors,
             source_lock_misses,
             engine_lock_misses,
             command_drops,
-            command_drain_lock_misses,
             command_engine_lock_misses,
             callback_over_budget,
             clipped_samples,
-            self.select.select_assets.generated_preview_loading(),
-        );
+            generated_preview_loading: self.select.select_assets.generated_preview_loading(),
+        });
 
         if stream_errors == 0
             && source_lock_misses == 0

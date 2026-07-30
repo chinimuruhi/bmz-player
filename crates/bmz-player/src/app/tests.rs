@@ -228,3 +228,5 @@ mod runtime;
 mod select;
 #[path = "tests/skin.rs"]
 mod skin;
+#[path = "tests/skin_more.rs"]
+mod skin_more;

@@ -109,19 +109,32 @@ fn select_preview_uses_generated_fallback_after_explicit_preview_fails() {
 #[test]
 fn audio_diagnostic_marks_generated_preview_callback_pressure() {
     assert_eq!(
-        classify_audio_output_issue(0, 0, 0, 0, 0, 0, true, 0, true),
+        classify_audio_output_issue(AudioOutputIssueMetrics {
+            callback_over_budget: true,
+            generated_preview_loading: true,
+            ..Default::default()
+        }),
         AudioOutputIssueCause::GeneratedPreviewCpuPressure
     );
     assert_eq!(
-        classify_audio_output_issue(0, 0, 1, 0, 0, 0, true, 0, true),
+        classify_audio_output_issue(AudioOutputIssueMetrics {
+            engine_lock_misses: 1,
+            callback_over_budget: true,
+            generated_preview_loading: true,
+            ..Default::default()
+        }),
         AudioOutputIssueCause::CallbackLockContention
     );
     assert_eq!(
-        classify_audio_output_issue(0, 0, 0, 0, 0, 0, false, 1, true),
+        classify_audio_output_issue(AudioOutputIssueMetrics {
+            clipped_samples: 1,
+            generated_preview_loading: true,
+            ..Default::default()
+        }),
         AudioOutputIssueCause::MixClipping
     );
     assert_eq!(
-        classify_audio_output_issue(0, 0, 0, 0, 1, 0, false, 0, false),
+        classify_audio_output_issue(AudioOutputIssueMetrics::default()),
         AudioOutputIssueCause::Unknown
     );
 }

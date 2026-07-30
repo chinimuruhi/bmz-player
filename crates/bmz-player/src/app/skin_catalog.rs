@@ -1,0 +1,194 @@
+use super::*;
+
+pub(super) fn scan_skin_catalog(app_paths: &crate::paths::AppPaths) -> SkinCatalog {
+    let mut catalog = SkinCatalog::default();
+    let resource_skin_root = app_paths.resource_dir.join("skins");
+    let data_skin_root = app_paths.data_dir.join("skins");
+    scan_skin_catalog_dir(
+        &resource_skin_root,
+        &resource_skin_root,
+        SkinCandidateOrigin::Bundled,
+        &mut catalog,
+    );
+    if !same_path(&resource_skin_root, &data_skin_root) {
+        scan_skin_catalog_dir(
+            &data_skin_root,
+            &data_skin_root,
+            SkinCandidateOrigin::User,
+            &mut catalog,
+        );
+    }
+    sort_skin_catalog(&mut catalog);
+    catalog
+}
+
+pub(super) fn scan_skin_catalog_dir(
+    root: &Path,
+    dir: &Path,
+    origin: SkinCandidateOrigin,
+    catalog: &mut SkinCatalog,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_skin_catalog_dir(root, &path, origin, catalog);
+            continue;
+        }
+        if !is_skin_candidate_file(&path) {
+            continue;
+        }
+        match load_skin_candidate(root, &path, origin) {
+            Some((skin_type, candidate)) => push_skin_candidate(catalog, skin_type, candidate),
+            None => {
+                tracing::debug!(path = %path.display(), "skipping skin candidate without readable header")
+            }
+        }
+    }
+}
+
+pub(super) fn play_skin_defs_from_path(
+    app_paths: &crate::paths::AppPaths,
+    path: &str,
+) -> SceneSkinDefs {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return SceneSkinDefs::from_play_document(None);
+    }
+    let document =
+        app_paths.resolve_path_ref(trimmed).ok().and_then(|path| load_skin_header_document(&path));
+    SceneSkinDefs::from_play_document(document.as_ref())
+}
+
+pub(super) fn is_skin_candidate_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "json" | "luaskin" | "lr2skin"))
+        .unwrap_or(false)
+}
+
+pub(super) fn load_skin_header_document(path: &Path) -> Option<SkinDocument> {
+    if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("luaskin"))
+    {
+        bmz_skin::load_lua_skin_header_value(path)
+            .ok()
+            .and_then(|loaded| serde_json::from_value::<SkinDocument>(loaded.value).ok())
+    } else if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("lr2skin"))
+    {
+        bmz_skin::load_lr2_csv_skin(
+            path,
+            bmz_skin::SkinKind::Play,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .ok()
+        .map(|loaded| loaded.document)
+    } else {
+        SkinDocument::load_beatoraja_json(path).ok()
+    }
+}
+
+pub(super) fn load_skin_candidate(
+    root: &Path,
+    path: &Path,
+    origin: SkinCandidateOrigin,
+) -> Option<(i32, SkinCandidate)> {
+    let document = load_skin_header_document(path)?;
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let name = if document.name.trim().is_empty() {
+        relative.file_stem().and_then(|name| name.to_str()).unwrap_or("").to_string()
+    } else {
+        document.name
+    };
+    let stable_path = match origin {
+        SkinCandidateOrigin::Bundled => format!("resource:skins/{}", path_to_slash(relative)),
+        SkinCandidateOrigin::User => format!("data:skins/{}", path_to_slash(relative)),
+        SkinCandidateOrigin::External => path.to_string_lossy().replace('\\', "/"),
+    };
+    Some((document.skin_type, SkinCandidate { name, path: stable_path, origin }))
+}
+
+pub(super) fn same_path(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+pub(super) fn path_to_slash(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+pub(super) const BMZ_SKIN_TYPE_PLAY_2KEYS: i32 = 21;
+pub(super) const BMZ_SKIN_TYPE_PLAY_4KEYS: i32 = 22;
+pub(super) const BMZ_SKIN_TYPE_PLAY_6KEYS: i32 = 23;
+pub(super) const BMZ_SKIN_TYPE_PLAY_8KEYS: i32 = 24;
+
+pub(super) fn push_skin_candidate(
+    catalog: &mut SkinCatalog,
+    skin_type: i32,
+    candidate: SkinCandidate,
+) {
+    match skin_type {
+        0 => catalog.play7.push(candidate),
+        1 => catalog.play5.push(candidate),
+        2 => catalog.play14.push(candidate),
+        3 => catalog.play10.push(candidate),
+        4 => catalog.play9.push(candidate),
+        12 => catalog.battle7.push(candidate),
+        13 => catalog.battle5.push(candidate),
+        5 => catalog.select.push(candidate),
+        6 => catalog.decide.push(candidate),
+        7 => catalog.result.push(candidate),
+        15 => catalog.course_result.push(candidate),
+        BMZ_SKIN_TYPE_PLAY_4KEYS => catalog.play4.push(candidate),
+        BMZ_SKIN_TYPE_PLAY_6KEYS => catalog.play6.push(candidate),
+        BMZ_SKIN_TYPE_PLAY_8KEYS => catalog.play8.push(candidate),
+        BMZ_SKIN_TYPE_PLAY_2KEYS => {}
+        _ => {}
+    }
+}
+
+pub(super) fn sort_skin_catalog(catalog: &mut SkinCatalog) {
+    for candidates in [
+        &mut catalog.select,
+        &mut catalog.decide,
+        &mut catalog.play4,
+        &mut catalog.play5,
+        &mut catalog.play6,
+        &mut catalog.play7,
+        &mut catalog.play8,
+        &mut catalog.play9,
+        &mut catalog.play10,
+        &mut catalog.play14,
+        &mut catalog.battle5,
+        &mut catalog.battle7,
+        &mut catalog.result,
+        &mut catalog.course_result,
+    ] {
+        candidates.sort_by(|a, b| {
+            a.name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase())
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        candidates.dedup_by(|a, b| a.path == b.path);
+    }
+}

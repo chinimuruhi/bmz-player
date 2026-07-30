@@ -69,25 +69,10 @@ impl WinitApp {
         ) = load_initial_skin_textures(
             renderer.as_mut(),
             &boot.app_paths,
-            &skin_pipeline.decode_tx,
-            &skin_pipeline.source_asset_cache,
-            &skin_pipeline.document_cache,
-            &skin_pipeline.gpu_texture_cache,
-            &skin_pipeline.font_cache,
+            &skin_pipeline,
             0,
             &boot.profile_config.display_name,
-            &boot.profile_config.skin.select,
-            &boot.profile_config.skin.decide,
-            &boot.profile_config.skin.result,
-            &boot.profile_config.skin.select_options,
-            &boot.profile_config.skin.decide_options,
-            &boot.profile_config.skin.result_options,
-            &boot.profile_config.skin.select_files,
-            &boot.profile_config.skin.decide_files,
-            &boot.profile_config.skin.result_files,
-            &boot.profile_config.skin.select_offsets,
-            &boot.profile_config.skin.decide_offsets,
-            &boot.profile_config.skin.result_offsets,
+            &boot.profile_config.skin,
         );
         skin_pipeline.set_pending(SkinKind::Select, pending_select_skin);
         skin_pipeline.set_pending(SkinKind::Decide, pending_decide_skin);

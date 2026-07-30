@@ -73,8 +73,8 @@ use crate::config::profile_config::{
     DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig,
     HispeedModeConfig, HsFixConfig, InputActionConfig, JudgeAlgorithmConfig, LaneEffectConfig,
     LaneViewConfig, PlayDefaultsConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
-    SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
-    normalize_hispeed_step, replay_slot_rule_indices,
+    SkinConfig, SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs,
+    default_hispeed_step_nhs, normalize_hispeed_step, replay_slot_rule_indices,
 };
 use crate::config::save::{save_app_config, save_profile_config};
 use crate::config::settings_registry::SettingsEntryId;
@@ -139,8 +139,7 @@ use crate::screens::settings_model::{
 };
 use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
 use crate::skin_loader::{
-    DecodedSkin, PreparedSource, SharedSkinDocumentCache, SharedSkinFontCache,
-    SharedSkinGpuTextureCache, SharedSkinSourceAssetCache, SkinFontCacheKey, SkinKind,
+    DecodedSkin, PreparedSource, SharedSkinGpuTextureCache, SkinFontCacheKey, SkinKind,
     UploadedSkin, decode_beatoraja_skin_with_options_and_runtime_state,
     decode_beatoraja_skin_with_options_and_runtime_state_and_caches,
     default_play_skin_document_path_from_paths, default_skin_document_path_from_paths,
@@ -184,7 +183,15 @@ use bmz_render::skin::{
 mod app_support;
 mod background_jobs;
 mod bga_runtime;
-mod course_flow;
+mod chart_assets;
+#[path = "app/course_flow/advance.rs"]
+mod course_flow_advance;
+#[path = "app/course_flow/finish.rs"]
+mod course_flow_finish;
+#[path = "app/course_flow/ir.rs"]
+mod course_flow_ir;
+#[path = "app/course_flow/start.rs"]
+mod course_flow_start;
 mod frame_flow;
 mod frame_runtime;
 mod input_runtime;
@@ -194,8 +201,14 @@ mod pending_state;
 mod play_control;
 #[path = "app/play_flow/audio.rs"]
 mod play_flow_audio;
-#[path = "app/play_flow/launch.rs"]
-mod play_flow_launch;
+#[path = "app/play_flow/launch/bga.rs"]
+mod play_flow_launch_bga;
+#[path = "app/play_flow/launch/poll.rs"]
+mod play_flow_launch_poll;
+#[path = "app/play_flow/launch/preload.rs"]
+mod play_flow_launch_preload;
+#[path = "app/play_flow/launch/start.rs"]
+mod play_flow_launch_start;
 #[path = "app/play_flow/practice.rs"]
 mod play_flow_practice;
 #[path = "app/play_flow/replay.rs"]
@@ -206,18 +219,31 @@ mod play_loop_flow;
 mod play_preload_state;
 mod play_support;
 mod play_transition_state;
-mod result_flow;
+#[path = "app/result_flow/ending.rs"]
+mod result_flow_ending;
+#[path = "app/result_flow/interaction.rs"]
+mod result_flow_interaction;
+#[path = "app/result_flow/timing.rs"]
+mod result_flow_timing;
+#[path = "app/result_flow/transition.rs"]
+mod result_flow_transition;
 mod result_runtime;
 mod result_support;
+#[path = "app/result_support/timing.rs"]
+mod result_timing_support;
 mod runtime_state;
 mod scene_input;
 mod select_assets;
 #[path = "app/select_flow/controls.rs"]
 mod select_flow_controls;
-#[path = "app/select_flow/input.rs"]
-mod select_flow_input;
+#[path = "app/select_flow/gamepad.rs"]
+mod select_flow_gamepad;
+#[path = "app/select_flow/keyboard.rs"]
+mod select_flow_keyboard;
 #[path = "app/select_flow/navigation.rs"]
 mod select_flow_navigation;
+#[path = "app/select_flow/pointer.rs"]
+mod select_flow_pointer;
 #[path = "app/select_flow/preview.rs"]
 mod select_flow_preview;
 #[path = "app/select_flow/skin_events.rs"]
@@ -228,10 +254,21 @@ mod select_folder_summary;
 mod select_key_bindings;
 mod select_search;
 mod select_support;
-mod skin_flow;
+mod skin_catalog;
+#[path = "app/skin_flow/profile.rs"]
+mod skin_flow_profile;
+#[path = "app/skin_flow/reload.rs"]
+mod skin_flow_reload;
+#[path = "app/skin_flow/upload.rs"]
+mod skin_flow_upload;
+#[path = "app/skin_flow/video.rs"]
+mod skin_flow_video;
+mod skin_loading;
+mod skin_options;
 mod skin_pipeline;
 mod skin_runtime_types;
-mod skin_support;
+mod skin_video;
+mod skin_workers;
 mod table_fetch_runtime;
 mod update_prompt;
 
@@ -256,6 +293,7 @@ use bga_runtime::{
     combined_resource_load_progress, load_worker as chart_bga_texture_load_worker,
     preload_worker as chart_bga_texture_preload_worker, resource_load_progress_units,
 };
+use chart_assets::*;
 use frame_runtime::{
     FrameProfileKind, FrameRuntime, FrameSchedule, PlayLoopFrameTimings, SceneFrameProfileSample,
     SkinVideoFrameProfile,
@@ -274,6 +312,7 @@ use result_runtime::{
     mark_course_replay_slot_saved, result_main_bpm, result_max_bpm, result_min_bpm,
 };
 use result_support::*;
+use result_timing_support::*;
 use scene_input::{
     DecideAction, ResultAction, SelectAction, SelectMove, decide_action as scene_decide_action,
     result_action as scene_result_action, select_action as scene_select_action,
@@ -285,8 +324,12 @@ use select_assets::{
 use select_folder_summary::SelectFolderSummaryRuntime;
 use select_search::{SearchInputAction, SelectSearchRuntime};
 use select_support::*;
-use skin_pipeline::{SkinPipelineRuntime, SkinReloadGenerations};
-use skin_support::*;
+use skin_catalog::*;
+use skin_loading::*;
+use skin_options::*;
+use skin_pipeline::SkinPipelineRuntime;
+use skin_video::*;
+use skin_workers::*;
 use table_fetch_runtime::{
     RianTableFetchWorkerResult, TableFetchProgress, TableFetchRuntime, TableFetchWorkerEvent,
     startup_difficulty_table_fetch_urls_for_boot,

@@ -226,7 +226,6 @@ pub(super) struct AppAudioRuntimeState {
     pub(super) input_diagnostics_last_sequence: u64,
     /// システム SE / BGM を再生する cpal ストリーム。
     /// 開けない環境では `None` で、システム音はサイレント。
-    #[allow(dead_code)]
     pub(super) system_audio: Option<crate::audio::SystemAudio>,
     /// `system_audio` 上にデコード済みサンプルを乗せて再生・停止する facade。
     /// `system_audio` が `None` の場合や、サウンドセット未指定の場合も `Some` で

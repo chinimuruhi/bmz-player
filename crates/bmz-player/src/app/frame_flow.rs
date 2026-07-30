@@ -1,4 +1,36 @@
 use super::*;
+use crate::screens::select_model::SelectCourseRow;
+
+mod render;
+
+struct EguiProfileBefore {
+    locale: crate::i18n::AppLocale,
+    play: PlayDefaultsConfig,
+    lane: LaneViewConfig,
+    input: ProfileInputConfig,
+}
+
+fn egui_scene_name(scene_kind: AppSceneKind) -> &'static str {
+    match scene_kind {
+        AppSceneKind::Select => "Select",
+        AppSceneKind::Decide => "Decide",
+        AppSceneKind::Play => "Play",
+        AppSceneKind::Result => "Result",
+    }
+}
+
+fn practice_panel_context(
+    practice: Option<&mut PracticeSession>,
+    media_ready: bool,
+) -> Option<PracticePanelContext<'_>> {
+    let practice = practice.filter(|practice| practice.phase == PracticePhase::Config)?;
+    Some(PracticePanelContext {
+        property: &mut practice.property,
+        chart_title: &practice.chart_title,
+        media_ready,
+        max_end_time_ms: practice.max_end_time_ms,
+    })
+}
 
 impl WinitApp {
     pub(super) fn restart_select_scene_timers(&mut self) {
@@ -58,244 +90,23 @@ impl WinitApp {
             return;
         };
         let scene_kind = self.current_scene_kind();
-        let scene = match scene_kind {
-            AppSceneKind::Select => "Select",
-            AppSceneKind::Decide => "Decide",
-            AppSceneKind::Play => "Play",
-            AppSceneKind::Result => "Result",
-        };
-        let practice_overlay = self
-            .play
-            .practice_session
-            .as_ref()
-            .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        let use_idle_egui_frame = scene_kind == AppSceneKind::Play
-            && self.play.play_ending.is_none()
-            && self.ui.egui.as_ref().is_some_and(|egui| {
-                !egui.needs_full_frame(scene, practice_overlay, self.jobs.update_prompt.is_some())
-            });
-        if use_idle_egui_frame {
-            let Some(mut egui) = self.ui.egui.take() else {
-                return;
-            };
-            let frame =
-                egui.run_idle_frame(&window, self.boot.profile_config.ui.locale().font_coverage());
-            self.ui.egui = Some(egui);
-            self.renderer.set_egui_frame(frame);
+        let scene = egui_scene_name(scene_kind);
+        if self.run_idle_egui_frame_if_available(&window, scene_kind, scene) {
             return;
         }
-        let size = window.inner_size();
-        let presentation = self.renderer.surface_presentation_status();
-        let info = DebugInfo {
-            scene,
-            current_fps: self.frame.current_fps(),
-            width: size.width,
-            height: size.height,
-            effective_present_mode: presentation.map(|status| status.effective_mode),
-            maximum_frame_latency: presentation.map(|status| status.maximum_frame_latency),
-        };
-        let play4_path = self.boot.profile_config.skin.play4.clone();
-        let play5_path = self.boot.profile_config.skin.play5.clone();
-        let play6_path = self.boot.profile_config.skin.play6.clone();
-        let play7_path = self.boot.profile_config.skin.play7.clone();
-        let play8_path = self.boot.profile_config.skin.play8.clone();
-        let play9_path = self.boot.profile_config.skin.play9.clone();
-        let play10_path = self.boot.profile_config.skin.play10.clone();
-        let play14_path = self.boot.profile_config.skin.play14.clone();
-        let battle5_path = self.boot.profile_config.skin.battle5.clone();
-        let battle7_path = self.boot.profile_config.skin.battle7.clone();
-        let course_result_path = self.boot.profile_config.skin.course_result.clone();
-        let play4_defs = self.play_skin_defs_for_path(&play4_path);
-        let play5_defs = self.play_skin_defs_for_path(&play5_path);
-        let play6_defs = self.play_skin_defs_for_path(&play6_path);
-        let play7_defs = self.play_skin_defs_for_path(&play7_path);
-        let play8_defs = self.play_skin_defs_for_path(&play8_path);
-        let play9_defs = self.play_skin_defs_for_path(&play9_path);
-        let play10_defs = self.play_skin_defs_for_path(&play10_path);
-        let play14_defs = self.play_skin_defs_for_path(&play14_path);
-        let battle5_defs = self.play_skin_defs_for_path(&battle5_path);
-        let battle7_defs = self.play_skin_defs_for_path(&battle7_path);
-        let course_result_defs = self.play_skin_defs_for_path(&course_result_path);
-        let skin_meta = SkinConfigMeta {
-            select: SceneSkinDefs::from_document(self.renderer.select_skin_document()),
-            decide: SceneSkinDefs::from_document(self.renderer.decide_skin_document()),
-            play4: play4_defs,
-            play5: play5_defs,
-            play6: play6_defs,
-            play7: play7_defs,
-            play8: play8_defs,
-            play9: play9_defs,
-            play10: play10_defs,
-            play14: play14_defs,
-            battle5: battle5_defs,
-            battle7: battle7_defs,
-            result: SceneSkinDefs::from_document(self.renderer.result_skin_document()),
-            course_result: course_result_defs,
-        };
+        let info = self.egui_debug_info(&window, scene);
+        let skin_meta = self.egui_skin_meta();
         let course_result_active =
             matches!(scene_kind, AppSceneKind::Result) && self.result.finished_course.is_some();
-        if matches!(scene_kind, AppSceneKind::Result)
-            && self
-                .result
-                .result_ir
-                .as_ref()
-                .is_some_and(|state| state.is_course() != course_result_active)
-        {
-            self.result.result_ir = None;
-        }
-        if course_result_active
-            && self.result.result_ir.is_none()
-            && !self.result.finished_course_ir_attempted
-        {
-            // IR が無効、または identity が解決できない場合も、この Result 滞在中の
-            // 起動判定は一度で完了させる。
-            self.result.finished_course_ir_attempted = true;
-            if let Some((course_hash, rian_course_hash_v1, gauge, ln_policy, rule_mode)) =
-                self.course_result_ir_target()
-            {
-                self.result.result_ir = crate::screens::result_ir::spawn_course_result_ir_task(
-                    self.boot.profile_paths.root_dir.clone(),
-                    self.boot.profile_paths.score_db.clone(),
-                    self.boot.profile_paths.network_db.clone(),
-                    self.boot.app_paths.logs_dir.clone(),
-                    &self.boot.profile_config.ir,
-                    self.result
-                        .finished_course
-                        .as_ref()
-                        .and_then(|course| course.course_score_id)
-                        .unwrap_or_default(),
-                    crate::screens::result_ir::ResultIrCourseHashes {
-                        local: course_hash,
-                        rian_v1: rian_course_hash_v1,
-                    },
-                    gauge,
-                    ln_policy,
-                    rule_mode,
-                );
-            }
-        }
-        // `egui` は run の直前に Option から一時的に取り出すため、コース全ステージの
-        // graph を含む CourseResultSummary をフレームごとに clone せず参照で渡せる。
+        self.prepare_egui_result_ir(scene_kind, course_result_active);
+        self.update_egui_select_ir(scene_kind);
+
+        // コース graph は egui を Option から取り出した後、clone せず参照で渡す。
         let course_result = self.result.finished_course.as_ref();
-        // Only show the course preview when the user is on the select screen
-        // and the cursor is over a course row.
-        let course_preview = matches!(scene_kind, AppSceneKind::Select)
-            .then(|| {
-                self.select.select_items.get(self.select.selected_index).and_then(|item| match item
-                {
-                    SelectItem::Course(row) => Some(row.clone()),
-                    _ => None,
-                })
-            })
-            .flatten();
-        let selected_course_ir_target = matches!(scene_kind, AppSceneKind::Select)
-            .then(|| self.selected_course_ir_target())
-            .flatten();
+        let course_preview = self.egui_course_preview(scene_kind);
         let practice_media_ready = self.practice_media_ready();
-        let mut practice_panel_ctx = None;
-        if let Some(practice) = &mut self.play.practice_session
-            && practice.phase == PracticePhase::Config
-        {
-            practice_panel_ctx = Some(PracticePanelContext {
-                property: &mut practice.property,
-                chart_title: &practice.chart_title,
-                media_ready: practice_media_ready,
-                max_end_time_ms: practice.max_end_time_ms,
-            });
-        }
-        // 通常プレイは play ending に入った時点で IR 送信を早期起動し、Result
-        // 画面まで状態を保持する。コース最終リザルトでは course_hash ベースの
-        // course ranking を取得するため、単曲用 state は Result 突入時に差し替える。
-        if matches!(scene_kind, AppSceneKind::Result) {
-            if self.result.result_ir.is_none()
-                && !course_result_active
-                && let Some(finished) = &self.result.finished_play
-            {
-                self.result.result_ir = crate::screens::result_ir::spawn_result_ir_task(
-                    self.boot.profile_paths.root_dir.clone(),
-                    self.boot.profile_paths.score_db.clone(),
-                    self.boot.profile_paths.network_db.clone(),
-                    self.boot.app_paths.logs_dir.clone(),
-                    &self.boot.profile_config.ir,
-                    finished.stored.score_history_id,
-                    crate::storage::common::hash_to_hex(&finished.result.chart_sha256),
-                    finished.ln_policy,
-                    finished.double_option,
-                    finished.rule_mode,
-                );
-            }
-            let loaded_rankings =
-                self.result.result_ir.as_mut().map(|state| state.poll()).unwrap_or_default();
-            for ranking in loaded_rankings {
-                self.select
-                    .select_ir
-                    .cache_result_global_ranking(&ranking.chart_sha256_hex, &ranking.ranking);
-            }
-        } else if self.play.play_ending.is_some() {
-            let loaded_rankings =
-                self.result.result_ir.as_mut().map(|state| state.poll()).unwrap_or_default();
-            for ranking in loaded_rankings {
-                self.select
-                    .select_ir
-                    .cache_result_global_ranking(&ranking.chart_sha256_hex, &ranking.ranking);
-            }
-        } else {
-            self.result.result_ir = None;
-        }
-        // 選曲画面ではカーソル譜面の IR ランキングをデバウンスつきで取得する
-        // (NUMBER_IR_RANK / NUMBER_IR_TOTALPLAYER / OPTION_IR_* 用)。
-        if matches!(scene_kind, AppSceneKind::Select) {
-            // `selected_chart_sha256()` は &self 全体を借りるため、practice ctx の
-            // &mut 借用と衝突しないようフィールド単位で参照する。
-            let (selected, ln_profile, key_mode) =
-                match self.select.select_items.get(self.select.selected_index) {
-                    Some(SelectItem::Chart(row)) => (
-                        row.score_sha256(),
-                        // library 登録済みなら譜面の LN プロファイルから実プレイと
-                        // 同じスコア分離キーを解決する。未登録は default 近似。
-                        row.chart.as_ref().map(|chart| chart.ln_profile).unwrap_or_default(),
-                        row.chart
-                            .as_ref()
-                            .and_then(|chart| KeyMode::from_str_opt(&chart.mode))
-                            .unwrap_or_default(),
-                    ),
-                    _ => (None, crate::ln_policy::ChartLnProfile::default(), KeyMode::default()),
-                };
-            let ln_policy = crate::ln_policy::score_ln_policy(
-                self.boot.profile_config.play.ln_mode_policy,
-                ln_profile,
-            );
-            let double_option =
-                self.select.double_option.normalize_for_key_mode(key_mode).score_bucket();
-            let ir_config = self.boot.profile_config.ir.clone();
-            if let Some(course) = selected_course_ir_target {
-                let context = format!(
-                    "course:{}:{}:{}:{}:{}",
-                    course.course_hash,
-                    course.rian_course_hash_v1,
-                    course.gauge,
-                    course.ln_policy,
-                    course.rule_mode.as_str()
-                );
-                self.select.select_ir.update_course(&ir_config, &context, Some(course));
-            } else {
-                let context = select_ir_cache_context(
-                    self.boot.profile_config.play.ln_mode_policy,
-                    ln_policy,
-                    double_option,
-                    self.boot.profile_config.play.rule_mode,
-                );
-                self.select.select_ir.update(
-                    &ir_config,
-                    &self.boot.profile_paths.root_dir,
-                    &context,
-                    ln_policy,
-                    double_option,
-                    self.boot.profile_config.play.rule_mode,
-                    selected,
-                );
-            }
-        }
+        let mut practice_panel_ctx =
+            practice_panel_context(self.play.practice_session.as_mut(), practice_media_ready);
         let result_ir_panel = self.result.result_ir.as_mut();
         let update_dialog = self.jobs.update_prompt.as_ref().map(UpdatePrompt::as_dialog);
         let obs_connection_status = self
@@ -306,13 +117,15 @@ impl WinitApp {
             .unwrap_or_else(crate::obs::ObsConnectionStatus::disabled);
         let connected_gamepads =
             self.gamepad.as_ref().map(|gamepad| gamepad.connected_gamepads()).unwrap_or_default();
-        let locale_before_ui = self.boot.profile_config.ui.locale();
         let Some(mut egui) = self.ui.egui.take() else {
             return;
         };
-        let play_profile_before_egui = self.boot.profile_config.play.clone();
-        let lane_profile_before_egui = self.boot.profile_config.lane.clone();
-        let input_profile_before_egui = self.boot.profile_config.input.clone();
+        let profile_before = EguiProfileBefore {
+            locale: self.boot.profile_config.ui.locale(),
+            play: self.boot.profile_config.play.clone(),
+            lane: self.boot.profile_config.lane.clone(),
+            input: self.boot.profile_config.input.clone(),
+        };
         let output = egui.run(
             &window,
             EguiRunContext {
@@ -336,27 +149,253 @@ impl WinitApp {
             },
         );
         self.ui.egui = Some(egui);
-        self.reconcile_rian_table_identity();
-        let locale_after_ui = self.boot.profile_config.ui.locale();
-        self.renderer.set_default_font_coverage(locale_after_ui.font_coverage());
-        if locale_after_ui != locale_before_ui {
-            // 設定・検索履歴などアプリが生成した行名を新しい locale で作り直す。
-            // 選択復元は表示名ではなく typed/path ID を使う。
-            self.select.search.clear_message();
-            self.reload_select_items();
+        self.apply_egui_output(&window, output, profile_before);
+    }
+
+    fn run_idle_egui_frame_if_available(
+        &mut self,
+        window: &Window,
+        scene_kind: AppSceneKind,
+        scene: &'static str,
+    ) -> bool {
+        let practice_overlay = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        let use_idle_frame = scene_kind == AppSceneKind::Play
+            && self.play.play_ending.is_none()
+            && self.ui.egui.as_ref().is_some_and(|egui| {
+                !egui.needs_full_frame(scene, practice_overlay, self.jobs.update_prompt.is_some())
+            });
+        if !use_idle_frame {
+            return false;
         }
-        self.renderer.set_egui_frame(output.frame);
-        self.sync_changed_select_play_options_from_profile(&play_profile_before_egui);
-        self.sync_changed_select_score_context(SelectScoreContext::from_play(
-            &play_profile_before_egui,
-        ));
-        self.sync_changed_gamepad_analog_config_from_profile(&input_profile_before_egui);
-        if profile_lane_settings_changed(&lane_profile_before_egui, &self.boot.profile_config.lane)
+
+        let Some(mut egui) = self.ui.egui.take() else {
+            return true;
+        };
+        let frame =
+            egui.run_idle_frame(window, self.boot.profile_config.ui.locale().font_coverage());
+        self.ui.egui = Some(egui);
+        self.renderer.set_egui_frame(frame);
+        true
+    }
+
+    fn egui_debug_info(&self, window: &Window, scene: &'static str) -> DebugInfo {
+        let size = window.inner_size();
+        let presentation = self.renderer.surface_presentation_status();
+        DebugInfo {
+            scene,
+            current_fps: self.frame.current_fps(),
+            width: size.width,
+            height: size.height,
+            effective_present_mode: presentation.map(|status| status.effective_mode),
+            maximum_frame_latency: presentation.map(|status| status.maximum_frame_latency),
+        }
+    }
+
+    fn egui_skin_meta(&mut self) -> SkinConfigMeta {
+        let skin = &self.boot.profile_config.skin;
+        let paths = [
+            skin.play4.clone(),
+            skin.play5.clone(),
+            skin.play6.clone(),
+            skin.play7.clone(),
+            skin.play8.clone(),
+            skin.play9.clone(),
+            skin.play10.clone(),
+            skin.play14.clone(),
+            skin.battle5.clone(),
+            skin.battle7.clone(),
+            skin.course_result.clone(),
+        ];
+        let [
+            play4,
+            play5,
+            play6,
+            play7,
+            play8,
+            play9,
+            play10,
+            play14,
+            battle5,
+            battle7,
+            course_result,
+        ] = paths.map(|path| self.play_skin_defs_for_path(&path));
+        SkinConfigMeta {
+            select: SceneSkinDefs::from_document(self.renderer.select_skin_document()),
+            decide: SceneSkinDefs::from_document(self.renderer.decide_skin_document()),
+            play4,
+            play5,
+            play6,
+            play7,
+            play8,
+            play9,
+            play10,
+            play14,
+            battle5,
+            battle7,
+            result: SceneSkinDefs::from_document(self.renderer.result_skin_document()),
+            course_result,
+        }
+    }
+
+    fn prepare_egui_result_ir(&mut self, scene_kind: AppSceneKind, course_result_active: bool) {
+        if scene_kind == AppSceneKind::Result
+            && self
+                .result
+                .result_ir
+                .as_ref()
+                .is_some_and(|state| state.is_course() != course_result_active)
         {
-            self.sync_active_play_lane_settings_from_profile(&lane_profile_before_egui);
+            self.result.result_ir = None;
         }
-        self.sync_realtime_profile_settings();
-        self.sync_discord_presence_config();
+        if course_result_active {
+            self.spawn_course_result_ir_if_needed();
+        } else if scene_kind == AppSceneKind::Result {
+            self.spawn_play_result_ir_if_needed();
+        }
+
+        if scene_kind == AppSceneKind::Result || self.play.play_ending.is_some() {
+            self.poll_result_ir_into_select_cache();
+        } else {
+            self.result.result_ir = None;
+        }
+    }
+
+    fn spawn_course_result_ir_if_needed(&mut self) {
+        if self.result.result_ir.is_some() || self.result.finished_course_ir_attempted {
+            return;
+        }
+        // 無効設定や未解決 identity でも、この Result 滞在中の判定は一度にする。
+        self.result.finished_course_ir_attempted = true;
+        let Some((course_hash, rian_course_hash_v1, gauge, ln_policy, rule_mode)) =
+            self.course_result_ir_target()
+        else {
+            return;
+        };
+        let score_id = self
+            .result
+            .finished_course
+            .as_ref()
+            .and_then(|course| course.course_score_id)
+            .unwrap_or_default();
+        self.result.result_ir = crate::screens::result_ir::spawn_course_result_ir_task(
+            self.boot.profile_paths.root_dir.clone(),
+            self.boot.profile_paths.score_db.clone(),
+            self.boot.profile_paths.network_db.clone(),
+            self.boot.app_paths.logs_dir.clone(),
+            &self.boot.profile_config.ir,
+            score_id,
+            crate::screens::result_ir::ResultIrCourseHashes {
+                local: course_hash,
+                rian_v1: rian_course_hash_v1,
+            },
+            gauge,
+            ln_policy,
+            rule_mode,
+        );
+    }
+
+    fn spawn_play_result_ir_if_needed(&mut self) {
+        if self.result.result_ir.is_some() {
+            return;
+        }
+        let Some(finished) = &self.result.finished_play else {
+            return;
+        };
+        self.result.result_ir = crate::screens::result_ir::spawn_result_ir_task(
+            self.boot.profile_paths.root_dir.clone(),
+            self.boot.profile_paths.score_db.clone(),
+            self.boot.profile_paths.network_db.clone(),
+            self.boot.app_paths.logs_dir.clone(),
+            &self.boot.profile_config.ir,
+            finished.stored.score_history_id,
+            crate::storage::common::hash_to_hex(&finished.result.chart_sha256),
+            finished.ln_policy,
+            finished.double_option,
+            finished.rule_mode,
+        );
+    }
+
+    fn poll_result_ir_into_select_cache(&mut self) {
+        let rankings = self.result.result_ir.as_mut().map(|state| state.poll()).unwrap_or_default();
+        for ranking in rankings {
+            self.select
+                .select_ir
+                .cache_result_global_ranking(&ranking.chart_sha256_hex, &ranking.ranking);
+        }
+    }
+
+    fn egui_course_preview(&self, scene_kind: AppSceneKind) -> Option<SelectCourseRow> {
+        if scene_kind != AppSceneKind::Select {
+            return None;
+        }
+        match self.select.select_items.get(self.select.selected_index) {
+            Some(SelectItem::Course(row)) => Some(row.clone()),
+            _ => None,
+        }
+    }
+
+    fn update_egui_select_ir(&mut self, scene_kind: AppSceneKind) {
+        if scene_kind != AppSceneKind::Select {
+            return;
+        }
+        let selected_course = self.selected_course_ir_target();
+        let ir_config = self.boot.profile_config.ir.clone();
+        if let Some(course) = selected_course {
+            let context = format!(
+                "course:{}:{}:{}:{}:{}",
+                course.course_hash,
+                course.rian_course_hash_v1,
+                course.gauge,
+                course.ln_policy,
+                course.rule_mode.as_str()
+            );
+            self.select.select_ir.update_course(&ir_config, &context, Some(course));
+            return;
+        }
+
+        let (selected, ln_profile, key_mode) =
+            match self.select.select_items.get(self.select.selected_index) {
+                Some(SelectItem::Chart(row)) => (
+                    row.score_sha256(),
+                    row.chart.as_ref().map(|chart| chart.ln_profile).unwrap_or_default(),
+                    row.chart
+                        .as_ref()
+                        .and_then(|chart| KeyMode::from_str_opt(&chart.mode))
+                        .unwrap_or_default(),
+                ),
+                _ => (None, crate::ln_policy::ChartLnProfile::default(), KeyMode::default()),
+            };
+        let configured_ln_policy = self.boot.profile_config.play.ln_mode_policy;
+        let ln_policy = crate::ln_policy::score_ln_policy(configured_ln_policy, ln_profile);
+        let double_option =
+            self.select.double_option.normalize_for_key_mode(key_mode).score_bucket();
+        let rule_mode = self.boot.profile_config.play.rule_mode;
+        let context =
+            select_ir_cache_context(configured_ln_policy, ln_policy, double_option, rule_mode);
+        self.select.select_ir.update(
+            &ir_config,
+            &self.boot.profile_paths.root_dir,
+            &context,
+            ln_policy,
+            double_option,
+            rule_mode,
+            selected,
+        );
+    }
+
+    fn apply_egui_output(
+        &mut self,
+        window: &Window,
+        output: crate::ui::EguiOutput,
+        profile_before: EguiProfileBefore,
+    ) {
+        self.reconcile_rian_table_identity();
+        self.apply_egui_profile_changes(&profile_before);
+        self.renderer.set_egui_frame(output.frame);
         if output.practice_leave {
             self.leave_practice();
             return;
@@ -364,23 +403,8 @@ impl WinitApp {
         if output.practice_start {
             self.start_practice_round();
         }
-        // 本体設定パネルでの present mode 変更を即座に反映する。
-        self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
-        self.renderer.set_internal_resolution_mode(config_internal_resolution_mode(
-            &self.boot.app_config.video,
-        ));
-        // ウィンドウモード変更をライブ反映する (差分があるときのみ適用)。
-        let desired_mode = self.boot.app_config.video.mode.clone();
-        if desired_mode != self.ui.applied_window_mode {
-            let monitor = select_monitor(
-                &self.boot.app_config.video.monitor_name,
-                window.available_monitors(),
-                window.primary_monitor(),
-            );
-            window.set_fullscreen(fullscreen_from_config(&desired_mode, monitor));
-            tracing::info!(mode = ?desired_mode, "window mode updated");
-            self.ui.applied_window_mode = desired_mode;
-        }
+        self.apply_egui_video_config(window);
+
         let mut apply_obs_config = output.obs_enabled_changed;
         if output.save_app_config {
             match save_app_config(&self.boot.app_paths.config_toml, &self.boot.app_config) {
@@ -436,6 +460,42 @@ impl WinitApp {
         }
     }
 
+    fn apply_egui_profile_changes(&mut self, before: &EguiProfileBefore) {
+        let locale = self.boot.profile_config.ui.locale();
+        self.renderer.set_default_font_coverage(locale.font_coverage());
+        if locale != before.locale {
+            self.select.search.clear_message();
+            self.reload_select_items();
+        }
+        self.sync_changed_select_play_options_from_profile(&before.play);
+        self.sync_changed_select_score_context(SelectScoreContext::from_play(&before.play));
+        self.sync_changed_gamepad_analog_config_from_profile(&before.input);
+        if profile_lane_settings_changed(&before.lane, &self.boot.profile_config.lane) {
+            self.sync_active_play_lane_settings_from_profile(&before.lane);
+        }
+        self.sync_realtime_profile_settings();
+        self.sync_discord_presence_config();
+    }
+
+    fn apply_egui_video_config(&mut self, window: &Window) {
+        self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
+        self.renderer.set_internal_resolution_mode(config_internal_resolution_mode(
+            &self.boot.app_config.video,
+        ));
+        let desired_mode = self.boot.app_config.video.mode.clone();
+        if desired_mode == self.ui.applied_window_mode {
+            return;
+        }
+        let monitor = select_monitor(
+            &self.boot.app_config.video.monitor_name,
+            window.available_monitors(),
+            window.primary_monitor(),
+        );
+        window.set_fullscreen(fullscreen_from_config(&desired_mode, monitor));
+        tracing::info!(mode = ?desired_mode, "window mode updated");
+        self.ui.applied_window_mode = desired_mode;
+    }
+
     /// リザルト遷移後も鳴らし続けている音声出力を監視し、スケジュール済みの
     /// BGM/キー音がすべて鳴り切ったら出力を解放する。
     pub(super) fn advance_draining_audio(&mut self) {
@@ -445,136 +505,6 @@ impl WinitApp {
         if audio.engine.is_idle() {
             tracing::info!("play audio drained after result; releasing output");
             self.audio.draining_audio = None;
-        }
-    }
-
-    pub(super) fn render_current_scene(&mut self) -> Option<SceneFrameProfileSample> {
-        let select_view = matches!(self.view_state(), AppViewState::Select);
-        let play_view = matches!(self.view_state(), AppViewState::Play);
-        let result_view = matches!(self.view_state(), AppViewState::Result);
-        let profiling_select = select_view
-            && tracing::enabled!(target: "bmz_player::select_profile", tracing::Level::DEBUG);
-        let profiling_play = play_view
-            && tracing::enabled!(target: "bmz_player::play_profile", tracing::Level::DEBUG);
-        let profiling_result = result_view
-            && tracing::enabled!(target: "bmz_player::result_profile", tracing::Level::DEBUG);
-        if select_view {
-            self.refresh_visible_select_folder_summaries();
-            self.poll_select_asset_loads();
-            self.sync_select_stage_texture();
-            self.sync_select_backbmp_texture();
-            self.sync_select_banner_texture();
-            self.sync_select_preview_audio();
-            self.update_select_preview_fade();
-        }
-        self.start_scene_timers_before_snapshot(select_view, result_view);
-        let snapshot_start = Instant::now();
-        let scene = self.scene_snapshot();
-        let snapshot_us = snapshot_start.elapsed().as_micros();
-        let video_start = Instant::now();
-        let video_profile = self.update_current_skin_video_sources(
-            &scene,
-            profiling_select || profiling_play || profiling_result,
-        );
-        let video_us = video_start.elapsed().as_micros();
-        let scene_kind = scene_kind(&scene);
-        self.update_window_title_for_scene(scene_kind);
-        if let (Some(path), Some(exit_after_frames)) =
-            (&self.smoke.smoke_screenshot_path, self.smoke.smoke_exit_after_frames)
-            && self.smoke.rendered_frames.saturating_add(1) >= exit_after_frames
-        {
-            self.renderer.request_screenshot(path.clone());
-        }
-        let render_start = Instant::now();
-        let render_status = self.renderer.render_scene_status(scene);
-        let render_us = render_start.elapsed().as_micros();
-        let frame_timings = self.renderer.last_frame_timings();
-        if let Some(probe) = self.skin.pending_skin_render_probe.take() {
-            let expected_scene = match probe.kind {
-                SkinKind::Select => AppSceneKind::Select,
-                SkinKind::Decide => AppSceneKind::Decide,
-                SkinKind::Play => AppSceneKind::Play,
-                SkinKind::Result => AppSceneKind::Result,
-            };
-            if expected_scene == scene_kind {
-                let timings = frame_timings.unwrap_or_default();
-                tracing::debug!(
-                    kind = ?probe.kind,
-                    generation = probe.generation,
-                    scene = ?scene_kind,
-                    status = ?render_status.as_ref().ok().copied(),
-                    since_apply_us = instant_elapsed_us_u64(probe.applied_at),
-                    snapshot_us,
-                    video_us,
-                    render_us,
-                    plan_us = timings.plan_us,
-                    draw_us = timings.draw_us,
-                    text_us = timings.text_us,
-                    geometry_us = timings.geometry_us,
-                    upload_us = timings.upload_us,
-                    submit_us = timings.submit_us,
-                    surface_us = timings.surface_us,
-                    bind_us = timings.bind_us,
-                    encode_us = timings.encode_us,
-                    queue_us = timings.queue_us,
-                    present_us = timings.present_us,
-                    commands = timings.commands,
-                    steps = timings.steps,
-                    rect_steps = timings.rect_steps,
-                    image_steps = timings.image_steps,
-                    text_steps = timings.text_steps,
-                    rect_instances = timings.rect_instances,
-                    image_instances = timings.image_instances,
-                    text_instances = timings.text_instances,
-                    "skin reload first render timings"
-                );
-            } else {
-                self.skin.pending_skin_render_probe = Some(probe);
-            }
-        }
-        match render_status {
-            Ok(RenderSurfaceStatus::Rendered)
-            | Ok(RenderSurfaceStatus::SkippedNoSurface)
-            | Ok(RenderSurfaceStatus::SkippedZeroSize) => {}
-            Ok(RenderSurfaceStatus::Reconfigured) => {
-                tracing::debug!("renderer surface reconfigured");
-            }
-            Ok(RenderSurfaceStatus::TimedOut) => {
-                tracing::debug!("renderer surface acquisition timed out");
-            }
-            Err(error) => {
-                tracing::error!(%error, "failed to present render scene");
-            }
-        }
-        if profiling_select {
-            Some(SceneFrameProfileSample {
-                kind: FrameProfileKind::Select,
-                video_us,
-                video_profile,
-                snapshot_us,
-                render_us,
-                render_timings: frame_timings,
-            })
-        } else if profiling_play {
-            Some(SceneFrameProfileSample {
-                kind: FrameProfileKind::Play,
-                video_us,
-                video_profile,
-                snapshot_us,
-                render_us,
-                render_timings: frame_timings,
-            })
-        } else if profiling_result {
-            Some(SceneFrameProfileSample {
-                kind: FrameProfileKind::Result,
-                video_us,
-                video_profile,
-                snapshot_us,
-                render_us,
-                render_timings: frame_timings,
-            })
-        } else {
-            None
         }
     }
 

@@ -72,29 +72,32 @@ impl AudioOutputIssueCause {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct AudioOutputIssueMetrics {
+    pub(super) stream_errors: u64,
+    pub(super) source_lock_misses: u64,
+    pub(super) engine_lock_misses: u64,
+    pub(super) command_drops: u64,
+    pub(super) command_engine_lock_misses: u64,
+    pub(super) callback_over_budget: bool,
+    pub(super) clipped_samples: u64,
+    pub(super) generated_preview_loading: bool,
+}
+
 pub(super) fn classify_audio_output_issue(
-    stream_errors: u64,
-    source_lock_misses: u64,
-    engine_lock_misses: u64,
-    command_drops: u64,
-    _command_drain_lock_misses: u64,
-    command_engine_lock_misses: u64,
-    callback_over_budget: bool,
-    clipped_samples: u64,
-    generated_preview_loading: bool,
+    metrics: AudioOutputIssueMetrics,
 ) -> AudioOutputIssueCause {
-    if stream_errors != 0 {
+    if metrics.stream_errors != 0 {
         AudioOutputIssueCause::StreamError
-    } else if source_lock_misses != 0 || engine_lock_misses != 0 {
+    } else if metrics.source_lock_misses != 0 || metrics.engine_lock_misses != 0 {
         AudioOutputIssueCause::CallbackLockContention
-    } else if command_drops != 0 || command_engine_lock_misses != 0 {
+    } else if metrics.command_drops != 0 || metrics.command_engine_lock_misses != 0 {
         AudioOutputIssueCause::CommandContention
-    } else if callback_over_budget && generated_preview_loading {
+    } else if metrics.callback_over_budget && metrics.generated_preview_loading {
         AudioOutputIssueCause::GeneratedPreviewCpuPressure
-    } else if callback_over_budget {
+    } else if metrics.callback_over_budget {
         AudioOutputIssueCause::CallbackDeadlineExceeded
-    } else if clipped_samples != 0 {
+    } else if metrics.clipped_samples != 0 {
         AudioOutputIssueCause::MixClipping
     } else {
         AudioOutputIssueCause::Unknown
