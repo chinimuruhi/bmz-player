@@ -214,7 +214,7 @@ mod obs;
 #[path = "settings_panel/score_import.rs"]
 mod score_import;
 
-use audio_video::build_audio_video_settings_sections;
+use audio_video::{AudioVideoSectionContext, build_audio_video_settings_sections};
 use integration::build_integration_settings_sections;
 pub(super) use labels::*;
 use library::build_library_settings_sections;

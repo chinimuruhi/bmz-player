@@ -297,19 +297,20 @@ impl EguiLayer {
                 table_fetch_urls.extend(settings_actions.table_fetch_urls);
                 apply_audio_output |= settings_actions.apply_audio;
                 score_import_request = settings_actions.score_import_request;
-                let profile_settings_actions = build_profile_settings_panel(
-                    ctx,
-                    show_profile_settings,
-                    profile_config,
-                    app_config,
-                    show_fps,
-                    ir_login,
-                    &mut self.ir_device_key,
-                    &mut self.profile_manager,
-                    profile_root,
-                    settings_editable,
-                    text,
-                );
+                let profile_settings_actions =
+                    build_profile_settings_panel(ProfileSettingsPanelContext {
+                        ctx,
+                        open: show_profile_settings,
+                        profile: profile_config,
+                        app_config,
+                        show_fps,
+                        ir_login,
+                        ir_device_key: &mut self.ir_device_key,
+                        profile_manager: &mut self.profile_manager,
+                        profile_root,
+                        unrestricted: settings_editable,
+                        text,
+                    });
                 save_profile_config |= profile_settings_actions.save;
                 save_app_config |= profile_settings_actions.save_app_config;
                 let skin_actions = build_skin_panel(

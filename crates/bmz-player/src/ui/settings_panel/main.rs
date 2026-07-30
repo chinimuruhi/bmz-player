@@ -51,15 +51,17 @@ pub(in crate::ui) fn build_settings_panel(
                 );
                 build_audio_video_settings_sections(
                     ui,
-                    window,
-                    config,
-                    profile,
-                    show_fps,
-                    text,
-                    &mut state,
-                    &mut apply_audio,
-                    &mut save_profile,
-                    &mut obs_enabled_changed,
+                    AudioVideoSectionContext {
+                        window,
+                        config,
+                        profile,
+                        show_fps,
+                        text,
+                        state: &mut state,
+                        apply_audio: &mut apply_audio,
+                        save_profile: &mut save_profile,
+                        obs_enabled_changed: &mut obs_enabled_changed,
+                    },
                 );
                 build_integration_settings_sections(
                     ui,

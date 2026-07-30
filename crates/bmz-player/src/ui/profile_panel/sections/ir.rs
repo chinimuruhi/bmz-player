@@ -1,0 +1,366 @@
+use super::*;
+
+pub(in crate::ui::profile_panel) fn build_profile_ir_section(
+    ui: &mut egui::Ui,
+    section: &mut ProfileSectionContext<'_>,
+) {
+    let profile = &mut *section.profile;
+    let unrestricted = section.unrestricted;
+    let text = section.text;
+    let ir_login = &mut *section.ir_login;
+    let ir_device_key = &mut *section.ir_device_key;
+    let profile_root = section.profile_root;
+    egui::CollapsingHeader::new(tr!(text, "profile-ir-title")).id_salt("profile_ir").show(
+        ui,
+        |ui| {
+            if !unrestricted {
+                ui.disable();
+            }
+            sync_ir_provider_roles(&mut profile.ir);
+            let primary_options: Vec<_> = profile
+                .ir
+                .providers
+                .iter()
+                .filter_map(|provider| {
+                    crate::ir::provider_key::configured_provider_key(provider).map(|provider_key| {
+                        (
+                            provider_key.to_string(),
+                            ir_primary_provider_label(provider, provider_key),
+                        )
+                    })
+                })
+                .collect();
+            let mut selected_primary = profile.ir.primary_provider.clone();
+            let selected_primary_text = primary_options
+                .iter()
+                .find(|(provider_key, _)| provider_key == &profile.ir.primary_provider)
+                .map(|(_, label)| label.clone())
+                .unwrap_or_else(|| {
+                    if profile.ir.primary_provider.is_empty() {
+                        tr!(text, "profile-ir-unset")
+                    } else {
+                        profile.ir.primary_provider.clone()
+                    }
+                });
+            egui::ComboBox::new("profile_primary_ir", tr!(text, "profile-ir-primary"))
+                .selected_text(selected_primary_text)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut selected_primary,
+                        String::new(),
+                        tr!(text, "profile-ir-unset"),
+                    );
+                    for (provider_key, label) in &primary_options {
+                        ui.selectable_value(&mut selected_primary, provider_key.clone(), label);
+                    }
+                });
+            if selected_primary != profile.ir.primary_provider {
+                profile.ir.primary_provider = selected_primary;
+                sync_ir_provider_roles(&mut profile.ir);
+            }
+            ui.checkbox(
+                &mut profile.ir.prefetch_global_ranking_on_score_submit,
+                tr!(text, "profile-ir-prefetch-global"),
+            );
+            egui::ComboBox::new(
+                "profile_ir_credential_store",
+                tr!(text, "profile-ir-credential-store"),
+            )
+            .selected_text(match profile.ir.credential_store {
+                IrCredentialStoreConfig::File => tr!(text, "profile-ir-credential-file"),
+                IrCredentialStoreConfig::Os => tr!(text, "profile-ir-credential-os"),
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut profile.ir.credential_store,
+                    IrCredentialStoreConfig::File,
+                    tr!(text, "profile-ir-credential-file"),
+                );
+                ui.selectable_value(
+                    &mut profile.ir.credential_store,
+                    IrCredentialStoreConfig::Os,
+                    tr!(text, "profile-ir-credential-os"),
+                );
+            });
+            ui.checkbox(
+                &mut profile.ir.prefetch_rival_ranking_on_score_submit,
+                tr!(text, "profile-ir-prefetch-rival"),
+            );
+            let mut remove_index = None;
+            let mut logged_out_provider_key = None;
+            for (index, provider) in profile.ir.providers.iter_mut().enumerate() {
+                ui.push_id(("ir_provider", index), |ui| {
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut provider.enabled, "");
+                        ui.label(tr!(text, "profile-ir-provider", "number" => index + 1));
+                        if ui.button(tr!(text, "common-delete")).clicked() {
+                            remove_index = Some(index);
+                        }
+                    });
+                    let provider_key = crate::ir::provider_key::configured_provider_key(provider)
+                        .map(str::to_string);
+                    let endpoint_editable = provider_key.is_none() && !ir_login.busy;
+                    let mut preset = classify_ir_provider_preset(provider);
+                    let previous_preset = preset;
+                    ui.add_enabled_ui(endpoint_editable, |ui| {
+                        egui::ComboBox::new(
+                            ("profile_ir_provider_preset", index),
+                            tr!(text, "profile-ir-provider-kind"),
+                        )
+                        .selected_text(ir_provider_preset_label(text, preset))
+                        .show_ui(ui, |ui| {
+                            for value in [
+                                IrProviderPreset::BmzIr,
+                                IrProviderPreset::RianIr,
+                                IrProviderPreset::Other,
+                            ] {
+                                ui.selectable_value(
+                                    &mut preset,
+                                    value,
+                                    ir_provider_preset_label(text, value),
+                                );
+                            }
+                        });
+                    });
+                    if preset != previous_preset {
+                        apply_ir_provider_preset(provider, preset);
+                        if preset == IrProviderPreset::Other {
+                            provider.provider =
+                                crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string();
+                            provider.base_url.clear();
+                        }
+                    }
+                    match preset {
+                        IrProviderPreset::BmzIr | IrProviderPreset::RianIr => {
+                            ui.horizontal(|ui| {
+                                ui.label(tr!(text, "profile-ir-base-url"));
+                                ui.add_enabled(
+                                    false,
+                                    egui::TextEdit::singleline(&mut provider.base_url)
+                                        .desired_width(300.0),
+                                );
+                                ui.hyperlink_to(
+                                    tr!(text, "profile-ir-open-browser"),
+                                    provider.base_url.clone(),
+                                );
+                            });
+                        }
+                        IrProviderPreset::Other => {
+                            ui.add_enabled_ui(endpoint_editable, |ui| {
+                                let mut family = ir_provider_family(&provider.provider).to_string();
+                                let previous_family = family.clone();
+                                egui::ComboBox::new(
+                                    ("profile_ir_provider_protocol", index),
+                                    tr!(text, "profile-ir-provider-protocol"),
+                                )
+                                .selected_text(family.clone())
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut family,
+                                        crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string(),
+                                        crate::ir::bmz_official::BMZ_IR_PROVIDER,
+                                    );
+                                    ui.selectable_value(
+                                        &mut family,
+                                        crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string(),
+                                        crate::ir::rian_ir::RIAN_IR_PROVIDER,
+                                    );
+                                });
+                                if family != previous_family {
+                                    provider.provider = family;
+                                }
+                                ir_provider_text_row(
+                                    ui,
+                                    &tr!(text, "profile-ir-base-url"),
+                                    &mut provider.base_url,
+                                );
+                            });
+                        }
+                    }
+                    if !endpoint_editable && provider_key.is_some() {
+                        ui.small(tr!(text, "profile-ir-logout-to-change"));
+                    }
+                    let row_target = IrProviderUiTarget::new(
+                        provider.provider.clone(),
+                        provider.base_url.clone(),
+                    );
+                    let is_rian = crate::ir::rian_ir::is_rian_ir_config(provider);
+                    let provider_key_text = provider_key
+                        .clone()
+                        .unwrap_or_else(|| tr!(text, "profile-ir-key-after-login"));
+                    ui.horizontal(|ui| {
+                        ui.label("Key");
+                        ui.monospace(&provider_key_text);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(if is_rian {
+                            tr!(text, "profile-ir-login-id")
+                        } else {
+                            tr!(text, "profile-ir-email")
+                        });
+                        ui.text_edit_singleline(&mut ir_login.email);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(tr!(text, "profile-ir-password"));
+                        ui.add(egui::TextEdit::singleline(&mut ir_login.password).password(true));
+                    });
+                    ui.horizontal(|ui| {
+                        let can_login = !ir_login.busy
+                            && normalized_ir_base_url(&provider.base_url).is_some()
+                            && !ir_login.email.is_empty()
+                            && !ir_login.password.is_empty();
+                        if ui
+                            .add_enabled(
+                                can_login,
+                                egui::Button::new(tr!(text, "profile-ir-login")),
+                            )
+                            .clicked()
+                        {
+                            ir_login.start_login(
+                                profile_root.to_path_buf(),
+                                provider.provider.clone(),
+                                provider.base_url.clone(),
+                            );
+                        }
+                        let login_busy = ir_login.busy_target.as_ref().is_some_and(|target| {
+                            target.matches(&provider.provider, &provider.base_url)
+                        });
+                        if login_busy {
+                            ui.spinner();
+                        }
+                        if ui.button(tr!(text, "profile-ir-logout")).clicked() {
+                            let result = provider_key
+                                .as_deref()
+                                .map(|provider_key| {
+                                    crate::ir::credentials::delete_credentials(
+                                        profile_root,
+                                        provider_key,
+                                    )
+                                })
+                                .transpose();
+                            match result {
+                                Ok(_) => {
+                                    provider.enabled = false;
+                                    logged_out_provider_key = provider_key.clone();
+                                    provider.provider_key.clear();
+                                    provider.account_id.clear();
+                                    provider.account_display_name.clear();
+                                    provider.last_login_at = None;
+                                    ir_login.message = Some(IrProviderUiMessage {
+                                        target: row_target.clone(),
+                                        ok: true,
+                                        text: tr!(text, "profile-ir-logout-success"),
+                                    });
+                                    section.save_clicked = true;
+                                }
+                                Err(error) => {
+                                    ir_login.message = Some(IrProviderUiMessage {
+                                        target: row_target.clone(),
+                                        ok: false,
+                                        text: format!("{error:#}"),
+                                    });
+                                }
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        let busy =
+                            ir_device_key.busy_provider.as_deref() == provider_key.as_deref();
+                        let can_rotate = !busy
+                            && !provider.base_url.is_empty()
+                            && provider_key.is_some()
+                            && !is_rian;
+                        if ui
+                            .add_enabled(
+                                can_rotate,
+                                egui::Button::new(tr!(text, "profile-ir-device-key-rotate")),
+                            )
+                            .clicked()
+                        {
+                            ir_device_key.start_rotate(
+                                profile_root.to_path_buf(),
+                                provider.provider.clone(),
+                                provider_key.clone().unwrap_or_default(),
+                                provider.base_url.clone(),
+                            );
+                        }
+                        if busy {
+                            ui.spinner();
+                        }
+                    });
+                    if let Some(message) = &ir_login.message
+                        && message.target.matches(&provider.provider, &provider.base_url)
+                    {
+                        let color = if message.ok {
+                            egui::Color32::LIGHT_GREEN
+                        } else {
+                            egui::Color32::LIGHT_RED
+                        };
+                        ui.colored_label(color, message.text.clone());
+                    }
+                    if let Some(message) = &ir_device_key.message
+                        && message.target.matches(&provider.provider, &provider.base_url)
+                    {
+                        let color = if message.ok {
+                            egui::Color32::LIGHT_GREEN
+                        } else {
+                            egui::Color32::LIGHT_RED
+                        };
+                        ui.colored_label(color, message.text.clone());
+                    }
+                    egui::ComboBox::new(
+                        ("profile_ir_send_policy", index),
+                        tr!(text, "profile-ir-send-policy"),
+                    )
+                    .selected_text(ir_send_policy_label(provider.send_policy))
+                    .show_ui(ui, |ui| {
+                        for value in [
+                            IrSendPolicyConfig::UpdateScore,
+                            IrSendPolicyConfig::Always,
+                            IrSendPolicyConfig::CompleteSong,
+                        ] {
+                            ui.selectable_value(
+                                &mut provider.send_policy,
+                                value,
+                                ir_send_policy_label(value),
+                            );
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(tr!(text, "profile-ir-last-login"));
+                        ui.monospace(format_optional_timestamp(provider.last_login_at));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(tr!(text, "profile-ir-last-success"));
+                        ui.monospace(format_optional_timestamp(provider.last_success_at));
+                    });
+                });
+            }
+            if logged_out_provider_key
+                .as_deref()
+                .is_some_and(|key| profile.ir.primary_provider == key)
+            {
+                profile.ir.primary_provider.clear();
+                sync_ir_provider_roles(&mut profile.ir);
+            }
+            if let Some(index) = remove_index {
+                profile.ir.providers.remove(index);
+            }
+            if ui.button(tr!(text, "profile-ir-add-provider")).clicked() {
+                profile.ir.providers.push(IrProviderConfig {
+                    provider: crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string(),
+                    provider_key: String::new(),
+                    base_url: crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL.to_string(),
+                    enabled: false,
+                    account_display_name: String::new(),
+                    account_id: String::new(),
+                    send_policy: IrSendPolicyConfig::default(),
+                    role: IrProviderRoleConfig::default(),
+                    last_login_at: None,
+                    last_success_at: None,
+                });
+            }
+        },
+    );
+}

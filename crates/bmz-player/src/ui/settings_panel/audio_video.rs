@@ -1,18 +1,32 @@
 use super::*;
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct AudioVideoSectionContext<'a, 'state> {
+    pub(super) window: &'a Window,
+    pub(super) config: &'a mut AppConfig,
+    pub(super) profile: &'a mut ProfileConfig,
+    pub(super) show_fps: &'a mut bool,
+    pub(super) text: Localizer,
+    pub(super) state: &'a mut SettingsPanelState<'state>,
+    pub(super) apply_audio: &'a mut bool,
+    pub(super) save_profile: &'a mut bool,
+    pub(super) obs_enabled_changed: &'a mut bool,
+}
+
 pub(super) fn build_audio_video_settings_sections(
     ui: &mut egui::Ui,
-    window: &Window,
-    config: &mut AppConfig,
-    profile: &mut ProfileConfig,
-    show_fps: &mut bool,
-    text: Localizer,
-    state: &mut SettingsPanelState<'_>,
-    apply_audio: &mut bool,
-    save_profile: &mut bool,
-    obs_enabled_changed: &mut bool,
+    context: AudioVideoSectionContext<'_, '_>,
 ) {
+    let AudioVideoSectionContext {
+        window,
+        config,
+        profile,
+        show_fps,
+        text,
+        state,
+        apply_audio,
+        save_profile,
+        obs_enabled_changed,
+    } = context;
     egui::CollapsingHeader::new(tr!(text, "settings-audio-title")).id_salt("settings_audio").show(
         ui,
         |ui| {

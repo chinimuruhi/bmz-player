@@ -68,12 +68,28 @@ macro_rules! tr {
     }};
 }
 
-mod auxiliary_panels;
+#[path = "ui/auxiliary_panels/course.rs"]
+mod auxiliary_course;
+#[path = "ui/auxiliary_panels/debug.rs"]
+mod auxiliary_debug;
+#[path = "ui/auxiliary_panels/notice.rs"]
+mod auxiliary_notice;
+#[path = "ui/auxiliary_panels/result_ir.rs"]
+mod auxiliary_result_ir;
+#[path = "ui/auxiliary_panels/update.rs"]
+mod auxiliary_update;
+#[path = "ui/auxiliary_panels/window.rs"]
+mod auxiliary_window;
 mod profile_panel;
 mod settings_panel;
 mod skin_panel;
 
-use auxiliary_panels::*;
+use auxiliary_course::*;
+use auxiliary_debug::*;
+use auxiliary_notice::*;
+use auxiliary_result_ir::*;
+use auxiliary_update::*;
+use auxiliary_window::*;
 use profile_panel::*;
 use settings_panel::*;
 use skin_panel::*;
