@@ -299,30 +299,29 @@ mod tests {
             engine,
         }]);
         let mut output = vec![1.0_f32; 4];
-        let mut mix = Vec::with_capacity(16);
-        let mut source_scratch = Vec::new();
-        let mut render_sources = Vec::new();
-        let mut command_scratch = Vec::new();
+        let mut buffers = OutputRenderBuffers {
+            mix: Vec::with_capacity(16),
+            source_scratch: Vec::new(),
+            render_sources: Vec::new(),
+            source_command_scratch: Vec::new(),
+        };
         let retired_sources = test_retired_sources(1);
         let diagnostics = CpalOutputDiagnosticsCounters::default();
 
         render_output(
             &mut output,
-            2,
-            0,
-            0,
-            &output_commands,
-            &retired_sources,
-            &mut mix,
-            &mut source_scratch,
-            &mut render_sources,
-            &mut command_scratch,
+            OutputRenderLayout { channels: 2, channel_offset: 0, start_frame: 0 },
+            OutputRenderSources {
+                output_commands: &output_commands,
+                retired_sources: &retired_sources,
+            },
+            &mut buffers,
             &diagnostics,
         );
 
         assert_eq!(output, vec![0.0, 0.0, 0.0, 0.0]);
-        assert_eq!(mix.len(), 4);
-        assert!(mix.capacity() >= 16);
+        assert_eq!(buffers.mix.len(), 4);
+        assert!(buffers.mix.capacity() >= 16);
     }
 
     #[test]

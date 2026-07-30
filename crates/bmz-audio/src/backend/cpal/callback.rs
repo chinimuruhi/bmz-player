@@ -31,10 +31,12 @@ where
     let channels = config.channels as usize;
     // 最短周期の最初の callback で割り当てやゼロ初期化を発生させない。4096 frames
     // あれば設定 UI の最大 fixed buffer と 384 kHz / 約 10 ms までを覆える。
-    let mut mix = vec![0.0; OUTPUT_SCRATCH_INITIAL_FRAMES * 2];
-    let mut source_scratch = vec![0.0; OUTPUT_SCRATCH_INITIAL_FRAMES * 2];
-    let mut render_sources = Vec::with_capacity(OUTPUT_SOURCE_INITIAL_CAPACITY);
-    let mut source_command_scratch = Vec::with_capacity(OUTPUT_COMMAND_QUEUE_CAPACITY);
+    let mut buffers = OutputRenderBuffers {
+        mix: vec![0.0; OUTPUT_SCRATCH_INITIAL_FRAMES * 2],
+        source_scratch: vec![0.0; OUTPUT_SCRATCH_INITIAL_FRAMES * 2],
+        render_sources: Vec::with_capacity(OUTPUT_SOURCE_INITIAL_CAPACITY),
+        source_command_scratch: Vec::with_capacity(OUTPUT_COMMAND_QUEUE_CAPACITY),
+    };
     let error_diagnostics = Arc::clone(&diagnostics);
     device
         .build_output_stream(
@@ -52,15 +54,12 @@ where
                 let frames = data.len() / channels;
                 render_output(
                     data,
-                    channels,
-                    channel_offset,
-                    start_frame,
-                    &output_commands,
-                    &retired_sources,
-                    &mut mix,
-                    &mut source_scratch,
-                    &mut render_sources,
-                    &mut source_command_scratch,
+                    OutputRenderLayout { channels, channel_offset, start_frame },
+                    OutputRenderSources {
+                        output_commands: &output_commands,
+                        retired_sources: &retired_sources,
+                    },
+                    &mut buffers,
                     &diagnostics,
                 );
                 diagnostics.rendered_frames.fetch_add(frames as u64, Ordering::Relaxed);
@@ -83,40 +82,56 @@ pub(super) fn device_name(device: &::cpal::Device) -> String {
         .unwrap_or_else(|_| device.to_string())
 }
 
-// output callback の scratch を引数で共有するため、RT-safe なままでは引数を
-// まとめる所有構造を作れない。ここだけは低レベル helper として許容する。
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone, Copy)]
+pub(super) struct OutputRenderLayout {
+    pub(super) channels: usize,
+    pub(super) channel_offset: usize,
+    pub(super) start_frame: u64,
+}
+
+pub(super) struct OutputRenderSources<'a> {
+    pub(super) output_commands: &'a SharedOutputCommands,
+    pub(super) retired_sources: &'a RetiredOutputSources,
+}
+
+pub(super) struct OutputRenderBuffers {
+    pub(super) mix: Vec<f32>,
+    pub(super) source_scratch: Vec<f32>,
+    pub(super) render_sources: Vec<RenderAudioSource>,
+    pub(super) source_command_scratch: Vec<CpalOutputCommand>,
+}
+
 pub(super) fn render_output<T: OutputSample>(
     data: &mut [T],
-    channels: usize,
-    channel_offset: usize,
-    output_start_frame: u64,
-    output_commands: &SharedOutputCommands,
-    retired_sources: &RetiredOutputSources,
-    mix: &mut Vec<f32>,
-    source_scratch: &mut Vec<f32>,
-    render_sources: &mut Vec<RenderAudioSource>,
-    source_command_scratch: &mut Vec<CpalOutputCommand>,
+    layout: OutputRenderLayout,
+    sources: OutputRenderSources<'_>,
+    buffers: &mut OutputRenderBuffers,
     diagnostics: &CpalOutputDiagnosticsCounters,
 ) {
-    if channels == 0 {
+    if layout.channels == 0 {
         return;
     }
 
-    let frames = data.len() / channels;
+    let frames = data.len() / layout.channels;
     mix_sources_stereo(
-        output_start_frame,
+        layout.start_frame,
         frames,
-        output_commands,
-        retired_sources,
-        mix,
-        source_scratch,
-        render_sources,
-        source_command_scratch,
+        sources.output_commands,
+        sources.retired_sources,
+        &mut buffers.mix,
+        &mut buffers.source_scratch,
+        &mut buffers.render_sources,
+        &mut buffers.source_command_scratch,
         diagnostics,
     );
 
-    write_interleaved_output(data, channels, channel_offset, mix, diagnostics);
+    write_interleaved_output(
+        data,
+        layout.channels,
+        layout.channel_offset,
+        &buffers.mix,
+        diagnostics,
+    );
 }
 
 pub(super) fn mix_sources_stereo(
