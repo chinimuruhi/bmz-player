@@ -1,0 +1,43 @@
+macro_rules! skin_document_render_select_bar_methods {
+    () => {
+        fn select_bar_item(
+            &self,
+            row: &SelectRowSnapshot,
+            destination: &SkinDestinationDef,
+            frame: ResolvedSkinFrame,
+            sources: &HashMap<String, SkinDocumentTexture>,
+        ) -> Option<SkinRenderItem> {
+            let imageset = self.imageset.iter().find(|set| set.id == destination.id)?;
+            let image_index = select_row_bar_image_index(row);
+            let image_id = select_row_slot_with_fallbacks(
+                &imageset.images,
+                image_index,
+                select_row_bar_image_fallback_indices(row),
+            )?;
+            let image = self.image.iter().find(|image| image.id == *image_id)?;
+            let source = resolve_document_source(sources, &image.src)?;
+            let elapsed =
+                skin_timer_elapsed_ms(destination.timer, &SkinDrawState::default()).unwrap_or(0);
+            let (rect, uv) = stretch_skin_image_geometry(
+                destination.stretch,
+                normalize_skin_frame_rect(frame, self.w, self.h),
+                skin_image_texture_region(image, source.source_size, elapsed),
+                source.source_size,
+                self.w,
+                self.h,
+            );
+            Some(skin_image_item_for_frame(
+                source.texture,
+                rect,
+                uv,
+                frame,
+                destination.center,
+                if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                Some(source.source_size),
+                destination.filter != 0,
+            ))
+        }
+    };
+}
+
+pub(in crate::skin::document_render) use skin_document_render_select_bar_methods;

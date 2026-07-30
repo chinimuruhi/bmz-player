@@ -1,0 +1,173 @@
+use super::*;
+
+pub(super) fn push_document_playfield(
+    commands: &mut Vec<DrawCommand>,
+    snapshot: &RenderSnapshot,
+    skin: &SkinContext,
+    skin_state: &crate::skin::SkinDrawState,
+    layout: PlayfieldLayout<'_>,
+) {
+    for bar in &snapshot.bar_lines {
+        push_play_bar_line(
+            commands,
+            skin,
+            skin_state,
+            snapshot.key_mode,
+            layout.board,
+            snapshot.lift,
+            bar,
+            &snapshot.skin_offsets,
+        );
+    }
+    push_play_aux_lines(
+        commands,
+        skin,
+        skin_state,
+        snapshot,
+        snapshot.key_mode,
+        &snapshot.skin_offsets,
+    );
+    push_document_long_notes(commands, snapshot, skin, skin_state);
+    for &lane in layout.active_lanes {
+        push_document_lane(commands, snapshot, skin, skin_state, lane);
+    }
+}
+
+fn push_document_long_notes(
+    commands: &mut Vec<DrawCommand>,
+    snapshot: &RenderSnapshot,
+    skin: &SkinContext,
+    skin_state: &crate::skin::SkinDrawState,
+) {
+    for body in &snapshot.visible_long_notes {
+        if let Some(rect) =
+            skin.note_body_rect(body.lane, snapshot.key_mode, body.head_y, body.tail_y, skin_state)
+            && let Some(item) = skin.document_long_body_item(
+                body.lane,
+                snapshot.key_mode,
+                rect,
+                body.mode,
+                body.body_state,
+                skin_state,
+            )
+        {
+            append_document_item(commands, skin, skin_state, item);
+        }
+
+        let note_height =
+            skin.document_note_height(body.lane, snapshot.key_mode).unwrap_or(NOTE_HEIGHT);
+        if let Some(rect) = skin.note_rect_for_progress(
+            body.lane,
+            snapshot.key_mode,
+            body.head_y,
+            note_height,
+            skin_state,
+        ) && let Some(item) =
+            skin.document_ln_start_item(body.lane, snapshot.key_mode, rect, body.mode)
+        {
+            append_document_item(commands, skin, skin_state, item);
+        }
+        if (body.mode != LongNoteMode::Ln || snapshot.show_ln_tail_cap)
+            && body.tail_y < 1.0
+            && let Some(rect) = skin.note_rect_for_progress(
+                body.lane,
+                snapshot.key_mode,
+                body.tail_y,
+                note_height,
+                skin_state,
+            )
+            && let Some(item) =
+                skin.document_ln_end_item(body.lane, snapshot.key_mode, rect, body.mode)
+        {
+            append_document_item(commands, skin, skin_state, item);
+        }
+    }
+}
+
+fn push_document_lane(
+    commands: &mut Vec<DrawCommand>,
+    snapshot: &RenderSnapshot,
+    skin: &SkinContext,
+    skin_state: &crate::skin::SkinDrawState,
+    lane: Lane,
+) {
+    let lane_index = lane.index();
+    let note_height = skin.document_note_height(lane, snapshot.key_mode).unwrap_or(NOTE_HEIGHT);
+    for note in &snapshot.visible_notes[lane_index] {
+        let Some(mut rect) =
+            document_note_rect(snapshot, skin, skin_state, lane, note.y, note_height)
+        else {
+            continue;
+        };
+        if snapshot.key_mode == KeyMode::K9 {
+            apply_note_expansion(&mut rect, skin.document_note_expansion_scale(skin_state));
+        }
+        let item = match note.kind {
+            NoteVisualKind::LnStart => {
+                skin.document_ln_start_item(lane, snapshot.key_mode, rect, LongNoteMode::Ln)
+            }
+            NoteVisualKind::LnEnd => {
+                skin.document_ln_end_item(lane, snapshot.key_mode, rect, LongNoteMode::Ln)
+            }
+            NoteVisualKind::Tap => skin.document_note_item(lane, snapshot.key_mode, rect),
+        };
+        if let Some(item) = item {
+            append_document_item(commands, skin, skin_state, item);
+        }
+    }
+
+    for mine in &snapshot.visible_mines[lane_index] {
+        let Some(rect) =
+            skin.note_rect_for_progress(lane, snapshot.key_mode, mine.y, note_height, skin_state)
+        else {
+            continue;
+        };
+        if let Some(item) = skin.document_mine_item(lane, snapshot.key_mode, rect) {
+            append_document_item(commands, skin, skin_state, item);
+        } else {
+            commands.push(DrawCommand::Image {
+                rect,
+                uv: UvRect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+                source_size: None,
+                texture: DEFAULT_MINE_NOTE_TEXTURE,
+                tint: Color::rgba(1.0, 1.0, 1.0, 1.0),
+                blend: BlendMode::Normal,
+                linear_filter: false,
+            });
+        }
+    }
+}
+
+fn document_note_rect(
+    snapshot: &RenderSnapshot,
+    skin: &SkinContext,
+    skin_state: &crate::skin::SkinDrawState,
+    lane: Lane,
+    progress: f32,
+    note_height: f32,
+) -> Option<Rect> {
+    if progress < 0.0 {
+        skin.missed_note_rect_for_fall(lane, snapshot.key_mode, -progress, note_height, skin_state)
+    } else {
+        skin.note_rect_for_progress(lane, snapshot.key_mode, progress, note_height, skin_state)
+    }
+}
+
+fn apply_note_expansion(rect: &mut Rect, (scale_x, scale_y): (f32, f32)) {
+    let center_x = rect.x + rect.width / 2.0;
+    let center_y = rect.y + rect.height / 2.0;
+    rect.width *= scale_x;
+    rect.height *= scale_y;
+    rect.x = center_x - rect.width / 2.0;
+    rect.y = center_y - rect.height / 2.0;
+}
+
+fn append_document_item(
+    commands: &mut Vec<DrawCommand>,
+    skin: &SkinContext,
+    skin_state: &crate::skin::SkinDrawState,
+    item: SkinRenderItem,
+) {
+    let item = skin.apply_play_skin_global_offset_to_item(item, skin_state);
+    append_skin_render_item(commands, &item);
+}

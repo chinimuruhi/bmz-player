@@ -104,6 +104,36 @@ pub trait SkinDocumentRenderExt {
         context: DestinationResolveContext<'_, '_>,
     ) -> Option<Vec<SkinRenderItem>>;
 
+    #[doc(hidden)]
+    fn resolve_image_destination_items(
+        &self,
+        destination: &SkinDestinationDef,
+        frame: ResolvedSkinFrame,
+        elapsed: i32,
+        images: &HashMap<&str, &SkinImageDef>,
+        state: &SkinDrawState,
+        sources: &HashMap<String, SkinDocumentTexture>,
+    ) -> Option<Option<Vec<SkinRenderItem>>>;
+
+    #[doc(hidden)]
+    fn resolve_bga_destination_items(
+        &self,
+        destination: &SkinDestinationDef,
+        frame: ResolvedSkinFrame,
+        state: &SkinDrawState,
+    ) -> Option<Option<Vec<SkinRenderItem>>>;
+
+    #[doc(hidden)]
+    fn resolve_imageset_destination_items(
+        &self,
+        destination: &SkinDestinationDef,
+        frame: ResolvedSkinFrame,
+        elapsed: i32,
+        images: &HashMap<&str, &SkinImageDef>,
+        state: &SkinDrawState,
+        sources: &HashMap<String, SkinDocumentTexture>,
+    ) -> Option<Option<Vec<SkinRenderItem>>>;
+
     fn resolve_offset_destination_items(
         &self,
         destination: &SkinDestinationDef,
@@ -622,8 +652,22 @@ mod select;
 // remain behaviorally identical while the source is physically separated.
 #[allow(private_interfaces)]
 impl SkinDocumentRenderExt for SkinDocument {
-    core::skin_document_render_core_methods!();
-    select::skin_document_render_select_methods!();
-    play::skin_document_render_play_methods!();
-    graph::skin_document_render_graph_methods!();
+    core::skin_document_render_core_static_methods!();
+    core::skin_document_render_core_clip_methods!();
+    core::skin_document_render_core_resolve_methods!();
+    select::skin_document_render_select_render_methods!();
+    select::skin_document_render_select_interaction_methods!();
+    select::skin_document_render_select_songlist_methods!();
+    select::skin_document_render_select_graph_methods!();
+    select::skin_document_render_select_bar_methods!();
+    play::skin_document_render_play_note_methods!();
+    play::skin_document_render_play_lane_methods!();
+    play::skin_document_render_play_gauge_methods!();
+    play::skin_document_render_play_judge_methods!();
+    play::skin_document_render_play_value_methods!();
+    graph::skin_document_render_graph_text_methods!();
+    graph::skin_document_render_graph_visualizer_methods!();
+    graph::skin_document_render_graph_judge_methods!();
+    graph::skin_document_render_graph_select_methods!();
+    graph::skin_document_render_graph_image_methods!();
 }

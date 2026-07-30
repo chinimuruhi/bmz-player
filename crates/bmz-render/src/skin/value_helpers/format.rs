@@ -1,0 +1,264 @@
+use super::*;
+
+impl SkinPlacement {
+    pub(super) fn resolve(&self, elapsed_ms: i32) -> ResolvedPlacement {
+        let Some(frame) = self.animation.sample(elapsed_ms) else {
+            return ResolvedPlacement { rect: self.rect, alpha: self.alpha, blend: self.blend };
+        };
+
+        ResolvedPlacement { rect: frame.rect, alpha: self.alpha * frame.alpha, blend: self.blend }
+    }
+}
+
+impl Animation {
+    pub fn none() -> Self {
+        Self { keyframes: Vec::new() }
+    }
+
+    fn sample(&self, elapsed_ms: i32) -> Option<Keyframe> {
+        self.keyframes
+            .iter()
+            .filter(|frame| frame.time_ms <= elapsed_ms)
+            .max_by_key(|frame| frame.time_ms)
+            .copied()
+    }
+}
+
+impl TextStyle {
+    pub(super) fn with_alpha(self, alpha: f32) -> Self {
+        Self {
+            color: self.color.with_alpha(self.color.a * alpha),
+            outline: self.outline.map(|outline| TextOutline {
+                color: outline.color.with_alpha(outline.color.a * alpha),
+                ..outline
+            }),
+            shadow: self.shadow.map(|shadow| TextShadow {
+                color: shadow.color.with_alpha(shadow.color.a * alpha),
+                ..shadow
+            }),
+            ..self
+        }
+    }
+}
+
+impl Color {
+    pub(super) fn with_alpha(self, alpha: f32) -> Self {
+        Self { a: alpha.clamp(0.0, 1.0), ..self }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct ResolvedPlacement {
+    pub(super) rect: Rect,
+    pub(super) alpha: f32,
+    pub(super) blend: BlendMode,
+}
+
+pub(super) fn format_number(value: i64, digits: u8) -> String {
+    if digits == 0 {
+        value.to_string()
+    } else {
+        format!("{:0width$}", value.max(0), width = digits as usize)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NumberPadding {
+    None,
+    Zero,
+    Blank,
+}
+
+impl NumberPadding {
+    pub(super) fn is_zero_padding(self) -> bool {
+        matches!(self, Self::Zero)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SignedNumberRowOrder {
+    PositiveFirst,
+    NegativeFirst,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SignedNumberRender {
+    Unsigned,
+    Signed(SignedNumberRowOrder),
+}
+
+pub(super) fn number_padding(value: &SkinValueDef) -> NumberPadding {
+    if value.zeropadding == 2 || value.padding == 2 {
+        return NumberPadding::Blank;
+    }
+    if value.zeropadding != 0 || value.padding != 0 {
+        return NumberPadding::Zero;
+    }
+    let image_cells = value.divx.max(1).saturating_mul(value.divy.max(1));
+    if !value_layout_is_signed(value) && !ref_id_is_signed(value.ref_id) && image_cells % 10 != 0 {
+        return NumberPadding::Blank;
+    }
+    NumberPadding::None
+}
+
+pub(super) fn signed_value_padding(value: &SkinValueDef, padding: NumberPadding) -> NumberPadding {
+    if matches!(value.ref_id, 152 | 153 | 172 | 175 | 178) {
+        return NumberPadding::None;
+    }
+    padding
+}
+
+pub(super) fn display_number_digits(
+    value: i64,
+    max_digits: usize,
+    padding: NumberPadding,
+) -> Vec<u8> {
+    let value = value.saturating_abs();
+    let mut text = if padding.is_zero_padding() && max_digits > 0 {
+        format!("{value:0width$}", width = max_digits)
+    } else {
+        value.to_string()
+    };
+    if max_digits > 0 && text.len() > max_digits {
+        text = text[text.len() - max_digits..].to_string();
+    }
+    let mut digits: Vec<u8> =
+        text.bytes().filter(|byte| byte.is_ascii_digit()).map(|byte| byte - b'0').collect();
+    if matches!(padding, NumberPadding::Blank) && max_digits > digits.len() {
+        let mut padded = vec![10; max_digits - digits.len()];
+        padded.extend(digits);
+        digits = padded;
+    }
+    digits
+}
+
+/// 符号付き数値（beatoraja の mimage 慣習）用に、divx 列のテクスチャセル index を返す。
+///
+/// レイアウト (`divx`>=12, `divy`>=2):
+/// - 各行は `[0,1,2,3,4,5,6,7,8,9, blank, sign]`
+/// - 行0: 正数用 (sign cell = `+`)
+/// - 行1: 負数用 (sign cell = `-`)
+///
+/// 返り値の各 byte は `digit_index % divx` が列、`digit_index / divx` が行になる。
+/// 先頭要素は符号セル (index 11)、続けて絶対値の右寄せ桁が並ぶ。
+pub(super) fn display_signed_number_digits(
+    value: i64,
+    max_digits: usize,
+    padding: NumberPadding,
+    divx: u32,
+) -> Vec<u8> {
+    display_signed_number_digits_with_row_order(
+        value,
+        max_digits,
+        padding,
+        divx,
+        SignedNumberRowOrder::PositiveFirst,
+    )
+}
+
+pub(super) fn display_signed_number_digits_with_row_order(
+    value: i64,
+    max_digits: usize,
+    padding: NumberPadding,
+    divx: u32,
+    row_order: SignedNumberRowOrder,
+) -> Vec<u8> {
+    if max_digits == 0 {
+        return Vec::new();
+    }
+    let negative_row = match row_order {
+        SignedNumberRowOrder::PositiveFirst => divx as u8,
+        SignedNumberRowOrder::NegativeFirst => 0,
+    };
+    let positive_row = match row_order {
+        SignedNumberRowOrder::PositiveFirst => 0,
+        SignedNumberRowOrder::NegativeFirst => divx as u8,
+    };
+    let row_offset = if value < 0 { negative_row } else { positive_row };
+    let abs = value.unsigned_abs();
+    let abs_text = abs.to_string();
+    let numeric_width = max_digits.saturating_sub(1);
+    let trimmed = if matches!(padding, NumberPadding::None) {
+        if abs_text.len() > max_digits {
+            abs_text[abs_text.len() - max_digits..].to_string()
+        } else {
+            abs_text
+        }
+    } else if abs_text.len() > numeric_width {
+        abs_text[abs_text.len() - numeric_width..].to_string()
+    } else {
+        abs_text
+    };
+    let sign_visible = !matches!(padding, NumberPadding::None) || trimmed.len() < max_digits;
+    let mut digits = Vec::with_capacity(max_digits);
+    if sign_visible {
+        // beatoraja の `keta` (`digit`) は符号セルを含む総枠数。
+        digits.push(11u8 + row_offset);
+    }
+    if sign_visible && numeric_width > trimmed.len() {
+        let fill = match padding {
+            NumberPadding::Zero => 0,
+            NumberPadding::Blank => 10,
+            NumberPadding::None => u8::MAX,
+        };
+        if fill != u8::MAX {
+            digits.extend(std::iter::repeat_n(fill + row_offset, numeric_width - trimmed.len()));
+        }
+    }
+    for byte in trimmed.bytes() {
+        if byte.is_ascii_digit() {
+            digits.push((byte - b'0') + row_offset);
+        }
+    }
+    digits
+}
+
+/// `ref_id` が符号付き表示を要求する Result 系 ref か。
+/// beatoraja の `NUMBER_DIFF_*` 系と次 DJ LEVEL までの差分を対象とする。
+pub(super) fn ref_id_is_signed(ref_id: i32) -> bool {
+    matches!(ref_id, 152 | 153 | 154 | 172 | 175 | 178)
+}
+
+pub(super) fn value_ref_is_signed_for_state(ref_id: i32, state: &SkinDrawState) -> bool {
+    ref_id_is_signed(ref_id)
+        || (ref_id == 12 && state.select_screen && state.select_option_panel == 3)
+}
+
+/// beatoraja `JsonSkinObjectLoader` は value 画像のセル数 (`divx*divy`) が
+/// 24 の倍数のとき +側/-側の別 image (mimage) を持つ符号付き数値として扱う。
+/// ref に依らず画像レイアウトで決まる (例: Starseeker の ±ms 表示 ref=525, 12x2)。
+pub(super) fn value_layout_is_signed(value: &SkinValueDef) -> bool {
+    let cells = value.divx.max(1).saturating_mul(value.divy.max(1));
+    cells >= 24 && cells % 24 == 0
+}
+
+pub(super) fn value_is_signed_for_state(value: &SkinValueDef, state: &SkinDrawState) -> bool {
+    value_ref_is_signed_for_state(value.ref_id, state) || value_layout_is_signed(value)
+}
+
+pub(super) fn signed_number_render_for_value(
+    value: &SkinValueDef,
+    state: &SkinDrawState,
+) -> SignedNumberRender {
+    if value_is_signed_for_state(value, state) {
+        SignedNumberRender::Signed(signed_number_row_order_for_value(value, state))
+    } else {
+        SignedNumberRender::Unsigned
+    }
+}
+
+pub(super) fn signed_number_row_order_for_value(
+    value: &SkinValueDef,
+    state: &SkinDrawState,
+) -> SignedNumberRowOrder {
+    if state.select_screen
+        && value.ref_id == 154
+        && value.id == "RANK_Diff_Exscore"
+        && value.divx >= 12
+        && value.divy >= 2
+    {
+        SignedNumberRowOrder::NegativeFirst
+    } else {
+        SignedNumberRowOrder::PositiveFirst
+    }
+}

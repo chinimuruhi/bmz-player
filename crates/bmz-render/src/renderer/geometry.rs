@@ -136,41 +136,45 @@ impl PlanGeometry {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Copy)]
+pub(super) struct PlanGeometryDrawResources<'pass> {
+    pub(super) rect_pipeline: &'pass wgpu::RenderPipeline,
+    pub(super) rect_buffer: Option<&'pass wgpu::Buffer>,
+    pub(super) image_pipeline: &'pass wgpu::RenderPipeline,
+    pub(super) image_add_pipeline: &'pass wgpu::RenderPipeline,
+    pub(super) image_premultiplied_pipeline: &'pass wgpu::RenderPipeline,
+    pub(super) image_layer_pipeline: &'pass wgpu::RenderPipeline,
+    pub(super) image_bind_groups: &'pass [wgpu::BindGroup],
+    pub(super) image_buffer: Option<&'pass wgpu::Buffer>,
+    pub(super) text_pipeline: &'pass wgpu::RenderPipeline,
+    pub(super) text_bind_group: Option<&'pass wgpu::BindGroup>,
+    pub(super) text_buffer: Option<&'pass wgpu::Buffer>,
+}
+
 pub(super) fn draw_plan_geometry<'pass>(
     pass: &mut wgpu::RenderPass<'pass>,
     geometry: &'pass PlanGeometry,
-    rect_pipeline: &'pass wgpu::RenderPipeline,
-    rect_buffer: Option<&'pass wgpu::Buffer>,
-    image_pipeline: &'pass wgpu::RenderPipeline,
-    image_add_pipeline: &'pass wgpu::RenderPipeline,
-    image_premultiplied_pipeline: &'pass wgpu::RenderPipeline,
-    image_layer_pipeline: &'pass wgpu::RenderPipeline,
-    image_bind_groups: &'pass [wgpu::BindGroup],
-    image_buffer: Option<&'pass wgpu::Buffer>,
-    text_pipeline: &'pass wgpu::RenderPipeline,
-    text_bind_group: Option<&'pass wgpu::BindGroup>,
-    text_buffer: Option<&'pass wgpu::Buffer>,
+    resources: PlanGeometryDrawResources<'pass>,
 ) {
     let mut image_step_index = 0_usize;
     for step in &geometry.steps {
         match step {
             DrawStep::Rects { range } => {
-                let Some(buffer) = rect_buffer else {
+                let Some(buffer) = resources.rect_buffer else {
                     continue;
                 };
                 let instance_count = (range.len() / RECT_INSTANCE_BYTES) as u32;
                 if instance_count == 0 {
                     continue;
                 }
-                pass.set_pipeline(rect_pipeline);
+                pass.set_pipeline(resources.rect_pipeline);
                 pass.set_vertex_buffer(0, buffer.slice(range.start as u64..range.end as u64));
                 pass.draw(0..6, 0..instance_count);
             }
             DrawStep::Image { blend, range, .. } => {
-                let bind_group = &image_bind_groups[image_step_index];
+                let bind_group = &resources.image_bind_groups[image_step_index];
                 image_step_index += 1;
-                let Some(buffer) = image_buffer else {
+                let Some(buffer) = resources.image_buffer else {
                     continue;
                 };
                 let instance_count = (range.len() / IMAGE_INSTANCE_BYTES) as u32;
@@ -178,24 +182,26 @@ pub(super) fn draw_plan_geometry<'pass>(
                     continue;
                 }
                 pass.set_pipeline(match blend {
-                    BlendMode::Normal => image_pipeline,
-                    BlendMode::Add => image_add_pipeline,
-                    BlendMode::Premultiplied => image_premultiplied_pipeline,
-                    BlendMode::LayerMask => image_layer_pipeline,
+                    BlendMode::Normal => resources.image_pipeline,
+                    BlendMode::Add => resources.image_add_pipeline,
+                    BlendMode::Premultiplied => resources.image_premultiplied_pipeline,
+                    BlendMode::LayerMask => resources.image_layer_pipeline,
                 });
                 pass.set_bind_group(0, bind_group, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(range.start as u64..range.end as u64));
                 pass.draw(0..6, 0..instance_count);
             }
             DrawStep::Text { range } => {
-                let (Some(bind_group), Some(buffer)) = (text_bind_group, text_buffer) else {
+                let (Some(bind_group), Some(buffer)) =
+                    (resources.text_bind_group, resources.text_buffer)
+                else {
                     continue;
                 };
                 let instance_count = (range.len() / TEXT_INSTANCE_BYTES) as u32;
                 if instance_count == 0 {
                     continue;
                 }
-                pass.set_pipeline(text_pipeline);
+                pass.set_pipeline(resources.text_pipeline);
                 pass.set_bind_group(0, bind_group, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(range.start as u64..range.end as u64));
                 pass.draw(0..6, 0..instance_count);

@@ -395,13 +395,23 @@ fn push_select_banner_image(commands: &mut Vec<DrawCommand>) {
 
 mod decide;
 mod play;
-mod play_helpers;
+#[path = "plan/play_helpers/format.rs"]
+mod play_helper_format;
+#[path = "plan/play_helpers/geometry.rs"]
+mod play_helper_geometry;
+#[path = "plan/play_helpers/overlay.rs"]
+mod play_helper_overlay;
+#[path = "plan/play_helpers/skin.rs"]
+mod play_helper_skin;
 mod result;
 mod select;
 
 use decide::*;
 use play::*;
-use play_helpers::*;
+use play_helper_format::*;
+use play_helper_geometry::*;
+use play_helper_overlay::*;
+use play_helper_skin::*;
 use result::*;
 use select::*;
 

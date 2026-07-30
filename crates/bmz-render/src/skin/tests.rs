@@ -77,6 +77,8 @@ impl SkinLuaDrawRuntime for AlternatingLuaDrawRuntime {
 mod core;
 #[path = "tests/graphs.rs"]
 mod graphs;
+#[path = "tests/graphs_more.rs"]
+mod graphs_more;
 #[path = "tests/play.rs"]
 mod play;
 #[path = "tests/result.rs"]
