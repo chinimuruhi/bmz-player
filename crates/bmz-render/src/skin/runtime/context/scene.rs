@@ -8,6 +8,7 @@ impl Default for SkinContext {
             lua_draw_runtime: None,
             document_sources: HashMap::new(),
             runtime_document_sources: Arc::new(Mutex::new(HashMap::new())),
+            select_render_cache: Arc::new(Mutex::new(SelectRenderCache::default())),
             select_settings_dest_index: Arc::new(
                 crate::select_settings_dest::SelectSettingsDestIndex::default(),
             ),
@@ -24,6 +25,7 @@ impl SkinContext {
             lua_draw_runtime: None,
             document_sources: HashMap::new(),
             runtime_document_sources: Arc::new(Mutex::new(HashMap::new())),
+            select_render_cache: Arc::new(Mutex::new(SelectRenderCache::default())),
             select_settings_dest_index: Arc::new(
                 crate::select_settings_dest::SelectSettingsDestIndex::default(),
             ),
@@ -47,6 +49,7 @@ impl SkinContext {
             lua_draw_runtime: None,
             document_sources,
             runtime_document_sources,
+            select_render_cache: Arc::new(Mutex::new(SelectRenderCache::default())),
             select_settings_dest_index,
             result_render_cache: Arc::new(Mutex::new(ResultRenderCache::default())),
         }
@@ -91,6 +94,10 @@ impl SkinContext {
             return false;
         };
         document.user_selected_options = Some(enabled_options);
+        // A cloned context may still use the old document options, so detach
+        // rather than clearing the shared caches in place.
+        self.select_render_cache = Arc::new(Mutex::new(SelectRenderCache::default()));
+        self.result_render_cache = Arc::new(Mutex::new(ResultRenderCache::default()));
         true
     }
 
@@ -143,6 +150,17 @@ impl SkinContext {
             state,
         );
         let state = self.state_with_lua_runtime(state, text);
+        if self.lua_draw_runtime.is_none()
+            && let Ok(mut cache) = self.result_render_cache.lock()
+        {
+            return document.static_render_items_with_graphs_cached(
+                &runtime_sources,
+                &state,
+                text,
+                SkinRuntimeGraphs::from_document(document),
+                Some(&mut cache),
+            );
+        }
         document.static_render_items(&runtime_sources, &state, text)
     }
 
@@ -200,6 +218,20 @@ impl SkinContext {
             &self.runtime_document_sources,
             snapshot,
         );
+        // Runtime Lua callbacks may execute arbitrary bounded code. Keep the
+        // render cache lock out of that path.
+        if self.lua_draw_runtime.is_none()
+            && let Ok(mut cache) = self.select_render_cache.lock()
+        {
+            return document.select_render_items_with_dynamic_timers_cached(
+                &runtime_sources,
+                snapshot,
+                dynamic_timers,
+                &self.select_settings_dest_index,
+                None,
+                Some(&mut cache),
+            );
+        }
         document.select_render_items_with_dynamic_timers(
             &runtime_sources,
             snapshot,
@@ -264,6 +296,17 @@ impl SkinContext {
             state,
         );
         let state = self.state_with_lua_runtime(state, text);
+        if self.lua_draw_runtime.is_none()
+            && let Ok(mut cache) = self.result_render_cache.lock()
+        {
+            return document.static_render_items_split_with_graphs(
+                &runtime_sources,
+                &state,
+                text,
+                SkinRuntimeGraphs::from_document(document),
+                Some(&mut cache),
+            );
+        }
         document.static_render_items_split(&runtime_sources, &state, text)
     }
 
@@ -283,6 +326,21 @@ impl SkinContext {
             state,
         );
         let state = self.state_with_lua_runtime(state, text);
+        if self.lua_draw_runtime.is_none()
+            && let Ok(mut cache) = self.result_render_cache.lock()
+        {
+            return document.static_render_items_split_with_graphs(
+                &runtime_sources,
+                &state,
+                text,
+                SkinRuntimeGraphs::from_document_with_play_graphs(
+                    document,
+                    play_judge_graph_density,
+                    play_bpm_graph_segments,
+                ),
+                Some(&mut cache),
+            );
+        }
         document.static_render_items_split_with_graphs(
             &runtime_sources,
             &state,

@@ -160,6 +160,16 @@ pub trait SkinDocumentRenderExt {
         lua_draw_runtime: Option<Arc<dyn SkinLuaDrawRuntime>>,
     ) -> Vec<SkinRenderItem>;
 
+    fn select_render_items_with_dynamic_timers_cached(
+        &self,
+        sources: &HashMap<String, SkinDocumentTexture>,
+        snapshot: &SelectSnapshot,
+        dynamic_timers: Option<&mut DynamicTimerRuntime>,
+        settings_dest_index: &crate::select_settings_dest::SelectSettingsDestIndex,
+        lua_draw_runtime: Option<Arc<dyn SkinLuaDrawRuntime>>,
+        cache: Option<&mut SelectRenderCache>,
+    ) -> Vec<SkinRenderItem>;
+
     fn select_draw_state<'a>(
         &self,
         snapshot: &'a SelectSnapshot,

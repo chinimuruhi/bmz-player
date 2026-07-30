@@ -1,6 +1,65 @@
 use super::*;
 
 #[test]
+fn static_image_cache_does_not_freeze_destination_animation() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 7,
+                "w": 100,
+                "h": 100,
+                "source": [{ "id": "src", "path": "parts.png" }],
+                "image": [
+                    { "id": "background", "src": "src", "w": 10, "h": 10 },
+                    { "id": "animated", "src": "src", "w": 10, "h": 10 },
+                    { "id": "delayed", "src": "src", "w": 10, "h": 10 }
+                ],
+                "destination": [
+                    { "id": "background", "dst": [
+                        { "time": 0, "x": 10, "y": 0, "w": 10, "h": 10 }
+                    ]},
+                    { "id": "animated", "dst": [
+                        { "time": 0, "x": 20, "y": 0, "w": 10, "h": 10 },
+                        { "time": 100, "x": 60, "y": 0, "w": 10, "h": 10 }
+                    ]},
+                    { "id": "delayed", "dst": [
+                        { "time": 50, "x": 80, "y": 0, "w": 10, "h": 10 }
+                    ]}
+                ]
+            }
+            "#,
+    )
+    .unwrap();
+    let skin = SkinContext::from_manifest_and_document(
+        default_skin_manifest(),
+        document,
+        [SkinDocumentTexture {
+            source_id: "src".to_string(),
+            texture: SkinTextureId(1),
+            source_size: SkinImageSize { width: 10.0, height: 10.0 },
+        }],
+    );
+
+    let initial = skin.static_document_items_for_state(&SkinDrawState::default());
+    let final_frame = skin.static_document_items_for_state(&SkinDrawState {
+        elapsed_ms: 100,
+        ..SkinDrawState::default()
+    });
+    let image_xs = |items: &[SkinRenderItem]| {
+        items
+            .iter()
+            .filter_map(|item| match item {
+                SkinRenderItem::Image { rect, .. } => Some(rect.x),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(image_xs(&initial), [0.1, 0.2]);
+    assert_eq!(image_xs(&final_frame), [0.1, 0.6, 0.8]);
+}
+
+#[test]
 fn note_group_lift_offset_matches_note_lift_once() {
     let document: SkinDocument = serde_json::from_str(
         r#"

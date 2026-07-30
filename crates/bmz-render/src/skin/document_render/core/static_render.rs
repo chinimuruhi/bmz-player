@@ -1,3 +1,44 @@
+use std::collections::HashMap;
+
+use crate::skin::{
+    SkinDestinationDef, SkinDocument, SkinDocumentRenderExt, SkinDstEntry, SkinImageDef,
+    skin_image_for_destination_id,
+};
+
+pub(in crate::skin::document_render) fn static_image_destination_cacheable(
+    document: &SkinDocument,
+    destination: &SkinDestinationDef,
+    images: &HashMap<&str, &SkinImageDef>,
+) -> bool {
+    if !destination.op.is_empty()
+        || !destination.draw.trim().is_empty()
+        || destination.timer.is_some()
+        || !destination.timer_expr.is_empty()
+        || destination.loop_time.is_some()
+        || destination.offset != 0
+        || !destination.offsets.is_empty()
+        || destination.mouse_rect.is_some()
+        || destination.id == "judge_graph"
+    {
+        return false;
+    }
+    let [SkinDstEntry::Frame(frame)] = destination.dst.as_slice() else {
+        return false;
+    };
+    if frame.time.unwrap_or(0) != 0 || frame.h_expr.is_some() {
+        return false;
+    }
+    let Some(image) = skin_image_for_destination_id(destination.id.as_str(), images) else {
+        return false;
+    };
+    image.cycle <= 0
+        && image.ref_id == 0
+        && image.act.is_none()
+        && !matches!(image.src.as_str(), "100" | "101" | "102")
+        && !document.should_clip_image_at_disappear_line(destination, image)
+        && !document.should_skip_lift_lane_cover_render(destination, image)
+}
+
 macro_rules! skin_document_render_core_static_methods {
     () => {
         fn static_image_render_items(
@@ -176,21 +217,53 @@ macro_rules! skin_document_render_core_static_methods {
                     }
                     continue;
                 }
-                if let Some(items) = self.resolve_destination_items(
-                    index,
-                    destination,
-                    DestinationResolveContext {
-                        images: &images,
-                        values: &values,
-                        enabled_options,
-                        state,
-                        text_state,
-                        sources,
-                        runtime_graphs,
-                        has_nearest_f_diff_rank_destination,
-                        cache: cache.as_deref_mut(),
-                    },
-                ) {
+                let cached_items =
+                    if core::static_image_destination_cacheable(self, destination, &images) {
+                        cache.as_deref_mut().map(|cache| {
+                            cache.cached_static_image_items(index, || {
+                                Arc::from(
+                                    self.resolve_destination_items(
+                                        index,
+                                        destination,
+                                        DestinationResolveContext {
+                                            images: &images,
+                                            values: &values,
+                                            enabled_options,
+                                            state,
+                                            text_state,
+                                            sources,
+                                            runtime_graphs,
+                                            has_nearest_f_diff_rank_destination,
+                                            cache: None,
+                                        },
+                                    )
+                                    .unwrap_or_default(),
+                                )
+                            })
+                        })
+                    } else {
+                        None
+                    };
+                let owned_items = if cached_items.is_none() {
+                    self.resolve_destination_items(
+                        index,
+                        destination,
+                        DestinationResolveContext {
+                            images: &images,
+                            values: &values,
+                            enabled_options,
+                            state,
+                            text_state,
+                            sources,
+                            runtime_graphs,
+                            has_nearest_f_diff_rank_destination,
+                            cache: cache.as_deref_mut(),
+                        },
+                    )
+                } else {
+                    None
+                };
+                if let Some(items) = cached_items.as_deref().or(owned_items.as_deref()) {
                     let after_notes_marker = after_notes_marker
                         || self.destination_looks_like_pre_notes_judge_line(
                             destination,
@@ -210,7 +283,7 @@ macro_rules! skin_document_render_core_static_methods {
                         &mut front,
                         &mut failed_overlay,
                     );
-                    target.extend(items);
+                    target.extend(items.iter().cloned());
                 }
             }
             (behind, front, failed_overlay)

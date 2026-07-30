@@ -5,7 +5,7 @@ fn skin_context_updates_user_selected_options() {
     let document: SkinDocument = serde_json::from_str(
         r#"
             {
-                "type": 0,
+                "type": 5,
                 "w": 100,
                 "h": 100,
                 "property": [
@@ -13,17 +13,56 @@ fn skin_context_updates_user_selected_options() {
                         { "name": "1P", "op": 920 },
                         { "name": "2P", "op": 921 }
                     ]}
+                ],
+                "source": [{ "id": "src", "path": "option.png" }],
+                "image": [
+                    { "id": "one", "src": "src", "w": 10, "h": 10 },
+                    { "id": "two", "src": "src", "w": 10, "h": 10 }
+                ],
+                "destination": [
+                    { "if": 920, "values": [{
+                        "id": "one", "dst": [{ "x": 10, "y": 0, "w": 10, "h": 10 }]
+                    }]},
+                    { "if": 921, "values": [{
+                        "id": "two", "dst": [{ "x": 50, "y": 0, "w": 10, "h": 10 }]
+                    }]}
                 ]
             }
             "#,
     )
     .unwrap();
+    let source = SkinDocumentTexture {
+        source_id: "src".to_string(),
+        texture: SkinTextureId(42),
+        source_size: SkinImageSize { width: 10.0, height: 10.0 },
+    };
     let mut context =
-        SkinContext::from_manifest_and_document(default_skin_manifest(), document, []);
+        SkinContext::from_manifest_and_document(default_skin_manifest(), document, [source]);
 
     assert_eq!(context.document().unwrap().enabled_options(), [920]);
+    let original = context.clone();
+    let one = context.select_document_items(&SelectSnapshot::default());
+    assert!(
+        matches!(
+            one.as_slice(),
+            [SkinRenderItem::Image { rect, .. }] if approx_eq(rect.x, 0.1)
+        ),
+        "{one:?}"
+    );
+
     assert!(context.set_user_selected_options(vec![921]));
     assert_eq!(context.document().unwrap().enabled_options(), [921]);
+    let two = context.select_document_items(&SelectSnapshot::default());
+    assert!(matches!(
+        two.as_slice(),
+        [SkinRenderItem::Image { rect, .. }] if approx_eq(rect.x, 0.5)
+    ));
+
+    let original_one = original.select_document_items(&SelectSnapshot::default());
+    assert!(matches!(
+        original_one.as_slice(),
+        [SkinRenderItem::Image { rect, .. }] if approx_eq(rect.x, 0.1)
+    ));
 }
 
 #[test]

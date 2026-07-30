@@ -271,11 +271,21 @@ fn profile_ecfn_select_plan_generation() {
         &BTreeMap::new(),
     )
     .unwrap();
-    let document_textures = decoded.sources.iter().map(|source| SkinDocumentTexture {
-        source_id: source.source_id.clone(),
-        texture: source.texture,
-        source_size: SkinImageSize { width: source.size.width, height: source.size.height },
-    });
+    let document_textures = decoded
+        .sources
+        .iter()
+        .map(|source| SkinDocumentTexture {
+            source_id: source.source_id.clone(),
+            texture: source.texture,
+            source_size: SkinImageSize { width: source.size.width, height: source.size.height },
+        })
+        .collect::<Vec<_>>();
+    let uncached_document = decoded.document.clone();
+    let document_sources = document_textures
+        .iter()
+        .cloned()
+        .map(|source| (source.source_id.clone(), source))
+        .collect::<HashMap<_, _>>();
     let skin = SkinContext::from_manifest_and_document(
         bmz_render::skin::default_skin_manifest(),
         decoded.document,
@@ -324,22 +334,47 @@ fn profile_ecfn_select_plan_generation() {
     }
 
     let frames = 300;
+    let mut scene = AppSceneSnapshot::Select(snapshot);
     let start = Instant::now();
     let mut commands = 0_usize;
     for frame in 0..frames {
+        let AppSceneSnapshot::Select(snapshot) = &mut scene else { unreachable!() };
         snapshot.time = TimeUs((frame + 30) * 16_666);
-        let plan = DrawPlan::from_scene_with_skin(
-            &AppSceneSnapshot::Select(snapshot.clone()),
-            &skin,
-            &mut runtime,
-        );
+        let plan = DrawPlan::from_scene_with_skin(&scene, &skin, &mut runtime);
         commands += plan.commands.len();
         black_box(plan);
     }
     let elapsed = start.elapsed();
+
+    let AppSceneSnapshot::Select(snapshot) = &scene else { unreachable!() };
+    let settings_dest_index = bmz_render::select_settings_dest::SelectSettingsDestIndex::default();
+    let mut cached_runtime = DynamicTimerRuntime::default();
+    let cached_start = Instant::now();
+    for _ in 0..frames {
+        black_box(
+            skin.select_document_items_with_dynamic_timers(snapshot, Some(&mut cached_runtime)),
+        );
+    }
+    let cached_elapsed = cached_start.elapsed();
+    let mut uncached_runtime = DynamicTimerRuntime::default();
+    let uncached_start = Instant::now();
+    for _ in 0..frames {
+        black_box(uncached_document.select_render_items_with_dynamic_timers(
+            &document_sources,
+            snapshot,
+            Some(&mut uncached_runtime),
+            &settings_dest_index,
+            None,
+        ));
+    }
+    let uncached_elapsed = uncached_start.elapsed();
+
     println!(
-        "profile_ecfn_select_plan_generation frames={frames} avg_plan_ms={:.3} avg_commands={}",
+        "profile_ecfn_select_plan_generation frames={frames} avg_plan_ms={:.3} \
+         avg_cached_items_ms={:.3} avg_uncached_items_ms={:.3} avg_commands={}",
         elapsed.as_secs_f64() * 1000.0 / frames as f64,
+        cached_elapsed.as_secs_f64() * 1000.0 / frames as f64,
+        uncached_elapsed.as_secs_f64() * 1000.0 / frames as f64,
         commands / frames as usize
     );
 }

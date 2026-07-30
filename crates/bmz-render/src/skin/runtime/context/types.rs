@@ -117,6 +117,7 @@ pub struct SkinContext {
     pub(super) lua_draw_runtime: Option<Arc<dyn SkinLuaDrawRuntime>>,
     pub(super) document_sources: HashMap<String, SkinDocumentTexture>,
     pub(super) runtime_document_sources: Arc<Mutex<HashMap<String, SkinDocumentTexture>>>,
+    pub(super) select_render_cache: Arc<Mutex<SelectRenderCache>>,
     pub(super) select_settings_dest_index:
         Arc<crate::select_settings_dest::SelectSettingsDestIndex>,
     pub(super) result_render_cache: Arc<Mutex<ResultRenderCache>>,
@@ -140,8 +141,32 @@ pub(in crate::skin) const RESULT_RENDER_CACHE_MAX_ENTRIES: usize = 64;
 static NEXT_RESULT_GAUGE_GRAPH_REVISION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Default)]
+pub(in crate::skin) struct SelectRenderCache {
+    planning: Option<DocumentPlanningCache>,
+    static_image_items: HashMap<usize, Arc<[SkinRenderItem]>>,
+}
+
+impl SelectRenderCache {
+    pub(in crate::skin) fn cached_planning(
+        &mut self,
+        document: &SkinDocument,
+    ) -> DocumentPlanningCache {
+        cached_document_planning(&mut self.planning, document)
+    }
+
+    pub(in crate::skin) fn cached_static_image_items(
+        &mut self,
+        destination_index: usize,
+        build: impl FnOnce() -> Arc<[SkinRenderItem]>,
+    ) -> Arc<[SkinRenderItem]> {
+        cached_static_image_items(&mut self.static_image_items, destination_index, build)
+    }
+}
+
+#[derive(Debug, Default)]
 pub(in crate::skin) struct ResultRenderCache {
-    planning: Option<ResultPlanningCache>,
+    planning: Option<DocumentPlanningCache>,
+    static_image_items: HashMap<usize, Arc<[SkinRenderItem]>>,
     rect_batches: HashMap<ResultRectBatchCacheKey, Arc<[RectCommand]>>,
     gauge_graph: Option<ResultGaugeGraphCache>,
     gauge_rect_batches: HashMap<ResultGaugeGraphRectBatchCacheKey, Arc<[RectCommand]>>,
@@ -151,40 +176,16 @@ impl ResultRenderCache {
     pub(in crate::skin) fn cached_planning(
         &mut self,
         document: &SkinDocument,
-    ) -> ResultPlanningCache {
-        if let Some(planning) = &self.planning {
-            return planning.clone();
-        }
-        let enabled_options = Arc::<[i32]>::from(document.enabled_options());
-        let mut destinations = Vec::new();
-        for (entry_index, entry) in document.destination.iter().enumerate() {
-            match entry {
-                DestinationListEntry::Single(_) => {
-                    destinations.push(ResultDestinationRef::Single { entry_index });
-                }
-                DestinationListEntry::Conditional { if_ops, destinations: entries } => {
-                    if test_skin_dst_if(if_ops, &enabled_options) {
-                        destinations.extend(entries.iter().enumerate().map(
-                            |(destination_index, _)| ResultDestinationRef::Conditional {
-                                entry_index,
-                                destination_index,
-                            },
-                        ));
-                    }
-                }
-            }
-        }
-        let has_nearest_f_diff_rank_destination = destinations
-            .iter()
-            .filter_map(|destination| destination.resolve(document))
-            .any(|destination| destination.id == "RANK_s_F");
-        let planning = ResultPlanningCache {
-            enabled_options,
-            destinations: Arc::from(destinations),
-            has_nearest_f_diff_rank_destination,
-        };
-        self.planning = Some(planning.clone());
-        planning
+    ) -> DocumentPlanningCache {
+        cached_document_planning(&mut self.planning, document)
+    }
+
+    pub(in crate::skin) fn cached_static_image_items(
+        &mut self,
+        destination_index: usize,
+        build: impl FnOnce() -> Arc<[SkinRenderItem]>,
+    ) -> Arc<[SkinRenderItem]> {
+        cached_static_image_items(&mut self.static_image_items, destination_index, build)
     }
 
     pub(in crate::skin) fn cached_rect_batch(
@@ -268,6 +269,58 @@ impl ResultRenderCache {
     }
 }
 
+fn cached_static_image_items(
+    cache: &mut HashMap<usize, Arc<[SkinRenderItem]>>,
+    destination_index: usize,
+    build: impl FnOnce() -> Arc<[SkinRenderItem]>,
+) -> Arc<[SkinRenderItem]> {
+    if let Some(items) = cache.get(&destination_index) {
+        return Arc::clone(items);
+    }
+    let items = build();
+    cache.insert(destination_index, Arc::clone(&items));
+    items
+}
+
+fn cached_document_planning(
+    cached: &mut Option<DocumentPlanningCache>,
+    document: &SkinDocument,
+) -> DocumentPlanningCache {
+    if let Some(planning) = cached {
+        return planning.clone();
+    }
+    let enabled_options = Arc::<[i32]>::from(document.enabled_options());
+    let mut destinations = Vec::new();
+    for (entry_index, entry) in document.destination.iter().enumerate() {
+        match entry {
+            DestinationListEntry::Single(_) => {
+                destinations.push(ResultDestinationRef::Single { entry_index });
+            }
+            DestinationListEntry::Conditional { if_ops, destinations: entries } => {
+                if test_skin_dst_if(if_ops, &enabled_options) {
+                    destinations.extend(entries.iter().enumerate().map(
+                        |(destination_index, _)| ResultDestinationRef::Conditional {
+                            entry_index,
+                            destination_index,
+                        },
+                    ));
+                }
+            }
+        }
+    }
+    let has_nearest_f_diff_rank_destination = destinations
+        .iter()
+        .filter_map(|destination| destination.resolve(document))
+        .any(|destination| destination.id == "RANK_s_F");
+    let planning = DocumentPlanningCache {
+        enabled_options,
+        destinations: Arc::from(destinations),
+        has_nearest_f_diff_rank_destination,
+    };
+    *cached = Some(planning.clone());
+    planning
+}
+
 #[derive(Debug)]
 pub(in crate::skin) struct ResultGaugeGraphCache {
     graph: Arc<crate::snapshot::ResultGraphSnapshot>,
@@ -276,7 +329,7 @@ pub(in crate::skin) struct ResultGaugeGraphCache {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::skin) struct ResultPlanningCache {
+pub(in crate::skin) struct DocumentPlanningCache {
     pub(in crate::skin) enabled_options: Arc<[i32]>,
     pub(in crate::skin) destinations: Arc<[ResultDestinationRef]>,
     pub(in crate::skin) has_nearest_f_diff_rank_destination: bool,

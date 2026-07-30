@@ -22,6 +22,25 @@ macro_rules! skin_document_render_select_render_methods {
             settings_dest_index: &crate::select_settings_dest::SelectSettingsDestIndex,
             lua_draw_runtime: Option<Arc<dyn SkinLuaDrawRuntime>>,
         ) -> Vec<SkinRenderItem> {
+            self.select_render_items_with_dynamic_timers_cached(
+                sources,
+                snapshot,
+                dynamic_timers,
+                settings_dest_index,
+                lua_draw_runtime,
+                None,
+            )
+        }
+
+        fn select_render_items_with_dynamic_timers_cached(
+            &self,
+            sources: &HashMap<String, SkinDocumentTexture>,
+            snapshot: &SelectSnapshot,
+            dynamic_timers: Option<&mut DynamicTimerRuntime>,
+            settings_dest_index: &crate::select_settings_dest::SelectSettingsDestIndex,
+            lua_draw_runtime: Option<Arc<dyn SkinLuaDrawRuntime>>,
+            mut cache: Option<&mut SelectRenderCache>,
+        ) -> Vec<SkinRenderItem> {
             let (mut state, selected_row) = self.select_draw_state(snapshot, dynamic_timers);
             let text = SkinTextState {
                 player_name: &snapshot.player_name,
@@ -90,19 +109,44 @@ macro_rules! skin_document_render_select_render_methods {
             let images = self.image_map();
             let values: HashMap<&str, &SkinValueDef> =
                 self.value.iter().map(|value| (value.id.as_str(), value)).collect();
-            let enabled_options = self.enabled_options();
+            let planning = cache.as_deref_mut().map(|cache| cache.cached_planning(self));
+            let enabled_options_storage =
+                planning.is_none().then(|| self.enabled_options()).unwrap_or_default();
+            let enabled_options: &[i32] =
+                planning.as_ref().map_or(enabled_options_storage.as_slice(), |planning| {
+                    planning.enabled_options.as_ref()
+                });
             if let Some(runtime) = lua_draw_runtime {
                 state.lua_runtime = Some(SkinLuaRuntimeContext {
                     runtime,
-                    enabled_options: Arc::from(enabled_options.clone()),
+                    enabled_options: planning.as_ref().map_or_else(
+                        || Arc::from(enabled_options),
+                        |planning| Arc::clone(&planning.enabled_options),
+                    ),
                     text_values: Arc::new(lua_main_state_text_values(&state, &text)),
                 });
             }
-            let destinations = self.all_destinations(&enabled_options);
-            let has_nearest_f_diff_rank_destination =
-                nearest_f_diff_rank_destination_available(&destinations);
+            let destinations = planning
+                .is_none()
+                .then(|| self.all_destinations(enabled_options))
+                .unwrap_or_default();
+            let destination_count = planning
+                .as_ref()
+                .map_or(destinations.len(), |planning| planning.destinations.len());
+            let has_nearest_f_diff_rank_destination = planning.as_ref().map_or_else(
+                || nearest_f_diff_rank_destination_available(&destinations),
+                |planning| planning.has_nearest_f_diff_rank_destination,
+            );
             let mut items = Vec::new();
-            for (destination_index, destination) in destinations.into_iter().enumerate() {
+            for destination_index in 0..destination_count {
+                let Some(destination) = planning
+                    .as_ref()
+                    .and_then(|planning| planning.destinations.get(destination_index).copied())
+                    .and_then(|destination| destination.resolve(self))
+                    .or_else(|| destinations.get(destination_index).copied())
+                else {
+                    continue;
+                };
                 if destination.id
                     == self.songlist.as_ref().map(|list| list.id.as_str()).unwrap_or("")
                 {
@@ -110,7 +154,7 @@ macro_rules! skin_document_render_select_render_methods {
                         sources,
                         snapshot,
                         &images,
-                        &enabled_options,
+                        enabled_options,
                         &state,
                     ));
                     continue;
@@ -118,7 +162,7 @@ macro_rules! skin_document_render_select_render_methods {
                 if !crate::select_settings_dest::test_select_destination_visible(
                     settings_dest_index,
                     destination,
-                    &enabled_options,
+                    enabled_options,
                     &state,
                     snapshot,
                     selected_row,
@@ -148,7 +192,7 @@ macro_rules! skin_document_render_select_render_methods {
                         judge_graph,
                         destination,
                         (0, 0),
-                        &enabled_options,
+                        enabled_options,
                         &state,
                     ));
                     continue;
@@ -161,7 +205,7 @@ macro_rules! skin_document_render_select_render_methods {
                         continue;
                     };
                     let Some(mut frame) =
-                        resolve_destination_frame(destination, elapsed, &enabled_options, &state)
+                        resolve_destination_frame(destination, elapsed, enabled_options, &state)
                     else {
                         continue;
                     };
@@ -178,13 +222,39 @@ macro_rules! skin_document_render_select_render_methods {
                     ));
                     continue;
                 }
+                if core::static_image_destination_cacheable(self, destination, &images)
+                    && let Some(cache) = cache.as_deref_mut()
+                {
+                    let cached = cache.cached_static_image_items(destination_index, || {
+                        Arc::from(
+                            self.resolve_destination_items(
+                                destination_index,
+                                destination,
+                                DestinationResolveContext {
+                                    images: &images,
+                                    values: &values,
+                                    enabled_options,
+                                    state: &state,
+                                    text_state: &text,
+                                    sources,
+                                    runtime_graphs: SkinRuntimeGraphs::from_document(self),
+                                    has_nearest_f_diff_rank_destination,
+                                    cache: None,
+                                },
+                            )
+                            .unwrap_or_default(),
+                        )
+                    });
+                    items.extend(cached.iter().cloned());
+                    continue;
+                }
                 if let Some(resolved) = self.resolve_destination_items(
                     destination_index,
                     destination,
                     DestinationResolveContext {
                         images: &images,
                         values: &values,
-                        enabled_options: &enabled_options,
+                        enabled_options,
                         state: &state,
                         text_state: &text,
                         sources,
