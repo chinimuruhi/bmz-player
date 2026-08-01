@@ -81,6 +81,9 @@ pub(super) fn plan_play(
         push_default_failed_overlay(&text, &mut commands, snapshot);
     }
     push_chart_text(&text, &mut commands, snapshot);
+    if !skin.has_timer_destination(2) {
+        push_default_play_fadeout_overlay(&mut commands, snapshot);
+    }
     push_scene_overlays(&mut commands, &snapshot.overlay);
 
     DrawPlan { clear: Color::rgb(0.0, 0.0, 0.0), commands }

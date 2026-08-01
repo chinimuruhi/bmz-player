@@ -9,6 +9,9 @@ use bmz_gameplay::session::SkinRuntimeEvent;
 pub use crate::chart_graph::BpmGraphSegment;
 use crate::skin_offset::SkinOffsetValues;
 
+/// Play skin が fadeout 時間も timer=2 destination も持たない場合の黒フェード時間。
+pub const DEFAULT_PLAY_FADEOUT_DURATION_MS: i32 = 500;
+
 pub use bmz_skin_document::{
     ResultEarlyLateGraphBucket, ResultGaugeGraphPoint, ResultJudgeGraphBucket,
     ResultTimingDistribution, ResultTimingPoint,

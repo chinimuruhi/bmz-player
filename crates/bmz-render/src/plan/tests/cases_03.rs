@@ -412,6 +412,82 @@ fn default_play_plan_includes_failed_overlay() {
 }
 
 #[test]
+fn play_plan_falls_back_to_black_fade_without_timer_two_destination() {
+    let snapshot = RenderSnapshot { fadeout_elapsed_ms: Some(250), ..RenderSnapshot::default() };
+
+    let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
+
+    assert!(plan.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Rect {
+            rect: Rect { x, y, width, height },
+            color: Color { r, g, b, a },
+        } if approx_eq(*x, 0.0)
+            && approx_eq(*y, 0.0)
+            && approx_eq(*width, 1.0)
+            && approx_eq(*height, 1.0)
+            && approx_eq(*r, 0.0)
+            && approx_eq(*g, 0.0)
+            && approx_eq(*b, 0.0)
+            && approx_eq(*a, 0.5)
+    )));
+}
+
+#[test]
+fn play_skin_timer_two_destination_disables_default_black_fade() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 0,
+                "w": 100,
+                "h": 100,
+                "destination": [
+                    { "id": -110, "timer": 2, "dst": [
+                        { "time": 0, "x": 0, "y": 0, "w": 100, "h": 100, "a": 0 },
+                        { "time": 500, "a": 255 }
+                    ] }
+                ]
+            }
+            "#,
+    )
+    .unwrap();
+    let skin = SkinContext::from_manifest_and_document(SkinManifest::default(), document, []);
+
+    assert!(skin.has_timer_destination(2));
+
+    let plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(RenderSnapshot {
+            fadeout_elapsed_ms: Some(250),
+            ..RenderSnapshot::default()
+        }),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+
+    let half_alpha_black_rects = plan
+        .commands
+        .iter()
+        .filter(|command| {
+            matches!(
+                command,
+                DrawCommand::Rect {
+                    rect: Rect { x, y, width, height },
+                    color: Color { r, g, b, a },
+                } if approx_eq(*x, 0.0)
+                    && approx_eq(*y, 0.0)
+                    && approx_eq(*width, 1.0)
+                    && approx_eq(*height, 1.0)
+                    && approx_eq(*r, 0.0)
+                    && approx_eq(*g, 0.0)
+                    && approx_eq(*b, 0.0)
+                    && approx_eq(*a, 0.5)
+            )
+        })
+        .count();
+    assert_eq!(half_alpha_black_rects, 0, "skin timer=2 should own the fadeout");
+}
+
+#[test]
 fn select_plan_has_non_empty_commands() {
     let plan = DrawPlan::from_scene(&AppSceneSnapshot::Select(Default::default()));
 

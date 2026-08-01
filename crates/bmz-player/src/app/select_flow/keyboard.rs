@@ -140,7 +140,7 @@ impl WinitApp {
             && event.state == ElementState::Pressed
             && !event.repeat
         {
-            self.stop_active_play_like_escape("escape pressed during play");
+            self.stop_play_like_escape("escape pressed during play");
             return;
         }
         // Start / E1 の2回連続押し → レーンカバー表示切替
@@ -179,6 +179,13 @@ impl WinitApp {
         fixed_play_lane_action: Option<PlayLaneAction>,
     ) {
         let play_control = control_event.name.as_deref();
+        if event.physical_key == PhysicalKey::Code(KeyCode::Escape)
+            && event.state == ElementState::Pressed
+            && !event.repeat
+        {
+            self.stop_play_like_escape("escape pressed during play preload");
+            return;
+        }
         if let Some(action) = fixed_play_lane_action {
             self.apply_play_lane_action(action);
             return;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::result_flow_timing::play_fadeout_duration_for_skin;
 
 #[test]
 fn result_skin_signature_changes_when_only_offset_changes() {
@@ -32,6 +33,16 @@ fn fallback_result_scene_uses_nonzero_duration() {
 }
 
 #[test]
+fn play_fadeout_duration_uses_skin_timer_or_black_fallback() {
+    assert_eq!(
+        play_fadeout_duration_for_skin(0, 0),
+        Duration::from_millis(bmz_render::snapshot::DEFAULT_PLAY_FADEOUT_DURATION_MS as u64)
+    );
+    assert_eq!(play_fadeout_duration_for_skin(300, 0), Duration::from_millis(300));
+    assert_eq!(play_fadeout_duration_for_skin(300, 700), Duration::from_millis(700));
+}
+
+#[test]
 fn result_scene_duration_respects_skin_document() {
     let document: SkinDocument =
         serde_json::from_str(r#"{ "type": 7, "input": 1500, "scene": 2345 }"#).unwrap();
@@ -59,14 +70,15 @@ fn result_auto_exit_uses_scene_when_positive() {
 }
 
 #[test]
-fn failed_play_ending_starts_failed_timer_without_finish_result() {
+fn pre_play_abort_starts_fadeout_and_returns_to_select_without_result() {
     let started_at = Instant::now();
-    let ending = failed_play_ending(started_at);
+    let ending = pre_play_abort_ending(started_at);
 
     assert_eq!(ending.started_at, started_at);
-    assert!(ending.failed);
+    assert!(!ending.failed);
+    assert_eq!(ending.completion, PlayEndingCompletion::Select);
     assert!(ending.finished.is_none());
-    assert!(ending.fadeout_started_at.is_none());
+    assert_eq!(ending.fadeout_started_at, Some(started_at));
     assert!(ending.full_combo_elapsed_at_finish_ms.is_none());
 }
 

@@ -129,7 +129,7 @@ fn egui_lane_profile_target_change_recalculates_fhs_hispeed() {
 }
 
 #[test]
-fn chart_started_for_system_sound_waits_until_running_clock_reaches_zero() {
+fn chart_play_start_boundary_waits_until_running_clock_reaches_zero() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let frame = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let mut session = crate::screens::play_session::build_game_session(
@@ -138,14 +138,14 @@ fn chart_started_for_system_sound_waits_until_running_clock_reaches_zero() {
         crate::screens::play_session::PlaySessionOptions::default(),
     );
 
-    assert!(!chart_started_for_system_sound(&session));
+    assert!(!chart_play_has_started(&session));
 
     session.audio_clock =
         bmz_audio::clock::AudioClock::with_position(48_000, 0, -1_000_000, frame.clone(), true);
-    assert!(!chart_started_for_system_sound(&session));
+    assert!(!chart_play_has_started(&session));
 
     frame.store(48_000, std::sync::atomic::Ordering::Relaxed);
-    assert!(chart_started_for_system_sound(&session));
+    assert!(chart_play_has_started(&session));
 }
 
 #[test]

@@ -16,15 +16,23 @@ pub(super) struct PlayEndingTransition {
     pub(super) fadeout_started_at: Option<Instant>,
     pub(super) finished: Option<FinishedPlaySession>,
     pub(super) failed: bool,
+    pub(super) completion: PlayEndingCompletion,
     pub(super) full_combo_elapsed_at_finish_ms: Option<i32>,
 }
 
-pub(super) fn failed_play_ending(started_at: Instant) -> PlayEndingTransition {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PlayEndingCompletion {
+    Result,
+    Select,
+}
+
+pub(super) fn pre_play_abort_ending(started_at: Instant) -> PlayEndingTransition {
     PlayEndingTransition {
         started_at,
-        fadeout_started_at: None,
+        fadeout_started_at: Some(started_at),
         finished: None,
-        failed: true,
+        failed: false,
+        completion: PlayEndingCompletion::Select,
         full_combo_elapsed_at_finish_ms: None,
     }
 }

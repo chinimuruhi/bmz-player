@@ -485,6 +485,7 @@ impl WinitApp {
             started_at: now,
             fadeout_started_at: Some(now),
             failed: false,
+            completion: PlayEndingCompletion::Result,
             full_combo_elapsed_at_finish_ms,
             finished: early_finished,
         });

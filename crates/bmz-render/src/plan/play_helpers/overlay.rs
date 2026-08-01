@@ -1,5 +1,20 @@
 use super::*;
 
+pub(super) fn push_default_play_fadeout_overlay(
+    commands: &mut Vec<DrawCommand>,
+    snapshot: &RenderSnapshot,
+) {
+    let Some(elapsed_ms) = snapshot.fadeout_elapsed_ms else {
+        return;
+    };
+    let alpha = (elapsed_ms as f32 / crate::snapshot::DEFAULT_PLAY_FADEOUT_DURATION_MS as f32)
+        .clamp(0.0, 1.0);
+    commands.push(DrawCommand::Rect {
+        rect: Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+        color: Color::rgba(0.0, 0.0, 0.0, alpha),
+    });
+}
+
 pub(super) fn push_start_overlay(
     text: &TextRenderer,
     commands: &mut Vec<DrawCommand>,

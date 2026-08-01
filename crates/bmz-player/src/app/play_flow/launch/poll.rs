@@ -2,6 +2,14 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn poll_play_preload(&mut self) {
+        if self
+            .play
+            .play_ending
+            .as_ref()
+            .is_some_and(|ending| ending.completion == PlayEndingCompletion::Select)
+        {
+            return;
+        }
         // 1) preload worker からの結果を受け取り (Decide 演出中でも受信して退避する)。
         if let Some(pending) = &self.play.pending_play_preload {
             match pending.rx.try_recv() {
@@ -190,8 +198,20 @@ impl WinitApp {
         if !self.commit_active_play_lane_state_to_profile() {
             self.commit_pending_play_lane_state_to_profile();
         }
+        if let Some(active_play) = &mut self.play.active_play
+            && let Err(error) = active_play.running.pause_audio()
+        {
+            tracing::warn!(%error, "failed to pause audio while aborting play start");
+        }
+        self.invalidate_play_preload();
         self.play.pending_play_start = None;
         self.play.active_play = None;
+        self.play.play_ending = None;
+        self.play.play_ready_sound_started_at = None;
+        self.play.play_ready_last_control_hold_at = None;
+        self.play.play_option_input = None;
+        self.clear_play_control_holds();
+        self.stop_system_sound(crate::system_sound::SoundType::PlayReady);
         self.play.decide_sound_stopped_for_chart_start = true;
         self.clear_play_meta_image_state();
         self.play.last_play_snapshot = None;

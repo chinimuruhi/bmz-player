@@ -187,6 +187,16 @@ impl SkinContext {
         })
     }
 
+    pub fn has_timer_destination(&self, timer: i32) -> bool {
+        self.document.as_ref().is_some_and(|document| {
+            let enabled_options = document.enabled_options();
+            document
+                .all_destinations(&enabled_options)
+                .into_iter()
+                .any(|destination| destination.timer == Some(timer))
+        })
+    }
+
     pub fn document_judge_items(
         &self,
         judge: &str,

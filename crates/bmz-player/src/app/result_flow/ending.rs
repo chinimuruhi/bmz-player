@@ -35,6 +35,11 @@ impl WinitApp {
         let Some(mut ending) = self.play.play_ending.take() else {
             return;
         };
+        if ending.completion == PlayEndingCompletion::Select {
+            tracing::info!("play fadeout before chart start completed; returning to select");
+            self.abort_pending_play_start();
+            return;
+        }
         let Some(mut started) = self.play.active_play.take() else {
             return;
         };

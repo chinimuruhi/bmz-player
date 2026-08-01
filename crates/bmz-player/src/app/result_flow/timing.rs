@@ -62,7 +62,12 @@ impl WinitApp {
     }
 
     pub(super) fn play_fadeout_duration(&self) -> Duration {
-        skin_duration_ms(self.renderer.play_skin_document().map(|d| d.fadeout).unwrap_or(0))
+        let declared_ms =
+            self.renderer.play_skin_document().map(|document| document.fadeout).unwrap_or(0).max(0);
+        play_fadeout_duration_for_skin(
+            declared_ms,
+            self.renderer.play_skin_timer_animation_duration_ms(2),
+        )
     }
 
     pub(super) fn play_close_duration(&self) -> Duration {
@@ -89,4 +94,16 @@ impl WinitApp {
             duration
         }
     }
+}
+
+pub(super) fn play_fadeout_duration_for_skin(
+    declared_ms: i32,
+    timer_animation_ms: i32,
+) -> Duration {
+    let duration_ms = declared_ms.max(timer_animation_ms).max(0);
+    skin_duration_ms(if duration_ms == 0 {
+        bmz_render::snapshot::DEFAULT_PLAY_FADEOUT_DURATION_MS
+    } else {
+        duration_ms
+    })
 }

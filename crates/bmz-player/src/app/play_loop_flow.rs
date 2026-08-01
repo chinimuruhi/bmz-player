@@ -9,14 +9,14 @@ impl WinitApp {
         if self.play.pending_play_start.is_some() {
             self.update_pending_play_snapshot_timers();
         }
-        if self.play.active_play.is_none() {
-            return;
-        }
         if self.stop_play_if_exit_hold_elapsed() {
             self.clear_play_control_holds();
             if self.play.play_ending.is_some() {
                 return;
             }
+        }
+        if self.play.active_play.is_none() {
+            return;
         }
         self.maybe_start_ready_phase();
         self.stop_decide_system_sound_after_chart_start();
@@ -163,6 +163,7 @@ impl WinitApp {
                     started_at: Instant::now(),
                     fadeout_started_at: None,
                     failed: frame.state == bmz_gameplay::session::PlayState::Failed,
+                    completion: PlayEndingCompletion::Result,
                     full_combo_elapsed_at_finish_ms,
                     finished: early_finished,
                 });
@@ -251,7 +252,7 @@ impl WinitApp {
         let Some(active_play) = &self.play.active_play else {
             return;
         };
-        if !chart_started_for_system_sound(&active_play.running.session) {
+        if !chart_play_has_started(&active_play.running.session) {
             return;
         }
         self.stop_system_sound(crate::system_sound::SoundType::Decide);
@@ -438,7 +439,34 @@ impl WinitApp {
         true
     }
 
-    pub(super) fn stop_active_play_like_escape(&mut self, reason: &'static str) -> bool {
+    pub(super) fn stop_play_like_escape(&mut self, reason: &'static str) -> bool {
+        if self.play.play_ending.is_some() {
+            return true;
+        }
+        if self.play.active_play.is_none() && self.play.pending_play_start.is_none() {
+            return false;
+        }
+        let chart_started = self
+            .play
+            .active_play
+            .as_ref()
+            .is_some_and(|active_play| chart_play_has_started(&active_play.running.session));
+        if !chart_started {
+            tracing::info!(reason, "fading out play before chart start");
+            if let Some(active_play) = &mut self.play.active_play
+                && let Err(error) = active_play.running.pause_audio()
+            {
+                tracing::warn!(%error, "failed to pause pre-play audio during exit");
+            }
+            self.invalidate_play_preload();
+            self.clear_play_control_holds();
+            self.stop_system_sound(crate::system_sound::SoundType::PlayReady);
+            self.notify_obs_play_ended();
+            self.play.play_ending = Some(pre_play_abort_ending(Instant::now()));
+            self.update_play_ending_snapshot();
+            return true;
+        }
+
         let stopped = {
             let Some(active_play) = &mut self.play.active_play else {
                 return false;
@@ -459,12 +487,6 @@ impl WinitApp {
         };
         self.clear_play_control_holds();
         self.play_system_sound(crate::system_sound::SoundType::PlayStop);
-        if self.play.play_ready_sound_started_at.is_none() && self.play.play_ending.is_none() {
-            self.play.pending_play_start = None;
-            self.notify_obs_play_ended();
-            self.play.play_ending = Some(failed_play_ending(Instant::now()));
-            self.update_play_ending_snapshot();
-        }
         stopped
     }
 
@@ -634,7 +656,7 @@ impl WinitApp {
         self.refresh_play_lane_value_changing();
         self.update_play_exit_hold_timer();
         if self.play.play_e2_held && self.play.play_e3_held {
-            return self.stop_active_play_like_escape("E2+E3 pressed during play");
+            return self.stop_play_like_escape("E2+E3 pressed during play");
         }
         false
     }
@@ -648,7 +670,7 @@ impl WinitApp {
             hold_duration,
         ) {
             self.play.play_exit_hold_started_at = None;
-            return self.stop_active_play_like_escape("E1+E2 held during play");
+            return self.stop_play_like_escape("E1+E2 held during play");
         }
         false
     }
