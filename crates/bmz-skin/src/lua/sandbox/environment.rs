@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn install_sandbox(
     lua: &Lua,
-    root: &Path,
+    path_context: &SkinPathContext,
     options: &BTreeMap<String, String>,
     skin_config_options: Option<&BTreeMap<String, i64>>,
     skin_files: &BTreeMap<String, String>,
@@ -67,7 +67,14 @@ pub(super) fn install_sandbox(
             dependencies.offset_values.extend(skin_offsets.clone());
         }
         skin_config.set("offset", offset)?;
-        let root_for_get_path = root.to_path_buf();
+        let file_path = lua.create_table()?;
+        for (pattern, name) in skin_file_dependency_names {
+            if let Some(selected) = skin_files.get(pattern) {
+                file_path.set(name.as_str(), selected.as_str())?;
+            }
+        }
+        skin_config.set("file_path", file_path)?;
+        let context_for_get_path = path_context.clone();
         let skin_files_for_get_path = skin_files.clone();
         let skin_file_dependency_names_for_get_path = skin_file_dependency_names.clone();
         let dependencies_for_get_path = load_dependencies.clone();
@@ -77,19 +84,33 @@ pub(super) fn install_sandbox(
                 &skin_file_dependency_names_for_get_path,
                 dependencies_for_get_path.as_ref(),
             );
-            skin_config_get_path(&root_for_get_path, &requested, &skin_files_for_get_path)
-                .map(|path| path.to_string_lossy().to_string())
-                .map_err(mlua::Error::external)
+            let path = match skin_config_get_path(
+                &context_for_get_path,
+                &requested,
+                &skin_files_for_get_path,
+            ) {
+                Ok(path) => path,
+                Err(error) => {
+                    mark_io_dependency_opaque(dependencies_for_get_path.as_ref());
+                    return Err(mlua::Error::external(error));
+                }
+            };
+            record_lua_loaded_file_dependency(&path, dependencies_for_get_path.as_ref());
+            Ok(path.to_string_lossy().to_string())
         })?;
         skin_config.set("get_path", get_path)?;
         globals.set("skin_config", skin_config)?;
     }
     globals.set("os", create_os_stub(lua, main_state_probe.clone())?)?;
-    globals.set("io", create_io_stub(lua, root, virtual_io_files, load_dependencies.clone())?)?;
+    globals.set(
+        "io",
+        create_io_stub(lua, path_context.entry_dir(), virtual_io_files, load_dependencies.clone())?,
+    )?;
     globals.set("debug", Value::Nil)?;
-    if let Ok(package) = globals.get::<Table>("package") {
-        package.set("loadlib", Value::Nil)?;
-    }
+    let package: Table = globals.get("package")?;
+    package.set("path", path_context.initial_package_path())?;
+    package.set("cpath", "")?;
+    package.set("loadlib", Value::Nil)?;
 
     let print = lua.create_function(|_, args: Variadic<Value>| {
         let parts =
@@ -112,23 +133,32 @@ pub(super) fn install_sandbox(
     bmz.set("get_option", get_option)?;
     globals.set("bmz", bmz)?;
 
-    let sandbox_root = root.to_path_buf();
-    let root_for_dofile = sandbox_root.clone();
+    let context_for_dofile = path_context.clone();
     let dependencies_for_dofile = load_dependencies.clone();
     let dofile = lua.create_function(move |lua, path: String| {
-        let path =
-            resolve_lua_path(&root_for_dofile, &path, false).map_err(mlua::Error::external)?;
+        let path = match context_for_dofile.resolve_file(&path) {
+            Ok(path) => path,
+            Err(error) => {
+                mark_io_dependency_opaque(dependencies_for_dofile.as_ref());
+                return Err(mlua::Error::external(error));
+            }
+        };
         record_lua_loaded_file_dependency(&path, dependencies_for_dofile.as_ref());
         let source = fs::read_to_string(&path).map_err(mlua::Error::external)?;
         lua.load(&source).set_name(path.to_string_lossy().as_ref()).eval::<Value>()
     })?;
     globals.set("dofile", dofile)?;
 
-    let root_for_loadfile = sandbox_root.clone();
+    let context_for_loadfile = path_context.clone();
     let dependencies_for_loadfile = load_dependencies.clone();
     let loadfile = lua.create_function(move |lua, path: String| {
-        let path =
-            resolve_lua_path(&root_for_loadfile, &path, false).map_err(mlua::Error::external)?;
+        let path = match context_for_loadfile.resolve_file(&path) {
+            Ok(path) => path,
+            Err(error) => {
+                mark_io_dependency_opaque(dependencies_for_loadfile.as_ref());
+                return Err(mlua::Error::external(error));
+            }
+        };
         record_lua_loaded_file_dependency(&path, dependencies_for_loadfile.as_ref());
         let source = fs::read_to_string(&path).map_err(mlua::Error::external)?;
         lua.load(&source).set_name(path.to_string_lossy().as_ref()).into_function()
@@ -138,22 +168,10 @@ pub(super) fn install_sandbox(
     let main_state = create_main_state_stub(lua, main_state_probe.clone())?;
     lua.globals().set("bmz_main_state", main_state)?;
 
-    let root = sandbox_root;
+    let context_for_require = path_context.clone();
     let probe_for_require = main_state_probe.clone();
     let dependencies_for_require = load_dependencies.clone();
     let require = lua.create_function(move |lua, module: String| {
-        if module == "main_state" {
-            return lua.globals().get("bmz_main_state");
-        }
-        if module == "timer_util" {
-            return create_timer_util_module(lua, probe_for_require.clone());
-        }
-        if module == "event_util" {
-            return create_event_util_module(lua);
-        }
-        if module == "luajava" {
-            return create_luajava_stub(lua);
-        }
         let globals = lua.globals();
         let package: Table = globals.get("package")?;
         let loaded: Table = package.get("loaded")?;
@@ -163,13 +181,50 @@ pub(super) fn install_sandbox(
             return Ok(cached);
         }
 
-        let path = resolve_lua_path(&root, &module, true).map_err(mlua::Error::external)?;
+        let builtin = match module.as_str() {
+            "main_state" => Some(globals.get("bmz_main_state")?),
+            "timer_util" => Some(create_timer_util_module(lua, probe_for_require.clone())?),
+            "event_util" => Some(create_event_util_module(lua)?),
+            "luajava" => Some(create_luajava_stub(lua)?),
+            _ => None,
+        };
+        if let Some(value) = builtin {
+            loaded.set(module, value.clone())?;
+            return Ok(value);
+        }
+
+        let package_path = package.get::<String>("path")?;
+        let mut attempted = Vec::new();
+        let mut resolved = None;
+        for template in package_path.split(';').filter(|template| !template.is_empty()) {
+            let module_path = module.replace(['.', '\\'], "/");
+            attempted.push(template.replace('\\', "/").replace('?', &module_path));
+            if let Ok(Some(path)) = context_for_require.resolve_package_candidate(template, &module)
+            {
+                resolved = Some(path);
+                break;
+            }
+        }
+        let Some(path) = resolved else {
+            mark_io_dependency_opaque(dependencies_for_require.as_ref());
+            return Err(mlua::Error::runtime(format!(
+                "module `{module}` not found in sandboxed package.path; tried: {}",
+                attempted.join(", ")
+            )));
+        };
         record_lua_loaded_file_dependency(&path, dependencies_for_require.as_ref());
         let source = fs::read_to_string(&path).map_err(mlua::Error::external)?;
-        let value = lua.load(&source).set_name(path.to_string_lossy().as_ref()).eval::<Value>()?;
-        let value = if matches!(value, Value::Nil) { Value::Boolean(true) } else { value };
-        loaded.set(module, value.clone())?;
-        Ok(value)
+        let loader = lua.load(&source).set_name(path.to_string_lossy().as_ref()).into_function()?;
+        let value = loader.call::<Value>((module.clone(), path.to_string_lossy().to_string()))?;
+        if !matches!(value, Value::Nil) {
+            loaded.set(module.as_str(), value)?;
+        }
+        let cached = loaded.get::<Value>(module.as_str())?;
+        if !matches!(cached, Value::Nil) {
+            return Ok(cached);
+        }
+        loaded.set(module, true)?;
+        Ok(Value::Boolean(true))
     })?;
     globals.set("require", require)?;
 

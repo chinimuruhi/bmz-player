@@ -6,3 +6,5 @@ mod cases_01;
 mod cases_02;
 #[path = "lua/cases_03.rs"]
 mod cases_03;
+#[path = "lua/cases_04.rs"]
+mod cases_04;

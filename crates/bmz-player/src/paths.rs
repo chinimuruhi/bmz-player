@@ -120,6 +120,14 @@ impl AppPaths {
         self.resource_dir.join("skins/default")
     }
 
+    /// Explicit package roots available to beatoraja-compatible skin loaders.
+    /// User skins take precedence over bundled packages when both roots exist.
+    pub fn skin_library_roots(&self) -> Vec<PathBuf> {
+        let data = self.data_dir.join("skins");
+        let resource = self.resource_dir.join("skins");
+        if same_path(&data, &resource) { vec![data] } else { vec![data, resource] }
+    }
+
     /// OS フォントがなくても UI / スキン文字列を描画できるように同梱する Noto CJK の位置。
     pub fn bundled_noto_cjk_font_root(&self) -> PathBuf {
         self.resource_dir.join("fonts/noto-cjk")
@@ -469,6 +477,23 @@ mod tests {
         let app = test_app_paths();
 
         assert_eq!(app.bundled_noto_cjk_font_root(), PathBuf::from("resources/fonts/noto-cjk"));
+    }
+
+    #[test]
+    fn skin_library_roots_prioritize_user_data_and_deduplicate_shared_layouts() {
+        let app = test_app_paths();
+        assert_eq!(
+            app.skin_library_roots(),
+            vec![PathBuf::from("data/skins"), PathBuf::from("resources/skins")]
+        );
+
+        let shared = AppPaths::from_dirs(
+            PathBuf::from("data"),
+            PathBuf::from("data"),
+            PathBuf::from("data/cache"),
+            PathBuf::from("data/logs"),
+        );
+        assert_eq!(shared.skin_library_roots(), vec![PathBuf::from("data/skins")]);
     }
 
     #[test]

@@ -9,6 +9,9 @@ use serde_json::Value as JsonValue;
 
 mod lr2;
 mod lua;
+mod path_context;
+
+pub use path_context::SkinPathContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkinKind {
@@ -209,16 +212,31 @@ pub fn load_lua_skin_with_runtime_state_and_virtual_io_files(
     runtime_state: &LuaLoadRuntimeState,
     virtual_io_files: &BTreeMap<String, String>,
 ) -> Result<LoadedSkinDocument> {
-    let loaded = load_lua_skin_value_with_runtime_state_and_virtual_io_files(
-        path,
+    let path_context = SkinPathContext::for_entry(path)?;
+    load_lua_skin_with_path_context(&path_context, options, files, runtime_state, virtual_io_files)
+}
+
+/// Loads a Lua skin using explicit package library roots shared by every Lua VM
+/// and by the caller's subsequent asset resolution.
+pub fn load_lua_skin_with_path_context(
+    path_context: &SkinPathContext,
+    options: &BTreeMap<String, String>,
+    files: &BTreeMap<String, String>,
+    runtime_state: &LuaLoadRuntimeState,
+    virtual_io_files: &BTreeMap<String, String>,
+) -> Result<LoadedSkinDocument> {
+    let loaded = lua::load_lua_skin_value_with_path_context(
+        path_context,
         options,
         files,
         runtime_state,
         virtual_io_files,
     )?;
     let value = normalize_lua_skin_document(loaded.value);
-    let mut document: SkinDocument = serde_path_to_error::deserialize(value)
-        .with_context(|| format!("failed to parse lua skin as document: {}", path.display()))?;
+    let mut document: SkinDocument =
+        serde_path_to_error::deserialize(value).with_context(|| {
+            format!("failed to parse lua skin as document: {}", path_context.entry_file().display())
+        })?;
     document.internal_enabled_options = loaded.internal_enabled_options;
     Ok(LoadedSkinDocument {
         document,
@@ -292,6 +310,14 @@ pub fn load_lua_skin_value_with_runtime_state_and_virtual_io_files(
 
 pub fn load_lua_skin_header_value(path: &Path) -> Result<LoadedLuaSkinValue> {
     let mut loaded = lua::load_lua_skin_header_value(path)?;
+    loaded.value = normalize_lua_skin_document(loaded.value);
+    Ok(loaded)
+}
+
+pub fn load_lua_skin_header_value_with_path_context(
+    path_context: &SkinPathContext,
+) -> Result<LoadedLuaSkinValue> {
+    let mut loaded = lua::load_lua_skin_header_value_with_path_context(path_context)?;
     loaded.value = normalize_lua_skin_document(loaded.value);
     Ok(loaded)
 }
@@ -527,6 +553,17 @@ pub fn convert_lua_skin_to_json_file(
     files: &BTreeMap<String, String>,
 ) -> Result<Vec<SkinLoadWarning>> {
     let report = lua::convert_lua_skin_to_json(input, output, options, files)?;
+    Ok(report.warnings.into_iter().map(|message| SkinLoadWarning { message }).collect())
+}
+
+pub fn convert_lua_skin_to_json_file_with_path_context(
+    path_context: &SkinPathContext,
+    output: &Path,
+    options: &BTreeMap<String, String>,
+    files: &BTreeMap<String, String>,
+) -> Result<Vec<SkinLoadWarning>> {
+    let report =
+        lua::convert_lua_skin_to_json_with_path_context(path_context, output, options, files)?;
     Ok(report.warnings.into_iter().map(|message| SkinLoadWarning { message }).collect())
 }
 

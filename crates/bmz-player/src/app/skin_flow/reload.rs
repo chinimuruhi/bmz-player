@@ -205,6 +205,7 @@ impl WinitApp {
 
         let request =
             SkinDecodeRequest::new(generation, path, SkinKind::Play, options, files, runtime_state)
+                .with_library_roots(self.boot.app_paths.skin_library_roots())
                 .reuse_installed_fonts(&self.skin.skin_pipeline);
         spawn_skin_decode(&self.skin.skin_pipeline, request);
         self.skin.skin_pipeline.set_pending(SkinKind::Play, true);

@@ -21,7 +21,7 @@ use bmz_render::skin::{
 };
 use bmz_skin::{
     LuaLoadRuntimeState, LuaMainState, LuaSkinRuntime, SkinKind as DecodeSkinKind,
-    SkinLoadDependencies, SkinLoadedFileDependency,
+    SkinLoadDependencies, SkinLoadedFileDependency, SkinPathContext,
 };
 use rayon::prelude::*;
 
@@ -279,9 +279,10 @@ pub use cache::{
 };
 pub(crate) use decode::enabled_options_from_selections;
 pub use decode::{
-    apply_beatoraja_decide_json_skin, apply_beatoraja_json_skin, apply_beatoraja_result_json_skin,
-    apply_beatoraja_select_json_skin, apply_default_skin, apply_default_skin_from_paths,
-    apply_skin_from_config, decode_beatoraja_skin, decode_beatoraja_skin_with_options,
+    BeatorajaSkinDecodeRequest, apply_beatoraja_decide_json_skin, apply_beatoraja_json_skin,
+    apply_beatoraja_result_json_skin, apply_beatoraja_select_json_skin, apply_default_skin,
+    apply_default_skin_from_paths, apply_skin_from_config, decode_beatoraja_skin,
+    decode_beatoraja_skin_request, decode_beatoraja_skin_with_options,
     decode_beatoraja_skin_with_options_and_runtime_state,
     decode_beatoraja_skin_with_options_and_runtime_state_and_caches,
     decode_beatoraja_skin_with_options_and_runtime_state_and_source_cache, default_skin_root,

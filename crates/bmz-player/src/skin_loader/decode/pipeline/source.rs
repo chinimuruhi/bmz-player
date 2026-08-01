@@ -10,12 +10,13 @@ pub(super) fn decode_skin_sources(
     document: &SkinDocument,
     skin_root: &Path,
     resolved_files: &BTreeMap<String, String>,
+    path_context: Option<&SkinPathContext>,
     required_sources: &HashSet<String>,
     warn_missing_required: bool,
     source_cache: Option<&SharedSkinSourceAssetCache>,
     texture_cache: Option<&SharedSkinGpuTextureCache>,
 ) -> DecodedSources {
-    let tasks = collect_source_tasks(document, skin_root, resolved_files);
+    let tasks = collect_source_tasks(document, skin_root, resolved_files, path_context);
     let task_count = tasks.len();
     let started_at = Instant::now();
     let mut pairs: Vec<_> = tasks
@@ -39,6 +40,7 @@ fn collect_source_tasks(
     document: &SkinDocument,
     skin_root: &Path,
     resolved_files: &BTreeMap<String, String>,
+    path_context: Option<&SkinPathContext>,
 ) -> Vec<SourceDecodeTask> {
     document
         .source
@@ -53,8 +55,13 @@ fn collect_source_tasks(
                     asset,
                 });
             }
-            let path =
-                resolve_json_skin_source_path(skin_root, &source.path, document, resolved_files)?;
+            let path = resolve_json_skin_source_path_with_context(
+                skin_root,
+                path_context,
+                &source.path,
+                document,
+                resolved_files,
+            )?;
             let extension = path
                 .extension()
                 .and_then(|extension| extension.to_str())

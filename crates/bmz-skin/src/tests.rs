@@ -122,3 +122,5 @@ mod cases_04;
 mod cases_05;
 #[path = "tests/cases_06.rs"]
 mod cases_06;
+#[path = "tests/cases_07.rs"]
+mod cases_07;

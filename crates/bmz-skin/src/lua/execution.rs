@@ -8,18 +8,13 @@ pub(super) struct ExecutedLuaSkin {
 }
 
 pub(super) fn execute_lua_skin(
-    input: &Path,
+    path_context: &SkinPathContext,
     options: &BTreeMap<String, String>,
     files: &BTreeMap<String, String>,
     runtime_state: &LuaLoadRuntimeState,
     virtual_io_files: &BTreeMap<String, String>,
 ) -> Result<ExecutedLuaSkin> {
-    let input = canonicalize_skin_path(input)
-        .with_context(|| format!("failed to canonicalize input: {}", input.display()))?;
-    let parent =
-        input.parent().ok_or_else(|| anyhow!("input path has no parent: {}", input.display()))?;
-    let root = canonicalize_skin_path(parent)
-        .with_context(|| format!("failed to canonicalize skin root: {}", input.display()))?;
+    let input = path_context.entry_file().to_path_buf();
 
     let mut warnings = Vec::new();
     let mut table_budget = TableBudget::default();
@@ -34,7 +29,7 @@ pub(super) fn execute_lua_skin(
     // initialized, before deciding whether to return a header or a document.
     let header_probe = install_sandbox(
         &header_lua,
-        &root,
+        path_context,
         options,
         None,
         &BTreeMap::new(),
@@ -61,8 +56,8 @@ pub(super) fn execute_lua_skin(
         &mut table_budget,
     )?;
     let skin_options = skin_config_options_from_header(&header_json, options, &mut warnings);
-    let skin_files = skin_files_from_header(&root, &header_json, files);
-    let skin_named_files = skin_named_files_from_header(&root, &header_json, files);
+    let skin_files = skin_files_from_header(path_context, &header_json, files);
+    let skin_named_files = skin_named_files_from_header(path_context, &header_json, files);
     let skin_offsets = skin_config_offsets_from_header(&header_json, runtime_state);
     let mut resolved_runtime_state = runtime_state.clone();
     resolved_runtime_state.offset_id_values.clear();
@@ -95,7 +90,7 @@ pub(super) fn execute_lua_skin(
         let dependencies = Arc::new(Mutex::new(SkinLoadDependencies::default()));
         let main_state_probe = install_sandbox(
             &lua,
-            &root,
+            path_context,
             options,
             Some(active_skin_options),
             &skin_files,
@@ -158,7 +153,6 @@ pub(super) fn execute_lua_skin(
         dependencies.opaque = true;
     }
 
-    let skin_audio_root = root.clone();
     if let JsonValue::Object(ref mut root) = json {
         postprocess_lua_skin_json(root, &mut warnings);
 
@@ -242,7 +236,7 @@ pub(super) fn execute_lua_skin(
                 ),
             );
         }
-        normalize_lua_skin_audio_paths(&skin_audio_root, root, &mut warnings);
+        normalize_lua_skin_audio_paths(path_context, root, &mut warnings);
     }
 
     let unsupported_dynamic_timers = main_state_probe
@@ -278,7 +272,7 @@ pub(super) fn execute_lua_skin(
     } else {
         match build_lua_skin_runtime(LuaSkinRuntimeRequest {
             input: &input,
-            root: &root,
+            path_context,
             source: &source,
             options,
             skin_config_options: active_skin_options,
@@ -316,7 +310,7 @@ pub(super) fn execute_lua_skin(
 
 pub(super) struct LuaSkinRuntimeRequest<'a> {
     pub(super) input: &'a Path,
-    pub(super) root: &'a Path,
+    pub(super) path_context: &'a SkinPathContext,
     pub(super) source: &'a str,
     pub(super) options: &'a BTreeMap<String, String>,
     pub(super) skin_config_options: &'a BTreeMap<String, i64>,
@@ -331,7 +325,7 @@ pub(super) struct LuaSkinRuntimeRequest<'a> {
 pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Result<LuaSkinRuntime> {
     let LuaSkinRuntimeRequest {
         input,
-        root,
+        path_context,
         source,
         options,
         skin_config_options,
@@ -348,7 +342,7 @@ pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Resu
     // skin creates closures, but no draw callback is invoked here.
     install_sandbox(
         &lua,
-        root,
+        path_context,
         options,
         Some(skin_config_options),
         skin_files,

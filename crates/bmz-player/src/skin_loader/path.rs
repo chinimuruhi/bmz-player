@@ -20,6 +20,7 @@ pub(super) fn is_bitmap_font_path(path: &Path) -> bool {
     )
 }
 
+#[cfg(test)]
 pub(super) fn resolve_json_skin_source_path(
     skin_root: &Path,
     source_path: &str,
@@ -29,14 +30,38 @@ pub(super) fn resolve_json_skin_source_path(
     resolve_json_skin_asset_path(skin_root, source_path, document, files)
 }
 
+pub(super) fn resolve_json_skin_source_path_with_context(
+    skin_root: &Path,
+    path_context: Option<&SkinPathContext>,
+    source_path: &str,
+    document: &SkinDocument,
+    files: &BTreeMap<String, String>,
+) -> Option<PathBuf> {
+    resolve_json_skin_asset_path_with_context(skin_root, path_context, source_path, document, files)
+}
+
+#[cfg(test)]
 pub(super) fn resolve_json_skin_asset_path(
     skin_root: &Path,
     asset_path: &str,
     document: &SkinDocument,
     files: &BTreeMap<String, String>,
 ) -> Option<PathBuf> {
+    resolve_json_skin_asset_path_with_context(skin_root, None, asset_path, document, files)
+}
+
+pub(super) fn resolve_json_skin_asset_path_with_context(
+    skin_root: &Path,
+    path_context: Option<&SkinPathContext>,
+    asset_path: &str,
+    document: &SkinDocument,
+    files: &BTreeMap<String, String>,
+) -> Option<PathBuf> {
     let normalized = asset_path.replace('\\', "/");
     if !normalized.contains('*') {
+        if let Some(path_context) = path_context {
+            return path_context.resolve_file(&normalized).ok();
+        }
         return Some(resolve_case_insensitive_path(&skin_root.join(normalized)));
     }
 
@@ -48,14 +73,18 @@ pub(super) fn resolve_json_skin_asset_path(
     if let Some(filepath) = filepath
         && files.get(&filepath.name).is_some_and(|selected| selected == RANDOM_FILE_SELECTION)
     {
-        return resolve_wildcard_path(skin_root, &normalized, None);
+        return resolve_wildcard_path_with_context(skin_root, path_context, &normalized, None);
     }
 
     // 1. パスが filepath 定義と完全一致するときは、選択ファイルをそのまま使う。
     if let Some(filepath) = filepath
         && let Some(selected) = files.get(&filepath.name).filter(|selected| !selected.is_empty())
-        && let Some(path) =
-            resolve_selected_skin_file_for_pattern(skin_root, &filepath.path, selected)
+        && let Some(path) = resolve_selected_skin_file_for_pattern_with_context(
+            skin_root,
+            path_context,
+            &filepath.path,
+            selected,
+        )
     {
         return Some(path);
     }
@@ -65,7 +94,11 @@ pub(super) fn resolve_json_skin_asset_path(
     //    (例: 定義 `custom/laser/*` で選択 `custom/laser/veryshort` のとき、
     //         ソース `custom/laser/*/main.png` を `custom/laser/veryshort/main.png` へ)。
     if let Some(substituted) = substitute_filepath_choice(&normalized, &document.filepath, files) {
-        let candidate = resolve_case_insensitive_path(&skin_root.join(&substituted));
+        let candidate = if let Some(path_context) = path_context {
+            path_context.resolve_file(&substituted).ok()?
+        } else {
+            resolve_case_insensitive_path(&skin_root.join(&substituted))
+        };
         if candidate.is_file() {
             return Some(candidate);
         }
@@ -76,7 +109,7 @@ pub(super) fn resolve_json_skin_asset_path(
     let preferred = filepath.and_then(|filepath| {
         (!filepath.def.is_empty() && filepath.def != "Random").then_some(filepath.def.as_str())
     });
-    resolve_wildcard_path(skin_root, &normalized, preferred)
+    resolve_wildcard_path_with_context(skin_root, path_context, &normalized, preferred)
 }
 
 /// filepath 定義のワイルドカードと一致するユーザ選択値を `asset_path` の
@@ -135,11 +168,17 @@ pub(super) fn resolve_selected_skin_file(skin_root: &Path, selected: &str) -> Op
     candidate.is_file().then_some(candidate)
 }
 
-pub(super) fn resolve_selected_skin_file_for_pattern(
+pub(super) fn resolve_selected_skin_file_for_pattern_with_context(
     skin_root: &Path,
+    path_context: Option<&SkinPathContext>,
     pattern: &str,
     selected: &str,
 ) -> Option<PathBuf> {
+    if let Some(path_context) = path_context {
+        return path_context
+            .resolve_selected_for_pattern(pattern, selected)
+            .filter(|path| path.is_file());
+    }
     if let Some(path) = resolve_selected_skin_file(skin_root, selected) {
         return Some(path);
     }
@@ -151,11 +190,37 @@ pub(super) fn resolve_selected_skin_file_for_pattern(
     resolve_selected_skin_file(skin_root, &format!("{directory}{}", selected.replace('\\', "/")))
 }
 
-pub(super) fn resolve_wildcard_path(
+pub(super) fn resolve_wildcard_path_with_context(
     skin_root: &Path,
+    path_context: Option<&SkinPathContext>,
     pattern: &str,
     preferred: Option<&str>,
 ) -> Option<PathBuf> {
+    if let Some(path_context) = path_context {
+        let candidates = path_context
+            .wildcard_candidates(pattern)
+            .ok()?
+            .into_iter()
+            .filter(|path| path.is_file())
+            .collect::<Vec<_>>();
+        if let Some(preferred) = preferred
+            && let Some(candidate) = candidates.iter().find(|path| {
+                let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+                let stem = path.file_stem().and_then(|name| name.to_str()).unwrap_or_default();
+                let parent_name = path
+                    .parent()
+                    .and_then(|parent| parent.file_name())
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default();
+                file_name.eq_ignore_ascii_case(preferred)
+                    || stem.eq_ignore_ascii_case(preferred)
+                    || parent_name.eq_ignore_ascii_case(preferred)
+            })
+        {
+            return Some(candidate.clone());
+        }
+        return choose_wildcard_candidate(candidates);
+    }
     let pattern = strip_beatoraja_asset_filter(pattern);
     let star = pattern.find('*')?;
     let (prefix, suffix_with_star) = pattern.split_at(star);

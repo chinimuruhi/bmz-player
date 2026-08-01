@@ -7,6 +7,7 @@ pub(super) struct SkinDecodeRequest {
     options: BTreeMap<String, String>,
     files: BTreeMap<String, String>,
     runtime_state: bmz_skin::LuaLoadRuntimeState,
+    library_roots: Vec<PathBuf>,
     installed_font_cache: HashMap<String, SkinFontCacheKey>,
 }
 
@@ -26,8 +27,14 @@ impl SkinDecodeRequest {
             options,
             files,
             runtime_state,
+            library_roots: Vec::new(),
             installed_font_cache: HashMap::new(),
         }
+    }
+
+    pub(super) fn with_library_roots(mut self, library_roots: Vec<PathBuf>) -> Self {
+        self.library_roots = library_roots;
+        self
     }
 
     pub(super) fn reuse_installed_fonts(mut self, pipeline: &SkinPipelineRuntime) -> Self {
@@ -44,6 +51,7 @@ pub(super) fn spawn_skin_decode(pipeline: &SkinPipelineRuntime, request: SkinDec
         options,
         files,
         runtime_state,
+        library_roots,
         installed_font_cache,
     } = request;
     let tx = pipeline.decode_tx.clone();
@@ -57,18 +65,19 @@ pub(super) fn spawn_skin_decode(pipeline: &SkinPipelineRuntime, request: SkinDec
         .name(format!("skin-decode-{:?}", kind))
         .spawn(move || {
             let decode_started_at = Instant::now();
-            let result = decode_beatoraja_skin_with_options_and_runtime_state_and_caches(
-                &path,
+            let result = decode_beatoraja_skin_request(BeatorajaSkinDecodeRequest {
+                skin_path: &path,
                 kind,
-                &options,
-                &files,
-                &runtime_state,
-                Some(document_cache),
-                Some(source_cache),
-                Some(texture_cache),
-                Some(font_cache),
-                Some(installed_font_cache),
-            );
+                options: &options,
+                files: &files,
+                runtime_state: &runtime_state,
+                library_roots: &library_roots,
+                document_cache: Some(document_cache),
+                source_cache: Some(source_cache),
+                texture_cache: Some(texture_cache),
+                font_cache: Some(font_cache),
+                installed_fonts: Some(installed_font_cache),
+            });
             let decode_finished_at = Instant::now();
             let _ = tx.send(PendingSkinResult {
                 generation,

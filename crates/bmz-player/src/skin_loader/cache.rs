@@ -13,6 +13,7 @@ pub struct SkinDocumentCache {
 pub(super) struct SkinDocumentCacheKey {
     pub(super) path: PathBuf,
     pub(super) kind: SkinKind,
+    pub(super) library_roots: Vec<PathBuf>,
     pub(super) modified: Option<SystemTime>,
     pub(super) len: u64,
 }

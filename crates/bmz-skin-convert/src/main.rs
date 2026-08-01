@@ -17,9 +17,14 @@ fn main() -> ExitCode {
 fn run() -> Result<()> {
     let args = CliArgs::parse(std::env::args().skip(1))?;
     match args.command {
-        Command::LuaToJson { input, output, options, files } => {
-            let warnings =
-                bmz_skin::convert_lua_skin_to_json_file(&input, &output, &options, &files)?;
+        Command::LuaToJson { input, output, options, files, skin_library_roots } => {
+            let path_context = bmz_skin::SkinPathContext::new(&input, skin_library_roots)?;
+            let warnings = bmz_skin::convert_lua_skin_to_json_file_with_path_context(
+                &path_context,
+                &output,
+                &options,
+                &files,
+            )?;
             for warning in warnings {
                 eprintln!("warning: {}", warning.message);
             }
@@ -41,6 +46,7 @@ enum Command {
         output: PathBuf,
         options: BTreeMap<String, String>,
         files: BTreeMap<String, String>,
+        skin_library_roots: Vec<PathBuf>,
     },
 }
 
@@ -63,6 +69,7 @@ impl CliArgs {
         let mut output = None;
         let mut options = BTreeMap::new();
         let mut files = BTreeMap::new();
+        let mut skin_library_roots = Vec::new();
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--out" => {
@@ -85,6 +92,12 @@ impl CliArgs {
                     let (key, value) = parse_option_pair(&file)?;
                     files.insert(key, value);
                 }
+                "--skin-library-root" => {
+                    let Some(path) = args.next() else {
+                        bail!("--skin-library-root requires a path");
+                    };
+                    skin_library_roots.push(PathBuf::from(path));
+                }
                 _ if arg.starts_with("--out=") => {
                     output = Some(PathBuf::from(arg.trim_start_matches("--out=")));
                 }
@@ -96,6 +109,10 @@ impl CliArgs {
                     let (key, value) = parse_option_pair(arg.trim_start_matches("--file="))?;
                     files.insert(key, value);
                 }
+                _ if arg.starts_with("--skin-library-root=") => {
+                    skin_library_roots
+                        .push(PathBuf::from(arg.trim_start_matches("--skin-library-root=")));
+                }
                 _ => bail!("unknown argument `{arg}`"),
             }
         }
@@ -105,13 +122,19 @@ impl CliArgs {
         };
 
         Ok(Self {
-            command: Command::LuaToJson { input: PathBuf::from(input), output, options, files },
+            command: Command::LuaToJson {
+                input: PathBuf::from(input),
+                output,
+                options,
+                files,
+                skin_library_roots,
+            },
         })
     }
 }
 
 fn help_text() -> &'static str {
-    "usage: bmz-skin-convert lua-to-json <input.luaskin> --out <output.json> [--option key=value] [--file name=relative/path]"
+    "usage: bmz-skin-convert lua-to-json <input.luaskin> --out <output.json> [--skin-library-root path] [--option key=value] [--file name=relative/path]"
 }
 
 fn parse_option_pair(input: &str) -> Result<(String, String)> {
@@ -149,6 +172,7 @@ mod tests {
                     output: PathBuf::from("skin.json"),
                     options: BTreeMap::from([("Play Side".to_string(), "1P".to_string())]),
                     files: BTreeMap::new(),
+                    skin_library_roots: Vec::new(),
                 }
             }
         );
@@ -162,6 +186,9 @@ mod tests {
             "--out=skin.json".to_string(),
             "--file".to_string(),
             "Cover=parts/blue.png".to_string(),
+            "--skin-library-root".to_string(),
+            "data/skins".to_string(),
+            "--skin-library-root=/opt/bmz/skins".to_string(),
         ])
         .unwrap();
 
@@ -173,6 +200,10 @@ mod tests {
                     output: PathBuf::from("skin.json"),
                     options: BTreeMap::new(),
                     files: BTreeMap::from([("Cover".to_string(), "parts/blue.png".to_string())]),
+                    skin_library_roots: vec![
+                        PathBuf::from("data/skins"),
+                        PathBuf::from("/opt/bmz/skins"),
+                    ],
                 }
             }
         );

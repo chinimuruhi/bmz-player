@@ -19,8 +19,8 @@ pub use entry::{
 pub(in crate::skin_loader) use font::*;
 pub(in crate::skin_loader) use lr2_assets::*;
 pub use pipeline::{
-    decode_beatoraja_skin, decode_beatoraja_skin_with_options,
-    decode_beatoraja_skin_with_options_and_runtime_state,
+    BeatorajaSkinDecodeRequest, decode_beatoraja_skin, decode_beatoraja_skin_request,
+    decode_beatoraja_skin_with_options, decode_beatoraja_skin_with_options_and_runtime_state,
     decode_beatoraja_skin_with_options_and_runtime_state_and_caches,
     decode_beatoraja_skin_with_options_and_runtime_state_and_source_cache,
 };

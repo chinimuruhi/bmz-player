@@ -7,7 +7,7 @@ pub(in crate::ui) fn build_scene_skin_defs(
     ui: &mut egui::Ui,
     slot: SkinSlot,
     defs: &SceneSkinDefs,
-    skin_root: Option<&Path>,
+    path_context: Option<&SkinUiPathContext>,
     options: &mut BTreeMap<String, String>,
     files: &mut BTreeMap<String, String>,
     offsets: &mut Vec<SkinOffsetConfig>,
@@ -21,7 +21,7 @@ pub(in crate::ui) fn build_scene_skin_defs(
                 ui.label(tr!(text, "skin-no-settings"));
                 return;
             }
-            let _ = fill_missing_skin_defaults(defs, skin_root, options, files);
+            let _ = fill_missing_skin_defaults_with_context(defs, path_context, options, files);
             if !defs.property.is_empty() {
                 ui.strong(tr!(text, "skin-options"));
                 // property / filepath は同名 (例: "シャッター") を持ちうるので、egui の
@@ -76,8 +76,10 @@ pub(in crate::ui) fn build_scene_skin_defs(
                                     tr!(text, "skin-file-random"),
                                 );
                                 // 候補列挙は ComboBox を開いたときだけ行う (毎フレームの fs 走査を回避)。
-                                let candidates = match skin_root {
-                                    Some(root) => glob_candidates(root, &filepath.path),
+                                let candidates = match path_context {
+                                    Some(context) => {
+                                        glob_candidates_for_skin(context, &filepath.path)
+                                    }
                                     None => Vec::new(),
                                 };
                                 if let Some(normalized) =
@@ -144,7 +146,13 @@ pub(in crate::ui) fn build_scene_skin_defs(
                 }
             }
             if !defs.is_empty() && ui.button(tr!(text, "skin-reset-defaults")).clicked() {
-                changed |= reset_scene_skin_to_defaults(defs, skin_root, options, files, offsets);
+                changed |= reset_scene_skin_to_defaults_with_context(
+                    defs,
+                    path_context,
+                    options,
+                    files,
+                    offsets,
+                );
             }
         });
     changed
@@ -235,9 +243,21 @@ pub(in crate::ui) fn update_skin_offset_value(
 }
 
 /// 1 シーン分の options / files / 当該 offset 名をスキン定義の factory default へ戻す。
+#[cfg(test)]
 pub(in crate::ui) fn reset_scene_skin_to_defaults(
     defs: &SceneSkinDefs,
     skin_root: Option<&Path>,
+    options: &mut BTreeMap<String, String>,
+    files: &mut BTreeMap<String, String>,
+    offsets: &mut Vec<SkinOffsetConfig>,
+) -> bool {
+    let path_context = skin_root.map(SkinUiPathContext::legacy);
+    reset_scene_skin_to_defaults_with_context(defs, path_context.as_ref(), options, files, offsets)
+}
+
+pub(in crate::ui) fn reset_scene_skin_to_defaults_with_context(
+    defs: &SceneSkinDefs,
+    path_context: Option<&SkinUiPathContext>,
     options: &mut BTreeMap<String, String>,
     files: &mut BTreeMap<String, String>,
     offsets: &mut Vec<SkinOffsetConfig>,
@@ -258,13 +278,24 @@ pub(in crate::ui) fn reset_scene_skin_to_defaults(
         Some(name) => !scene_offset_names.contains(name),
         None => !scene_offset_ids.contains(&offset.id),
     });
-    let _ = fill_missing_skin_defaults(defs, skin_root, options, files);
+    let _ = fill_missing_skin_defaults_with_context(defs, path_context, options, files);
     *options != previous_options || *files != previous_files || *offsets != previous_offsets
 }
 
+#[cfg(test)]
 pub(in crate::ui) fn fill_missing_skin_defaults(
     defs: &SceneSkinDefs,
     skin_root: Option<&Path>,
+    options: &mut BTreeMap<String, String>,
+    files: &mut BTreeMap<String, String>,
+) -> bool {
+    let path_context = skin_root.map(SkinUiPathContext::legacy);
+    fill_missing_skin_defaults_with_context(defs, path_context.as_ref(), options, files)
+}
+
+pub(in crate::ui) fn fill_missing_skin_defaults_with_context(
+    defs: &SceneSkinDefs,
+    path_context: Option<&SkinUiPathContext>,
     options: &mut BTreeMap<String, String>,
     files: &mut BTreeMap<String, String>,
 ) -> bool {
@@ -279,11 +310,11 @@ pub(in crate::ui) fn fill_missing_skin_defaults(
             }
         }
     }
-    let Some(skin_root) = skin_root else {
+    let Some(path_context) = path_context else {
         return changed;
     };
     for filepath in &defs.filepath {
-        let candidates = glob_candidates(skin_root, &filepath.path);
+        let candidates = glob_candidates_for_skin(path_context, &filepath.path);
         let current = files.get(&filepath.name).map(|value| value.replace('\\', "/"));
         // beatoraja は保存済み filepath を候補内に存在するか検証せず尊重する。
         // BMZ 旧版の相対パス保存も含め、空でなければここでは置き換えない。

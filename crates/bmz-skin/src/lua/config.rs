@@ -172,7 +172,7 @@ pub(super) fn lua_skin_offset_value(
 /// 集める。キーは `path` グロブ (区切りを `/` に正規化)、値は選択ファイルの
 /// スキンルート相対パス。選択が無い / 空の定義は含めない。
 pub(super) fn skin_files_from_header(
-    root: &Path,
+    path_context: &SkinPathContext,
     header: &JsonValue,
     selected: &BTreeMap<String, String>,
 ) -> BTreeMap<String, String> {
@@ -188,11 +188,10 @@ pub(super) fn skin_files_from_header(
             continue;
         };
         let normalized_path = path.replace('\\', "/");
-        let choice = selected
-            .get(name)
-            .filter(|choice| !choice.is_empty())
-            .cloned()
-            .or_else(|| default_skin_file_from_filepath(root, &normalized_path, filepath));
+        let choice =
+            selected.get(name).filter(|choice| !choice.is_empty()).cloned().or_else(|| {
+                default_skin_file_from_filepath(path_context, &normalized_path, filepath)
+            });
         if let Some(choice) = choice {
             result.insert(normalized_path, choice);
         }
@@ -201,7 +200,7 @@ pub(super) fn skin_files_from_header(
 }
 
 pub(super) fn skin_named_files_from_header(
-    root: &Path,
+    path_context: &SkinPathContext,
     header: &JsonValue,
     selected: &BTreeMap<String, String>,
 ) -> BTreeMap<String, String> {
@@ -217,11 +216,10 @@ pub(super) fn skin_named_files_from_header(
             continue;
         };
         let normalized_path = path.replace('\\', "/");
-        let choice = selected
-            .get(name)
-            .filter(|choice| !choice.is_empty())
-            .cloned()
-            .or_else(|| default_skin_file_from_filepath(root, &normalized_path, filepath));
+        let choice =
+            selected.get(name).filter(|choice| !choice.is_empty()).cloned().or_else(|| {
+                default_skin_file_from_filepath(path_context, &normalized_path, filepath)
+            });
         if let Some(choice) = choice {
             result.insert(name.to_string(), choice);
         }
@@ -265,11 +263,11 @@ pub(super) fn random_skin_file_index(len: usize) -> usize {
 }
 
 pub(super) fn default_skin_file_from_filepath(
-    root: &Path,
+    path_context: &SkinPathContext,
     normalized_path: &str,
     filepath: &JsonValue,
 ) -> Option<String> {
-    let candidates = skin_file_candidates(root, normalized_path);
+    let candidates = skin_file_candidates(path_context, normalized_path);
     if candidates.is_empty() {
         return None;
     }
@@ -279,16 +277,20 @@ pub(super) fn default_skin_file_from_filepath(
         if default_name.eq_ignore_ascii_case(RANDOM_FILE_SELECTION) {
             return Some(RANDOM_FILE_SELECTION.to_string());
         }
-        if let Some(candidate) =
-            candidates.iter().find(|candidate| filename_matches_def(candidate, default_name))
-        {
-            return Some(candidate_file_name(candidate));
+        if let Some(candidate) = candidates.iter().find(|candidate| {
+            filename_matches_def(candidate.to_string_lossy().as_ref(), default_name)
+        }) {
+            return Some(candidate_file_name(candidate.to_string_lossy().as_ref()));
         }
-    } else if let Some(candidate) =
-        candidates.iter().find(|candidate| filename_matches_def(candidate, "default"))
+    } else if let Some(candidate) = candidates
+        .iter()
+        .find(|candidate| filename_matches_def(candidate.to_string_lossy().as_ref(), "default"))
     {
-        return Some(candidate_file_name(candidate));
+        return Some(candidate_file_name(candidate.to_string_lossy().as_ref()));
     }
-    candidates.into_iter().next().map(|candidate| candidate_file_name(&candidate))
+    candidates
+        .into_iter()
+        .next()
+        .map(|candidate| candidate_file_name(candidate.to_string_lossy().as_ref()))
 }
 use super::*;

@@ -1,6 +1,68 @@
 use super::*;
 
 #[test]
+fn lua_document_cache_key_includes_explicit_library_roots() {
+    let base = unique_test_dir("bmz-lua-document-cache-library-roots");
+    let library_root = base.join("skins");
+    let entry_dir = library_root.join("GenericTheme/play");
+    std::fs::create_dir_all(&entry_dir).unwrap();
+    let skin_path = entry_dir.join("play.luaskin");
+    std::fs::write(&skin_path, "return { type = 0 }").unwrap();
+    let narrow = SkinPathContext::new(&skin_path, [library_root]).unwrap();
+    let broad = SkinPathContext::new(&skin_path, [base]).unwrap();
+
+    assert_ne!(
+        skin_document_cache_key(&skin_path, SkinKind::Play, Some(&narrow)),
+        skin_document_cache_key(&skin_path, SkinKind::Play, Some(&broad))
+    );
+}
+
+#[test]
+fn lua_document_cache_invalidates_cross_package_module_changes() {
+    let library_root = unique_test_dir("bmz-lua-document-cache-cross-package").join("skins");
+    let entry_dir = library_root.join("GenericTheme-master/play");
+    let hub_dir = library_root.join("Hub");
+    std::fs::create_dir_all(&entry_dir).unwrap();
+    std::fs::create_dir_all(&hub_dir).unwrap();
+    let skin_path = entry_dir.join("Hub_play7.luaskin");
+    let module_path = hub_dir.join("label.lua");
+    std::fs::write(
+        &skin_path,
+        r#"
+            package.path = "skin/Hub/?.lua"
+            return { type = 0, name = require("label") }
+        "#,
+    )
+    .unwrap();
+    std::fs::write(&module_path, "return 'first'").unwrap();
+    let path_context = SkinPathContext::new(&skin_path, [library_root]).unwrap();
+    let cache = Arc::new(Mutex::new(SkinDocumentCache::default()));
+
+    let load = || {
+        load_skin_document_with_path_context(
+            &skin_path,
+            SkinKind::Play,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &LuaLoadRuntimeState::default(),
+            Some(cache.clone()),
+            Some(&path_context),
+        )
+        .unwrap()
+    };
+    let first = load();
+    assert_eq!(first.cache_status, DocumentCacheStatus::Miss);
+    assert_eq!(first.document.name, "first");
+    let unchanged = load();
+    assert_eq!(unchanged.cache_status, DocumentCacheStatus::Hit);
+
+    std::fs::write(&module_path, "return 'second-value'").unwrap();
+    let changed = load();
+    assert_eq!(changed.cache_status, DocumentCacheStatus::Miss);
+    assert_eq!(changed.document.name, "second-value");
+}
+
+#[test]
 fn lua_document_cache_reuses_when_unused_option_changes() {
     let root = unique_test_dir("bmz-lua-document-cache-option");
     std::fs::create_dir_all(&root).unwrap();

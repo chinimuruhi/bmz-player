@@ -5,8 +5,25 @@ pub fn load_lua_skin_value(
     runtime_state: &LuaLoadRuntimeState,
     virtual_io_files: &BTreeMap<String, String>,
 ) -> Result<LoadedLuaSkinValue> {
+    let path_context = SkinPathContext::for_entry(input)?;
+    load_lua_skin_value_with_path_context(
+        &path_context,
+        options,
+        files,
+        runtime_state,
+        virtual_io_files,
+    )
+}
+
+pub fn load_lua_skin_value_with_path_context(
+    path_context: &SkinPathContext,
+    options: &BTreeMap<String, String>,
+    files: &BTreeMap<String, String>,
+    runtime_state: &LuaLoadRuntimeState,
+    virtual_io_files: &BTreeMap<String, String>,
+) -> Result<LoadedLuaSkinValue> {
     let ExecutedLuaSkin { value, warnings, files, dependencies, lua_runtime, runtime_draw_paths } =
-        execute_lua_skin(input, options, files, runtime_state, virtual_io_files)?;
+        execute_lua_skin(path_context, options, files, runtime_state, virtual_io_files)?;
     Ok(LoadedLuaSkinValue {
         value,
         lua_runtime,
@@ -19,7 +36,14 @@ pub fn load_lua_skin_value(
 }
 
 pub fn load_lua_skin_header_value(input: &Path) -> Result<LoadedLuaSkinValue> {
-    let (value, warnings) = execute_lua_skin_header(input)?;
+    let path_context = SkinPathContext::for_entry(input)?;
+    load_lua_skin_header_value_with_path_context(&path_context)
+}
+
+pub fn load_lua_skin_header_value_with_path_context(
+    path_context: &SkinPathContext,
+) -> Result<LoadedLuaSkinValue> {
+    let (value, warnings) = execute_lua_skin_header(path_context)?;
     Ok(LoadedLuaSkinValue {
         value,
         lua_runtime: None,
@@ -37,8 +61,23 @@ pub fn convert_lua_skin_to_json(
     options: &BTreeMap<String, String>,
     files: &BTreeMap<String, String>,
 ) -> Result<ConvertReport> {
-    let ExecutedLuaSkin { value: json, warnings, runtime_draw_paths, .. } =
-        execute_lua_skin(input, options, files, &LuaLoadRuntimeState::default(), &BTreeMap::new())?;
+    let path_context = SkinPathContext::for_entry(input)?;
+    convert_lua_skin_to_json_with_path_context(&path_context, output, options, files)
+}
+
+pub fn convert_lua_skin_to_json_with_path_context(
+    path_context: &SkinPathContext,
+    output: &Path,
+    options: &BTreeMap<String, String>,
+    files: &BTreeMap<String, String>,
+) -> Result<ConvertReport> {
+    let ExecutedLuaSkin { value: json, warnings, runtime_draw_paths, .. } = execute_lua_skin(
+        path_context,
+        options,
+        files,
+        &LuaLoadRuntimeState::default(),
+        &BTreeMap::new(),
+    )?;
     if !runtime_draw_paths.is_empty() {
         bail!(
             "lua-to-json cannot serialize runtime draw callbacks: {}",
@@ -55,24 +94,21 @@ pub fn convert_lua_skin_to_json(
     Ok(ConvertReport { warnings })
 }
 
-pub(super) fn execute_lua_skin_header(input: &Path) -> Result<(JsonValue, Vec<String>)> {
-    let input = canonicalize_skin_path(input)
-        .with_context(|| format!("failed to canonicalize input: {}", input.display()))?;
-    let parent =
-        input.parent().ok_or_else(|| anyhow!("input path has no parent: {}", input.display()))?;
-    let root = canonicalize_skin_path(parent)
-        .with_context(|| format!("failed to canonicalize skin root: {}", input.display()))?;
+pub(super) fn execute_lua_skin_header(
+    path_context: &SkinPathContext,
+) -> Result<(JsonValue, Vec<String>)> {
+    let input = path_context.entry_file();
 
     let mut warnings = Vec::new();
     let mut table_budget = TableBudget::default();
-    let source = fs::read_to_string(&input)
+    let source = fs::read_to_string(input)
         .with_context(|| format!("failed to read lua skin: {}", input.display()))?;
 
     let lua = Lua::new();
     let instruction_budget = install_instruction_limit(&lua);
     let probe = install_sandbox(
         &lua,
-        &root,
+        path_context,
         &BTreeMap::new(),
         None,
         &BTreeMap::new(),

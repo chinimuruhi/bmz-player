@@ -3,12 +3,15 @@ use crate::skin_loader::*;
 pub(in crate::skin_loader) fn skin_document_cache_key(
     path: &Path,
     kind: SkinKind,
+    path_context: Option<&SkinPathContext>,
 ) -> Option<SkinDocumentCacheKey> {
     let metadata = fs::metadata(path).ok()?;
     let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     Some(SkinDocumentCacheKey {
         path,
         kind,
+        library_roots: path_context
+            .map_or_else(Vec::new, |context| context.library_roots().to_vec()),
         modified: metadata.modified().ok(),
         len: metadata.len(),
     })
@@ -188,6 +191,7 @@ pub(in crate::skin_loader) enum DocumentCacheStatus {
     Disabled,
 }
 
+#[cfg(test)]
 pub(in crate::skin_loader) fn load_skin_document(
     skin_path: &Path,
     kind: SkinKind,
@@ -196,9 +200,29 @@ pub(in crate::skin_loader) fn load_skin_document(
     runtime_state: &LuaLoadRuntimeState,
     document_cache: Option<SharedSkinDocumentCache>,
 ) -> Result<LoadedSkinDocumentForDecode> {
+    load_skin_document_with_path_context(
+        skin_path,
+        kind,
+        options,
+        files,
+        runtime_state,
+        document_cache,
+        None,
+    )
+}
+
+pub(in crate::skin_loader) fn load_skin_document_with_path_context(
+    skin_path: &Path,
+    kind: SkinKind,
+    options: &BTreeMap<String, String>,
+    files: &BTreeMap<String, String>,
+    runtime_state: &LuaLoadRuntimeState,
+    document_cache: Option<SharedSkinDocumentCache>,
+    path_context: Option<&SkinPathContext>,
+) -> Result<LoadedSkinDocumentForDecode> {
     if is_lr2_skin_path(skin_path)
         && let Some(document_cache) = document_cache.as_ref()
-        && let Some(key) = skin_document_cache_key(skin_path, kind)
+        && let Some(key) = skin_document_cache_key(skin_path, kind, None)
     {
         if let Ok(mut cache) = document_cache.lock()
             && let Some((mut document, mut resolved_files)) =
@@ -216,8 +240,14 @@ pub(in crate::skin_loader) fn load_skin_document(
                 cache_status: DocumentCacheStatus::Hit,
             });
         }
-        let mut loaded =
-            load_skin_document_uncached(skin_path, kind, options, files, runtime_state)?;
+        let mut loaded = load_skin_document_uncached_with_path_context(
+            skin_path,
+            kind,
+            options,
+            files,
+            runtime_state,
+            path_context,
+        )?;
         loaded.cache_status = DocumentCacheStatus::Miss;
         if let Ok(mut cache) = document_cache.lock()
             && let Ok(fingerprint) =
@@ -240,7 +270,7 @@ pub(in crate::skin_loader) fn load_skin_document(
     }
     if is_lua_skin_path(skin_path)
         && let Some(document_cache) = document_cache.as_ref()
-        && let Some(key) = skin_document_cache_key(skin_path, kind)
+        && let Some(key) = skin_document_cache_key(skin_path, kind, path_context)
     {
         if let Ok(mut cache) = document_cache.lock()
             && let Some((mut document, mut resolved_files)) =
@@ -258,8 +288,14 @@ pub(in crate::skin_loader) fn load_skin_document(
                 cache_status: DocumentCacheStatus::Hit,
             });
         }
-        let mut loaded =
-            load_skin_document_uncached(skin_path, kind, options, files, runtime_state)?;
+        let mut loaded = load_skin_document_uncached_with_path_context(
+            skin_path,
+            kind,
+            options,
+            files,
+            runtime_state,
+            path_context,
+        )?;
         loaded.cache_status = DocumentCacheStatus::Miss;
         if let Ok(mut cache) = document_cache.lock()
             && let Some(fingerprint) = document_dependency_fingerprint(
@@ -291,7 +327,14 @@ pub(in crate::skin_loader) fn load_skin_document(
     } else {
         DocumentCacheStatus::Disabled
     };
-    let mut loaded = load_skin_document_uncached(skin_path, kind, options, files, runtime_state)?;
+    let mut loaded = load_skin_document_uncached_with_path_context(
+        skin_path,
+        kind,
+        options,
+        files,
+        runtime_state,
+        path_context,
+    )?;
     loaded.cache_status = cache_status;
     Ok(LoadedSkinDocumentForDecode {
         document: loaded.document,
@@ -309,6 +352,7 @@ pub(in crate::skin_loader) struct LoadedSkinDocumentWithDependencies {
     pub(in crate::skin_loader) cache_status: DocumentCacheStatus,
 }
 
+#[cfg(test)]
 pub(in crate::skin_loader) fn load_skin_document_uncached(
     skin_path: &Path,
     kind: SkinKind,
@@ -316,13 +360,39 @@ pub(in crate::skin_loader) fn load_skin_document_uncached(
     files: &BTreeMap<String, String>,
     runtime_state: &LuaLoadRuntimeState,
 ) -> Result<LoadedSkinDocumentWithDependencies> {
+    load_skin_document_uncached_with_path_context(
+        skin_path,
+        kind,
+        options,
+        files,
+        runtime_state,
+        None,
+    )
+}
+
+pub(in crate::skin_loader) fn load_skin_document_uncached_with_path_context(
+    skin_path: &Path,
+    kind: SkinKind,
+    options: &BTreeMap<String, String>,
+    files: &BTreeMap<String, String>,
+    runtime_state: &LuaLoadRuntimeState,
+    path_context: Option<&SkinPathContext>,
+) -> Result<LoadedSkinDocumentWithDependencies> {
     let (mut document, lua_runtime, mut resolved_files, dependencies) =
         if is_lua_skin_path(skin_path) {
             // Lua スキンはオプション選択 (名前 -> 選択肢名) とファイル選択
             // (filepath 定義名 -> 相対パス) をそのまま渡す。
             let virtual_io_files = lua_virtual_io_files(runtime_state);
-            let loaded = bmz_skin::load_lua_skin_with_runtime_state_and_virtual_io_files(
-                skin_path,
+            let fallback_context;
+            let path_context = match path_context {
+                Some(path_context) => path_context,
+                None => {
+                    fallback_context = SkinPathContext::for_entry(skin_path)?;
+                    &fallback_context
+                }
+            };
+            let loaded = bmz_skin::load_lua_skin_with_path_context(
+                path_context,
                 options,
                 files,
                 runtime_state,

@@ -88,12 +88,13 @@ pub fn decode_beatoraja_skin_with_options_and_runtime_state_and_caches(
     font_cache: Option<SharedSkinFontCache>,
     installed_fonts: Option<HashMap<String, SkinFontCacheKey>>,
 ) -> Result<DecodedSkin> {
-    decode_beatoraja_skin_request(SkinDecodeRequest {
+    decode_beatoraja_skin_request(BeatorajaSkinDecodeRequest {
         skin_path,
         kind,
         options,
         files,
         runtime_state,
+        library_roots: &[],
         document_cache,
         source_cache,
         texture_cache,
@@ -106,23 +107,24 @@ pub fn decode_beatoraja_skin_with_options_and_runtime_state_and_caches(
 ///
 /// 公開互換APIは従来の引数列を維持し、内部ではこの型を介してcacheや
 /// runtime stateの追加・変更を局所化する。
-pub(in crate::skin_loader) struct SkinDecodeRequest<'a> {
-    pub(in crate::skin_loader) skin_path: &'a Path,
-    pub(in crate::skin_loader) kind: SkinKind,
-    pub(in crate::skin_loader) options: &'a BTreeMap<String, String>,
-    pub(in crate::skin_loader) files: &'a BTreeMap<String, String>,
-    pub(in crate::skin_loader) runtime_state: &'a LuaLoadRuntimeState,
-    pub(in crate::skin_loader) document_cache: Option<SharedSkinDocumentCache>,
-    pub(in crate::skin_loader) source_cache: Option<SharedSkinSourceAssetCache>,
-    pub(in crate::skin_loader) texture_cache: Option<SharedSkinGpuTextureCache>,
-    pub(in crate::skin_loader) font_cache: Option<SharedSkinFontCache>,
-    pub(in crate::skin_loader) installed_fonts: Option<HashMap<String, SkinFontCacheKey>>,
+pub struct BeatorajaSkinDecodeRequest<'a> {
+    pub skin_path: &'a Path,
+    pub kind: SkinKind,
+    pub options: &'a BTreeMap<String, String>,
+    pub files: &'a BTreeMap<String, String>,
+    pub runtime_state: &'a LuaLoadRuntimeState,
+    pub document_cache: Option<SharedSkinDocumentCache>,
+    pub source_cache: Option<SharedSkinSourceAssetCache>,
+    pub texture_cache: Option<SharedSkinGpuTextureCache>,
+    pub font_cache: Option<SharedSkinFontCache>,
+    pub installed_fonts: Option<HashMap<String, SkinFontCacheKey>>,
+    pub library_roots: &'a [PathBuf],
 }
 
-pub(in crate::skin_loader) fn decode_beatoraja_skin_request(
-    request: SkinDecodeRequest<'_>,
+pub fn decode_beatoraja_skin_request(
+    request: BeatorajaSkinDecodeRequest<'_>,
 ) -> Result<DecodedSkin> {
-    let SkinDecodeRequest {
+    let BeatorajaSkinDecodeRequest {
         skin_path,
         kind,
         options,
@@ -133,14 +135,28 @@ pub(in crate::skin_loader) fn decode_beatoraja_skin_request(
         texture_cache,
         font_cache,
         installed_fonts,
+        library_roots,
     } = request;
+    let path_context = if is_lua_skin_path(skin_path) {
+        Some(SkinPathContext::new(skin_path, library_roots.iter().cloned())?)
+    } else {
+        None
+    };
     let document_start = Instant::now();
     let LoadedSkinDocumentForDecode {
         mut document,
         lua_runtime,
         files: resolved_files,
         cache_status,
-    } = load_skin_document(skin_path, kind, options, files, runtime_state, document_cache)?;
+    } = load_skin_document_with_path_context(
+        skin_path,
+        kind,
+        options,
+        files,
+        runtime_state,
+        document_cache,
+        path_context.as_ref(),
+    )?;
     let document_us = elapsed_us(document_start);
     // フォント ID は scene 横断的に Renderer のグローバルマップに登録されるので、
     // play / select / result で同じ "0" 等が衝突する。namespace を付与して隔離する。
@@ -152,7 +168,7 @@ pub(in crate::skin_loader) fn decode_beatoraja_skin_request(
         }
     }
     let skin_root = skin_path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
-    let audio_assets = decode_skin_audio_assets(kind, &skin_root, &document);
+    let audio_assets = decode_skin_audio_assets(kind, &skin_root, path_context.as_ref(), &document);
     let required_sources: HashSet<String> =
         required_skin_source_ids(&document).into_iter().map(str::to_string).collect();
     let warn_missing_required = kind.warn_missing_required_sources();
@@ -161,6 +177,7 @@ pub(in crate::skin_loader) fn decode_beatoraja_skin_request(
         &document,
         &skin_root,
         &resolved_files,
+        path_context.as_ref(),
         font_namespace,
         font_cache.as_ref(),
         installed_fonts.as_ref(),
@@ -170,6 +187,7 @@ pub(in crate::skin_loader) fn decode_beatoraja_skin_request(
         &document,
         &skin_root,
         &resolved_files,
+        path_context.as_ref(),
         &required_sources,
         warn_missing_required,
         source_cache.as_ref(),

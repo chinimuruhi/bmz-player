@@ -140,9 +140,8 @@ use crate::screens::settings_model::{
 };
 use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
 use crate::skin_loader::{
-    DecodedSkin, PreparedSource, SharedSkinGpuTextureCache, SkinFontCacheKey, SkinKind,
-    UploadedSkin, decode_beatoraja_skin_with_options_and_runtime_state,
-    decode_beatoraja_skin_with_options_and_runtime_state_and_caches,
+    BeatorajaSkinDecodeRequest, DecodedSkin, PreparedSource, SharedSkinGpuTextureCache,
+    SkinFontCacheKey, SkinKind, UploadedSkin, decode_beatoraja_skin_request,
     default_play_skin_document_path_from_paths, default_skin_document_path_from_paths,
     enabled_options_from_selections, install_decoded_font, install_decoded_skin,
     is_decodable_skin_path, is_json_skin_path, is_lr2_skin_path, is_lua_skin_path,

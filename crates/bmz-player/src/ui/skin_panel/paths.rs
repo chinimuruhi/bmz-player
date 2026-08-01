@@ -1,11 +1,47 @@
-/// スキンパス文字列からスキンルートディレクトリ (親ディレクトリ) を得る。
-pub(in crate::ui) fn skin_root_path(app_paths: &AppPaths, skin_path: &str) -> Option<PathBuf> {
+pub(in crate::ui) struct SkinUiPathContext {
+    root: PathBuf,
+    package: Option<bmz_skin::SkinPathContext>,
+}
+
+impl SkinUiPathContext {
+    #[cfg(test)]
+    pub(in crate::ui) fn legacy(root: &Path) -> Self {
+        Self { root: root.to_path_buf(), package: None }
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn package(root: &Path, package: bmz_skin::SkinPathContext) -> Self {
+        Self { root: root.to_path_buf(), package: Some(package) }
+    }
+}
+
+/// スキンパス文字列から設定 UI 用のパス context を得る。
+pub(in crate::ui) fn skin_root_path(
+    app_paths: &AppPaths,
+    skin_path: &str,
+) -> Option<SkinUiPathContext> {
     let trimmed = skin_path.trim();
     if trimmed.is_empty() {
         return None;
     }
     let path = app_paths.resolve_path_ref(trimmed).ok()?;
-    if path.is_dir() { Some(path) } else { path.parent().map(Path::to_path_buf) }
+    let root = if path.is_dir() { path.clone() } else { path.parent()?.to_path_buf() };
+    let package = if is_lua_skin_path(&path) {
+        bmz_skin::SkinPathContext::new(&path, app_paths.skin_library_roots()).ok()
+    } else {
+        None
+    };
+    Some(SkinUiPathContext { root, package })
+}
+
+pub(in crate::ui) fn glob_candidates_for_skin(
+    context: &SkinUiPathContext,
+    pattern: &str,
+) -> Vec<String> {
+    match &context.package {
+        Some(package) => package.wildcard_candidate_values(pattern).unwrap_or_default(),
+        None => glob_candidates(&context.root, pattern),
+    }
 }
 
 /// `pattern` (スキンルート相対、末尾要素にワイルドカード `*` を 1 個まで) に

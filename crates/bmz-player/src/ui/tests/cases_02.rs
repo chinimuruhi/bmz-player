@@ -240,6 +240,29 @@ fn glob_candidates_strips_beatoraja_filter_suffix() {
 }
 
 #[test]
+fn glob_candidates_use_lua_skin_library_context_for_sibling_packages() {
+    let library_root = unique_test_dir("bmz-ui-package-glob").join("skins");
+    let entry_dir = library_root.join("GenericTheme-master/play");
+    let extension = library_root.join("Hub/extension/sample");
+    fs::create_dir_all(&entry_dir).unwrap();
+    fs::create_dir_all(&extension).unwrap();
+    let entry = entry_dir.join("Hub_play7.luaskin");
+    fs::write(&entry, "return { type = 0 }").unwrap();
+    fs::write(extension.join("parts.png"), []).unwrap();
+    let package = bmz_skin::SkinPathContext::new(&entry, [library_root]).unwrap();
+    let context = SkinUiPathContext::package(&entry_dir, package);
+
+    assert_eq!(
+        glob_candidates_for_skin(&context, "../../Hub/extension/*|1|"),
+        vec!["../../Hub/extension/sample".to_string()]
+    );
+    assert_eq!(
+        glob_candidates_for_skin(&context, "skin/Hub/extension/*/parts.png"),
+        vec!["skin/Hub/extension/sample/parts.png".to_string()]
+    );
+}
+
+#[test]
 fn normalize_filepath_selection_maps_legacy_basename_to_relative_candidate() {
     let candidates =
         vec!["parts/gauge/default.png".to_string(), "parts/gauge/blue.png".to_string()];

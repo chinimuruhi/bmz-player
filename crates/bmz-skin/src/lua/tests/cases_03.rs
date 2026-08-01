@@ -41,8 +41,9 @@ fn get_path_accepts_beatoraja_filename_selection() {
     fs::create_dir_all(root.join("bg")).unwrap();
     fs::write(root.join("bg/one.mp4"), []).unwrap();
     let skin_files = BTreeMap::from([("bg/*.mp4".to_string(), "one.mp4".to_string())]);
+    let path_context = test_skin_path_context(&root);
 
-    let resolved = skin_config_get_path(&root, "bg/*.mp4", &skin_files).unwrap();
+    let resolved = skin_config_get_path(&path_context, "bg/*.mp4", &skin_files).unwrap();
 
     assert_eq!(resolved.file_name().and_then(|name| name.to_str()), Some("one.mp4"));
 }
@@ -54,10 +55,11 @@ fn get_path_randomizes_when_selection_is_random_sentinel() {
     fs::write(root.join("bg/one.mp4"), []).unwrap();
     fs::write(root.join("bg/two.mp4"), []).unwrap();
     let skin_files = BTreeMap::from([("bg/*.mp4".to_string(), RANDOM_FILE_SELECTION.to_string())]);
+    let path_context = test_skin_path_context(&root);
 
     let mut seen = std::collections::HashSet::new();
     for _ in 0..200 {
-        let resolved = skin_config_get_path(&root, "bg/*.mp4", &skin_files).unwrap();
+        let resolved = skin_config_get_path(&path_context, "bg/*.mp4", &skin_files).unwrap();
         let name =
             resolved.file_name().and_then(|name| name.to_str()).unwrap_or_default().to_string();
         assert!(name == "one.mp4" || name == "two.mp4", "unexpected match {name}");

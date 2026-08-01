@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::CStr;
 use std::fs;
 use std::os::raw::c_int;
-use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -22,9 +21,10 @@ use bmz_skin_document::{
     SKIN_EXPR_GAUGE_PERCENT_INTEGER, SKIN_EXPR_RESULT_TABLE_TITLE, SKIN_REF_PLAY_GAUGE_TYPE,
 };
 
+use crate::path_context::canonicalize_skin_path;
 use crate::{
     LoadedLuaSkinValue, LuaLoadRuntimeState, LuaMainState, LuaSkinOffsetValue,
-    SkinLoadDependencies, SkinLoadWarning, SkinLoadedFileDependency,
+    SkinLoadDependencies, SkinLoadWarning, SkinLoadedFileDependency, SkinPathContext,
 };
 
 mod conversion;
@@ -70,7 +70,11 @@ mod runtime;
 
 use config::*;
 use execution::*;
-pub use loading::{convert_lua_skin_to_json, load_lua_skin_header_value, load_lua_skin_value};
+pub use loading::{
+    convert_lua_skin_to_json, convert_lua_skin_to_json_with_path_context,
+    load_lua_skin_header_value, load_lua_skin_header_value_with_path_context, load_lua_skin_value,
+    load_lua_skin_value_with_path_context,
+};
 use paths::*;
 use postprocess::*;
 use runtime::*;

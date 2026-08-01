@@ -63,7 +63,8 @@ pub(super) fn load_initial_skin_textures(
                         lua_runtime_state_for_player(player_name),
                         &skin.decide_offsets,
                     ),
-                ),
+                )
+                .with_library_roots(app_paths.skin_library_roots()),
             );
             pending_decide = true;
         }
@@ -112,7 +113,8 @@ pub(super) fn load_initial_skin_textures(
                         ),
                         &skin.result_offsets,
                     ),
-                ),
+                )
+                .with_library_roots(app_paths.skin_library_roots()),
             );
             pending_result = true;
         }
@@ -147,6 +149,7 @@ pub(super) fn load_initial_skin_textures(
             Ok(path) if is_decodable_skin_path(&path) => {
                 let video_sources = apply_json_skin_sync(
                     renderer,
+                    app_paths,
                     &path,
                     SkinKind::Select,
                     default_manifest.as_ref(),
@@ -275,7 +278,8 @@ pub(super) fn reload_skin_textures(
                         lua_runtime_state_for_player(player_name),
                         offsets,
                     ),
-                ),
+                )
+                .with_library_roots(app_paths.skin_library_roots()),
             );
             match kind {
                 SkinKind::Select => pending_select = true,
@@ -297,6 +301,7 @@ pub(super) fn reload_skin_textures(
 
 pub(super) fn apply_json_skin_sync(
     renderer: &mut Renderer,
+    app_paths: &crate::paths::AppPaths,
     path: &Path,
     kind: SkinKind,
     default_manifest: Option<&SkinManifest>,
@@ -312,13 +317,20 @@ pub(super) fn apply_json_skin_sync(
         );
         return Vec::new();
     };
-    let decoded = match decode_beatoraja_skin_with_options_and_runtime_state(
-        path,
+    let library_roots = app_paths.skin_library_roots();
+    let decoded = match decode_beatoraja_skin_request(BeatorajaSkinDecodeRequest {
+        skin_path: path,
         kind,
         options,
         files,
         runtime_state,
-    ) {
+        library_roots: &library_roots,
+        document_cache: None,
+        source_cache: None,
+        texture_cache: None,
+        font_cache: None,
+        installed_fonts: None,
+    }) {
         Ok(decoded) => decoded,
         Err(error) => {
             tracing::warn!(

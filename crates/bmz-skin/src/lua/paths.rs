@@ -1,34 +1,8 @@
-pub(super) fn skin_file_candidates(root: &Path, normalized_path: &str) -> Vec<String> {
-    let requested_path = strip_beatoraja_asset_filter(normalized_path);
-    let Some((prefix, suffix)) = requested_path.split_once('*') else {
-        return vec![requested_path.to_string()];
-    };
-    if suffix.contains('*') {
-        return Vec::new();
-    }
-    let slash = prefix.rfind('/').map(|index| index + 1).unwrap_or(0);
-    let (directory_prefix, name_prefix) = prefix.split_at(slash);
-    let dir = root.join(directory_prefix);
-    let mut candidates = Vec::new();
-    let Ok(entries) = fs::read_dir(&dir) else {
-        return candidates;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !name.starts_with(name_prefix) {
-            continue;
-        }
-        if let Some(nested_suffix) = suffix.strip_prefix('/') {
-            let candidate = format!("{directory_prefix}{name}/{nested_suffix}");
-            if root.join(&candidate).exists() {
-                candidates.push(candidate);
-            }
-        } else if name.ends_with(suffix) {
-            candidates.push(format!("{directory_prefix}{name}"));
-        }
-    }
-    candidates.sort();
-    candidates
+pub(super) fn skin_file_candidates(
+    path_context: &SkinPathContext,
+    normalized_path: &str,
+) -> Vec<PathBuf> {
+    path_context.wildcard_candidates(normalized_path).unwrap_or_default()
 }
 
 pub(super) fn filename_matches_def(candidate: &str, default_name: &str) -> bool {
@@ -62,41 +36,12 @@ pub(super) fn candidate_file_name(candidate: &str) -> String {
     Path::new(candidate).file_name().and_then(|name| name.to_str()).unwrap_or(candidate).to_string()
 }
 
-/// ユーザ選択のスキンルート相対パスを解決する。
-///
-/// 絶対パスやスキンルート外への脱出を含む選択は無効として `None` を返す。
-/// 通常の候補解決経路 (`skin_config_get_path` 本体) と挙動を揃え、
-/// ファイル / ディレクトリの双方を許可する (Lua スキンは
-/// `skin_config.get_path("dir/*") .. "/foo.lua"` の形でディレクトリ選択を
-/// 連結に使うパターンがある)。
-pub(super) fn resolve_selected_skin_path(root: &Path, selected: &str) -> Option<PathBuf> {
-    let relative = Path::new(selected);
-    if relative.as_os_str().is_empty()
-        || relative.is_absolute()
-        || relative.components().any(|component| {
-            matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))
-        })
-    {
-        return None;
-    }
-    let candidate = root.join(relative);
-    candidate.exists().then_some(candidate)
-}
-
 pub(super) fn skin_config_get_path(
-    root: &Path,
+    path_context: &SkinPathContext,
     requested: &str,
     skin_files: &BTreeMap<String, String>,
 ) -> Result<PathBuf> {
     let requested_path = strip_beatoraja_asset_filter(requested);
-    let relative_path = Path::new(requested_path);
-    if relative_path.is_absolute()
-        || relative_path.components().any(|component| {
-            matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))
-        })
-    {
-        bail!("skin_config.get_path escapes skin root: {requested}");
-    }
 
     // ユーザがスキン設定パネルで「ランダム」を選んだときは、候補からロードごとに
     // ランダムに選ぶ (beatoraja のファイル選択 "Random" 相当)。
@@ -108,50 +53,24 @@ pub(super) fn skin_config_get_path(
     if !want_random {
         if let Some(selected) = skin_files.get(&requested.replace('\\', "/"))
             && let Some(path) =
-                resolve_selected_skin_path_for_pattern(root, requested_path, selected)
+                resolve_selected_skin_path_for_pattern(path_context, requested_path, selected)
         {
             return Ok(path);
         }
         if let Some(path) =
-            resolve_selected_skin_path_for_wildcard_child(root, requested_path, skin_files)
+            resolve_selected_skin_path_for_wildcard_child(path_context, requested_path, skin_files)
         {
             return Ok(path);
         }
     }
 
-    let Some((prefix, suffix)) = requested_path.split_once('*') else {
-        return Ok(root.join(requested_path));
-    };
-    if suffix.contains('*') {
+    if !requested_path.contains('*') {
+        return path_context.resolve_path(requested_path);
+    }
+    if requested_path.split_once('*').is_some_and(|(_, suffix)| suffix.contains('*')) {
         bail!("skin_config.get_path supports only one wildcard: {requested}");
     }
-
-    let slash = prefix.rfind(['/', '\\']).map(|index| index + 1).unwrap_or(0);
-    let (directory_prefix, name_prefix) = prefix.split_at(slash);
-    let dir = root.join(directory_prefix);
-    let suffix = suffix.replace('\\', "/");
-    let mut candidates = Vec::new();
-    for entry in fs::read_dir(&dir)
-        .with_context(|| format!("failed to read skin_config path dir: {}", dir.display()))?
-    {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !name.starts_with(name_prefix) {
-            continue;
-        }
-        let candidate_relative = if let Some(nested_suffix) = suffix.strip_prefix('/') {
-            format!("{directory_prefix}{name}/{nested_suffix}")
-        } else {
-            if !name.ends_with(&suffix) {
-                continue;
-            }
-            format!("{directory_prefix}{name}")
-        };
-        let candidate = root.join(candidate_relative);
-        if candidate.exists() {
-            candidates.push(candidate);
-        }
-    }
+    let mut candidates = path_context.wildcard_candidates(requested_path)?;
     if candidates.is_empty() {
         bail!("skin_config path not found: {requested}");
     }
@@ -160,7 +79,7 @@ pub(super) fn skin_config_get_path(
 }
 
 pub(super) fn resolve_selected_skin_path_for_wildcard_child(
-    root: &Path,
+    path_context: &SkinPathContext,
     requested: &str,
     skin_files: &BTreeMap<String, String>,
 ) -> Option<PathBuf> {
@@ -172,7 +91,7 @@ pub(super) fn resolve_selected_skin_path_for_wildcard_child(
         }
         let wildcard = wildcard_from_selection(configured_prefix, configured_suffix, selected)?;
         let candidate = format!("{requested_prefix}{wildcard}{requested_suffix}");
-        if let Some(path) = resolve_selected_skin_path(root, &candidate) {
+        if let Ok(path) = path_context.resolve_path(&candidate) {
             return Some(path);
         }
     }
@@ -180,19 +99,11 @@ pub(super) fn resolve_selected_skin_path_for_wildcard_child(
 }
 
 pub(super) fn resolve_selected_skin_path_for_pattern(
-    root: &Path,
+    path_context: &SkinPathContext,
     pattern: &str,
     selected: &str,
 ) -> Option<PathBuf> {
-    if let Some(path) = resolve_selected_skin_path(root, selected) {
-        return Some(path);
-    }
-    let pattern = strip_beatoraja_asset_filter(pattern).replace('\\', "/");
-    let star = pattern.find('*')?;
-    let prefix = &pattern[..star];
-    let slash = prefix.rfind(['/', '\\']).map(|index| index + 1).unwrap_or(0);
-    let directory_prefix = &prefix[..slash];
-    resolve_selected_skin_path(root, &format!("{directory_prefix}{}", selected.replace('\\', "/")))
+    path_context.resolve_selected_for_pattern(pattern, selected)
 }
 
 pub(super) fn wildcard_from_selection<'a>(
@@ -213,77 +124,6 @@ pub(super) fn wildcard_from_selection<'a>(
 
 pub(super) fn strip_beatoraja_asset_filter(path: &str) -> &str {
     path.split_once('|').map_or(path, |(asset_path, _)| asset_path)
-}
-
-/// `Path::canonicalize` returns Windows extended-length (`\\?\`) verbatim paths.
-/// Verbatim paths reject `/` as a separator, but beatoraja Lua skins build paths
-/// by string concatenation (e.g. `skin_config.get_path("_font/*") .. "/set.lua"`),
-/// so a verbatim sandbox root makes every such `dofile`/`require` fail with a
-/// path-syntax error. Strip the verbatim prefix so derived paths stay normal and
-/// tolerate mixed separators. No-op on non-Windows.
-pub(super) fn canonicalize_skin_path(path: &Path) -> std::io::Result<PathBuf> {
-    path.canonicalize().map(simplify_verbatim_path)
-}
-
-#[cfg(windows)]
-pub(super) fn simplify_verbatim_path(path: PathBuf) -> PathBuf {
-    let text = path.as_os_str().to_string_lossy();
-    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-        return PathBuf::from(format!(r"\\{rest}"));
-    }
-    if let Some(rest) = text.strip_prefix(r"\\?\") {
-        // Only simplify regular drive paths like `C:\dir`; leave device paths alone.
-        let bytes = rest.as_bytes();
-        if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
-            return PathBuf::from(rest);
-        }
-    }
-    path
-}
-
-#[cfg(not(windows))]
-pub(super) fn simplify_verbatim_path(path: PathBuf) -> PathBuf {
-    path
-}
-
-pub(super) fn resolve_lua_path(root: &Path, requested: &str, module: bool) -> Result<PathBuf> {
-    let relative = if module { requested.replace('.', "/") } else { requested.to_string() };
-    let relative_path = Path::new(&relative);
-    if relative_path.is_absolute() {
-        let canonical = canonicalize_skin_path(relative_path)?;
-        if canonical.starts_with(root) {
-            return Ok(canonical);
-        }
-        bail!("lua path escapes skin root: {requested}");
-    }
-    if relative_path.components().any(|component| {
-        matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))
-    }) {
-        bail!("lua path escapes skin root: {requested}");
-    }
-    let candidates = if module {
-        vec![format!("{relative}.lua"), format!("{relative}/init.lua")]
-    } else if relative.ends_with(".lua") || relative.ends_with(".luaskin") {
-        vec![relative]
-    } else {
-        vec![relative.clone(), format!("{relative}.lua")]
-    };
-
-    for candidate in candidates {
-        if let Some(path) = resolve_beatoraja_skin_alias(root, &candidate) {
-            return Ok(path);
-        }
-        let path = root.join(candidate);
-        if path.is_file() {
-            let canonical = canonicalize_skin_path(&path)?;
-            if !canonical.starts_with(root) {
-                bail!("lua path escapes skin root: {}", canonical.display());
-            }
-            return Ok(canonical);
-        }
-    }
-
-    bail!("lua file not found: {requested}");
 }
 
 pub(super) fn resolve_skin_io_path(root: &Path, requested: &str) -> Result<PathBuf> {

@@ -32,6 +32,7 @@ pub(in crate::skin_loader) const MAX_SKIN_AUDIO_ASSETS: usize = 64;
 pub(in crate::skin_loader) fn decode_skin_audio_assets(
     kind: SkinKind,
     skin_root: &Path,
+    path_context: Option<&SkinPathContext>,
     document: &SkinDocument,
 ) -> Vec<DecodedSkinAudio> {
     if kind != SkinKind::Result {
@@ -58,7 +59,9 @@ pub(in crate::skin_loader) fn decode_skin_audio_assets(
     paths
         .into_par_iter()
         .filter_map(|path| {
-            let Some(resolved) = resolve_skin_audio_path(skin_root, &path) else {
+            let Some(resolved) =
+                resolve_skin_audio_path_with_context(skin_root, path_context, &path)
+            else {
                 tracing::warn!(path, "skipping invalid or missing skin audio asset");
                 return None;
             };
@@ -78,10 +81,22 @@ pub(in crate::skin_loader) fn decode_skin_audio_assets(
         .collect()
 }
 
+#[cfg(test)]
 pub(in crate::skin_loader) fn resolve_skin_audio_path(
     skin_root: &Path,
     path: &str,
 ) -> Option<PathBuf> {
+    resolve_skin_audio_path_with_context(skin_root, None, path)
+}
+
+pub(in crate::skin_loader) fn resolve_skin_audio_path_with_context(
+    skin_root: &Path,
+    path_context: Option<&SkinPathContext>,
+    path: &str,
+) -> Option<PathBuf> {
+    if let Some(path_context) = path_context {
+        return path_context.resolve_file(path).ok();
+    }
     let normalized = path.replace('\\', "/");
     let relative = Path::new(&normalized);
     if relative.is_absolute()

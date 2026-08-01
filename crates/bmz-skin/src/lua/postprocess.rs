@@ -1,23 +1,23 @@
 pub(super) fn normalize_lua_skin_audio_paths(
-    skin_root: &Path,
+    path_context: &SkinPathContext,
     root: &mut JsonMap<String, JsonValue>,
     warnings: &mut Vec<String>,
 ) {
     if let Some(JsonValue::Array(actions)) = root.get_mut("sceneAudio") {
-        normalize_lua_skin_audio_action_array(skin_root, actions, warnings);
+        normalize_lua_skin_audio_action_array(path_context, actions, warnings);
     }
     if let Some(JsonValue::Array(events)) = root.get_mut("customEvents") {
         for event in events {
             let JsonValue::Object(event) = event else { continue };
             if let Some(JsonValue::Array(actions)) = event.get_mut("audioActions") {
-                normalize_lua_skin_audio_action_array(skin_root, actions, warnings);
+                normalize_lua_skin_audio_action_array(path_context, actions, warnings);
             }
         }
     }
 }
 
 pub(super) fn normalize_lua_skin_audio_action_array(
-    skin_root: &Path,
+    path_context: &SkinPathContext,
     actions: &mut Vec<JsonValue>,
     warnings: &mut Vec<String>,
 ) {
@@ -25,21 +25,15 @@ pub(super) fn normalize_lua_skin_audio_action_array(
         let JsonValue::Object(action) = action else { return false };
         let Some(JsonValue::String(path)) = action.get_mut("path") else { return false };
         let requested = path.clone();
-        let requested_path = Path::new(&requested);
-        let candidate = if requested_path.is_absolute() {
-            requested_path.to_path_buf()
-        } else {
-            skin_root.join(requested_path)
-        };
-        let Ok(candidate) = canonicalize_skin_path(&candidate) else {
+        let Ok(candidate) = path_context.resolve_file(&requested) else {
             warnings.push(format!("skipping missing skin audio path: {requested}"));
             return false;
         };
-        let Ok(relative) = candidate.strip_prefix(skin_root) else {
-            warnings.push(format!("skipping skin audio path outside skin root: {requested}"));
-            return false;
-        };
-        *path = relative.to_string_lossy().replace('\\', "/");
+        *path = candidate
+            .strip_prefix(path_context.entry_dir())
+            .unwrap_or(&candidate)
+            .to_string_lossy()
+            .replace('\\', "/");
         true
     });
 }

@@ -495,9 +495,10 @@ fn default_skin_file_uses_random_sentinel_for_random_def() {
     fs::write(root.join("bg/two.mp4"), []).unwrap();
     let filepath: JsonValue =
         serde_json::from_str(r#"{ "name": "BG", "path": "bg/*.mp4", "def": "Random" }"#).unwrap();
+    let path_context = test_skin_path_context(&root);
 
     assert_eq!(
-        default_skin_file_from_filepath(&root, "bg/*.mp4", &filepath).as_deref(),
+        default_skin_file_from_filepath(&path_context, "bg/*.mp4", &filepath).as_deref(),
         Some(RANDOM_FILE_SELECTION)
     );
 }
@@ -510,9 +511,10 @@ fn default_skin_file_returns_beatoraja_filename_selection() {
     fs::write(root.join("bg/two.mp4"), []).unwrap();
     let filepath: JsonValue =
         serde_json::from_str(r#"{ "name": "BG", "path": "bg/*.mp4", "def": "two" }"#).unwrap();
+    let path_context = test_skin_path_context(&root);
 
     assert_eq!(
-        default_skin_file_from_filepath(&root, "bg/*.mp4", &filepath).as_deref(),
+        default_skin_file_from_filepath(&path_context, "bg/*.mp4", &filepath).as_deref(),
         Some("two.mp4")
     );
 }
@@ -525,9 +527,10 @@ fn default_skin_file_prefers_default_stem_when_def_missing() {
     fs::write(root.join("notes/default.png"), []).unwrap();
     let filepath: JsonValue =
         serde_json::from_str(r#"{ "name": "Note", "path": "notes/*.png" }"#).unwrap();
+    let path_context = test_skin_path_context(&root);
 
     assert_eq!(
-        default_skin_file_from_filepath(&root, "notes/*.png", &filepath).as_deref(),
+        default_skin_file_from_filepath(&path_context, "notes/*.png", &filepath).as_deref(),
         Some("default.png")
     );
 }

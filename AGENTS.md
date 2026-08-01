@@ -422,8 +422,9 @@ database:
 - `.luaskin` / `.lua` の load と `return skin` table の decode
 - `skin_config.option`: `property.def` を優先し、なければ先頭 item を既定値にします。
 - `skin_config.get_path()`: profile のスキン設定で選んだファイル (`skin.*_files` の filepath 定義名 → 相対パス) を最優先で返します。選択が無い / 該当ファイルが存在しない場合は wildcard の最初の実在候補へフォールバックします (Lua 側は現状 `filepath.def` は参照しません)。JSON skin 側の `source` / `font` ワイルドカード解決は同じ優先で、フォールバック順は ユーザ選択 → `filepath.def` → 先頭候補 です。
+- Lua skin の path 解決は `SkinPathContext` で entry directory と `AppPaths::skin_library_roots()` を分離します。`require` は呼び出し時点の sandboxed `package.path` を参照し、`skin/...` alias、library root 内に収まる `../`、`dofile` / `loadfile` / `skin_config.get_path` / Lua document の source・font・audio を同じ安全境界で扱います。既存の低レベル API は entry-dir-only fallback です。
 - sandbox: `os` / `io` / `debug` / `package.loadlib` を無効化します。
-- `require` / `dofile` / `loadfile`: skin root 配下だけ許可します。
+- `require` / `dofile` / `loadfile`: 明示された skin library root 配下だけ許可します。
 - Lua hook による命令数上限、table 深さ・配列長・総 entry 数の上限を持ちます。
 - `main_state.number(...)` / `main_state.option(...)` / `main_state.timer(...)` / `main_state.gauge_type()` の一部 function 推論。
 - `draw` function: 単一 ref 比較に加え、複数 ref の `or` / 2 ref 比較+`and`、定数 tail (`number(N)==0` 等) をロード時に draw 条件文字列へ変換。

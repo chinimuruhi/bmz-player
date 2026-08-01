@@ -4,9 +4,11 @@ pub(super) fn scan_skin_catalog(app_paths: &crate::paths::AppPaths) -> SkinCatal
     let mut catalog = SkinCatalog::default();
     let resource_skin_root = app_paths.resource_dir.join("skins");
     let data_skin_root = app_paths.data_dir.join("skins");
+    let library_roots = app_paths.skin_library_roots();
     scan_skin_catalog_dir(
         &resource_skin_root,
         &resource_skin_root,
+        &library_roots,
         SkinCandidateOrigin::Bundled,
         &mut catalog,
     );
@@ -14,6 +16,7 @@ pub(super) fn scan_skin_catalog(app_paths: &crate::paths::AppPaths) -> SkinCatal
         scan_skin_catalog_dir(
             &data_skin_root,
             &data_skin_root,
+            &library_roots,
             SkinCandidateOrigin::User,
             &mut catalog,
         );
@@ -25,6 +28,7 @@ pub(super) fn scan_skin_catalog(app_paths: &crate::paths::AppPaths) -> SkinCatal
 pub(super) fn scan_skin_catalog_dir(
     root: &Path,
     dir: &Path,
+    library_roots: &[PathBuf],
     origin: SkinCandidateOrigin,
     catalog: &mut SkinCatalog,
 ) {
@@ -34,13 +38,13 @@ pub(super) fn scan_skin_catalog_dir(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan_skin_catalog_dir(root, &path, origin, catalog);
+            scan_skin_catalog_dir(root, &path, library_roots, origin, catalog);
             continue;
         }
         if !is_skin_candidate_file(&path) {
             continue;
         }
-        match load_skin_candidate(root, &path, origin) {
+        match load_skin_candidate_with_library_roots(root, &path, library_roots, origin) {
             Some((skin_type, candidate)) => push_skin_candidate(catalog, skin_type, candidate),
             None => {
                 tracing::debug!(path = %path.display(), "skipping skin candidate without readable header")
@@ -57,8 +61,9 @@ pub(super) fn play_skin_defs_from_path(
     if trimmed.is_empty() {
         return SceneSkinDefs::from_play_document(None);
     }
-    let document =
-        app_paths.resolve_path_ref(trimmed).ok().and_then(|path| load_skin_header_document(&path));
+    let document = app_paths.resolve_path_ref(trimmed).ok().and_then(|path| {
+        load_skin_header_document_with_library_roots(&path, &app_paths.skin_library_roots())
+    });
     SceneSkinDefs::from_play_document(document.as_ref())
 }
 
@@ -69,13 +74,23 @@ pub(super) fn is_skin_candidate_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(test)]
 pub(super) fn load_skin_header_document(path: &Path) -> Option<SkinDocument> {
+    load_skin_header_document_with_library_roots(path, &[])
+}
+
+pub(super) fn load_skin_header_document_with_library_roots(
+    path: &Path,
+    library_roots: &[PathBuf],
+) -> Option<SkinDocument> {
     if path
         .extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("luaskin"))
     {
-        bmz_skin::load_lua_skin_header_value(path)
+        let path_context =
+            bmz_skin::SkinPathContext::new(path, library_roots.iter().cloned()).ok()?;
+        bmz_skin::load_lua_skin_header_value_with_path_context(&path_context)
             .ok()
             .and_then(|loaded| serde_json::from_value::<SkinDocument>(loaded.value).ok())
     } else if path
@@ -96,12 +111,22 @@ pub(super) fn load_skin_header_document(path: &Path) -> Option<SkinDocument> {
     }
 }
 
+#[cfg(test)]
 pub(super) fn load_skin_candidate(
     root: &Path,
     path: &Path,
     origin: SkinCandidateOrigin,
 ) -> Option<(i32, SkinCandidate)> {
-    let document = load_skin_header_document(path)?;
+    load_skin_candidate_with_library_roots(root, path, &[root.to_path_buf()], origin)
+}
+
+pub(super) fn load_skin_candidate_with_library_roots(
+    root: &Path,
+    path: &Path,
+    library_roots: &[PathBuf],
+    origin: SkinCandidateOrigin,
+) -> Option<(i32, SkinCandidate)> {
+    let document = load_skin_header_document_with_library_roots(path, library_roots)?;
     let relative = path.strip_prefix(root).unwrap_or(path);
     let name = if document.name.trim().is_empty() {
         relative.file_stem().and_then(|name| name.to_str()).unwrap_or("").to_string()

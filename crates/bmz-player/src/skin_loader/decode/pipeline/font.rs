@@ -15,6 +15,7 @@ pub(super) fn decode_skin_fonts(
     document: &SkinDocument,
     skin_root: &Path,
     resolved_files: &BTreeMap<String, String>,
+    path_context: Option<&SkinPathContext>,
     font_namespace: &str,
     font_cache: Option<&SharedSkinFontCache>,
     installed_fonts: Option<&HashMap<String, SkinFontCacheKey>>,
@@ -26,8 +27,13 @@ pub(super) fn decode_skin_fonts(
             if font.id.is_empty() || font.path.is_empty() {
                 return None;
             }
-            let font_path =
-                resolve_json_skin_asset_path(skin_root, &font.path, document, resolved_files)?;
+            let font_path = resolve_json_skin_asset_path_with_context(
+                skin_root,
+                path_context,
+                &font.path,
+                document,
+                resolved_files,
+            )?;
             if !is_supported_font_path(&font_path) {
                 tracing::debug!(
                     font_id = %font.id,
