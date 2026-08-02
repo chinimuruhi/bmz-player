@@ -49,14 +49,28 @@ impl WinitApp {
         }
     }
 
+    fn current_frame_pacing_state(&self) -> FramePacingState {
+        let window_mode = match &self.ui.applied_window_mode {
+            WindowMode::Windowed => FrameWindowMode::Windowed,
+            WindowMode::BorderlessFullscreen => FrameWindowMode::BorderlessFullscreen,
+            WindowMode::ExclusiveFullscreen => FrameWindowMode::ExclusiveFullscreen,
+        };
+        FramePacingState {
+            focused: self.ui.focused,
+            effective_frame_limit: self.current_frame_limit(),
+            present_mode: config_present_mode(&self.boot.app_config.video),
+            window_mode,
+        }
+    }
+
     /// `RedrawRequested` が現在の deadline に到達していればフレームを開始する。
     ///
     /// deadline より早い redraw は描画せず `WaitUntil` へ戻す。event loop thread を
     /// sleep させないため、待機中も keyboard/device event を遅延なく受け取れる。
     pub(super) fn begin_scheduled_frame(&mut self, event_loop: &ActiveEventLoop) -> bool {
-        let fps = self.current_frame_limit();
+        let pacing_state = self.current_frame_pacing_state();
         let now = Instant::now();
-        match self.frame.begin_scheduled_frame(now, fps) {
+        match self.frame.begin_scheduled_frame(now, pacing_state) {
             FrameSchedule::Start => true,
             FrameSchedule::WaitUntil(deadline) => {
                 event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));

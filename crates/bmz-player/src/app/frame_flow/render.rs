@@ -45,9 +45,11 @@ impl WinitApp {
         let render_status = self.renderer.render_scene_status(scene);
         let render_us = render_start.elapsed().as_micros();
         let frame_timings = self.renderer.last_frame_timings();
+        let surface_status = render_status.as_ref().ok().copied();
+        self.frame.record_surface_status(Instant::now(), surface_status);
         self.log_pending_skin_render_probe(
             scene_kind,
-            render_status.as_ref().ok().copied(),
+            surface_status,
             snapshot_us,
             video_us,
             render_us,

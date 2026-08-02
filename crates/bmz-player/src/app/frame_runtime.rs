@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use bmz_render::renderer::RenderFrameTimings;
+use bmz_render::renderer::{RenderFrameTimings, RenderSurfaceStatus, WgpuPresentMode};
 
 use crate::i18n::{FluentArgs, Localizer};
 
@@ -8,6 +8,7 @@ pub(super) struct FrameRuntime {
     pacer: FramePacer,
     skip_next_pace: bool,
     fps: SkinFpsCounter,
+    pacing_state: Option<FramePacingState>,
     select_profiler: SceneFrameProfiler,
     decide_profiler: SceneFrameProfiler,
     play_profiler: SceneFrameProfiler,
@@ -25,6 +26,7 @@ impl FrameRuntime {
             pacer: FramePacer::default(),
             skip_next_pace: false,
             fps: SkinFpsCounter::new(now),
+            pacing_state: None,
             select_profiler: SceneFrameProfiler::default(),
             decide_profiler: SceneFrameProfiler::default(),
             play_profiler: SceneFrameProfiler::default(),
@@ -36,7 +38,13 @@ impl FrameRuntime {
         self.skip_next_pace = true;
     }
 
-    pub(super) fn begin_scheduled_frame(&mut self, now: Instant, fps: u32) -> FrameSchedule {
+    pub(super) fn begin_scheduled_frame(
+        &mut self,
+        now: Instant,
+        pacing_state: FramePacingState,
+    ) -> FrameSchedule {
+        self.sync_pacing_state(now, pacing_state);
+        let fps = pacing_state.effective_frame_limit;
         let skip_wait = self.skip_next_pace;
         if let Some(deadline) = self.pacer.next_deadline(now, fps, skip_wait) {
             return FrameSchedule::WaitUntil(deadline);
@@ -44,8 +52,38 @@ impl FrameRuntime {
 
         self.skip_next_pace = false;
         self.pacer.record_frame_started(now, fps, skip_wait);
-        self.fps.record_frame(now);
         FrameSchedule::Start
+    }
+
+    fn sync_pacing_state(&mut self, now: Instant, pacing_state: FramePacingState) {
+        if self.pacing_state == Some(pacing_state) {
+            return;
+        }
+        let previous = self.pacing_state.replace(pacing_state);
+        self.fps.reset(now);
+        if let Some(previous) = previous {
+            tracing::info!(
+                previous_focused = previous.focused,
+                focused = pacing_state.focused,
+                previous_effective_frame_limit = previous.effective_frame_limit,
+                effective_frame_limit = pacing_state.effective_frame_limit,
+                previous_present_mode = ?previous.present_mode,
+                present_mode = ?pacing_state.present_mode,
+                previous_window_mode = ?previous.window_mode,
+                window_mode = ?pacing_state.window_mode,
+                "frame pacing state changed; FPS sample reset"
+            );
+        }
+    }
+
+    pub(super) fn record_surface_status(
+        &mut self,
+        now: Instant,
+        status: Option<RenderSurfaceStatus>,
+    ) {
+        if status == Some(RenderSurfaceStatus::Rendered) {
+            self.fps.record_presented_frame(now);
+        }
     }
 
     pub(super) fn next_deadline(&self, now: Instant, fps: u32) -> Option<Instant> {
@@ -83,8 +121,23 @@ impl FrameRuntime {
     }
 }
 
-/// beatoraja の `Gdx.graphics.getFramesPerSecond()` と同様、1 秒ごとに
-/// 確定したフレーム数を skin の NUMBER_CURRENT_FPS (20) と右上表示へ渡す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct FramePacingState {
+    pub(super) focused: bool,
+    pub(super) effective_frame_limit: u32,
+    pub(super) present_mode: WgpuPresentMode,
+    pub(super) window_mode: FrameWindowMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FrameWindowMode {
+    Windowed,
+    BorderlessFullscreen,
+    ExclusiveFullscreen,
+}
+
+/// 正常に present できたフレームだけを実経過時間で正規化し、1 秒ごとに
+/// skin の NUMBER_CURRENT_FPS (20) と右上表示へ渡す。
 struct SkinFpsCounter {
     window_started_at: Instant,
     frames: u32,
@@ -96,18 +149,33 @@ impl SkinFpsCounter {
         Self { window_started_at: now, frames: 0, current: 0 }
     }
 
-    fn record_frame(&mut self, now: Instant) {
+    fn record_presented_frame(&mut self, now: Instant) {
         self.frames = self.frames.saturating_add(1);
-        if now.duration_since(self.window_started_at) >= Duration::from_secs(1) {
-            self.current = self.frames;
+        let elapsed = now.duration_since(self.window_started_at);
+        if elapsed >= Duration::from_secs(1) {
+            self.current = normalized_fps(self.frames, elapsed);
             self.frames = 0;
             self.window_started_at = now;
         }
     }
 
+    fn reset(&mut self, now: Instant) {
+        self.window_started_at = now;
+        self.frames = 0;
+        self.current = 0;
+    }
+
     fn current(&self) -> u32 {
         self.current
     }
+}
+
+fn normalized_fps(presented_frames: u32, elapsed: Duration) -> u32 {
+    if elapsed.is_zero() {
+        return 0;
+    }
+    (f64::from(presented_frames) / elapsed.as_secs_f64()).round().clamp(0.0, f64::from(u32::MAX))
+        as u32
 }
 
 #[derive(Debug, Default)]
@@ -465,17 +533,86 @@ mod tests {
         let mut fps = SkinFpsCounter::new(started_at);
 
         for elapsed_ms in [0, 250, 500, 750] {
-            fps.record_frame(started_at + Duration::from_millis(elapsed_ms));
+            fps.record_presented_frame(started_at + Duration::from_millis(elapsed_ms));
             assert_eq!(fps.current(), 0);
         }
 
-        fps.record_frame(started_at + Duration::from_secs(1));
+        fps.record_presented_frame(started_at + Duration::from_secs(1));
         assert_eq!(fps.current(), 5);
         assert_eq!(fps_overlay_text(true, fps.current(), Localizer::new(AppLocale::Ja)), "FPS 5");
-        fps.record_frame(started_at + Duration::from_millis(1_250));
+        fps.record_presented_frame(started_at + Duration::from_millis(1_250));
         assert_eq!(fps.current(), 5);
-        fps.record_frame(started_at + Duration::from_secs(2));
+        fps.record_presented_frame(started_at + Duration::from_secs(2));
         assert_eq!(fps.current(), 2);
+    }
+
+    #[test]
+    fn skin_fps_normalizes_presented_frames_by_elapsed_time() {
+        assert_eq!(normalized_fps(240, Duration::from_secs(1)), 240);
+        assert_eq!(normalized_fps(240, Duration::from_millis(1_200)), 200);
+        assert_eq!(normalized_fps(120, Duration::from_millis(500)), 240);
+    }
+
+    #[test]
+    fn skin_fps_reset_does_not_carry_previous_frames() {
+        let started_at = Instant::now();
+        let mut fps = SkinFpsCounter::new(started_at);
+        for _ in 0..120 {
+            fps.record_presented_frame(started_at + Duration::from_millis(500));
+        }
+        fps.reset(started_at + Duration::from_millis(500));
+        for _ in 0..239 {
+            fps.record_presented_frame(started_at + Duration::from_millis(1_499));
+        }
+        fps.record_presented_frame(started_at + Duration::from_millis(1_500));
+        assert_eq!(fps.current(), 240);
+    }
+
+    #[test]
+    fn failed_surface_frame_is_not_counted_as_presented() {
+        let started_at = Instant::now();
+        let mut runtime = FrameRuntime::new(started_at);
+        runtime.record_surface_status(
+            started_at + Duration::from_secs(1),
+            Some(RenderSurfaceStatus::TimedOut),
+        );
+        runtime.record_surface_status(
+            started_at + Duration::from_secs(1),
+            Some(RenderSurfaceStatus::Rendered),
+        );
+        assert_eq!(runtime.current_fps(), 1);
+    }
+
+    #[test]
+    fn pacing_state_changes_reset_the_fps_sample() {
+        let now = Instant::now();
+        let mut runtime = FrameRuntime::new(now);
+        let initial = test_pacing_state(240);
+        runtime.sync_pacing_state(now, initial);
+
+        let changed_states = [
+            FramePacingState { focused: false, ..initial },
+            FramePacingState { focused: false, effective_frame_limit: 60, ..initial },
+            FramePacingState {
+                focused: false,
+                effective_frame_limit: 60,
+                present_mode: WgpuPresentMode::Immediate,
+                ..initial
+            },
+            FramePacingState {
+                focused: false,
+                effective_frame_limit: 60,
+                present_mode: WgpuPresentMode::Immediate,
+                window_mode: FrameWindowMode::ExclusiveFullscreen,
+            },
+        ];
+        for state in changed_states {
+            runtime.fps.frames = 100;
+            runtime.fps.current = 240;
+            runtime.sync_pacing_state(now, state);
+            assert_eq!(runtime.fps.frames, 0);
+            assert_eq!(runtime.current_fps(), 0);
+        }
     }
 
     #[test]
@@ -521,18 +658,28 @@ mod tests {
         let work = Duration::from_micros(500);
         let mut runtime = FrameRuntime::new(started_at);
 
-        assert!(matches!(runtime.begin_scheduled_frame(started_at, 120), FrameSchedule::Start));
+        let pacing = test_pacing_state(120);
+        assert!(matches!(runtime.begin_scheduled_frame(started_at, pacing), FrameSchedule::Start));
         assert!(matches!(
-            runtime.begin_scheduled_frame(started_at + work, 120),
+            runtime.begin_scheduled_frame(started_at + work, pacing),
             FrameSchedule::WaitUntil(deadline) if deadline == started_at + frame_budget(120)
         ));
 
         runtime.request_immediate_frame();
         assert!(matches!(
-            runtime.begin_scheduled_frame(started_at + work, 120),
+            runtime.begin_scheduled_frame(started_at + work, pacing),
             FrameSchedule::Start
         ));
         assert_eq!(runtime.current_fps(), 0);
+    }
+
+    fn test_pacing_state(effective_frame_limit: u32) -> FramePacingState {
+        FramePacingState {
+            focused: true,
+            effective_frame_limit,
+            present_mode: WgpuPresentMode::Fifo,
+            window_mode: FrameWindowMode::Windowed,
+        }
     }
 
     #[test]

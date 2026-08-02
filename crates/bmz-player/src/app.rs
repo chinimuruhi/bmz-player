@@ -295,8 +295,8 @@ use bga_runtime::{
 };
 use chart_assets::*;
 use frame_runtime::{
-    AppLoopFrameTimings, FrameProfileKind, FrameRuntime, FrameSchedule, SceneFrameProfileSample,
-    SkinVideoFrameProfile,
+    AppLoopFrameTimings, FramePacingState, FrameProfileKind, FrameRuntime, FrameSchedule,
+    FrameWindowMode, SceneFrameProfileSample, SkinVideoFrameProfile,
 };
 use input_runtime::{
     AppInputRuntime, ControlInputEvent, should_route_gamepad_event_while_discarding,
