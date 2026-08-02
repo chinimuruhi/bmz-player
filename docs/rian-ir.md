@@ -357,8 +357,30 @@ Windows/macOS/Flatpakの各release buildは最終実行ファイルから内部�
 集約時はclient、version、commitの一致、targetの重複・欠落、hash形式を検証し、
 targetをrianIRのplatform、arch、package_kindへ変換する。rianIR管理者はmanifestの
 version、commit、各buildを確認してから `builds[].client_hash`を `allowed_clients`
-へ登録する。失効時は同テーブルから削除する。debug buildまたは
-実行ファイルhashの取得に失敗した場合だけ、暫定互換値 `UNKNOWN` を送る。
+へ登録する。失効時は同テーブルから削除する。
+
+ローカル開発でdebug/release profileを繰り返しbuildするときは、コンパイル時の
+`BMZ_RIANIR_DEV_CLIENT_HASH`に個人用の小文字64桁hexを設定できる。設定値は
+`option_env!`で実行ファイルへ埋め込み、build profileにかかわらず優先する。実行時の
+環境変数ではないため、配布済みの公式実行ファイルを後から差し替える用途には使えない。
+公式release workflowはこの環境変数が設定されている場合、package build前に失敗する。
+
+PowerShellではhashを設定したshellから通常のrelease profileを起動する。
+
+```powershell
+$env:BMZ_RIANIR_DEV_CLIENT_HASH = "<個人用の小文字64桁hex>"
+cargo run -r -p bmz-player
+```
+
+macOS / Linuxでは同じbuild invocationへ環境変数を渡す。
+
+```bash
+BMZ_RIANIR_DEV_CLIENT_HASH="<個人用の小文字64桁hex>" cargo run -r -p bmz-player
+```
+
+開発用固定値が未設定のdebug build、固定値の形式が不正なbuild、実行ファイルhashの
+取得に失敗したrelease buildだけ、暫定互換値 `UNKNOWN` を送る。固定値が未設定の
+release buildは従来どおり実行ファイルのSHA-256を送る。
 
 Flatpakは配布 `.flatpak` 全体ではなく、`flatpak-builder` が最終配置した
 `build/files/bin/bmz-player`（実行時の `/app/bin/bmz-player`）をhash対象にする。
@@ -381,7 +403,8 @@ Flatpakは配布 `.flatpak` 全体ではなく、`flatpak-builder` が最終配�
 
 - `body` は既存の判定・ゲージ仕様区分として維持し、BMZ識別には使わない。
 - rianIR の現在の通常スコア送信はallowlist済みの実行ファイル `client_hash` を要求する。
-  debug buildは暫定的に `UNKNOWN` を使うため、正式なクライアント検証にはならない。
+  開発用固定値が未設定のdebug buildは暫定的に `UNKNOWN` を使うため、正式な
+  クライアント検証にはならない。
 - LN mode を含めないランキング query/grouping では Force LN/CN/HCN が混在する。
 - 4K / 6K / 8K は保存できても、rianIR の統計や画面から漏れる可能性がある。
 - F-RANDOM / MF-RANDOM は structured arrange field 対応版の rianIR が必要。

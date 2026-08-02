@@ -194,6 +194,13 @@ jobs:
           "Microsoft.GameInput NuGet: $env:GAMEINPUT_VERSION" | Out-File -LiteralPath $provenance -Encoding utf8 -Append
           "Microsoft.GameInput package SHA256: $env:GAMEINPUT_PACKAGE_SHA256" | Out-File -LiteralPath $provenance -Encoding utf8 -Append
 
+      - name: Reject development client hash override
+        shell: pwsh
+        run: |
+          if (Test-Path Env:BMZ_RIANIR_DEV_CLIENT_HASH) {
+            throw "BMZ_RIANIR_DEV_CLIENT_HASH must not be set for official releases"
+          }
+
       - name: Package Windows app
         shell: pwsh
         run: |
@@ -352,6 +359,13 @@ jobs:
           ffmpeg -version > "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-ffmpeg-version.txt"
           if grep -q -- "--enable-nonfree" "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-ffmpeg-version.txt"; then
             echo "FFmpeg was built with --enable-nonfree and must not be redistributed" >&2
+            exit 1
+          fi
+
+      - name: Reject development client hash override
+        run: |
+          if [[ "${BMZ_RIANIR_DEV_CLIENT_HASH+x}" == x ]]; then
+            echo "BMZ_RIANIR_DEV_CLIENT_HASH must not be set for official releases" >&2
             exit 1
           fi
 
@@ -520,6 +534,13 @@ jobs:
             echo "Manifest:"
             sed -n '1,220p' installer/flatpak/net.hyrorre.BMZPlayer.yml
           } > "${provenance}"
+
+      - name: Reject development client hash override
+        run: |
+          if [[ "${BMZ_RIANIR_DEV_CLIENT_HASH+x}" == x ]]; then
+            echo "BMZ_RIANIR_DEV_CLIENT_HASH must not be set for official releases" >&2
+            exit 1
+          fi
 
       - name: Package Flatpak app
         run: |

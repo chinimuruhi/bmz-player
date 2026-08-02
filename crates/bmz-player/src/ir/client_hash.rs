@@ -12,12 +12,23 @@ pub const UNKNOWN_CLIENT_HASH: &str = "UNKNOWN";
 
 static CLIENT_HASH: OnceLock<String> = OnceLock::new();
 
-/// rianIRへ送る実行ファイルのSHA-256。
+/// rianIRへ送るclient hash。
 ///
-/// 開発buildはallowlist運用の対象外なので、既存の開発用識別子へフォールバックする。
+/// ローカル開発用の固定値がコンパイル時に設定されていればbuild profileにかかわらず
+/// その値を使う。未設定のdebug buildは既存の開発用識別子へフォールバックし、release
+/// buildは実行ファイルのSHA-256を使う。
 pub fn current_client_hash() -> &'static str {
     CLIENT_HASH
         .get_or_init(|| {
+            if let Some(hash) = option_env!("BMZ_RIANIR_DEV_CLIENT_HASH") {
+                if is_lowercase_sha256_hex(hash) {
+                    return hash.to_string();
+                }
+                tracing::warn!(
+                    "invalid compile-time BMZ_RIANIR_DEV_CLIENT_HASH; expected 64 lowercase hex characters"
+                );
+                return UNKNOWN_CLIENT_HASH.to_string();
+            }
             if cfg!(debug_assertions) {
                 return UNKNOWN_CLIENT_HASH.to_string();
             }
@@ -30,6 +41,11 @@ pub fn current_client_hash() -> &'static str {
                 })
         })
         .as_str()
+}
+
+fn is_lowercase_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub fn sha256_file(path: &Path) -> Result<String> {
@@ -55,12 +71,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hashes_file_bytes_as_lowercase_sha256() {
-        let root = std::env::temp_dir().join(format!(
-            "bmz-client-hash-{}-{}",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+    fn accepts_only_lowercase_sha256_hex_for_development_client_hash() {
+        assert!(is_lowercase_sha256_hex(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         ));
+        assert!(!is_lowercase_sha256_hex(
+            "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+        ));
+        assert!(!is_lowercase_sha256_hex(
+            "g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        ));
+        assert!(!is_lowercase_sha256_hex("0123456789abcdef"));
+    }
+
+    #[test]
+    fn uses_compile_time_development_client_hash_when_configured() {
+        let Some(hash) = option_env!("BMZ_RIANIR_DEV_CLIENT_HASH") else {
+            return;
+        };
+        let expected = if is_lowercase_sha256_hex(hash) { hash } else { UNKNOWN_CLIENT_HASH };
+        assert_eq!(current_client_hash(), expected);
+    }
+
+    #[test]
+    fn hashes_file_bytes_as_lowercase_sha256() {
+        let unique =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("bmz-client-hash-{}-{}", std::process::id(), unique));
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("bmz-player");
         std::fs::write(&path, b"bmz-player\n").unwrap();
