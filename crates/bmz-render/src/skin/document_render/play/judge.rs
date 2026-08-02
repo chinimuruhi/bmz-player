@@ -65,17 +65,42 @@ macro_rules! skin_document_render_play_judge_methods {
             // 注入すると、`offsets: [32]` を持つ skin (beatoraja 標準形) で
             // 二重適用になり、判定文字とコンボ数の Y が乖離する原因になる。
             apply_skin_offset_to_frame(image_destination, &mut image_frame, &offset_state, false);
-            // beatoraja はコンボ数字をシフト前の判定文字 X を基準に配置する。
-            let image_frame_for_numbers = image_frame;
-            if judge.shift
-                && combo > 0
-                && let Some(number_destination) = judge.numbers.get(judge_index)
-                && let Some(number_frame) = resolve_destination_frame_until_end(
-                    number_destination,
+            let number_destination = judge.numbers.get(judge_index);
+            let mut number_frame = number_destination.and_then(|destination| {
+                resolve_destination_frame_until_end(
+                    destination,
                     elapsed_ms,
                     &enabled_options,
                     state,
                 )
+            });
+            let judge_align = number_destination
+                .and_then(|destination| {
+                    self.value
+                        .iter()
+                        .find(|value| value.id == destination.id)
+                        .map(|value| value.judge_align.unwrap_or(2))
+                })
+                .unwrap_or(2);
+
+            if let (Some(destination), Some(frame)) = (number_destination, number_frame.as_mut()) {
+                // beatoraja の JsonPlaySkinObjectLoader は、relative offset を適用する
+                // 前の destination 幅で X 補正を焼き込む。その後 SkinNumber の
+                // relative offset は幅だけを変更するため、ここも同じ順序にする。
+                if judge_align == 2
+                    && let Some(value) = self.value.iter().find(|value| value.id == destination.id)
+                {
+                    Self::apply_beatoraja_judge_number_dst_x(frame, value.digit);
+                }
+                apply_skin_offset_to_frame_relative(destination, frame, &offset_state);
+            }
+
+            // beatoraja はコンボ数字をシフト前の判定文字 X を基準に配置する。
+            let image_frame_for_numbers = image_frame;
+            if judge.shift
+                && combo > 0
+                && let Some(number_destination) = number_destination
+                && let Some(number_frame) = number_frame
             {
                 image_frame.x -=
                     self.value_number_length(&number_destination.id, combo as i64, number_frame)
@@ -103,35 +128,12 @@ macro_rules! skin_document_render_play_judge_methods {
                 image_destination.filter != 0,
             )];
             if combo > 0
-                && let Some(number_destination) = judge.numbers.get(judge_index)
-                && let Some(mut number_frame) = resolve_destination_frame_until_end(
-                    number_destination,
-                    elapsed_ms,
-                    &enabled_options,
-                    state,
-                )
+                && let Some(number_destination) = number_destination
+                && let Some(number_frame) = number_frame
             {
                 // beatoraja は SkinNumber に `setRelative(true)` を立てるため、
                 // destination の offsets を適用しても x/y は移動せず w/h/r/a だけ
-                // 加算される。これにより combo digit の最終位置は
-                // base_frame.y (= 適用後 image_frame.y) + number_frame.y_orig となり、
-                // 判定文字と同じ量だけ y シフトする (中心アンカー伸縮)。
-                apply_skin_offset_to_frame_relative(
-                    number_destination,
-                    &mut number_frame,
-                    &offset_state,
-                );
-                let judge_align = self
-                    .value
-                    .iter()
-                    .find(|value| value.id == number_destination.id)
-                    .map_or(2, |value| value.judge_align.unwrap_or(2));
-                if let Some(value) =
-                    self.value.iter().find(|value| value.id == number_destination.id)
-                    && judge_align == 2
-                {
-                    Self::apply_beatoraja_judge_number_dst_x(&mut number_frame, value.digit);
-                }
+                // 加算される。上で X 補正と offset 適用を済ませた frame を使う。
                 let signed_render = if self
                     .value
                     .iter()

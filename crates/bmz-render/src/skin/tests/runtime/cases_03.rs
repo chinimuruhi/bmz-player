@@ -193,6 +193,60 @@ fn judge_offset_height_keeps_image_and_combo_y_aligned() {
 }
 
 #[test]
+fn judge_offset_width_matches_beatoraja_combo_layout() {
+    // beatoraja は judge number の destination x 補正を元の w で行い、
+    // その後 relative offset の w だけを加算する。Judge offset.w を
+    // X 補正後の幅で再計算すると、コンボ数字が余計に左へずれる。
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "w": 100, "h": 100,
+                "source": [{ "id": "src", "path": "judge.png" }],
+                "image": [{ "id": "judgef-pg", "src": "src", "x": 0, "y": 0, "w": 10, "h": 10 }],
+                "value": [{
+                    "id": "combo-num", "src": "src",
+                    "x": 0, "y": 10, "w": 10, "h": 20,
+                    "divx": 10, "divy": 1, "digit": 4, "ref": 102
+                }],
+                "judge": [{
+                    "id": "judge", "shift": true,
+                    "images": [
+                        { "id": "judgef-pg", "offsets": [32], "dst": [
+                            { "time": 0, "x": 10, "y": 20, "w": 30, "h": 10 },
+                            { "time": 500 }
+                        ]}
+                    ],
+                    "numbers": [
+                        { "id": "combo-num", "offsets": [32], "dst": [
+                            { "time": 0, "x": 0, "y": 30, "w": 10, "h": 20 },
+                            { "time": 500 }
+                        ]}
+                    ]
+                }]
+            }
+            "#,
+    )
+    .unwrap();
+    let sources = mock_source("src", 10.0, 10.0);
+    let mut offsets = SkinOffsetValues::default();
+    offsets
+        .set(OFFSET_JUDGE_1P, crate::skin_offset::SkinOffsetValue { w: 20, ..Default::default() });
+
+    let items =
+        document.judge_render_items_with_offsets("PGREAT", 42, 0, &offsets, &sources).unwrap();
+    let SkinRenderItem::Image { rect: judge_rect, .. } = &items[0] else {
+        panic!("first item should be judge image")
+    };
+    let SkinRenderItem::Image { rect: combo_rect, .. } = &items[1] else {
+        panic!("second item should be first combo digit")
+    };
+
+    assert!(approx_eq(judge_rect.x, -0.3), "judge x {}", judge_rect.x);
+    assert!(approx_eq(judge_rect.width, 0.5), "judge width {}", judge_rect.width);
+    assert!(approx_eq(combo_rect.x, 0.1), "combo x {}", combo_rect.x);
+}
+
+#[test]
 fn judge_lift_offset_keeps_image_and_combo_y_aligned() {
     // SkinNumber は relative offset のため、判定文字の destination と同じ
     // LIFT offset を持っていても combo 数字側で y を二重に動かさない。
