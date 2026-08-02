@@ -112,7 +112,9 @@ pub fn import_bmson_to_intermediate(
     };
     intermediate.identity = identity;
     intermediate.metadata.key_mode = bmson_key_mode(layout);
-    intermediate.metadata.difficulty_name = bmson.info.chart_name.clone().into_owned();
+    intermediate.metadata.subtitle =
+        bmson_subtitle(bmson.info.subtitle.as_ref(), bmson.info.chart_name.as_ref());
+    intermediate.metadata.difficulty_name.clear();
     intermediate.metadata.play_level = bmson.info.level.to_string();
     apply_bmson_sound_slices(&mut intermediate, &rebuild_info.sound_slices);
     apply_bmson_layered_sounds(&mut intermediate, &rebuild_info.layered_sounds, layout);
@@ -254,6 +256,14 @@ fn join_subartists(subartists: &[std::borrow::Cow<'_, str>]) -> String {
         .filter(|entry| !entry.is_empty())
         .collect::<Vec<_>>()
         .join(" / ")
+}
+
+fn bmson_subtitle(subtitle: &str, chart_name: &str) -> String {
+    match (subtitle.is_empty(), chart_name.is_empty()) {
+        (_, true) => subtitle.to_string(),
+        (true, false) => format!("[{chart_name}]"),
+        (false, false) => format!("{subtitle} [{chart_name}]"),
+    }
 }
 
 fn resolve_backbmp_path(back_image: Option<&str>, title_image: Option<&str>) -> Option<PathBuf> {
@@ -575,6 +585,13 @@ mod tests {
             ]),
             "music:Alice / chart:Bob / movie.Sphere"
         );
+    }
+
+    #[test]
+    fn bmson_chart_name_is_appended_to_subtitle_like_beatoraja() {
+        assert_eq!(bmson_subtitle("", "ANOTHER"), "[ANOTHER]");
+        assert_eq!(bmson_subtitle("Original", "ANOTHER"), "Original [ANOTHER]");
+        assert_eq!(bmson_subtitle("Original", ""), "Original");
     }
 
     #[test]

@@ -293,13 +293,14 @@ fn imports_bmson_into_playable_chart() {
 }
 
 #[test]
-fn bmson_preserves_chart_name_and_full_level_value() {
+fn bmson_appends_chart_name_to_subtitle_and_preserves_full_level_value() {
     let json = r#"{
         "version": "1.0.0",
         "info": {
             "title": "Metadata",
             "artist": "Test",
             "genre": "Test",
+            "subtitle": "Original",
             "chart_name": "FOUR DIMENSIONS",
             "level": 300,
             "init_bpm": 120.0,
@@ -313,7 +314,8 @@ fn bmson_preserves_chart_name_and_full_level_value() {
     let path = write_temp_file_with_ext(json, "bmson");
 
     let result = import_chart(&path, None, false).unwrap();
-    assert_eq!(result.chart.metadata.difficulty_name, "FOUR DIMENSIONS");
+    assert_eq!(result.chart.metadata.subtitle, "Original [FOUR DIMENSIONS]");
+    assert_eq!(result.chart.metadata.difficulty_name, "BEGINNER");
     assert_eq!(result.chart.metadata.play_level, "300");
     std::fs::remove_file(&path).unwrap();
 }
