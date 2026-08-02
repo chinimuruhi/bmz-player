@@ -112,6 +112,8 @@ pub fn import_bmson_to_intermediate(
     };
     intermediate.identity = identity;
     intermediate.metadata.key_mode = bmson_key_mode(layout);
+    intermediate.metadata.difficulty_name = bmson.info.chart_name.clone().into_owned();
+    intermediate.metadata.play_level = bmson.info.level.to_string();
     apply_bmson_sound_slices(&mut intermediate, &rebuild_info.sound_slices);
     apply_bmson_layered_sounds(&mut intermediate, &rebuild_info.layered_sounds, layout);
     apply_bmson_bga_events(&mut intermediate, &rebuild_info.bga_events);

@@ -287,6 +287,32 @@ fn imports_bmson_into_playable_chart() {
 }
 
 #[test]
+fn bmson_preserves_chart_name_and_full_level_value() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Metadata",
+            "artist": "Test",
+            "genre": "Test",
+            "chart_name": "FOUR DIMENSIONS",
+            "level": 300,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "sound_channels": []
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.difficulty_name, "FOUR DIMENSIONS");
+    assert_eq!(result.chart.metadata.play_level, "300");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
 fn bmson_preserves_simultaneous_base_layer_and_poor_bga_events() {
     let json = r#"{
         "version": "1.0.0",
