@@ -20,6 +20,16 @@ pub(super) fn finalize_playable_chart(mut draft: PlayableChartDraft) -> Playable
     draft.bar_lines.sort_by_key(|line| line.time);
 
     draft.total_notes = compute_total_notes(&draft.lane_notes);
+    if draft.metadata.difficulty_name.trim().is_empty()
+        || draft.metadata.difficulty_name.trim() == "0"
+    {
+        draft.metadata.difficulty_name = infer_beatoraja_difficulty_name(
+            &draft.metadata.title,
+            &draft.metadata.subtitle,
+            draft.total_notes,
+        )
+        .to_string();
+    }
     draft.end_time = compute_end_time(&draft);
 
     PlayableChart {
@@ -55,6 +65,42 @@ pub(super) fn compute_total_notes(lane_notes: &[Vec<NoteEvent>; LANE_COUNT]) -> 
         .flat_map(|notes| notes.iter())
         .filter(|note| matches!(note.kind, NoteKind::Tap | NoteKind::LongStart))
         .count() as u32
+}
+
+fn infer_beatoraja_difficulty_name(title: &str, subtitle: &str, total_notes: u32) -> &'static str {
+    let subtitle = subtitle.to_lowercase();
+    if let Some(difficulty) = difficulty_name_in_text(&subtitle) {
+        return difficulty;
+    }
+
+    let full_title = format!("{title}{subtitle}").to_lowercase();
+    if let Some(difficulty) = difficulty_name_in_text(&full_title) {
+        return difficulty;
+    }
+
+    match total_notes {
+        0..250 => "BEGINNER",
+        250..600 => "NORMAL",
+        600..1000 => "HYPER",
+        1000..2000 => "ANOTHER",
+        _ => "INSANE",
+    }
+}
+
+fn difficulty_name_in_text(text: &str) -> Option<&'static str> {
+    if text.contains("beginner") {
+        Some("BEGINNER")
+    } else if text.contains("normal") {
+        Some("NORMAL")
+    } else if text.contains("hyper") {
+        Some("HYPER")
+    } else if text.contains("another") {
+        Some("ANOTHER")
+    } else if text.contains("insane") || text.contains("leggendaria") {
+        Some("INSANE")
+    } else {
+        None
+    }
 }
 
 pub(super) fn compute_end_time(draft: &PlayableChartDraft) -> TimeUs {
@@ -105,6 +151,44 @@ impl PlayableChartDraft {
             bga_assets,
             total_notes: 0,
             end_time: TimeUs(0),
+        }
+    }
+}
+
+#[cfg(test)]
+mod difficulty_tests {
+    use super::infer_beatoraja_difficulty_name;
+
+    #[test]
+    fn infers_difficulty_with_beatoraja_text_priority() {
+        assert_eq!(infer_beatoraja_difficulty_name("Song Another", "", 1), "ANOTHER");
+        assert_eq!(infer_beatoraja_difficulty_name("Song Another", "Hyper", 1), "HYPER");
+        assert_eq!(infer_beatoraja_difficulty_name("Song", "LEGGENDARIA", 1), "INSANE");
+    }
+
+    #[test]
+    fn infers_stronger_difficulties_from_playable_note_counts() {
+        let title = "STRONGER (あたしは、もっと強く)";
+        for (total_notes, expected) in
+            [(299, "NORMAL"), (590, "NORMAL"), (1_238, "ANOTHER"), (1_593, "ANOTHER")]
+        {
+            assert_eq!(infer_beatoraja_difficulty_name(title, "", total_notes), expected);
+        }
+    }
+
+    #[test]
+    fn infers_difficulty_at_beatoraja_note_count_boundaries() {
+        for (total_notes, expected) in [
+            (249, "BEGINNER"),
+            (250, "NORMAL"),
+            (599, "NORMAL"),
+            (600, "HYPER"),
+            (999, "HYPER"),
+            (1_000, "ANOTHER"),
+            (1_999, "ANOTHER"),
+            (2_000, "INSANE"),
+        ] {
+            assert_eq!(infer_beatoraja_difficulty_name("Song", "", total_notes), expected);
         }
     }
 }

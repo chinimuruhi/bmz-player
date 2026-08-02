@@ -282,6 +282,7 @@ fn imports_bmson_into_playable_chart() {
     let path = write_temp_file_with_ext(json, "bmson");
     let result = import_chart(&path, None, false).unwrap();
     assert_eq!(result.chart.metadata.title, "Bmson Song");
+    assert_eq!(result.chart.metadata.difficulty_name, "BEGINNER");
     assert_eq!(result.chart.metadata.judge_rank, Some(100));
     assert_eq!(
         result.chart.metadata.judge_rank_spec,
