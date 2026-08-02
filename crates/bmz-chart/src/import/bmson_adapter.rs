@@ -19,8 +19,8 @@ use crate::model::{JudgeRankKind, JudgeRankSpec};
 
 use super::bms_rs_adapter::build_intermediate_from_bms;
 use super::bmson_timing::{
-    BmsonLaneLayout, BmsonLongNoteExtension, build_measure_boundaries, max_pulse_in_bmson,
-    pulse_to_obj_time, rebuild_bms_timing_from_bmson,
+    BmsonLaneLayout, BmsonLongNoteExtension, BmsonSoundSliceExtension, build_measure_boundaries,
+    max_pulse_in_bmson, pulse_to_obj_time, rebuild_bms_timing_from_bmson,
 };
 use super::error::{ImportError, ImportWarning};
 use super::intermediate::{IntermediateChart, IntermediateObject, IntermediateObjectKind};
@@ -111,6 +111,7 @@ pub fn import_bmson_to_intermediate(
     };
     intermediate.identity = identity;
     intermediate.metadata.key_mode = bmson_key_mode(layout);
+    apply_bmson_sound_slices(&mut intermediate, &rebuild_info.sound_slices);
     if let Some(ln_type) = ln_type {
         intermediate.metadata.long_note_mode = map_ln_mode(ln_type);
         intermediate.metadata.long_note_mode_defined = true;
@@ -359,6 +360,19 @@ fn apply_bmson_long_note_extensions(
         {
             *wav_key = extension.end_wav_key;
             *explicit_end_sound = true;
+        }
+    }
+}
+
+fn apply_bmson_sound_slices(
+    intermediate: &mut IntermediateChart,
+    extensions: &[BmsonSoundSliceExtension],
+) {
+    for extension in extensions {
+        if let Some(wav) =
+            intermediate.resources.wavs.iter_mut().find(|wav| wav.key == extension.wav_key)
+        {
+            wav.slice = Some(extension.slice);
         }
     }
 }

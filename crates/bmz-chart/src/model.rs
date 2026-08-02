@@ -293,6 +293,14 @@ pub struct BarLine {
 pub struct SoundAssetRef {
     pub id: SoundId,
     pub path: PathBuf,
+    pub slice: Option<SoundSlice>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoundSlice {
+    pub start_us: u64,
+    /// `None` はファイル終端まで再生する。
+    pub duration_us: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

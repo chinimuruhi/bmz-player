@@ -5,7 +5,7 @@ use bmz_core::chart::ChartIdentity;
 use bmz_core::lane::{KeyMode, Lane};
 use bmz_core::time::{ChartTick, TimeUs};
 
-use crate::model::{JudgeRankSpec, LongNoteMode, LongNoteStyle};
+use crate::model::{JudgeRankSpec, LongNoteMode, LongNoteStyle, SoundSlice};
 
 #[derive(Debug, Clone)]
 pub struct IntermediateChart {
@@ -80,6 +80,7 @@ pub struct SwBgaDef {
 pub struct WavDef {
     pub key: u16,
     pub path: PathBuf,
+    pub slice: Option<SoundSlice>,
 }
 
 #[derive(Debug, Clone)]

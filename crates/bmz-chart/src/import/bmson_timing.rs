@@ -14,7 +14,9 @@ use bms_rs::bms::prelude::{
 };
 use bms_rs::bmson::bmson_to_bms::BmsonToBmsWarning;
 use bms_rs::bmson::prelude::FinF64;
-use bms_rs::bmson::{BarLine, BgaId, Bmson};
+use bms_rs::bmson::{BarLine, BgaId, Bmson, SoundChannel};
+
+use crate::model::SoundSlice;
 
 /// BMSON 小節境界 (pulse)。
 #[derive(Debug, Clone)]
@@ -50,9 +52,16 @@ pub(crate) struct BmsonLongNoteExtension {
     pub explicit_end_sound: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BmsonSoundSliceExtension {
+    pub wav_key: u16,
+    pub slice: SoundSlice,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct BmsonRebuildInfo {
     pub long_notes: Vec<BmsonLongNoteExtension>,
+    pub sound_slices: Vec<BmsonSoundSliceExtension>,
     pub mine_channel_wav_keys: Vec<u16>,
 }
 
@@ -242,31 +251,38 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
         bms.scroll.scrolling_factor_changes.insert(time, ScrollingFactorObj { time, factor });
     }
 
+    let mut rebuild_info = BmsonRebuildInfo::default();
     let mut sound_channel_wav_ids = Vec::with_capacity(bmson.sound_channels.len());
     for sound_channel in &bmson.sound_channels {
         let wav_path = PathBuf::from(sound_channel.name.as_ref());
-        let obj_id = wav_by_path.get(&wav_path).copied().unwrap_or_else(|| {
-            wav_obj_id_issuer.next().unwrap_or_else(|| {
+        let mut wav_ids = HashMap::new();
+        for (pulse, slice) in bmson_sound_slice_plan(bmson, sound_channel) {
+            let obj_id = wav_obj_id_issuer.next().unwrap_or_else(|| {
                 warnings.push(BmsonToBmsWarning::WavObjIdOutOfRange);
                 ObjId::null()
-            })
-        });
-        bms.wav.wav_files.entry(obj_id).or_insert(wav_path);
-        sound_channel_wav_ids.push(obj_id);
+            });
+            bms.wav.wav_files.entry(obj_id).or_insert_with(|| wav_path.clone());
+            wav_ids.insert(pulse, obj_id);
+            rebuild_info
+                .sound_slices
+                .push(BmsonSoundSliceExtension { wav_key: obj_id.as_u16(), slice });
+        }
+        sound_channel_wav_ids.push(wav_ids);
     }
 
     let mut up_wav_by_position = HashMap::new();
-    for (sound_channel, obj_id) in bmson.sound_channels.iter().zip(&sound_channel_wav_ids) {
+    for (sound_channel, wav_ids) in bmson.sound_channels.iter().zip(&sound_channel_wav_ids) {
         for note in &sound_channel.notes {
-            if note.up == Some(true) {
+            if note.up == Some(true)
+                && let Some(obj_id) = wav_ids.get(&note.y.0)
+            {
                 up_wav_by_position.insert((note.x, note.y.0), *obj_id);
             }
         }
     }
 
-    let mut rebuild_info = BmsonRebuildInfo::default();
     let mut seen_key_notes = HashSet::new();
-    for (sound_channel, obj_id) in bmson.sound_channels.iter().zip(sound_channel_wav_ids) {
+    for (sound_channel, wav_ids) in bmson.sound_channels.iter().zip(sound_channel_wav_ids) {
         for note in &sound_channel.notes {
             if note.up == Some(true) {
                 continue;
@@ -277,6 +293,9 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
                 continue;
             }
             let time = pulse_to_obj_time(note.y.0, boundaries);
+            let Some(obj_id) = wav_ids.get(&note.y.0).copied() else {
+                continue;
+            };
             let kind = if note.l > 0 { NoteKind::Long } else { NoteKind::Visible };
             let Some(channel_id) = bmson_note_channel::<T>(note.x, kind, lane_layout) else {
                 continue;
@@ -370,6 +389,76 @@ fn bmson_object_position(time: ObjTime) -> BmsonObjectPosition {
         numerator: time.numerator() as u32,
         denominator: time.denominator().get() as u32,
     }
+}
+
+fn bmson_sound_slice_plan(bmson: &Bmson<'_>, channel: &SoundChannel<'_>) -> Vec<(u64, SoundSlice)> {
+    let mut positions = channel.notes.iter().map(|note| (note.y.0, note.c)).collect::<Vec<_>>();
+    positions.sort_by_key(|(pulse, _)| *pulse);
+    positions.dedup_by_key(|(pulse, _)| *pulse);
+
+    let mut start_us = 0_u64;
+    let mut slices = Vec::with_capacity(positions.len());
+    for (index, &(pulse, continues)) in positions.iter().enumerate() {
+        if !continues {
+            start_us = 0;
+        }
+        let duration_us = positions.get(index + 1).and_then(|&(next_pulse, next_continues)| {
+            next_continues.then(|| {
+                bmson_metric_time_us(bmson, next_pulse)
+                    .saturating_sub(bmson_metric_time_us(bmson, pulse))
+            })
+        });
+        slices.push((pulse, SoundSlice { start_us, duration_us }));
+        if let Some(duration_us) = duration_us {
+            start_us = start_us.saturating_add(duration_us);
+        }
+    }
+    slices
+}
+
+fn bmson_metric_time_us(bmson: &Bmson<'_>, target_pulse: u64) -> u64 {
+    let resolution = bmson.info.resolution.get().max(1);
+    let mut event_pulses = bmson
+        .bpm_events
+        .iter()
+        .map(|event| event.y.0)
+        .chain(bmson.stop_events.iter().map(|event| event.y.0))
+        .filter(|pulse| *pulse < target_pulse)
+        .collect::<Vec<_>>();
+    event_pulses.sort_unstable();
+    event_pulses.dedup();
+
+    let mut current_pulse = 0_u64;
+    let mut current_time = 0_u64;
+    let mut current_bpm = bmson.info.init_bpm.get().max(1.0);
+    for pulse in event_pulses {
+        current_time = current_time.saturating_add(bmson_pulse_span_us(
+            pulse.saturating_sub(current_pulse),
+            resolution,
+            current_bpm,
+        ));
+        current_pulse = pulse;
+        for event in bmson.bpm_events.iter().filter(|event| event.y.0 == pulse) {
+            current_bpm = event.bpm.get().max(1.0);
+        }
+        for event in bmson.stop_events.iter().filter(|event| event.y.0 == pulse) {
+            current_time = current_time.saturating_add(bmson_pulse_span_us(
+                event.duration,
+                resolution,
+                current_bpm,
+            ));
+        }
+    }
+    current_time.saturating_add(bmson_pulse_span_us(
+        target_pulse.saturating_sub(current_pulse),
+        resolution,
+        current_bpm,
+    ))
+}
+
+fn bmson_pulse_span_us(pulses: u64, resolution: u64, bpm: f64) -> u64 {
+    let us = pulses as f64 * 60_000_000.0 / resolution.max(1) as f64 / bpm.max(1.0);
+    us.round().clamp(0.0, u64::MAX as f64) as u64
 }
 
 fn bmson_note_channel<T: KeyLayoutMapper>(

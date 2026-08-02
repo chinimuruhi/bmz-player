@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use bmz_chart::model::{PlayableChart, SoundAssetRef};
+use bmz_chart::model::{PlayableChart, SoundAssetRef, SoundSlice};
 use bmz_chart::sound_asset::sound_asset_candidates;
 use bmz_chart::volume::volwav_factor;
 use thiserror::Error;
@@ -70,13 +71,14 @@ pub fn load_chart_samples_with_progress(
 ) -> Vec<LoadedSampleReport> {
     let volwav = volwav_factor(chart.metadata.volwav_percent);
     let total = chart.sounds.len();
+    let mut decoded_by_path = HashMap::new();
     on_progress(0, total);
     chart
         .sounds
         .iter()
         .enumerate()
         .map(|(index, asset)| {
-            let report = load_asset(engine, asset, loader, volwav);
+            let report = load_asset(engine, asset, loader, volwav, &mut decoded_by_path);
             on_progress(index + 1, total);
             report
         })
@@ -88,6 +90,7 @@ fn load_asset(
     asset: &SoundAssetRef,
     loader: &mut dyn SampleLoader,
     volwav: f32,
+    decoded_by_path: &mut HashMap<PathBuf, DecodedSample>,
 ) -> LoadedSampleReport {
     let candidates = sound_asset_candidates(&asset.path);
     if candidates.is_empty() {
@@ -105,8 +108,14 @@ fn load_asset(
     let mut last_path = asset.path.clone();
     for path in candidates {
         last_path = path.clone();
-        match loader.load(&path) {
+        let decoded =
+            decoded_by_path.get(&path).cloned().map(Ok).unwrap_or_else(|| loader.load(&path));
+        match decoded {
             Ok(mut sample) => {
+                decoded_by_path.entry(path.clone()).or_insert_with(|| sample.clone());
+                if let Some(slice) = asset.slice {
+                    sample = slice_sample(sample, slice);
+                }
                 sample.apply_gain(volwav);
                 engine.insert_sample(asset.id, sample);
                 return LoadedSampleReport { path, status: LoadedSampleStatus::Loaded };
@@ -122,6 +131,25 @@ fn load_asset(
                 .map(|error| error.to_string())
                 .unwrap_or_else(|| "sample file not found".to_string()),
         ),
+    }
+}
+
+fn slice_sample(sample: DecodedSample, slice: SoundSlice) -> DecodedSample {
+    let channels = sample.channels as usize;
+    if channels == 0 || sample.sample_rate == 0 {
+        return sample;
+    }
+    let frame_count = sample.frame_count();
+    let start_frame = ((slice.start_us as u128 * sample.sample_rate as u128) / 1_000_000)
+        .min(frame_count as u128) as usize;
+    let end_frame = slice.duration_us.map_or(frame_count, |duration_us| {
+        let duration_frames = (duration_us as u128 * sample.sample_rate as u128) / 1_000_000;
+        (start_frame as u128 + duration_frames).min(frame_count as u128) as usize
+    });
+    DecodedSample {
+        channels: sample.channels,
+        sample_rate: sample.sample_rate,
+        frames: sample.frames[start_frame * channels..end_frame * channels].to_vec(),
     }
 }
 
@@ -273,8 +301,8 @@ mod tests {
         let missing_path = dir.join("missing.wav");
         std::fs::write(&ok_path, b"dummy").unwrap();
         let chart = chart_with_sounds(vec![
-            SoundAssetRef { id: SoundId(1), path: ok_path.clone() },
-            SoundAssetRef { id: SoundId(2), path: missing_path.clone() },
+            SoundAssetRef { id: SoundId(1), path: ok_path.clone(), slice: None },
+            SoundAssetRef { id: SoundId(2), path: missing_path.clone(), slice: None },
         ]);
         let mut loader = TestLoader::default();
         loader
@@ -295,8 +323,8 @@ mod tests {
     fn load_chart_samples_reports_progress_after_each_asset() {
         let mut engine = AudioEngine::default();
         let chart = chart_with_sounds(vec![
-            SoundAssetRef { id: SoundId(1), path: PathBuf::from("missing-1.wav") },
-            SoundAssetRef { id: SoundId(2), path: PathBuf::from("missing-2.wav") },
+            SoundAssetRef { id: SoundId(1), path: PathBuf::from("missing-1.wav"), slice: None },
+            SoundAssetRef { id: SoundId(2), path: PathBuf::from("missing-2.wav"), slice: None },
         ]);
         let mut loader = TestLoader::default();
         let mut progress = Vec::new();
@@ -314,8 +342,11 @@ mod tests {
         let dir = temp_dir("volwav");
         let ok_path = dir.join("ok.wav");
         std::fs::write(&ok_path, b"dummy").unwrap();
-        let mut chart =
-            chart_with_sounds(vec![SoundAssetRef { id: SoundId(1), path: ok_path.clone() }]);
+        let mut chart = chart_with_sounds(vec![SoundAssetRef {
+            id: SoundId(1),
+            path: ok_path.clone(),
+            slice: None,
+        }]);
         chart.metadata.volwav_percent = 50;
         let mut loader = TestLoader::default();
         loader.samples.insert(
@@ -328,6 +359,49 @@ mod tests {
         let sample = engine.samples.get(SoundId(1)).unwrap();
         assert_eq!(sample.frames[0], 0.5);
         assert_eq!(sample.frames[1], -0.5);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn load_chart_samples_caches_source_and_crops_each_slice() {
+        let mut engine = AudioEngine::default();
+        let dir = temp_dir("sound-slices");
+        let path = dir.join("full.wav");
+        std::fs::write(&path, b"dummy").unwrap();
+        let chart = chart_with_sounds(vec![
+            SoundAssetRef {
+                id: SoundId(1),
+                path: path.clone(),
+                slice: Some(SoundSlice { start_us: 200_000, duration_us: Some(300_000) }),
+            },
+            SoundAssetRef {
+                id: SoundId(2),
+                path: path.clone(),
+                slice: Some(SoundSlice { start_us: 500_000, duration_us: None }),
+            },
+        ]);
+        let mut loader = TestLoader::default();
+        loader.samples.insert(
+            path.clone(),
+            DecodedSample {
+                channels: 1,
+                sample_rate: 10,
+                frames: (0..10).map(|value| value as f32).collect(),
+            },
+        );
+
+        load_chart_samples(&mut engine, &chart, &mut loader);
+
+        assert_eq!(loader.attempts, vec![path]);
+        let first = engine.samples.get(SoundId(1)).unwrap();
+        assert_eq!(first.frames.len(), 14_400);
+        assert!((first.frames[0] - 2.0).abs() < 0.001);
+        assert!((first.frames[first.frames.len() - 1] - 4.0).abs() < 0.001);
+
+        let second = engine.samples.get(SoundId(2)).unwrap();
+        assert_eq!(second.frames.len(), 24_000);
+        assert!((second.frames[0] - 5.0).abs() < 0.001);
+        assert!((second.frames[second.frames.len() - 1] - 9.0).abs() < 0.001);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -407,8 +481,11 @@ mod tests {
         let fallback = dir.join("foo.flac");
         std::fs::write(&requested, b"invalid").unwrap();
         std::fs::write(&fallback, b"valid").unwrap();
-        let chart =
-            chart_with_sounds(vec![SoundAssetRef { id: SoundId(1), path: requested.clone() }]);
+        let chart = chart_with_sounds(vec![SoundAssetRef {
+            id: SoundId(1),
+            path: requested.clone(),
+            slice: None,
+        }]);
         let mut loader = TestLoader::default();
         loader.failures.insert(requested.clone(), "decode failed".to_string());
         loader.samples.insert(

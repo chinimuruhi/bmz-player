@@ -406,8 +406,8 @@ mod tests {
             bga_asset_by_bmp_key: HashMap::new(),
             bar_lines: Vec::<BarLine>::new(),
             sounds: vec![
-                SoundAssetRef { id: SoundId(1), path: "bgm.wav".into() },
-                SoundAssetRef { id: SoundId(2), path: "key.wav".into() },
+                SoundAssetRef { id: SoundId(1), path: "bgm.wav".into(), slice: None },
+                SoundAssetRef { id: SoundId(2), path: "key.wav".into(), slice: None },
             ],
             bga_assets: Vec::<BgaAssetRef>::new(),
             total_notes: 1,

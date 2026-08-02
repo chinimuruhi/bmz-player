@@ -531,6 +531,95 @@ fn bmson_mine_keeps_fractional_damage_and_channel_sound() {
 }
 
 #[test]
+fn bmson_sound_channel_c_builds_continuous_file_slices() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "One WAV",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "sound_channels": [{
+            "name": "full.wav",
+            "notes": [
+                {"x": 1, "y": 0, "l": 0, "c": false},
+                {"x": 1, "y": 240, "l": 0, "c": true},
+                {"x": 1, "y": 480, "l": 0, "c": true},
+                {"x": 1, "y": 720, "l": 0, "c": false}
+            ]
+        }]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    let notes = &result.chart.lane_notes[bmz_core::lane::Lane::Key1.index()];
+    let slices = notes
+        .iter()
+        .map(|note| {
+            let sound = note.sound.expect("BMSON sound note should have a slice sound");
+            result.chart.sounds[sound.0 as usize].slice
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        slices,
+        vec![
+            Some(crate::model::SoundSlice { start_us: 0, duration_us: Some(500_000) }),
+            Some(crate::model::SoundSlice { start_us: 500_000, duration_us: Some(500_000) }),
+            Some(crate::model::SoundSlice { start_us: 1_000_000, duration_us: None }),
+            Some(crate::model::SoundSlice { start_us: 0, duration_us: None }),
+        ]
+    );
+    let sound_ids =
+        notes.iter().filter_map(|note| note.sound).collect::<std::collections::HashSet<_>>();
+    assert_eq!(sound_ids.len(), 4);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn bmson_bgm_notes_use_the_same_sound_slice_rules() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "One WAV BGM",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "sound_channels": [{
+            "name": "full.wav",
+            "notes": [
+                {"x": 0, "y": 0, "l": 0, "c": false},
+                {"x": 0, "y": 240, "l": 0, "c": true}
+            ]
+        }]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.bgm_events.len(), 2);
+    let first = result.chart.bgm_events[0].sound;
+    let second = result.chart.bgm_events[1].sound;
+    assert_eq!(
+        result.chart.sounds[first.0 as usize].slice,
+        Some(crate::model::SoundSlice { start_us: 0, duration_us: Some(500_000) })
+    );
+    assert_eq!(
+        result.chart.sounds[second.0 as usize].slice,
+        Some(crate::model::SoundSlice { start_us: 500_000, duration_us: None })
+    );
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
 fn imports_bmson_irregular_meter_lines() {
     let json = r#"{
         "version": "1.0.0",

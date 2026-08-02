@@ -586,8 +586,8 @@ mod tests {
         let mut chart = test_chart_with_bgm(tap_path.clone());
         chart.bgm_events.clear();
         chart.sounds = vec![
-            SoundAssetRef { id: SoundId(1), path: tap_path.clone() },
-            SoundAssetRef { id: SoundId(2), path: invisible_path.clone() },
+            SoundAssetRef { id: SoundId(1), path: tap_path.clone(), slice: None },
+            SoundAssetRef { id: SoundId(2), path: invisible_path.clone(), slice: None },
         ];
         chart.lane_notes[Lane::Key1.index()].extend([
             NoteEvent {
@@ -654,7 +654,7 @@ mod tests {
             let file_bytes = if index == 10 { vec![0; 1_024] } else { b"dummy".to_vec() };
             fs::write(&path, file_bytes).unwrap();
             let sound_id = SoundId(index as u32 + 1);
-            chart.sounds.push(SoundAssetRef { id: sound_id, path: declared_path });
+            chart.sounds.push(SoundAssetRef { id: sound_id, path: declared_path, slice: None });
             chart.bgm_events.push(SoundEvent {
                 tick: ChartTick(index as u64 * 3_840),
                 time: TimeUs(index as i64 * 1_000_000),
@@ -714,7 +714,7 @@ mod tests {
             bga_keybound_events: Vec::new(),
             bga_asset_by_bmp_key: HashMap::new(),
             bar_lines: Vec::<BarLine>::new(),
-            sounds: vec![SoundAssetRef { id: SoundId(1), path: sample_path }],
+            sounds: vec![SoundAssetRef { id: SoundId(1), path: sample_path, slice: None }],
             bga_assets: Vec::new(),
             total_notes: 0,
             end_time: TimeUs(5_000_000),

@@ -5,7 +5,7 @@ pub(super) fn build_resources(bms: &Bms) -> IntermediateResources {
         .wav
         .wav_files
         .iter()
-        .map(|(id, path)| WavDef { key: id.as_u16(), path: path.clone() })
+        .map(|(id, path)| WavDef { key: id.as_u16(), path: path.clone(), slice: None })
         .collect();
     let bmps: Vec<BmpDef> = bms
         .bmp

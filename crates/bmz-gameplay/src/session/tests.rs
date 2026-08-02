@@ -99,7 +99,7 @@ fn chart_with_invisible_keysound() -> PlayableChart {
         sound: Some(SoundId(8)),
         damage: None,
     });
-    chart.sounds.push(SoundAssetRef { id: SoundId(8), path: "hidden.wav".into() });
+    chart.sounds.push(SoundAssetRef { id: SoundId(8), path: "hidden.wav".into(), slice: None });
     chart.end_time = TimeUs(500_000);
     chart
 }
@@ -110,9 +110,11 @@ fn ln_chart_with_start_sound_and_end_sound(end_sound: Option<SoundId>) -> Playab
     chart.long_notes[0].mode = Some(LongNoteMode::Ln);
     chart.lane_notes[Lane::Key1.index()][1].sound = end_sound;
     if let Some(sound_id) = end_sound {
-        chart
-            .sounds
-            .push(SoundAssetRef { id: sound_id, path: format!("sound-{}.wav", sound_id.0).into() });
+        chart.sounds.push(SoundAssetRef {
+            id: sound_id,
+            path: format!("sound-{}.wav", sound_id.0).into(),
+            slice: None,
+        });
     }
     chart
 }
@@ -271,7 +273,7 @@ fn chart_with_keysound() -> PlayableChart {
         bga_keybound_events: Vec::new(),
         bga_asset_by_bmp_key: std::collections::HashMap::new(),
         bar_lines: Vec::new(),
-        sounds: vec![SoundAssetRef { id: SoundId(7), path: "sound.wav".into() }],
+        sounds: vec![SoundAssetRef { id: SoundId(7), path: "sound.wav".into(), slice: None }],
         bga_assets: Vec::new(),
         total_notes: 1,
         end_time: TimeUs(0),
@@ -299,7 +301,7 @@ fn chart_with_bgm() -> PlayableChart {
         bga_keybound_events: Vec::new(),
         bga_asset_by_bmp_key: std::collections::HashMap::new(),
         bar_lines: Vec::new(),
-        sounds: vec![SoundAssetRef { id: SoundId(3), path: "bgm.wav".into() }],
+        sounds: vec![SoundAssetRef { id: SoundId(3), path: "bgm.wav".into(), slice: None }],
         bga_assets: Vec::new(),
         total_notes: 0,
         end_time: TimeUs(0),

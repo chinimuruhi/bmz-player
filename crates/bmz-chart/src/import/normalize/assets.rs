@@ -17,7 +17,7 @@ pub(super) fn build_sound_table(
             warnings.push(ImportWarning::MissingSoundFile { path: path.clone() });
         }
         by_wav_key.insert(wav.key, id);
-        assets.push(SoundAssetRef { id, path });
+        assets.push(SoundAssetRef { id, path, slice: wav.slice });
     }
 
     SoundTable { by_wav_key, assets }
