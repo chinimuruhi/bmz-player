@@ -65,7 +65,9 @@ pub(super) fn skin_config_get_path(
     }
 
     if !requested_path.contains('*') {
-        return path_context.resolve_path(requested_path);
+        // beatoraja returns a sandbox-rooted path even before a history/config
+        // file is created. Actual reads still go through existing-path checks.
+        return path_context.resolve_path_or_missing(requested_path);
     }
     if requested_path.split_once('*').is_some_and(|(_, suffix)| suffix.contains('*')) {
         bail!("skin_config.get_path supports only one wildcard: {requested}");

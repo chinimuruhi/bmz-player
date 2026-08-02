@@ -1,4 +1,5 @@
 use super::*;
+use crate::path_context::canonicalize_skin_path;
 
 fn copy_tree(source: &Path, destination: &Path) {
     fs::create_dir_all(destination).unwrap();
@@ -159,7 +160,7 @@ fn package_aware_hub_load_uses_dynamic_package_path_in_every_vm() {
     let source = loaded.document.source.iter().find(|source| source.id == "hub-test").unwrap();
     assert_eq!(
         context.resolve_file(&source.path).unwrap(),
-        fs::canonicalize(library_root.join("Hub/parts/sample.png")).unwrap()
+        canonicalize_skin_path(&library_root.join("Hub/parts/sample.png")).unwrap()
     );
 
     let runtime = loaded.lua_runtime.as_mut().expect("runtime draw callback should be retained");
@@ -177,18 +178,18 @@ fn package_path_context_allows_only_paths_inside_library_root() {
     fs::write(entry.parent().unwrap().join("const.lua"), "return 'entry-local'").unwrap();
     assert_eq!(
         context.resolve_file("skin/Hub/const.lua").unwrap(),
-        fs::canonicalize(library_root.join("Hub/const.lua")).unwrap()
+        canonicalize_skin_path(&library_root.join("Hub/const.lua")).unwrap()
     );
     assert_eq!(
         context.resolve_file(r"skin\Hub\modules\sample.lua").unwrap(),
-        fs::canonicalize(library_root.join("Hub/modules/sample.lua")).unwrap()
+        canonicalize_skin_path(&library_root.join("Hub/modules/sample.lua")).unwrap()
     );
 
     assert_eq!(
         context.resolve_file(r"..\..\Hub\parts\sample.png").unwrap(),
-        fs::canonicalize(library_root.join("Hub/parts/sample.png")).unwrap()
+        canonicalize_skin_path(&library_root.join("Hub/parts/sample.png")).unwrap()
     );
-    let inside_absolute = fs::canonicalize(library_root.join("Hub/const.lua")).unwrap();
+    let inside_absolute = canonicalize_skin_path(&library_root.join("Hub/const.lua")).unwrap();
     assert_eq!(
         context.resolve_file(inside_absolute.to_string_lossy().as_ref()).unwrap(),
         inside_absolute
@@ -201,6 +202,36 @@ fn package_path_context_allows_only_paths_inside_library_root() {
     assert!(context.resolve_file("C:\\outside.lua").is_err());
     assert!(context.resolve_file("//server/share/outside.lua").is_err());
     assert!(context.resolve_file("bad\0path.lua").is_err());
+}
+
+#[test]
+fn package_path_context_preserves_renamed_self_alias_without_masking_siblings() {
+    let library_root = unique_test_dir("bmz-skin-renamed-package-alias").join("skins");
+    let entry_dir = library_root.join("renamed-package/select");
+    let self_parts = library_root.join("renamed-package/parts");
+    fs::create_dir_all(&entry_dir).unwrap();
+    fs::create_dir_all(&self_parts).unwrap();
+    let entry = entry_dir.join("select.luaskin");
+    fs::write(&entry, "return { type = 5 }").unwrap();
+    fs::write(self_parts.join("self.lua"), "return 'self'").unwrap();
+    let context = SkinPathContext::new(&entry, [library_root.clone()]).unwrap();
+
+    assert_eq!(
+        context.resolve_file("skin/original-name/parts/self.lua").unwrap(),
+        canonicalize_skin_path(&self_parts.join("self.lua")).unwrap()
+    );
+
+    let sibling_parts = library_root.join("original-name/parts");
+    fs::create_dir_all(&sibling_parts).unwrap();
+    fs::write(sibling_parts.join("shared.lua"), "return 'sibling'").unwrap();
+    fs::write(self_parts.join("shared.lua"), "return 'self'").unwrap();
+    fs::write(self_parts.join("self-only.lua"), "return 'self'").unwrap();
+
+    assert_eq!(
+        context.resolve_file("skin/original-name/parts/shared.lua").unwrap(),
+        canonicalize_skin_path(&sibling_parts.join("shared.lua")).unwrap()
+    );
+    assert!(context.resolve_file("skin/original-name/parts/self-only.lua").is_err());
 }
 
 #[test]

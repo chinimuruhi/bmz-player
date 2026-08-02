@@ -92,6 +92,24 @@ impl SkinPathContext {
         self.resolve_existing(requested, ExistingKind::Any)
     }
 
+    /// Resolves a path that may not exist yet using the common sandbox rules.
+    ///
+    /// Existing paths are still canonicalized so symlink escapes are rejected.
+    /// For a missing path, the returned lexical path is only a name inside the
+    /// sandbox; callers must use an existing-path resolver before reading it.
+    pub fn resolve_path_or_missing(&self, requested: &str) -> Result<PathBuf> {
+        let candidates = self.candidate_paths(requested)?;
+        for candidate in &candidates {
+            if candidate.exists() {
+                return self.validate_existing(candidate, ExistingKind::Any);
+            }
+        }
+        candidates
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("skin path has no sandboxed candidate: {requested}"))
+    }
+
     /// Resolves an existing directory using the common path rules.
     pub fn resolve_directory(&self, requested: &str) -> Result<PathBuf> {
         self.resolve_existing(requested, ExistingKind::Directory)
@@ -275,14 +293,21 @@ impl SkinPathContext {
                 bail!("skin path alias is empty");
             }
             let mut paths = Vec::with_capacity(self.library_roots.len() + 1);
-            // A legacy entry-only context has no global package mapping. Keep
-            // the old renamed-self alias there, but explicit app contexts map
-            // `skin/<package>/...` unambiguously from their library roots.
-            if self.library_roots.len() == 1
-                && self.library_roots[0] == self.entry_dir
-                && let Some((_, package_relative)) = relative.split_once('/')
-            {
-                paths.push(self.entry_dir.join(package_relative));
+            if let Some((package, package_relative)) = relative.split_once('/') {
+                let entry_only =
+                    self.library_roots.len() == 1 && self.library_roots[0] == self.entry_dir;
+                let exact_package_exists =
+                    self.library_roots.iter().any(|root| root.join(package).is_dir());
+                // beatoraja skins often hard-code their original package name,
+                // even when the installed directory was renamed. Preserve that
+                // self-alias only when it cannot mask a real sibling package.
+                if entry_only {
+                    paths.push(self.entry_dir.join(package_relative));
+                } else if !exact_package_exists
+                    && let Some(entry_package_root) = self.entry_package_root()
+                {
+                    paths.push(entry_package_root.join(package_relative));
+                }
             }
             paths.extend(self.library_roots.iter().map(|root| root.join(relative)));
             paths
@@ -308,6 +333,17 @@ impl SkinPathContext {
             bail!("skin path escapes skin root (configured library roots): {requested}");
         }
         Ok(candidates)
+    }
+
+    fn entry_package_root(&self) -> Option<PathBuf> {
+        self.library_roots.iter().find_map(|root| {
+            let relative = self.entry_dir.strip_prefix(root).ok()?;
+            let Component::Normal(package) = relative.components().next()? else {
+                return None;
+            };
+            let package_root = root.join(package);
+            package_root.is_dir().then_some(package_root)
+        })
     }
 
     fn validate_existing(&self, path: &Path, kind: ExistingKind) -> Result<PathBuf> {

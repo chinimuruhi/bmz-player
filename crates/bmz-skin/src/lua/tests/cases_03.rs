@@ -69,6 +69,22 @@ fn get_path_randomizes_when_selection_is_random_sentinel() {
 }
 
 #[test]
+fn get_path_returns_sandboxed_path_before_file_exists() {
+    let root = unique_skin_test_dir("missing-getpath");
+    let entry = root.join("select.luaskin");
+    fs::write(&entry, "return { type = 5 }").unwrap();
+    let path_context = SkinPathContext::for_entry(&entry).unwrap();
+
+    let resolved =
+        skin_config_get_path(&path_context, "History/2026-08-03/history.txt", &BTreeMap::new())
+            .unwrap();
+
+    assert_eq!(resolved, root.join("History/2026-08-03/history.txt"));
+    assert!(!resolved.exists());
+    assert!(skin_config_get_path(&path_context, "../outside.txt", &BTreeMap::new()).is_err());
+}
+
+#[test]
 fn repairs_strictly_recognized_malformed_destination_ops() {
     let mut value = serde_json::json!({
         "type": 7,

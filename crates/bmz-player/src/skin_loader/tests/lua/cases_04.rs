@@ -45,11 +45,11 @@ fn lua_cross_package_source_decodes_with_explicit_library_root() {
     })
     .unwrap();
 
+    let context = SkinPathContext::new(&entry, [root]).unwrap();
     let source = decoded.sources.iter().find(|source| source.source_id == "hub-test").unwrap();
-    assert_eq!(source.path, fs::canonicalize(hub_parts.join("sample.png")).unwrap());
+    assert_eq!(source.path, context.resolve_file("../../Hub/parts/sample.png").unwrap());
     assert!(source.asset.is_some());
 
-    let context = SkinPathContext::new(&entry, [root]).unwrap();
     assert_eq!(
         resolve_skin_audio_path_with_context(
             context.entry_dir(),
@@ -59,4 +59,43 @@ fn lua_cross_package_source_decodes_with_explicit_library_root() {
         .unwrap(),
         source.path
     );
+}
+
+#[test]
+fn select_lua_skins_decode_with_explicit_library_root_when_available() {
+    let skin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins");
+    let cases = [
+        ("mz-select/music_select.luaskin", "m-select"),
+        ("Luxez-Flat/music_select.luaskin", "Luxez-Flat"),
+        ("ModernChic/musicselect.luaskin", "ModernChic"),
+    ];
+    let options = BTreeMap::new();
+    let files = BTreeMap::new();
+    let runtime_state = LuaLoadRuntimeState::default();
+
+    for (relative, label) in cases {
+        let skin_path = skin_root.join(relative);
+        if !skin_path.is_file() {
+            continue;
+        }
+        let decoded = decode_beatoraja_skin_request(BeatorajaSkinDecodeRequest {
+            skin_path: &skin_path,
+            kind: SkinKind::Select,
+            options: &options,
+            files: &files,
+            runtime_state: &runtime_state,
+            library_roots: std::slice::from_ref(&skin_root),
+            document_cache: None,
+            source_cache: None,
+            texture_cache: None,
+            font_cache: None,
+            installed_fonts: None,
+        })
+        .unwrap_or_else(|error| panic!("{label} should decode with app path context: {error:#}"));
+
+        assert!(
+            !decoded.document.destination.is_empty(),
+            "{label} should not decode into an empty select skin"
+        );
+    }
 }
