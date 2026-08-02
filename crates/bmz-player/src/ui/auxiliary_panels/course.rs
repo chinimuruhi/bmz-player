@@ -24,7 +24,8 @@ pub(super) fn build_course_result_panel(
         .collapsible(true)
         .movable(true)
         .title_bar(true)
-        .current_pos(pos)
+        .constrain_to(content_rect.shrink(PANEL_VIEWPORT_MARGIN))
+        .default_pos(pos)
         .default_width(panel_width)
         .show(ctx, |ui| {
             ui.heading(&summary.title);
@@ -204,7 +205,8 @@ pub(super) fn build_course_preview_panel(
         .collapsible(true)
         .movable(true)
         .title_bar(true)
-        .current_pos(pos)
+        .constrain_to(content_rect.shrink(PANEL_VIEWPORT_MARGIN))
+        .default_pos(pos)
         .default_width(380.0)
         .max_height(300.0)
         .show(ctx, |ui| {

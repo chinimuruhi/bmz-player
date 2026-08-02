@@ -17,7 +17,8 @@ pub(super) fn build_result_ir_panel(
         .resizable(false)
         .collapsible(true)
         .movable(true)
-        .current_pos(pos)
+        .constrain_to(content_rect.shrink(PANEL_VIEWPORT_MARGIN))
+        .default_pos(pos)
         .default_width(panel_width)
         .show(ctx, |ui| {
             match &state.submit {
