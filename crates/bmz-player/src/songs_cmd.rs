@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 
 use crate::cli::SongsCommand;
-use crate::config::app_config::PathEntry;
+use crate::config::app_config::{PathEntry, normalize_song_root_path};
 use crate::config::load::load_app_config;
 use crate::config::save::save_app_config;
 use crate::paths::resolve_app_paths;
@@ -29,10 +29,11 @@ pub fn add_song_root_entry(
     recursive: bool,
     enabled: bool,
 ) -> Result<()> {
-    if roots.iter().any(|root| root.path == path) {
+    let path = normalize_song_root_path(path);
+    if roots.iter().any(|root| normalize_song_root_path(&root.path) == path) {
         bail!("already configured: {path}");
     }
-    roots.push(PathEntry { path: path.to_string(), recursive, enabled });
+    roots.push(PathEntry { path, recursive, enabled });
     Ok(())
 }
 
@@ -265,5 +266,16 @@ mod tests {
         assert!(looks_like_path(".\\relative"));
         assert!(looks_like_path("C:\\music"));
         assert!(!looks_like_path("beatmania"));
+    }
+
+    #[test]
+    fn add_song_root_normalizes_and_rejects_separator_variant() {
+        let mut roots = Vec::new();
+
+        add_song_root_entry(&mut roots, r"G:\BMS", true, true).unwrap();
+
+        assert_eq!(roots[0].path, "G:/BMS");
+        let error = add_song_root_entry(&mut roots, "G:/BMS", false, false).unwrap_err();
+        assert!(error.to_string().contains("already configured: G:/BMS"));
     }
 }

@@ -234,6 +234,23 @@ fn ensure_default_difficulty_tables_adds_missing_without_reenabling_existing() {
 }
 
 #[test]
+fn normalize_song_roots_keeps_first_entry_and_is_idempotent() {
+    let mut roots = vec![
+        PathEntry { path: r"G:\BMS\songs".to_string(), enabled: false, recursive: false },
+        PathEntry { path: "G:/BMS/songs".to_string(), enabled: true, recursive: true },
+        PathEntry { path: "H:/BMS".to_string(), enabled: true, recursive: true },
+    ];
+
+    assert!(normalize_song_root_paths(&mut roots));
+    assert_eq!(roots.len(), 2);
+    assert_eq!(roots[0].path, "G:/BMS/songs");
+    assert!(!roots[0].enabled);
+    assert!(!roots[0].recursive);
+    assert_eq!(roots[1].path, "H:/BMS");
+    assert!(!normalize_song_root_paths(&mut roots));
+}
+
+#[test]
 fn app_config_loads_missing_screenshot_section() {
     let mut toml = toml::to_string(&AppConfig::default()).unwrap();
     let start = toml.find("[screenshot]").unwrap();
