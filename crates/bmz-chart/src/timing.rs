@@ -28,6 +28,7 @@ pub struct TickTimePoint {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TickTimingEventKind {
     StopRaw { value: u64 },
+    BmsonStop { duration_pulses: u64, resolution: u64 },
     SetBpm(f64),
 }
 
@@ -63,6 +64,13 @@ fn sanitize_bpm(bpm: f64) -> f64 {
 /// (TICKS_PER_MEASURE / 192 = 3840 / 192 = 20)。
 pub fn stop_raw_to_us(value: u64, bpm: f64) -> i64 {
     ticks_to_us(value.saturating_mul(TICKS_PER_MEASURE as u64 / 192), bpm)
+}
+
+/// BMSON STOP の pulse duration を microsecond へ変換する。
+pub fn bmson_stop_pulses_to_us(duration_pulses: u64, resolution: u64, bpm: f64) -> i64 {
+    let bpm = sanitize_bpm(bpm);
+    let beats = duration_pulses as f64 / resolution.max(1) as f64;
+    (beats * 60_000_000.0 / bpm).round() as i64
 }
 
 fn add_time_us(time: TimeUs, delta_us: i64) -> TimeUs {
@@ -105,6 +113,19 @@ pub fn build_timing_map(initial_bpm: f64, mut events: Vec<TickTimingEvent>) -> T
                 });
                 current_time = add_time_us(current_time, stop_raw_to_us(value, current_bpm));
             }
+            TickTimingEventKind::BmsonStop { duration_pulses, resolution } => {
+                segments.push(TimingSegment {
+                    start_tick: current_tick,
+                    end_tick: current_tick,
+                    start_time: current_time,
+                    end_time: current_time,
+                    bpm: current_bpm,
+                });
+                current_time = add_time_us(
+                    current_time,
+                    bmson_stop_pulses_to_us(duration_pulses, resolution, current_bpm),
+                );
+            }
             TickTimingEventKind::SetBpm(bpm) => {
                 current_bpm = sanitize_bpm(bpm);
             }
@@ -126,6 +147,7 @@ fn timing_event_priority(kind: TickTimingEventKind) -> u8 {
     match kind {
         TickTimingEventKind::StopRaw { .. } => 0,
         TickTimingEventKind::SetBpm(_) => 1,
+        TickTimingEventKind::BmsonStop { .. } => 2,
     }
 }
 
@@ -270,6 +292,12 @@ mod tests {
         assert_eq!(stop_raw_to_us(192, 240.0), 1_000_000);
         // 0 はゼロ秒。
         assert_eq!(stop_raw_to_us(0, 120.0), 0);
+    }
+
+    #[test]
+    fn bmson_stop_pulses_to_us_uses_quarter_note_resolution() {
+        assert_eq!(bmson_stop_pulses_to_us(240, 240, 120.0), 500_000);
+        assert_eq!(bmson_stop_pulses_to_us(240, 240, 240.0), 250_000);
     }
 
     #[test]

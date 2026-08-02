@@ -94,6 +94,7 @@ pub(super) fn materialize_tick_objects(
             IntermediateObjectKind::SetBpm { .. }
             | IntermediateObjectKind::SetExtendedBpm { .. }
             | IntermediateObjectKind::Stop { .. }
+            | IntermediateObjectKind::BmsonStop { .. }
             | IntermediateObjectKind::SetScroll { .. }
             | IntermediateObjectKind::SetSpeed { .. }
             | IntermediateObjectKind::SetJudgeRank { .. }

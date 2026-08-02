@@ -20,10 +20,10 @@ use crate::model::{JudgeRankKind, JudgeRankSpec};
 use super::bms_rs_adapter::build_intermediate_from_bms;
 use super::bmson_timing::{
     BmsonLaneLayout, BmsonLongNoteExtension, build_measure_boundaries, max_pulse_in_bmson,
-    rebuild_bms_timing_from_bmson,
+    pulse_to_obj_time, rebuild_bms_timing_from_bmson,
 };
 use super::error::{ImportError, ImportWarning};
-use super::intermediate::IntermediateChart;
+use super::intermediate::{IntermediateChart, IntermediateObject, IntermediateObjectKind};
 
 pub fn import_bmson_to_intermediate(
     source_path: &Path,
@@ -105,6 +105,7 @@ pub fn import_bmson_to_intermediate(
         intermediate.metadata.long_note_mode_defined = true;
     }
     apply_bmson_long_note_extensions(&mut intermediate, &rebuild_info.long_notes, layout);
+    push_bmson_stop_objects(&mut intermediate, &bmson, &boundaries);
     intermediate.metadata.suppress_bar_lines = suppress_bar_lines;
     intermediate.metadata.judge_rank_spec = Some(JudgeRankSpec {
         value: bmson.info.judge_rank.as_f64() as i32,
@@ -328,6 +329,23 @@ fn apply_bmson_long_note_extensions(
             *wav_key = extension.end_wav_key;
             *explicit_end_sound = true;
         }
+    }
+}
+
+fn push_bmson_stop_objects(
+    intermediate: &mut IntermediateChart,
+    bmson: &Bmson<'_>,
+    boundaries: &super::bmson_timing::MeasureBoundaries,
+) {
+    let resolution = bmson.info.resolution.get();
+    for event in &bmson.stop_events {
+        let time = pulse_to_obj_time(event.y.0, boundaries);
+        intermediate.objects.push(IntermediateObject {
+            measure: u32::try_from(time.track().0).unwrap_or(u32::MAX),
+            position_num: u32::try_from(time.numerator()).unwrap_or(u32::MAX),
+            position_den: u32::try_from(time.denominator().get()).unwrap_or(u32::MAX),
+            kind: IntermediateObjectKind::BmsonStop { duration_pulses: event.duration, resolution },
+        });
     }
 }
 

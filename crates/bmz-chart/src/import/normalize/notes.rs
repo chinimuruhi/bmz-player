@@ -54,6 +54,12 @@ pub(super) fn collect_timing_events(
                     warnings.push(ImportWarning::MissingStopDefinition { key: stop_key });
                 }
             }
+            IntermediateObjectKind::BmsonStop { duration_pulses, resolution } => {
+                events.push(TickTimingEvent {
+                    tick,
+                    kind: TickTimingEventKind::BmsonStop { duration_pulses, resolution },
+                });
+            }
             _ => {}
         }
     }

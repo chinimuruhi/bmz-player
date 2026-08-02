@@ -49,6 +49,7 @@ pub(super) fn build_timing_events(
             match event.kind {
                 TickTimingEventKind::StopRaw { .. } => 0,
                 TickTimingEventKind::SetBpm(_) => 1,
+                TickTimingEventKind::BmsonStop { .. } => 2,
             },
         )
     });
@@ -64,6 +65,15 @@ pub(super) fn build_timing_events(
                 }
                 TickTimingEventKind::StopRaw { value } => {
                     TimingEventKind::Stop { duration_us: crate::timing::stop_raw_to_us(value, bpm) }
+                }
+                TickTimingEventKind::BmsonStop { duration_pulses, resolution } => {
+                    TimingEventKind::Stop {
+                        duration_us: crate::timing::bmson_stop_pulses_to_us(
+                            duration_pulses,
+                            resolution,
+                            bpm,
+                        ),
+                    }
                 }
             };
 

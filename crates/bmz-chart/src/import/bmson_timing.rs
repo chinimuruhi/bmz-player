@@ -10,12 +10,11 @@ use bms_rs::bms::command::{LnMode, StringValue};
 use bms_rs::bms::model::Bms;
 use bms_rs::bms::model::obj::{SectionLenChangeObj, WavObj};
 use bms_rs::bms::prelude::{
-    BgaLayer, BgaObj, BpmChangeObj, KeyLayoutMapper, ObjId, ScrollingFactorObj, StopObj, Track,
+    BgaLayer, BgaObj, BpmChangeObj, KeyLayoutMapper, ObjId, ScrollingFactorObj, Track,
 };
 use bms_rs::bmson::bmson_to_bms::BmsonToBmsWarning;
 use bms_rs::bmson::prelude::FinF64;
 use bms_rs::bmson::{BarLine, BgaId, Bmson};
-use strict_num_extended::NonNegativeF64;
 
 /// BMSON 小節境界 (pulse)。
 #[derive(Debug, Clone)]
@@ -94,7 +93,7 @@ pub fn max_pulse_in_bmson(bmson: &Bmson<'_>) -> u64 {
         consider(event.y.0, 0);
     }
     for event in &bmson.stop_events {
-        consider(event.y.0, event.duration);
+        consider(event.y.0, 0);
     }
     for event in &bmson.scroll_events {
         consider(event.y.0, 0);
@@ -203,7 +202,6 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
 
     let mut wav_obj_id_issuer = ObjId::all_values();
     let mut bpm_def_obj_id_issuer = ObjId::all_values();
-    let mut stop_def_obj_id_issuer = ObjId::all_values();
     let mut scroll_def_obj_id_issuer = ObjId::all_values();
 
     bms.bpm.bpm_changes.clear();
@@ -226,18 +224,6 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
         });
         bms.bpm.bpm_defs.insert(bpm_def_id, StringValue::from_value(bpm));
         bms.bpm.bpm_changes.insert(time, BpmChangeObj { time, bpm });
-    }
-
-    for stop_event in &bmson.stop_events {
-        let time = pulse_to_obj_time(stop_event.y.0, boundaries);
-        let duration = NonNegativeF64::new(stop_event.duration as f64)
-            .expect("stop duration should be finite");
-        let stop_def_id = stop_def_obj_id_issuer.next().unwrap_or_else(|| {
-            warnings.push(BmsonToBmsWarning::StopDefOutOfRange);
-            ObjId::null()
-        });
-        bms.stop.stop_defs.insert(stop_def_id, StringValue::from_value(duration));
-        bms.stop.stops.insert(time, StopObj { time, duration });
     }
 
     for scroll_event in &bmson.scroll_events {

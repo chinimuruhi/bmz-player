@@ -426,6 +426,77 @@ fn bmson_up_note_becomes_long_note_end_sound() {
 }
 
 #[test]
+fn bmson_stop_duration_uses_pulses_at_current_resolution() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Pulse Stop",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "stop_events": [{"y": 240, "duration": 240}],
+        "sound_channels": [{
+            "name": "key.wav",
+            "notes": [
+                {"x": 1, "y": 0, "l": 0, "c": false},
+                {"x": 1, "y": 480, "l": 0, "c": false}
+            ]
+        }]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    let notes = &result.chart.lane_notes[bmz_core::lane::Lane::Key1.index()];
+    assert_eq!(notes[1].time, bmz_core::time::TimeUs(1_500_000));
+    assert!(matches!(
+        result.chart.timing_events.as_slice(),
+        [crate::model::TimingEvent {
+            time: bmz_core::time::TimeUs(500_000),
+            kind: crate::model::TimingEventKind::Stop { duration_us: 500_000 },
+            ..
+        }]
+    ));
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn bmson_stop_at_bpm_change_uses_the_new_bpm() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Changed BPM Stop",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "bpm_events": [{"y": 240, "bpm": 240.0}],
+        "stop_events": [{"y": 240, "duration": 240}],
+        "sound_channels": [{
+            "name": "key.wav",
+            "notes": [{"x": 1, "y": 480, "l": 0, "c": false}]
+        }]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    let note = &result.chart.lane_notes[bmz_core::lane::Lane::Key1.index()][0];
+    assert_eq!(note.time, bmz_core::time::TimeUs(1_000_000));
+    assert!(result.chart.timing_events.iter().any(|event| {
+        matches!(event.kind, crate::model::TimingEventKind::Stop { duration_us: 250_000 })
+    }));
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
 fn imports_bmson_irregular_meter_lines() {
     let json = r#"{
         "version": "1.0.0",

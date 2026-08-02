@@ -156,6 +156,11 @@ pub enum IntermediateObjectKind {
     Stop {
         stop_key: u16,
     },
+    /// BMSON `stop_events.duration`。四分音符あたり `resolution` pulse。
+    BmsonStop {
+        duration_pulses: u64,
+        resolution: u64,
+    },
     /// SCROLL チャネル: スクロール速度倍率の変化点。
     SetScroll {
         factor: f64,
