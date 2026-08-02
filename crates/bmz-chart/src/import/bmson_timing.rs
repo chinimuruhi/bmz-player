@@ -65,11 +65,26 @@ pub(crate) struct BmsonLayeredSoundExtension {
     pub wav_key: u16,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum BmsonBgaKind {
+    Base,
+    Layer,
+    Poor,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BmsonBgaExtension {
+    pub position: BmsonObjectPosition,
+    pub bmp_key: u16,
+    pub kind: BmsonBgaKind,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct BmsonRebuildInfo {
     pub long_notes: Vec<BmsonLongNoteExtension>,
     pub sound_slices: Vec<BmsonSoundSliceExtension>,
     pub layered_sounds: Vec<BmsonLayeredSoundExtension>,
+    pub bga_events: Vec<BmsonBgaExtension>,
     pub mine_channel_wav_keys: Vec<u16>,
 }
 
@@ -212,15 +227,13 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
 ) -> BmsonRebuildInfo {
     let wav_by_path: HashMap<PathBuf, ObjId> =
         bms.wav.wav_files.iter().map(|(id, path)| (path.clone(), *id)).collect();
-    let mut bga_id_to_obj_id = HashMap::new();
-    for header in &bmson.bga.bga_header {
-        let path = PathBuf::from(header.name.as_ref());
-        if let Some(obj_id) =
-            bms.bmp.bmp_files.iter().find_map(|(id, bmp)| (bmp.file == path).then_some(*id))
-        {
-            bga_id_to_obj_id.insert(header.id, obj_id);
-        }
-    }
+    let bga_id_to_obj_id = bmson
+        .bga
+        .bga_header
+        .iter()
+        .zip(ObjId::all_values())
+        .map(|(header, obj_id)| (header.id, obj_id))
+        .collect::<HashMap<_, _>>();
 
     let mut wav_obj_id_issuer = ObjId::all_values();
     let mut bpm_def_obj_id_issuer = ObjId::all_values();
@@ -386,16 +399,31 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
     for bga_event in &bmson.bga.bga_events {
         let time = pulse_to_obj_time(bga_event.y.0, boundaries);
         let obj_id = get_bga_obj_id(&bga_event.id);
+        rebuild_info.bga_events.push(BmsonBgaExtension {
+            position: bmson_object_position(time),
+            bmp_key: obj_id.as_u16(),
+            kind: BmsonBgaKind::Base,
+        });
         bms.bmp.bga_changes.insert(time, BgaObj { time, id: obj_id, layer: BgaLayer::Base });
     }
     for bga_event in &bmson.bga.layer_events {
         let time = pulse_to_obj_time(bga_event.y.0, boundaries);
         let obj_id = get_bga_obj_id(&bga_event.id);
+        rebuild_info.bga_events.push(BmsonBgaExtension {
+            position: bmson_object_position(time),
+            bmp_key: obj_id.as_u16(),
+            kind: BmsonBgaKind::Layer,
+        });
         bms.bmp.bga_changes.insert(time, BgaObj { time, id: obj_id, layer: BgaLayer::Overlay });
     }
     for bga_event in &bmson.bga.poor_events {
         let time = pulse_to_obj_time(bga_event.y.0, boundaries);
         let obj_id = get_bga_obj_id(&bga_event.id);
+        rebuild_info.bga_events.push(BmsonBgaExtension {
+            position: bmson_object_position(time),
+            bmp_key: obj_id.as_u16(),
+            kind: BmsonBgaKind::Poor,
+        });
         bms.bmp.bga_changes.insert(time, BgaObj { time, id: obj_id, layer: BgaLayer::Poor });
     }
 

@@ -287,6 +287,44 @@ fn imports_bmson_into_playable_chart() {
 }
 
 #[test]
+fn bmson_preserves_simultaneous_base_layer_and_poor_bga_events() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Simultaneous BGA",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "sound_channels": [],
+        "bga": {
+            "bga_header": [
+                {"id": 10, "name": "base.png"},
+                {"id": 20, "name": "layer.png"},
+                {"id": 30, "name": "poor.png"}
+            ],
+            "bga_events": [{"y": 0, "id": 10}],
+            "layer_events": [{"y": 0, "id": 20}],
+            "poor_events": [{"y": 0, "id": 30}]
+        }
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+
+    let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.bga_events.len(), 3);
+    assert!(result.chart.bga_events.iter().any(|event| event.kind == BgaEventKind::Base));
+    assert!(result.chart.bga_events.iter().any(|event| event.kind == BgaEventKind::Layer));
+    assert!(result.chart.bga_events.iter().any(|event| event.kind == BgaEventKind::Poor));
+    assert!(result.chart.bga_events.iter().all(|event| event.tick.0 == 0 && event.time.0 == 0));
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
 fn imports_bmson_title_image_fallback_to_backbmp() {
     let json = r#"{
         "version": "1.0.0",

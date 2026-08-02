@@ -19,8 +19,9 @@ use crate::model::{JudgeRankKind, JudgeRankSpec};
 
 use super::bms_rs_adapter::build_intermediate_from_bms;
 use super::bmson_timing::{
-    BmsonLaneLayout, BmsonLayeredSoundExtension, BmsonLongNoteExtension, BmsonSoundSliceExtension,
-    build_measure_boundaries, max_pulse_in_bmson, pulse_to_obj_time, rebuild_bms_timing_from_bmson,
+    BmsonBgaExtension, BmsonBgaKind, BmsonLaneLayout, BmsonLayeredSoundExtension,
+    BmsonLongNoteExtension, BmsonSoundSliceExtension, build_measure_boundaries, max_pulse_in_bmson,
+    pulse_to_obj_time, rebuild_bms_timing_from_bmson,
 };
 use super::error::{ImportError, ImportWarning};
 use super::intermediate::{IntermediateChart, IntermediateObject, IntermediateObjectKind};
@@ -113,6 +114,7 @@ pub fn import_bmson_to_intermediate(
     intermediate.metadata.key_mode = bmson_key_mode(layout);
     apply_bmson_sound_slices(&mut intermediate, &rebuild_info.sound_slices);
     apply_bmson_layered_sounds(&mut intermediate, &rebuild_info.layered_sounds, layout);
+    apply_bmson_bga_events(&mut intermediate, &rebuild_info.bga_events);
     if let Some(ln_type) = ln_type {
         intermediate.metadata.long_note_mode = map_ln_mode(ln_type);
         intermediate.metadata.long_note_mode_defined = true;
@@ -395,6 +397,26 @@ fn apply_bmson_layered_sounds(
             wav_key: extension.wav_key,
         });
     }
+}
+
+fn apply_bmson_bga_events(intermediate: &mut IntermediateChart, extensions: &[BmsonBgaExtension]) {
+    intermediate
+        .objects
+        .retain(|object| !matches!(object.kind, IntermediateObjectKind::Bga { .. }));
+    for extension in extensions {
+        let kind = match extension.kind {
+            BmsonBgaKind::Base => super::intermediate::IntermediateBgaKind::Base,
+            BmsonBgaKind::Layer => super::intermediate::IntermediateBgaKind::Layer,
+            BmsonBgaKind::Poor => super::intermediate::IntermediateBgaKind::Poor,
+        };
+        intermediate.objects.push(IntermediateObject {
+            measure: extension.position.measure,
+            position_num: extension.position.numerator,
+            position_den: extension.position.denominator,
+            kind: IntermediateObjectKind::Bga { bmp_key: extension.bmp_key, kind },
+        });
+    }
+    intermediate.metadata.has_bga = !extensions.is_empty();
 }
 
 fn push_bmson_stop_objects(
