@@ -131,10 +131,10 @@ pub fn import_bmson_to_intermediate(
         &rebuild_info.mine_channel_wav_keys,
     );
     intermediate.metadata.suppress_bar_lines = suppress_bar_lines;
-    intermediate.metadata.judge_rank_spec = Some(JudgeRankSpec {
-        value: bmson.info.judge_rank.as_f64() as i32,
-        kind: JudgeRankKind::BmsonJudgeRank,
-    });
+    let judge_rank = bmson.info.judge_rank.as_f64() as i32;
+    intermediate.metadata.judge_rank = Some(judge_rank);
+    intermediate.metadata.judge_rank_spec =
+        Some(JudgeRankSpec { value: judge_rank, kind: JudgeRankKind::BmsonJudgeRank });
     Ok(intermediate)
 }
 
