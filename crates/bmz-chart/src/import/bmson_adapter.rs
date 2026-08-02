@@ -12,7 +12,7 @@ use bms_rs::bms::model::Bms;
 use bms_rs::bms::model::bmp::Bmp;
 use bms_rs::bmson::bmson_to_bms::BmsonToBmsWarning;
 use bms_rs::bmson::{Bmson, parse_bmson};
-use bmz_core::lane::{ChartKeyLayout, Lane, PmsKeyLayout};
+use bmz_core::lane::{ChartKeyLayout, KeyMode, Lane, PmsKeyLayout};
 
 use crate::hash::compute_chart_identity;
 use crate::model::{JudgeRankKind, JudgeRankSpec};
@@ -63,20 +63,25 @@ pub fn import_bmson_to_intermediate(
     let mut converted = bms_from_bmson_headers_and_resources(&bmson, warnings);
     let mut timing_warnings = Vec::new();
     let rebuild_info = match layout {
-        BmsonLaneLayout::Beat => rebuild_bms_timing_from_bmson::<KeyLayoutBeat>(
+        BmsonLaneLayout::Beat5
+        | BmsonLaneLayout::Beat7
+        | BmsonLaneLayout::Beat10
+        | BmsonLaneLayout::Beat14 => rebuild_bms_timing_from_bmson::<KeyLayoutBeat>(
             &mut converted.bms,
             &bmson,
             &boundaries,
             layout,
             &mut timing_warnings,
         ),
-        BmsonLaneLayout::Pms => rebuild_bms_timing_from_bmson::<KeyLayoutPmsBmeType>(
-            &mut converted.bms,
-            &bmson,
-            &boundaries,
-            layout,
-            &mut timing_warnings,
-        ),
+        BmsonLaneLayout::Pms5 | BmsonLaneLayout::Pms9 => {
+            rebuild_bms_timing_from_bmson::<KeyLayoutPmsBmeType>(
+                &mut converted.bms,
+                &bmson,
+                &boundaries,
+                layout,
+                &mut timing_warnings,
+            )
+        }
     };
     for warning in timing_warnings {
         push_bmson_to_bms_warning(warning, warnings);
@@ -88,18 +93,24 @@ pub fn import_bmson_to_intermediate(
         resolve_backbmp_path(bmson.info.back_image.as_deref(), bmson.info.title_image.as_deref());
 
     let mut intermediate = match layout {
-        BmsonLaneLayout::Beat => build_intermediate_from_bms::<KeyLayoutBeat>(
+        BmsonLaneLayout::Beat5
+        | BmsonLaneLayout::Beat7
+        | BmsonLaneLayout::Beat10
+        | BmsonLaneLayout::Beat14 => build_intermediate_from_bms::<KeyLayoutBeat>(
             &converted.bms,
             ChartKeyLayout::beat(),
             warnings,
         )?,
-        BmsonLaneLayout::Pms => build_intermediate_from_bms::<KeyLayoutPmsBmeType>(
-            &converted.bms,
-            ChartKeyLayout::pms(PmsKeyLayout::BmeType),
-            warnings,
-        )?,
+        BmsonLaneLayout::Pms5 | BmsonLaneLayout::Pms9 => {
+            build_intermediate_from_bms::<KeyLayoutPmsBmeType>(
+                &converted.bms,
+                ChartKeyLayout::pms(PmsKeyLayout::BmeType),
+                warnings,
+            )?
+        }
     };
     intermediate.identity = identity;
+    intermediate.metadata.key_mode = bmson_key_mode(layout);
     if let Some(ln_type) = ln_type {
         intermediate.metadata.long_note_mode = map_ln_mode(ln_type);
         intermediate.metadata.long_note_mode_defined = true;
@@ -116,13 +127,26 @@ pub fn import_bmson_to_intermediate(
 
 fn bmson_layout_for_mode_hint(mode_hint: &str) -> Result<BmsonLaneLayout, ImportError> {
     let normalized = mode_hint.trim().to_ascii_lowercase();
-    if normalized == "popn-9k" {
-        return Ok(BmsonLaneLayout::Pms);
-    }
-    if matches!(normalized.as_str(), "beat-5k" | "beat-7k" | "beat-10k" | "beat-14k") {
-        return Ok(BmsonLaneLayout::Beat);
+    match normalized.as_str() {
+        "beat-5k" => return Ok(BmsonLaneLayout::Beat5),
+        "beat-7k" => return Ok(BmsonLaneLayout::Beat7),
+        "beat-10k" => return Ok(BmsonLaneLayout::Beat10),
+        "beat-14k" => return Ok(BmsonLaneLayout::Beat14),
+        "popn-5k" => return Ok(BmsonLaneLayout::Pms5),
+        "popn-9k" => return Ok(BmsonLaneLayout::Pms9),
+        _ => {}
     }
     Err(ImportError::UnsupportedMode { mode: mode_hint.to_string() })
+}
+
+fn bmson_key_mode(layout: BmsonLaneLayout) -> KeyMode {
+    match layout {
+        BmsonLaneLayout::Beat5 => KeyMode::K5,
+        BmsonLaneLayout::Beat7 => KeyMode::K7,
+        BmsonLaneLayout::Beat10 => KeyMode::K10,
+        BmsonLaneLayout::Beat14 => KeyMode::K14,
+        BmsonLaneLayout::Pms5 | BmsonLaneLayout::Pms9 => KeyMode::K9,
+    }
 }
 
 struct BmzBmsonToBmsOutput {
@@ -351,8 +375,44 @@ fn push_bmson_stop_objects(
 
 fn bmson_lane(value: u8, layout: BmsonLaneLayout) -> Option<Lane> {
     match layout {
-        BmsonLaneLayout::Pms => Lane::from_pms_key(value),
-        BmsonLaneLayout::Beat => match value {
+        BmsonLaneLayout::Pms5 if value <= 5 => Lane::from_pms_key(value),
+        BmsonLaneLayout::Pms9 => Lane::from_pms_key(value),
+        BmsonLaneLayout::Beat5 => match value {
+            1 => Some(Lane::Key1),
+            2 => Some(Lane::Key2),
+            3 => Some(Lane::Key3),
+            4 => Some(Lane::Key4),
+            5 => Some(Lane::Key5),
+            8 => Some(Lane::Scratch),
+            _ => None,
+        },
+        BmsonLaneLayout::Beat7 => match value {
+            1 => Some(Lane::Key1),
+            2 => Some(Lane::Key2),
+            3 => Some(Lane::Key3),
+            4 => Some(Lane::Key4),
+            5 => Some(Lane::Key5),
+            6 => Some(Lane::Key6),
+            7 => Some(Lane::Key7),
+            8 => Some(Lane::Scratch),
+            _ => None,
+        },
+        BmsonLaneLayout::Beat10 => match value {
+            1 => Some(Lane::Key1),
+            2 => Some(Lane::Key2),
+            3 => Some(Lane::Key3),
+            4 => Some(Lane::Key4),
+            5 => Some(Lane::Key5),
+            8 => Some(Lane::Scratch),
+            9 => Some(Lane::Key8),
+            10 => Some(Lane::Key9),
+            11 => Some(Lane::Key10),
+            12 => Some(Lane::Key11),
+            13 => Some(Lane::Key12),
+            16 => Some(Lane::Scratch2),
+            _ => None,
+        },
+        BmsonLaneLayout::Beat14 => match value {
             1 => Some(Lane::Key1),
             2 => Some(Lane::Key2),
             3 => Some(Lane::Key3),
@@ -371,6 +431,7 @@ fn bmson_lane(value: u8, layout: BmsonLaneLayout) -> Option<Lane> {
             16 => Some(Lane::Scratch2),
             _ => None,
         },
+        BmsonLaneLayout::Pms5 => None,
     }
 }
 
@@ -484,6 +545,79 @@ mod tests {
             })
             .collect();
         assert_eq!(lanes, vec![bmz_core::lane::Lane::Key1, bmz_core::lane::Lane::Key9]);
+    }
+
+    #[test]
+    fn bmson_beat_5k_uses_hint_and_drops_reserved_lanes() {
+        let chart = import_bmson_text(
+            r#"{"version":"1.0.0","info":{"title":"t","artist":"a","genre":"g","level":1,"init_bpm":120,"resolution":240,"mode_hint":"beat-5k"},"sound_channels":[{"name":"key.wav","notes":[{"x":1,"y":0,"l":0,"c":false},{"x":6,"y":240,"l":0,"c":false},{"x":8,"y":480,"l":0,"c":false}]}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(chart.metadata.key_mode, KeyMode::K5);
+        let lanes = chart
+            .objects
+            .iter()
+            .filter_map(|object| match object.kind {
+                IntermediateObjectKind::VisibleNote { lane, .. } => Some(lane),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(lanes, vec![Lane::Key1, Lane::Scratch]);
+        assert!(
+            !chart
+                .objects
+                .iter()
+                .any(|object| { matches!(object.kind, IntermediateObjectKind::Bgm { .. }) })
+        );
+    }
+
+    #[test]
+    fn bmson_beat_10k_keeps_sparse_mode_and_drops_seven_key_gaps() {
+        let chart = import_bmson_text(
+            r#"{"version":"1.0.0","info":{"title":"t","artist":"a","genre":"g","level":1,"init_bpm":120,"resolution":240,"mode_hint":"beat-10k"},"sound_channels":[{"name":"key.wav","notes":[{"x":1,"y":0,"l":0,"c":false},{"x":6,"y":240,"l":0,"c":false},{"x":9,"y":480,"l":0,"c":false},{"x":14,"y":720,"l":0,"c":false},{"x":16,"y":960,"l":0,"c":false}]}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(chart.metadata.key_mode, KeyMode::K10);
+        let lanes = chart
+            .objects
+            .iter()
+            .filter_map(|object| match object.kind {
+                IntermediateObjectKind::VisibleNote { lane, .. } => Some(lane),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(lanes, vec![Lane::Key1, Lane::Key8, Lane::Scratch2]);
+    }
+
+    #[test]
+    fn bmson_empty_beat_14k_keeps_declared_mode() {
+        let chart = import_bmson_text(
+            r#"{"version":"1.0.0","info":{"title":"t","artist":"a","genre":"g","level":1,"init_bpm":120,"resolution":240,"mode_hint":"beat-14k"},"sound_channels":[]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(chart.metadata.key_mode, KeyMode::K14);
+    }
+
+    #[test]
+    fn bmson_popn_5k_is_accepted_as_pms_mode() {
+        let chart = import_bmson_text(
+            r#"{"version":"1.0.0","info":{"title":"t","artist":"a","genre":"g","level":1,"init_bpm":120,"resolution":240,"mode_hint":"popn-5k"},"sound_channels":[{"name":"key.wav","notes":[{"x":1,"y":0,"l":0,"c":false},{"x":6,"y":240,"l":0,"c":false}]}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(chart.metadata.key_mode, KeyMode::K9);
+        let lanes = chart
+            .objects
+            .iter()
+            .filter_map(|object| match object.kind {
+                IntermediateObjectKind::VisibleNote { lane, .. } => Some(lane),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(lanes, vec![Lane::Key1]);
     }
 
     #[test]

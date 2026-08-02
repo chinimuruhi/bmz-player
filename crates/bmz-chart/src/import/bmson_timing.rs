@@ -25,8 +25,12 @@ pub struct MeasureBoundaries {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BmsonLaneLayout {
-    Beat,
-    Pms,
+    Beat5,
+    Beat7,
+    Beat10,
+    Beat14,
+    Pms5,
+    Pms9,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -273,7 +277,9 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
             }
             let time = pulse_to_obj_time(note.y.0, boundaries);
             let kind = if note.l > 0 { NoteKind::Long } else { NoteKind::Visible };
-            let channel_id = bmson_note_channel::<T>(note.x, kind, lane_layout);
+            let Some(channel_id) = bmson_note_channel::<T>(note.x, kind, lane_layout) else {
+                continue;
+            };
             bms.wav.notes.push_note(WavObj { offset: time, channel_id, wav_id: obj_id });
             if note.l > 0
                 && let Some(lane) = note.x
@@ -310,11 +316,12 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
 
         for mine_event in &mine_channel.notes {
             let time = pulse_to_obj_time(mine_event.y.0, boundaries);
-            bms.wav.notes.push_note(WavObj {
-                offset: time,
-                channel_id: bmson_note_channel::<T>(mine_event.x, NoteKind::Landmine, lane_layout),
-                wav_id: obj_id,
-            });
+            let Some(channel_id) =
+                bmson_note_channel::<T>(mine_event.x, NoteKind::Landmine, lane_layout)
+            else {
+                continue;
+            };
+            bms.wav.notes.push_note(WavObj { offset: time, channel_id, wav_id: obj_id });
         }
     }
 
@@ -330,11 +337,12 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
 
         for key_event in &key_channel.notes {
             let time = pulse_to_obj_time(key_event.y.0, boundaries);
-            bms.wav.notes.push_note(WavObj {
-                offset: time,
-                channel_id: bmson_note_channel::<T>(key_event.x, NoteKind::Invisible, lane_layout),
-                wav_id: obj_id,
-            });
+            let Some(channel_id) =
+                bmson_note_channel::<T>(key_event.x, NoteKind::Invisible, lane_layout)
+            else {
+                continue;
+            };
+            bms.wav.notes.push_note(WavObj { offset: time, channel_id, wav_id: obj_id });
         }
     }
 
@@ -376,30 +384,41 @@ fn bmson_note_channel<T: KeyLayoutMapper>(
     lane: Option<NonZeroU8>,
     kind: NoteKind,
     layout: BmsonLaneLayout,
-) -> NoteChannelId {
+) -> Option<NoteChannelId> {
     let Some(lane_value) = lane.map(std::num::NonZero::get) else {
-        return Channel::Bgm.into();
+        return Some(Channel::Bgm.into());
     };
     let mapped = match layout {
-        BmsonLaneLayout::Pms if lane_value <= 9 => {
+        BmsonLaneLayout::Pms5 if lane_value <= 5 => {
             Some((Key::Key(lane_value), PlayerSide::Player1))
         }
-        BmsonLaneLayout::Beat => {
+        BmsonLaneLayout::Pms9 if lane_value <= 9 => {
+            Some((Key::Key(lane_value), PlayerSide::Player1))
+        }
+        BmsonLaneLayout::Beat5 | BmsonLaneLayout::Beat7 => {
+            let max_key = if layout == BmsonLaneLayout::Beat5 { 5 } else { 7 };
+            match lane_value {
+                key if key <= max_key => Some((Key::Key(key), PlayerSide::Player1)),
+                8 => Some((Key::Scratch(1), PlayerSide::Player1)),
+                _ => None,
+            }
+        }
+        BmsonLaneLayout::Beat10 | BmsonLaneLayout::Beat14 => {
             let (adjusted_lane, side) = if lane_value > 8 {
                 (lane_value - 8, PlayerSide::Player2)
             } else {
                 (lane_value, PlayerSide::Player1)
             };
+            let max_key = if layout == BmsonLaneLayout::Beat10 { 5 } else { 7 };
             match adjusted_lane {
-                key @ 1..=7 => Some((Key::Key(key), side)),
+                key if key <= max_key => Some((Key::Key(key), side)),
                 8 => Some((Key::Scratch(1), side)),
                 _ => None,
             }
         }
-        BmsonLaneLayout::Pms => None,
+        BmsonLaneLayout::Pms5 | BmsonLaneLayout::Pms9 => None,
     };
-    mapped
-        .map_or_else(|| Channel::Bgm.into(), |(key, side)| T::new(side, kind, key).to_channel_id())
+    mapped.map(|(key, side)| T::new(side, kind, key).to_channel_id())
 }
 
 #[cfg(test)]
