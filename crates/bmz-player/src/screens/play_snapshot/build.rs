@@ -337,8 +337,8 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         autoplay: session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full()),
         replay_playback: session.replay_player.is_some() && session.replay_lane_mask.is_none(),
         practice_mode: false,
-        score_save_enabled: !session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full())
-            && !(session.replay_player.is_some() && session.replay_lane_mask.is_none()),
+        score_save_enabled: !(session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full())
+            || session.replay_player.is_some() && session.replay_lane_mask.is_none()),
         course_stage: None,
         course_titles: Default::default(),
         table_text_primary: String::new(),
