@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use bmz_audio::loader::LoadedSampleStatus;
 use bmz_chart::hash::compute_chart_identity;
-use bmz_chart::model::{ChartMetadata, PlayableChart, SoundAssetRef};
+use bmz_chart::model::{ChartMetadata, PlayableChart, SoundAssetRef, SoundSlice};
 use bmz_core::clear::GaugeType;
 use bmz_core::ids::{NoteId, SoundId};
 use bmz_core::input::InputKind;
@@ -66,6 +66,29 @@ fn chart() -> PlayableChart {
         total_notes: 1,
         end_time: TimeUs(0),
     }
+}
+
+#[test]
+fn sound_preload_counts_distinct_sources_and_regions() {
+    let mut chart = chart();
+    chart.sounds = vec![
+        SoundAssetRef {
+            id: SoundId(0),
+            path: "long-source.wav".into(),
+            slice: Some(SoundSlice { start_us: 0, duration_us: Some(500_000) }),
+        },
+        SoundAssetRef {
+            id: SoundId(1),
+            path: "long-source.wav".into(),
+            slice: Some(SoundSlice { start_us: 500_000, duration_us: Some(500_000) }),
+        },
+        SoundAssetRef { id: SoundId(2), path: "keysound.wav".into(), slice: None },
+    ];
+
+    assert_eq!(
+        sound_preload_counts(&chart),
+        SoundPreloadCounts { source_count: 2, region_count: 3 }
+    );
 }
 
 fn note(id: u32, lane: Lane, time_us: i64) -> NoteEvent {

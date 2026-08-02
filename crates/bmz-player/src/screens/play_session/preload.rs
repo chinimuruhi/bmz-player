@@ -1,4 +1,23 @@
 use super::*;
+use std::collections::HashSet;
+use std::time::Instant;
+
+/// 音源 preload の入力規模。source は宣言パス単位、region は `SoundId` 単位で数える。
+///
+/// source candidate の拡張子フォールバックや decode cache の実装には依存しないため、
+/// 音源 region API の移行前後で比較できる計測値として使う。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SoundPreloadCounts {
+    pub(super) source_count: usize,
+    pub(super) region_count: usize,
+}
+
+pub(super) fn sound_preload_counts(chart: &PlayableChart) -> SoundPreloadCounts {
+    SoundPreloadCounts {
+        source_count: chart.sounds.iter().map(|sound| &sound.path).collect::<HashSet<_>>().len(),
+        region_count: chart.sounds.len(),
+    }
+}
 
 pub fn load_game_session_for_chart(
     library_db: &LibraryDatabase,
@@ -135,7 +154,10 @@ pub fn preload_play_session_for_chart_with_callbacks(
     on_chart: impl FnOnce(&PreparedPlayChart),
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
+    let preload_started_at = Instant::now();
+    let chart_parse_started_at = Instant::now();
     let imported = load_transformed_chart_for_play(library_db, chart_id, &options)?;
+    let chart_parse_elapsed = chart_parse_started_at.elapsed();
     let chart = Arc::new(imported.chart);
     let prepared_chart = PreparedPlayChart {
         render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(
@@ -145,20 +167,47 @@ pub fn preload_play_session_for_chart_with_callbacks(
         applied_arrange: imported.applied_arrange,
         score_key: imported.score_key,
     };
+    let sound_counts = sound_preload_counts(&prepared_chart.chart);
+    tracing::info!(
+        chart_id,
+        chart_parse_elapsed_ms = chart_parse_elapsed.as_millis(),
+        sound_sources = sound_counts.source_count,
+        sound_regions = sound_counts.region_count,
+        "play preload parsed and prepared chart"
+    );
     on_chart(&prepared_chart);
     let mut loader = FfmpegSampleLoader::default();
+    let audio_load_started_at = Instant::now();
     let (audio, sample_report) = build_audio_engine_for_chart_with_progress(
         &prepared_chart.chart,
         options.sample_rate,
         &mut loader,
         on_progress,
     );
+    let audio_load_elapsed = audio_load_started_at.elapsed();
+    tracing::info!(
+        chart_id,
+        audio_load_elapsed_ms = audio_load_elapsed.as_millis(),
+        sound_sources = sound_counts.source_count,
+        sound_regions = sound_counts.region_count,
+        "play preload loaded audio"
+    );
+    let normalization_started_at = Instant::now();
     let chart_normalization_gain = load_or_compute_chart_normalization_gain(
         library_db,
         chart_id,
         &prepared_chart.chart,
         &audio,
     )?;
+    tracing::info!(
+        chart_id,
+        normalization_elapsed_ms = normalization_started_at.elapsed().as_millis(),
+        preload_elapsed_ms = preload_started_at.elapsed().as_millis(),
+        sound_sources = sound_counts.source_count,
+        sound_regions = sound_counts.region_count,
+        chart_normalization_gain,
+        "play preload complete"
+    );
 
     Ok(PreloadedPlaySession {
         chart: prepared_chart.chart,
@@ -186,9 +235,17 @@ pub fn preload_play_session_reloading_audio_with_progress(
     score_key: ScoreKey,
     on_progress: impl FnMut(usize, usize),
 ) -> PreloadedPlaySession {
+    let sound_counts = sound_preload_counts(&chart);
     let mut loader = FfmpegSampleLoader::default();
+    let audio_load_started_at = Instant::now();
     let (audio, sample_report) =
         build_audio_engine_for_chart_with_progress(&chart, sample_rate, &mut loader, on_progress);
+    tracing::info!(
+        audio_load_elapsed_ms = audio_load_started_at.elapsed().as_millis(),
+        sound_sources = sound_counts.source_count,
+        sound_regions = sound_counts.region_count,
+        "play quick retry reloaded audio"
+    );
     PreloadedPlaySession {
         chart,
         audio,
