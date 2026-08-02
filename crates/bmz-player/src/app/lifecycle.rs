@@ -120,8 +120,37 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.update_search_ime_cursor_area();
             }
             WindowEvent::Focused(focused) => {
-                self.ui.focused = focused;
-                if !focused {
+                let event_focused = focused;
+                let native_focused = self.window.as_ref().is_some_and(|window| window.has_focus());
+                let previous_effective_focused = self.ui.focused;
+                let focus_update = resolve_window_focus_update(
+                    previous_effective_focused,
+                    event_focused,
+                    native_focused,
+                    cfg!(target_os = "macos"),
+                );
+                if event_focused != native_focused {
+                    tracing::warn!(
+                        event_focused,
+                        native_focused,
+                        previous_effective_focused,
+                        effective_focused = focus_update.effective_focused,
+                        "window focus state mismatch"
+                    );
+                }
+                if previous_effective_focused != focus_update.effective_focused {
+                    let previous_effective_frame_limit = self.current_frame_limit();
+                    self.ui.focused = focus_update.effective_focused;
+                    let effective_frame_limit = self.current_frame_limit();
+                    tracing::info!(
+                        previous_effective_focused,
+                        effective_focused = focus_update.effective_focused,
+                        previous_effective_frame_limit,
+                        effective_frame_limit,
+                        "effective window focus and frame limit changed"
+                    );
+                }
+                if focus_update.focus_lost {
                     let releases = self.input.handle_focus_lost();
                     for event in releases.raw_keyboard {
                         self.route_play_device_input(event);

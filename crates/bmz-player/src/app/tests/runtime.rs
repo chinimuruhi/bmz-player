@@ -53,6 +53,32 @@ fn config_internal_resolution_mode_maps_video_setting() {
 }
 
 #[test]
+fn macos_window_focus_uses_native_state() {
+    assert!(resolve_window_focus_update(true, false, true, true).effective_focused);
+    assert!(!resolve_window_focus_update(true, false, false, true).effective_focused);
+    assert!(resolve_window_focus_update(false, true, true, true).effective_focused);
+}
+
+#[test]
+fn non_macos_window_focus_preserves_event_state() {
+    assert!(!resolve_window_focus_update(true, false, true, false).effective_focused);
+    assert!(resolve_window_focus_update(false, true, false, false).effective_focused);
+}
+
+#[test]
+fn focus_release_runs_only_on_effective_true_to_false_transition() {
+    let first_loss = resolve_window_focus_update(true, false, false, true);
+    assert!(first_loss.focus_lost);
+
+    let repeated_loss =
+        resolve_window_focus_update(first_loss.effective_focused, false, false, true);
+    assert!(!repeated_loss.focus_lost);
+
+    let stale_false = resolve_window_focus_update(true, false, true, true);
+    assert!(!stale_false.focus_lost);
+}
+
+#[test]
 fn keyboard_input_backend_uses_raw_input_on_windows_auto() {
     let mut config = AppConfig::default();
     config.input.backend = InputBackendKind::Auto;

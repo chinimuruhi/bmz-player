@@ -1,5 +1,30 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct WindowFocusUpdate {
+    pub(super) effective_focused: bool,
+    pub(super) focus_lost: bool,
+}
+
+/// winit の focus event と処理時点の native focus state から、アプリが使う状態を決める。
+///
+/// macOS では NSWindowDelegate の通知が event queue に積まれた後、処理されるまでに
+/// key window が戻ることがある。`Window::has_focus()` は処理時点の
+/// `NSWindow.isKeyWindow` を読むため、macOS だけはこちらを正とする。
+/// 他 platform は従来どおり event 値を採用する。
+pub(super) fn resolve_window_focus_update(
+    previous_effective_focused: bool,
+    event_focused: bool,
+    native_focused: bool,
+    is_macos: bool,
+) -> WindowFocusUpdate {
+    let effective_focused = if is_macos { native_focused } else { event_focused };
+    WindowFocusUpdate {
+        effective_focused,
+        focus_lost: previous_effective_focused && !effective_focused,
+    }
+}
+
 pub(super) fn window_attributes_from_config(
     video: &crate::config::app_config::VideoConfig,
 ) -> WindowAttributes {
