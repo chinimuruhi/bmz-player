@@ -128,6 +128,7 @@ mod tests {
             tick: ChartTick(384),
             time: TimeUs(3_000_000),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         let inputs = autoplay.poll_until(&chart, TimeUs(3_000_000));
@@ -146,6 +147,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(0),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         let mut autoplay = AutoplayController::default();
@@ -166,6 +168,7 @@ mod tests {
                 tick: ChartTick(index as u64 * 192),
                 time,
                 sound: None,
+                layered_sounds: Vec::new(),
                 damage: None,
             });
         }

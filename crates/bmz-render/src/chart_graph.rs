@@ -186,6 +186,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(0),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         chart.lane_notes[Lane::Key1.index()].push(NoteEvent {
@@ -195,6 +196,7 @@ mod tests {
             tick: ChartTick(192),
             time: TimeUs(1_000_000),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         chart.lane_notes[Lane::Key1.index()].push(NoteEvent {
@@ -204,6 +206,7 @@ mod tests {
             tick: ChartTick(384),
             time: TimeUs(1_000_000),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         let density = build_judge_graph_density(&chart);
@@ -221,6 +224,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(0),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         chart.lane_notes[Lane::Key1.index()].push(NoteEvent {
@@ -230,6 +234,7 @@ mod tests {
             tick: ChartTick(96),
             time: TimeUs(0),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         chart.lane_notes[Lane::Key1.index()].push(NoteEvent {
@@ -239,6 +244,7 @@ mod tests {
             tick: ChartTick(192),
             time: TimeUs(0),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: Some(200.0),
         });
         let density = build_judge_graph_density(&chart);

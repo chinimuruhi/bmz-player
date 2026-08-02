@@ -78,6 +78,7 @@ fn note(id: u32, lane: Lane, time_us: i64) -> NoteEvent {
         tick: ChartTick((time_us / 1_000) as u64),
         time: TimeUs(time_us),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     }
 }

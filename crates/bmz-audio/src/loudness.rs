@@ -179,7 +179,7 @@ fn collect_loudness_events(chart: &PlayableChart, sample_rate: u32) -> Vec<Loudn
 
     for lane_notes in &chart.lane_notes {
         for note in lane_notes {
-            if let Some(sound_id) = note.sound {
+            for sound_id in note.sounds() {
                 let volume = chart_channel_volume_factor(chart_volume_at_time(
                     &chart.key_volume_events,
                     note.time,
@@ -348,6 +348,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(0),
             sound: Some(SoundId(2)),
+            layered_sounds: Vec::new(),
             damage: None,
         });
         chart.end_time = TimeUs(1_000);

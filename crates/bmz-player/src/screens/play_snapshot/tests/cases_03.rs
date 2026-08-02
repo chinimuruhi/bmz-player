@@ -185,6 +185,7 @@ fn build_render_snapshot_routes_invisible_and_mine_correctly() {
         tick: ChartTick(0),
         time: TimeUs(1_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     });
     chart.lane_notes[Lane::Key3.index()].push(NoteEvent {
@@ -194,6 +195,7 @@ fn build_render_snapshot_routes_invisible_and_mine_correctly() {
         tick: ChartTick(0),
         time: TimeUs(1_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: Some(8.0),
     });
     let profile = ProfileConfig::new_default("default", "Default", 1);

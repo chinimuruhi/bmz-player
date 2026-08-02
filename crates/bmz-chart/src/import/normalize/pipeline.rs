@@ -40,6 +40,13 @@ pub fn normalize_chart(
             warnings,
         );
     }
+    apply_layered_note_sounds(
+        &intermediate.layered_note_sounds,
+        &intermediate.measures,
+        &sound_table,
+        &mut draft,
+        warnings,
+    )?;
 
     draft.bgm_events = build_bgm_events(&tick_objects, &timing_map, &sound_table, warnings);
     draft.bga_events = build_bga_events(&tick_objects, &timing_map, &bga_table, warnings);

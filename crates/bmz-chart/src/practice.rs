@@ -93,6 +93,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(time_ms * 1000),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         }
     }

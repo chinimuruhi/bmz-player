@@ -49,7 +49,10 @@ pub fn update_hcn_lane_timers(session: &mut GameSession, audio_now: TimeUs) {
         // beatoraja: passing.getPair().getState() > 3 (終端 BAD 以下で判定済み)
         // のときのみキー音音量を制御する。
         if matches!(end_judge, Some(Judge::Bad | Judge::Poor | Judge::EmptyPoor))
-            && let Some(sound_id) = pair.sound
+            && session
+                .chart
+                .note_by_id(pair.start_note_id)
+                .is_some_and(|note| note.sounds().next().is_some())
         {
             let muted = !inclease;
             if !session.display_only_lane_mask[idx]
@@ -70,7 +73,11 @@ pub fn update_hcn_lane_timers(session: &mut GameSession, audio_now: TimeUs) {
                         * chart_volume)
                         .clamp(0.0, 1.0)
                 };
-                session.pending_keysound_volumes.push((sound_id, volume));
+                if let Some(note) = session.chart.note_by_id(pair.start_note_id) {
+                    session
+                        .pending_keysound_volumes
+                        .extend(note.sounds().map(|sound_id| (sound_id, volume)));
+                }
             }
             next_muted[idx] = Some(muted);
         }

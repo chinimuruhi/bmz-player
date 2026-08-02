@@ -160,7 +160,7 @@ pub(crate) fn render_generated_preview_sample(
             if matches!(note.kind, NoteKind::Invisible | NoteKind::Mine) {
                 continue;
             }
-            if let Some(sound) = note.sound {
+            for sound in note.sounds() {
                 sound_ids.insert(sound);
             }
         }
@@ -241,29 +241,29 @@ fn schedule_preview_sounds(
     engine.schedule_all(bgm_events);
 
     let key_events = chart.lane_notes.iter().flat_map(|lane_notes| {
-        lane_notes.iter().filter_map(move |note| {
-            if note.time.0 < note_preroll_start_us || note.time.0 > end_us {
-                return None;
-            }
-            if matches!(note.kind, NoteKind::Invisible | NoteKind::Mine) {
-                return None;
-            }
-            let sound_id = note.sound?;
-            let volume = chart_channel_volume_factor(chart_volume_at_time(
-                &chart.key_volume_events,
-                note.time,
-            ));
-            Some(ScheduledSound {
-                sound_id,
-                start_frame: time_us_to_frame(note.time.0, sample_rate),
-                volume,
-                pan: 0.0,
-                loop_playback: false,
-                fade_in_frames: 0,
-                restart_policy: RestartPolicy::StopSameSound,
-                catch_up: true,
+        lane_notes
+            .iter()
+            .filter(move |note| {
+                note.time.0 >= note_preroll_start_us
+                    && note.time.0 <= end_us
+                    && !matches!(note.kind, NoteKind::Invisible | NoteKind::Mine)
             })
-        })
+            .flat_map(move |note| {
+                let volume = chart_channel_volume_factor(chart_volume_at_time(
+                    &chart.key_volume_events,
+                    note.time,
+                ));
+                note.sounds().map(move |sound_id| ScheduledSound {
+                    sound_id,
+                    start_frame: time_us_to_frame(note.time.0, sample_rate),
+                    volume,
+                    pan: 0.0,
+                    loop_playback: false,
+                    fade_in_frames: 0,
+                    restart_policy: RestartPolicy::StopSameSound,
+                    catch_up: true,
+                })
+            })
     });
     engine.schedule_all(key_events);
 }
@@ -597,6 +597,7 @@ mod tests {
                 tick: ChartTick(0),
                 time: TimeUs(0),
                 sound: Some(SoundId(1)),
+                layered_sounds: Vec::new(),
                 damage: None,
             },
             NoteEvent {
@@ -606,6 +607,7 @@ mod tests {
                 tick: ChartTick(0),
                 time: TimeUs(0),
                 sound: Some(SoundId(2)),
+                layered_sounds: Vec::new(),
                 damage: None,
             },
         ]);

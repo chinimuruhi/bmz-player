@@ -110,6 +110,7 @@ fn tap_note(id: u32, lane: Lane, tick: u64, time_us: i64) -> NoteEvent {
         tick: ChartTick(tick),
         time: TimeUs(time_us),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     }
 }
@@ -125,6 +126,7 @@ fn chart_with_long_note() -> PlayableChart {
         tick: ChartTick(0),
         time: TimeUs(500_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let end = NoteEvent {
@@ -134,6 +136,7 @@ fn chart_with_long_note() -> PlayableChart {
         tick: ChartTick(0),
         time: TimeUs(1_500_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let mut lane_notes = std::array::from_fn(|_| Vec::new());

@@ -4,19 +4,27 @@ pub(super) fn object_to_tick(
     object: &IntermediateObject,
     measures: &[MeasureInfo],
 ) -> Result<ChartTick, ImportError> {
-    if object.position_den == 0 {
+    position_to_tick(object.measure, object.position_num, object.position_den, measures)
+}
+
+fn position_to_tick(
+    measure_index: u32,
+    position_num: u32,
+    position_den: u32,
+    measures: &[MeasureInfo],
+) -> Result<ChartTick, ImportError> {
+    if position_den == 0 {
         return Err(ImportError::InvalidChart {
             message: "object position denominator is zero".to_string(),
         });
     }
 
     let measure =
-        measures.iter().find(|measure| measure.index == object.measure).ok_or_else(|| {
-            ImportError::InvalidChart { message: format!("missing measure {}", object.measure) }
+        measures.iter().find(|measure| measure.index == measure_index).ok_or_else(|| {
+            ImportError::InvalidChart { message: format!("missing measure {measure_index}") }
         })?;
 
-    let local_tick =
-        measure.tick_len.saturating_mul(object.position_num as u64) / object.position_den as u64;
+    let local_tick = measure.tick_len.saturating_mul(position_num as u64) / position_den as u64;
     Ok(ChartTick(measure.start_tick.0.saturating_add(local_tick)))
 }
 
@@ -154,6 +162,7 @@ pub(super) fn emit_resolved_lane_events(
                     tick,
                     time,
                     sound: resolve_sound_id(wav_key, sound_table, warnings),
+                    layered_sounds: Vec::new(),
                     damage: None,
                 });
             }
@@ -166,6 +175,7 @@ pub(super) fn emit_resolved_lane_events(
                     tick,
                     time,
                     sound: resolve_sound_id(wav_key, sound_table, warnings),
+                    layered_sounds: Vec::new(),
                     damage: None,
                 });
             }
@@ -178,6 +188,7 @@ pub(super) fn emit_resolved_lane_events(
                     tick,
                     time,
                     sound: resolve_sound_id(wav_key, sound_table, warnings),
+                    layered_sounds: Vec::new(),
                     damage: Some(damage),
                 });
             }
@@ -194,6 +205,7 @@ pub(super) fn emit_resolved_lane_events(
                     tick: pair.start_tick,
                     time: pair.start_time,
                     sound,
+                    layered_sounds: Vec::new(),
                     damage: None,
                 });
                 draft.lane_notes[lane.index()].push(NoteEvent {
@@ -203,6 +215,7 @@ pub(super) fn emit_resolved_lane_events(
                     tick: pair.end_tick,
                     time: pair.end_time,
                     sound: end_sound,
+                    layered_sounds: Vec::new(),
                     damage: None,
                 });
                 draft.long_notes.push(LongNotePair {
@@ -225,6 +238,31 @@ pub(super) fn emit_resolved_lane_events(
             }
         }
     }
+}
+
+pub(super) fn apply_layered_note_sounds(
+    layers: &[IntermediateLayeredSound],
+    measures: &[MeasureInfo],
+    sound_table: &SoundTable,
+    draft: &mut PlayableChartDraft,
+    warnings: &mut Vec<ImportWarning>,
+) -> Result<(), ImportError> {
+    for layer in layers {
+        let tick =
+            position_to_tick(layer.measure, layer.position_num, layer.position_den, measures)?;
+        let Some(sound_id) = resolve_sound_id(Some(layer.wav_key), sound_table, warnings) else {
+            continue;
+        };
+        let Some(note) = draft.lane_notes[layer.lane.index()].iter_mut().find(|note| {
+            note.tick == tick && matches!(note.kind, NoteKind::Tap | NoteKind::LongStart)
+        }) else {
+            continue;
+        };
+        if note.sound != Some(sound_id) && !note.layered_sounds.contains(&sound_id) {
+            note.layered_sounds.push(sound_id);
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn alloc_note_id(next_note_id: &mut u32) -> NoteId {

@@ -148,9 +148,17 @@ pub struct NoteEvent {
     pub tick: ChartTick,
     pub time: TimeUs,
     pub sound: Option<SoundId>,
+    /// 同じノート位置へ重ねられた追加キー音。BMSONの複数sound_channelで使用する。
+    pub layered_sounds: Vec<SoundId>,
     /// Mine 専用のダメージ値。BMS は D/E 系列の整数値、BMSON は浮動小数。
     /// Mine 以外は常に None。
     pub damage: Option<f64>,
+}
+
+impl NoteEvent {
+    pub fn sounds(&self) -> impl Iterator<Item = SoundId> + '_ {
+        self.sound.into_iter().chain(self.layered_sounds.iter().copied())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

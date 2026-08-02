@@ -40,6 +40,7 @@ fn chart_with_hcn_long_note() -> PlayableChart {
         tick: ChartTick(0),
         time: TimeUs(0),
         sound: Some(SoundId(7)),
+        layered_sounds: Vec::new(),
         damage: None,
     });
     chart.lane_notes[Lane::Key1.index()].push(NoteEvent {
@@ -49,6 +50,7 @@ fn chart_with_hcn_long_note() -> PlayableChart {
         tick: ChartTick(192),
         time: TimeUs(1_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     });
     chart.long_notes.push(bmz_chart::model::LongNotePair {
@@ -97,6 +99,7 @@ fn chart_with_invisible_keysound() -> PlayableChart {
         tick: ChartTick(96),
         time: TimeUs(500_000),
         sound: Some(SoundId(8)),
+        layered_sounds: Vec::new(),
         damage: None,
     });
     chart.sounds.push(SoundAssetRef { id: SoundId(8), path: "hidden.wav".into(), slice: None });
@@ -129,6 +132,7 @@ fn chart_with_mine(time: TimeUs, damage: f64) -> PlayableChart {
         tick: ChartTick(0),
         time,
         sound: None,
+        layered_sounds: Vec::new(),
         damage: Some(damage),
     });
     chart.total_notes = 0;
@@ -248,6 +252,7 @@ fn chart_with_keysound() -> PlayableChart {
         tick: ChartTick(0),
         time: TimeUs(0),
         sound: Some(SoundId(7)),
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let mut lane_notes = std::array::from_fn(|_| Vec::new());

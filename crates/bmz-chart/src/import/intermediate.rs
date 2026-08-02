@@ -14,7 +14,17 @@ pub struct IntermediateChart {
     pub resources: IntermediateResources,
     pub measures: Vec<MeasureInfo>,
     pub objects: Vec<IntermediateObject>,
+    pub layered_note_sounds: Vec<IntermediateLayeredSound>,
     pub lnobj_wav_key: Option<u16>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IntermediateLayeredSound {
+    pub lane: Lane,
+    pub measure: u32,
+    pub position_num: u32,
+    pub position_den: u32,
+    pub wav_key: u16,
 }
 
 #[derive(Debug, Clone, Default)]

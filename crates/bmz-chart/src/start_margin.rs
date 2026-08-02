@@ -189,6 +189,7 @@ mod tests {
             tick: ChartTick(tick),
             time: TimeUs(time_us),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         }
     }
@@ -258,6 +259,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(0),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         chart.lane_notes[Lane::Key2.index()].push(tap(2, Lane::Key2, 2_000_000, 4800));
@@ -276,6 +278,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(0),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: Some(10.0),
         });
         chart.end_time = TimeUs(0);

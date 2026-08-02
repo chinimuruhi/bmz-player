@@ -20,6 +20,7 @@ fn chart_with_lane_tap(lane: Lane, time: TimeUs) -> PlayableChart {
         tick: Default::default(),
         time,
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let mut lane_notes = std::array::from_fn(|_| Vec::new());
@@ -61,6 +62,7 @@ fn chart_with_two_taps(first_time: TimeUs, second_time: TimeUs) -> PlayableChart
         tick: Default::default(),
         time: first_time,
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let second = NoteEvent {
@@ -70,6 +72,7 @@ fn chart_with_two_taps(first_time: TimeUs, second_time: TimeUs) -> PlayableChart
         tick: Default::default(),
         time: second_time,
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let mut chart = chart_with_tap(first_time);
@@ -91,6 +94,7 @@ fn chart_with_lane_long_start(lane: Lane, time: TimeUs, end_time: TimeUs) -> Pla
         tick: Default::default(),
         time,
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let end = NoteEvent {
@@ -100,6 +104,7 @@ fn chart_with_lane_long_start(lane: Lane, time: TimeUs, end_time: TimeUs) -> Pla
         tick: Default::default(),
         time: end_time,
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let mut chart = chart_with_tap(time);
@@ -159,6 +164,7 @@ fn chart_with_mine(time: TimeUs, damage: f64) -> PlayableChart {
         tick: Default::default(),
         time,
         sound: None,
+        layered_sounds: Vec::new(),
         damage: Some(damage),
     };
     let mut lane_notes = std::array::from_fn(|_| Vec::new());

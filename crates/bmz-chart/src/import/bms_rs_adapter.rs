@@ -296,6 +296,7 @@ fn build_intermediate_from_bms_with_extra_bga_objects<T: KeyLayoutMapper>(
         resources,
         measures,
         objects,
+        layered_note_sounds: Vec::new(),
         lnobj_wav_key: None, // bms-rs 側で吸収済み
     };
 

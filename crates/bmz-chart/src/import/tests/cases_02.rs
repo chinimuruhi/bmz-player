@@ -620,6 +620,46 @@ fn bmson_bgm_notes_use_the_same_sound_slice_rules() {
 }
 
 #[test]
+fn bmson_same_lane_position_layers_sounds_from_distinct_channels() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Layered keysound",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "sound_channels": [
+            {"name": "primary.wav", "notes": [{"x": 1, "y": 0, "l": 0, "c": false}]},
+            {"name": "layer.wav", "notes": [{"x": 1, "y": 0, "l": 0, "c": false}]}
+        ]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+
+    let result = import_chart(&path, None, false).unwrap();
+    let notes = &result.chart.lane_notes[bmz_core::lane::Lane::Key1.index()];
+    assert_eq!(notes.len(), 1);
+    let sound_paths = notes[0]
+        .sounds()
+        .map(|sound_id| {
+            result.chart.sounds[sound_id.0 as usize]
+                .path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(sound_paths, vec!["primary.wav", "layer.wav"]);
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
 fn imports_bmson_irregular_meter_lines() {
     let json = r#"{
         "version": "1.0.0",

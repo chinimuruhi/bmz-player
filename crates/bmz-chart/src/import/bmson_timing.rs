@@ -1,6 +1,6 @@
 //! BMSON `lines` を BMS 小節長 / `ObjTime` へ変換する。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::num::NonZeroU8;
 use std::path::PathBuf;
 
@@ -58,10 +58,18 @@ pub(crate) struct BmsonSoundSliceExtension {
     pub slice: SoundSlice,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BmsonLayeredSoundExtension {
+    pub lane: NonZeroU8,
+    pub position: BmsonObjectPosition,
+    pub wav_key: u16,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct BmsonRebuildInfo {
     pub long_notes: Vec<BmsonLongNoteExtension>,
     pub sound_slices: Vec<BmsonSoundSliceExtension>,
+    pub layered_sounds: Vec<BmsonLayeredSoundExtension>,
     pub mine_channel_wav_keys: Vec<u16>,
 }
 
@@ -281,21 +289,32 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
         }
     }
 
-    let mut seen_key_notes = HashSet::new();
-    for (sound_channel, wav_ids) in bmson.sound_channels.iter().zip(sound_channel_wav_ids) {
+    let mut seen_key_notes = HashMap::new();
+    for (channel_index, (sound_channel, wav_ids)) in
+        bmson.sound_channels.iter().zip(sound_channel_wav_ids).enumerate()
+    {
         for note in &sound_channel.notes {
             if note.up == Some(true) {
-                continue;
-            }
-            if let Some(x) = note.x
-                && !seen_key_notes.insert((x, note.y.0))
-            {
                 continue;
             }
             let time = pulse_to_obj_time(note.y.0, boundaries);
             let Some(obj_id) = wav_ids.get(&note.y.0).copied() else {
                 continue;
             };
+            if let Some(lane) = note.x {
+                let position = (lane, note.y.0);
+                if let Some(first_channel_index) = seen_key_notes.get(&position) {
+                    if *first_channel_index != channel_index {
+                        rebuild_info.layered_sounds.push(BmsonLayeredSoundExtension {
+                            lane,
+                            position: bmson_object_position(time),
+                            wav_key: obj_id.as_u16(),
+                        });
+                    }
+                    continue;
+                }
+                seen_key_notes.insert(position, channel_index);
+            }
             let kind = if note.l > 0 { NoteKind::Long } else { NoteKind::Visible };
             let Some(channel_id) = bmson_note_channel::<T>(note.x, kind, lane_layout) else {
                 continue;

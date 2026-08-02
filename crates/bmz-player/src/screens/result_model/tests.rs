@@ -376,6 +376,7 @@ fn note(id: u32, time_us: i64) -> bmz_chart::model::NoteEvent {
         tick: bmz_core::time::ChartTick(0),
         time: TimeUs(time_us),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     }
 }

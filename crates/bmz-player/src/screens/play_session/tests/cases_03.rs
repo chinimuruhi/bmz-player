@@ -65,6 +65,7 @@ fn apply_arrange_random_moves_notes_between_lanes() {
         tick: ChartTick(0),
         time: TimeUs(1_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     });
 

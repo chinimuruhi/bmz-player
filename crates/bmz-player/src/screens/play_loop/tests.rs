@@ -327,6 +327,7 @@ fn chart() -> PlayableChart {
         tick: ChartTick(0),
         time: TimeUs(1_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     };
     let mut lane_notes = std::array::from_fn(|_| Vec::new());

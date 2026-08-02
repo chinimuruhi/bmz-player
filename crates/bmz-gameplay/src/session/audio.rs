@@ -1,27 +1,30 @@
 pub fn schedule_keysounds(session: &mut GameSession, audio: &mut dyn AudioScheduler) {
     for event in std::mem::take(&mut session.pending_keysounds) {
         let note_id = event.note_id;
-        let Some(sound_id) = session.chart.note_by_id(note_id).and_then(|note| note.sound) else {
+        let Some(note) = session.chart.note_by_id(note_id) else {
             continue;
         };
 
         let chart_volume = bmz_chart::volume::chart_channel_volume_factor(
             bmz_chart::volume::chart_volume_at_time(&session.chart.key_volume_events, event.time),
         );
-        audio.schedule(ScheduledSound {
-            start_frame: session.audio_clock.time_to_output_frame(event.time),
-            sound_id,
-            volume: (session.audio_mix.master_volume
-                * session.audio_mix.effective_normalization_gain()
-                * session.audio_mix.key_volume
-                * chart_volume)
-                .clamp(0.0, 1.0),
-            pan: 0.0,
-            loop_playback: false,
-            fade_in_frames: 0,
-            catch_up: true,
-            restart_policy: RestartPolicy::StopSameSound,
-        });
+        let volume = (session.audio_mix.master_volume
+            * session.audio_mix.effective_normalization_gain()
+            * session.audio_mix.key_volume
+            * chart_volume)
+            .clamp(0.0, 1.0);
+        for sound_id in note.sounds() {
+            audio.schedule(ScheduledSound {
+                start_frame: session.audio_clock.time_to_output_frame(event.time),
+                sound_id,
+                volume,
+                pan: 0.0,
+                loop_playback: false,
+                fade_in_frames: 0,
+                catch_up: true,
+                restart_policy: RestartPolicy::StopSameSound,
+            });
+        }
     }
 }
 

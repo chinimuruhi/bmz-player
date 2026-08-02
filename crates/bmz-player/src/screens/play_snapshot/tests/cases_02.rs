@@ -11,6 +11,7 @@ fn end_of_note_timer_ignores_invisible_notes_after_last_note() {
         tick: ChartTick(0),
         time: TimeUs(2_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     });
     chart.end_time = TimeUs(2_000_000);
@@ -36,6 +37,7 @@ fn cached_end_of_note_time_uses_last_renderable_note() {
         tick: ChartTick(3_840),
         time: TimeUs(2_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: None,
     }];
     chart.lane_notes[Lane::Key3.index()] = vec![NoteEvent {
@@ -45,6 +47,7 @@ fn cached_end_of_note_time_uses_last_renderable_note() {
         tick: ChartTick(5_760),
         time: TimeUs(3_000_000),
         sound: None,
+        layered_sounds: Vec::new(),
         damage: Some(10.0),
     }];
     chart.end_time = TimeUs(3_000_000);

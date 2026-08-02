@@ -17,8 +17,9 @@ use crate::timing::{TickTimingEvent, TickTimingEventKind, TimingMap, build_timin
 
 use super::error::{ImportError, ImportWarning};
 use super::intermediate::{
-    IntermediateBgaKind, IntermediateChart, IntermediateMetadata, IntermediateObject,
-    IntermediateObjectKind, LaneObject, LaneObjectSource, MeasureInfo, ResolvedLaneEvent,
+    IntermediateBgaKind, IntermediateChart, IntermediateLayeredSound, IntermediateMetadata,
+    IntermediateObject, IntermediateObjectKind, LaneObject, LaneObjectSource, MeasureInfo,
+    ResolvedLaneEvent,
 };
 use super::long_note::normalize_lane_objects;
 
@@ -136,6 +137,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(2_000_000),
             sound: None,
+            layered_sounds: Vec::new(),
             damage: None,
         });
         draft.bgm_events.push(SoundEvent {

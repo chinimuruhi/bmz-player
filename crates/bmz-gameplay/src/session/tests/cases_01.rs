@@ -188,6 +188,24 @@ fn empty_poor_schedules_target_note_keysound() {
 }
 
 #[test]
+fn note_press_schedules_primary_and_layered_keysounds() {
+    let mut chart = chart_with_keysound();
+    chart.lane_notes[Lane::Key1.index()][0].layered_sounds = vec![SoundId(8)];
+    chart.sounds.push(SoundAssetRef { id: SoundId(8), path: "layer.wav".into(), slice: None });
+    let mut session = session_with_autoplay(chart);
+    session.autoplay = None;
+    let mut audio = TestAudio::default();
+
+    process_session_input(&mut session, human_press(TimeUs(0)));
+    schedule_keysounds(&mut session, &mut audio);
+
+    assert_eq!(
+        audio.scheduled.iter().map(|sound| sound.sound_id).collect::<Vec<_>>(),
+        vec![SoundId(7), SoundId(8)]
+    );
+}
+
+#[test]
 fn unjudged_press_after_empty_poor_window_uses_previous_playable_keysound() {
     let mut session = session_with_autoplay(chart_with_keysound());
     session.autoplay = None;

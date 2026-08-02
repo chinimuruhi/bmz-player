@@ -7,11 +7,15 @@ pub(super) fn push_early_bad_long_start_mute(
     end_delta: TimeUs,
     outcome: &mut JudgeOutcome,
 ) {
-    if end_delta.0 < 0
-        && matches!(judge, Judge::Bad | Judge::Poor)
-        && let Some(sound_id) = chart.long_notes.get(active.pair_index).and_then(|pair| pair.sound)
-    {
-        outcome.keysound_volumes.push((sound_id, 0.0));
+    if end_delta.0 < 0 && matches!(judge, Judge::Bad | Judge::Poor) {
+        let Some(pair) = chart.long_notes.get(active.pair_index) else {
+            return;
+        };
+        if let Some(note) = chart.note_by_id(pair.start_note_id) {
+            outcome.keysound_volumes.extend(note.sounds().map(|sound_id| (sound_id, 0.0)));
+        } else if let Some(sound_id) = pair.sound {
+            outcome.keysound_volumes.push((sound_id, 0.0));
+        }
     }
 }
 
