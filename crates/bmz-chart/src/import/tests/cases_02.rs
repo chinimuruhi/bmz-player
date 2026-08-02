@@ -348,11 +348,80 @@ fn imports_bmson_ln_type_into_long_note_mode() {
             "resolution": 240,
             "ln_type": 3
         },
-        "sound_channels": []
+        "sound_channels": [{
+            "name": "long.wav",
+            "notes": [{"x": 1, "y": 0, "l": 240, "c": false}]
+        }]
     }"#;
     let path = write_temp_file_with_ext(json, "bmson");
     let result = import_chart(&path, None, false).unwrap();
     assert_eq!(result.chart.metadata.long_note_mode, crate::model::LongNoteMode::Hcn);
+    assert!(result.chart.metadata.long_note_mode_defined);
+    assert_eq!(result.chart.long_notes[0].mode, Some(crate::model::LongNoteMode::Hcn));
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn bmson_note_type_overrides_global_ln_type_per_note() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Mixed LN",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k",
+            "ln_type": 1
+        },
+        "sound_channels": [
+            {"name": "cn.wav", "notes": [{"x": 1, "y": 0, "l": 240, "c": false, "t": 2}]},
+            {"name": "hcn.wav", "notes": [{"x": 2, "y": 480, "l": 240, "c": false, "t": 3}]}
+        ]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    let modes = result.chart.long_notes.iter().map(|pair| pair.mode).collect::<Vec<_>>();
+    assert_eq!(
+        modes,
+        vec![Some(crate::model::LongNoteMode::Cn), Some(crate::model::LongNoteMode::Hcn)]
+    );
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn bmson_up_note_becomes_long_note_end_sound() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "LN End Sound",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "sound_channels": [
+            {"name": "end.wav", "notes": [{"x": 1, "y": 240, "l": 0, "c": false, "up": true}]},
+            {"name": "start.wav", "notes": [{"x": 1, "y": 0, "l": 240, "c": false}]}
+        ]
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    let notes = &result.chart.lane_notes[bmz_core::lane::Lane::Key1.index()];
+    assert_eq!(notes.len(), 2, "notes: {notes:?}");
+    let end = notes.iter().find(|note| note.kind == crate::model::NoteKind::LongEnd).unwrap();
+    let end_sound = end.sound.expect("up note should define the LN end sound");
+    assert_eq!(
+        result.chart.sounds[end_sound.0 as usize].path.file_name().and_then(|name| name.to_str()),
+        Some("end.wav")
+    );
     std::fs::remove_file(&path).unwrap();
 }
 

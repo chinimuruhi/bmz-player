@@ -42,12 +42,32 @@ struct TickObject {
 
 #[derive(Debug, Clone)]
 enum TickObjectKind {
-    VisibleNote { lane: Lane, wav_key: Option<u16> },
-    InvisibleNote { lane: Lane, wav_key: Option<u16> },
-    LongChannelNote { lane: Lane, wav_key: Option<u16> },
-    MineNote { lane: Lane, wav_key: Option<u16>, damage: u16 },
-    Bgm { wav_key: u16 },
-    Bga { bmp_key: u16, kind: BgaEventKind },
+    VisibleNote {
+        lane: Lane,
+        wav_key: Option<u16>,
+    },
+    InvisibleNote {
+        lane: Lane,
+        wav_key: Option<u16>,
+    },
+    LongChannelNote {
+        lane: Lane,
+        wav_key: Option<u16>,
+        mode: Option<crate::model::LongNoteMode>,
+        explicit_end_sound: bool,
+    },
+    MineNote {
+        lane: Lane,
+        wav_key: Option<u16>,
+        damage: u16,
+    },
+    Bgm {
+        wav_key: u16,
+    },
+    Bga {
+        bmp_key: u16,
+        kind: BgaEventKind,
+    },
 }
 
 #[derive(Debug, Clone)]

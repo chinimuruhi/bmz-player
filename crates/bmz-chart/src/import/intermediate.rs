@@ -130,6 +130,10 @@ pub enum IntermediateObjectKind {
     LongChannelNote {
         lane: Lane,
         wav_key: Option<u16>,
+        /// BMSON note `t` による、このLNだけのモード指定。
+        mode: Option<LongNoteMode>,
+        /// BMSON note `up` が明示した終端キー音か。
+        explicit_end_sound: bool,
     },
     MineNote {
         lane: Lane,
@@ -216,7 +220,7 @@ pub struct LaneObject {
 pub enum LaneObjectSource {
     Visible,
     Invisible,
-    LongChannel,
+    LongChannel { mode: Option<LongNoteMode>, explicit_end_sound: bool },
     Mine { damage: u16 },
 }
 
@@ -238,4 +242,5 @@ pub struct LongNotePairDraft {
     pub end_time: TimeUs,
     pub end_wav_key: Option<u16>,
     pub wav_key: Option<u16>,
+    pub mode: Option<LongNoteMode>,
 }

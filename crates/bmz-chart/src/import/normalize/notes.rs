@@ -100,13 +100,13 @@ pub(super) fn collect_lane_objects(
                     source: LaneObjectSource::Invisible,
                 });
             }
-            TickObjectKind::LongChannelNote { lane, wav_key } => {
+            TickObjectKind::LongChannelNote { lane, wav_key, mode, explicit_end_sound } => {
                 buckets[lane.index()].push(LaneObject {
                     lane,
                     tick: object.tick,
                     time,
                     wav_key,
-                    source: LaneObjectSource::LongChannel,
+                    source: LaneObjectSource::LongChannel { mode, explicit_end_sound },
                 });
             }
             TickObjectKind::MineNote { lane, wav_key, damage } => {
@@ -202,10 +202,12 @@ pub(super) fn emit_resolved_lane_events(
                 draft.long_notes.push(LongNotePair {
                     lane,
                     style: pair.style,
-                    mode: draft
-                        .metadata
-                        .long_note_mode_defined
-                        .then_some(draft.metadata.long_note_mode),
+                    mode: pair.mode.or_else(|| {
+                        draft
+                            .metadata
+                            .long_note_mode_defined
+                            .then_some(draft.metadata.long_note_mode)
+                    }),
                     start_note_id,
                     end_note_id,
                     start_tick: pair.start_tick,

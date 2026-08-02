@@ -81,8 +81,8 @@ pub(super) fn materialize_tick_objects(
             IntermediateObjectKind::InvisibleNote { lane, wav_key } => {
                 Some(TickObjectKind::InvisibleNote { lane, wav_key })
             }
-            IntermediateObjectKind::LongChannelNote { lane, wav_key } => {
-                Some(TickObjectKind::LongChannelNote { lane, wav_key })
+            IntermediateObjectKind::LongChannelNote { lane, wav_key, mode, explicit_end_sound } => {
+                Some(TickObjectKind::LongChannelNote { lane, wav_key, mode, explicit_end_sound })
             }
             IntermediateObjectKind::MineNote { lane, wav_key, damage } => {
                 Some(TickObjectKind::MineNote { lane, wav_key, damage })

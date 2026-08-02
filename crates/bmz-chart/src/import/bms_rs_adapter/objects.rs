@@ -103,6 +103,8 @@ pub(super) fn push_note_objects<T: KeyLayoutMapper>(
             BmsNoteKind::Long => IntermediateObjectKind::LongChannelNote {
                 lane,
                 wav_key: (wav_id != 0).then_some(wav_id),
+                mode: None,
+                explicit_end_sound: false,
             },
             BmsNoteKind::Landmine => {
                 IntermediateObjectKind::MineNote { lane, wav_key: None, damage: wav_id }

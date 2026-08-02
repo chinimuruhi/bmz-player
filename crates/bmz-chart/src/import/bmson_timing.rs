@@ -4,9 +4,9 @@ use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU8;
 use std::path::PathBuf;
 
-use bms_rs::bms::command::StringValue;
 use bms_rs::bms::command::channel::{Channel, Key, NoteChannelId, NoteKind, PlayerSide};
 use bms_rs::bms::command::time::ObjTime;
+use bms_rs::bms::command::{LnMode, StringValue};
 use bms_rs::bms::model::Bms;
 use bms_rs::bms::model::obj::{SectionLenChangeObj, WavObj};
 use bms_rs::bms::prelude::{
@@ -28,6 +28,28 @@ pub struct MeasureBoundaries {
 pub(crate) enum BmsonLaneLayout {
     Beat,
     Pms,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BmsonObjectPosition {
+    pub measure: u32,
+    pub numerator: u32,
+    pub denominator: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BmsonLongNoteExtension {
+    pub lane: NonZeroU8,
+    pub start: BmsonObjectPosition,
+    pub end: BmsonObjectPosition,
+    pub mode: Option<LnMode>,
+    pub end_wav_key: Option<u16>,
+    pub explicit_end_sound: bool,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct BmsonRebuildInfo {
+    pub long_notes: Vec<BmsonLongNoteExtension>,
 }
 
 impl MeasureBoundaries {
@@ -166,7 +188,7 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
     boundaries: &MeasureBoundaries,
     lane_layout: BmsonLaneLayout,
     warnings: &mut Vec<BmsonToBmsWarning>,
-) {
+) -> BmsonRebuildInfo {
     let wav_by_path: HashMap<PathBuf, ObjId> =
         bms.wav.wav_files.iter().map(|(id, path)| (path.clone(), *id)).collect();
     let mut bga_id_to_obj_id = HashMap::new();
@@ -229,7 +251,7 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
         bms.scroll.scrolling_factor_changes.insert(time, ScrollingFactorObj { time, factor });
     }
 
-    let mut seen_key_notes = HashSet::new();
+    let mut sound_channel_wav_ids = Vec::with_capacity(bmson.sound_channels.len());
     for sound_channel in &bmson.sound_channels {
         let wav_path = PathBuf::from(sound_channel.name.as_ref());
         let obj_id = wav_by_path.get(&wav_path).copied().unwrap_or_else(|| {
@@ -239,8 +261,25 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
             })
         });
         bms.wav.wav_files.entry(obj_id).or_insert(wav_path);
+        sound_channel_wav_ids.push(obj_id);
+    }
 
+    let mut up_wav_by_position = HashMap::new();
+    for (sound_channel, obj_id) in bmson.sound_channels.iter().zip(&sound_channel_wav_ids) {
         for note in &sound_channel.notes {
+            if note.up == Some(true) {
+                up_wav_by_position.insert((note.x, note.y.0), *obj_id);
+            }
+        }
+    }
+
+    let mut rebuild_info = BmsonRebuildInfo::default();
+    let mut seen_key_notes = HashSet::new();
+    for (sound_channel, obj_id) in bmson.sound_channels.iter().zip(sound_channel_wav_ids) {
+        for note in &sound_channel.notes {
+            if note.up == Some(true) {
+                continue;
+            }
             if let Some(x) = note.x
                 && !seen_key_notes.insert((x, note.y.0))
             {
@@ -250,11 +289,24 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
             let kind = if note.l > 0 { NoteKind::Long } else { NoteKind::Visible };
             let channel_id = bmson_note_channel::<T>(note.x, kind, lane_layout);
             bms.wav.notes.push_note(WavObj { offset: time, channel_id, wav_id: obj_id });
-            if note.l > 0 && note.x.is_some() {
+            if note.l > 0
+                && let Some(lane) = note.x
+            {
+                let end_pulse = note.y.0.saturating_add(note.l);
+                let explicit_end_wav = up_wav_by_position.get(&(note.x, end_pulse)).copied();
+                let end_time = pulse_to_obj_time(end_pulse, boundaries);
                 bms.wav.notes.push_note(WavObj {
-                    offset: pulse_to_obj_time(note.y.0.saturating_add(note.l), boundaries),
+                    offset: end_time,
                     channel_id,
-                    wav_id: obj_id,
+                    wav_id: explicit_end_wav.unwrap_or(obj_id),
+                });
+                rebuild_info.long_notes.push(BmsonLongNoteExtension {
+                    lane,
+                    start: bmson_object_position(time),
+                    end: bmson_object_position(end_time),
+                    mode: note.t,
+                    end_wav_key: explicit_end_wav.map(ObjId::as_u16),
+                    explicit_end_sound: explicit_end_wav.is_some(),
                 });
             }
         }
@@ -321,6 +373,16 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
         let time = pulse_to_obj_time(bga_event.y.0, boundaries);
         let obj_id = get_bga_obj_id(&bga_event.id);
         bms.bmp.bga_changes.insert(time, BgaObj { time, id: obj_id, layer: BgaLayer::Poor });
+    }
+
+    rebuild_info
+}
+
+fn bmson_object_position(time: ObjTime) -> BmsonObjectPosition {
+    BmsonObjectPosition {
+        measure: time.track().0 as u32,
+        numerator: time.numerator() as u32,
+        denominator: time.denominator().get() as u32,
     }
 }
 

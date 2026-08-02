@@ -64,8 +64,9 @@ pub fn normalize_lane_objects(
         })
         .collect();
     let unterminated_long_start_tick = {
-        let mut long_objects =
-            objects.iter().filter(|object| object.source == LaneObjectSource::LongChannel);
+        let mut long_objects = objects
+            .iter()
+            .filter(|object| matches!(object.source, LaneObjectSource::LongChannel { .. }));
         let mut pending = None;
         for object in &mut long_objects {
             pending = if pending.is_some() { None } else { Some(object.tick) };
@@ -89,13 +90,23 @@ pub fn resolve_long_channel_lane(
     let mut out = Vec::new();
     let mut pending: Option<&LaneObject> = None;
 
-    for object in objects.iter().filter(|object| object.source == LaneObjectSource::LongChannel) {
+    for object in objects
+        .iter()
+        .filter(|object| matches!(object.source, LaneObjectSource::LongChannel { .. }))
+    {
         match pending.take() {
             None => pending = Some(object),
             Some(start) => {
                 // beatoraja stores same-WAV LN ends as -2, which is silent in its audio driver.
-                let end_wav_key =
-                    if object.wav_key == start.wav_key { None } else { object.wav_key };
+                let explicit_end_sound = matches!(
+                    object.source,
+                    LaneObjectSource::LongChannel { explicit_end_sound: true, .. }
+                );
+                let end_wav_key = if explicit_end_sound || object.wav_key != start.wav_key {
+                    object.wav_key
+                } else {
+                    None
+                };
                 out.push(ResolvedLaneEvent::Long {
                     pair: LongNotePairDraft {
                         lane,
@@ -106,6 +117,10 @@ pub fn resolve_long_channel_lane(
                         end_time: object.time,
                         end_wav_key,
                         wav_key: start.wav_key,
+                        mode: match start.source {
+                            LaneObjectSource::LongChannel { mode, .. } => mode,
+                            _ => None,
+                        },
                     },
                 });
             }
@@ -141,6 +156,7 @@ pub fn resolve_lnobj_lane(
                         end_time: object.time,
                         end_wav_key: None,
                         wav_key: start.wav_key,
+                        mode: None,
                     },
                 });
             } else {
@@ -180,7 +196,7 @@ mod tests {
             tick: ChartTick(tick),
             time: TimeUs(tick as i64 * 1_000),
             wav_key: Some(wav_key),
-            source: LaneObjectSource::LongChannel,
+            source: LaneObjectSource::LongChannel { mode: None, explicit_end_sound: false },
         }
     }
 
