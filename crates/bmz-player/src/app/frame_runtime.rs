@@ -9,6 +9,9 @@ pub(super) struct FrameRuntime {
     skip_next_pace: bool,
     fps: SkinFpsCounter,
     pacing_state: Option<FramePacingState>,
+    pending_wake: Option<PendingFrameWake>,
+    current_pacing_timings: FramePacingTimings,
+    consecutive_deadline_misses: u32,
     select_profiler: SceneFrameProfiler,
     decide_profiler: SceneFrameProfiler,
     play_profiler: SceneFrameProfiler,
@@ -27,6 +30,9 @@ impl FrameRuntime {
             skip_next_pace: false,
             fps: SkinFpsCounter::new(now),
             pacing_state: None,
+            pending_wake: None,
+            current_pacing_timings: FramePacingTimings::default(),
+            consecutive_deadline_misses: 0,
             select_profiler: SceneFrameProfiler::default(),
             decide_profiler: SceneFrameProfiler::default(),
             play_profiler: SceneFrameProfiler::default(),
@@ -52,6 +58,11 @@ impl FrameRuntime {
 
         self.skip_next_pace = false;
         self.pacer.record_frame_started(now, fps, skip_wait);
+        self.current_pacing_timings = self
+            .pending_wake
+            .take()
+            .map(|wake| wake.finish(now, pacing_state))
+            .unwrap_or_else(|| FramePacingTimings::without_wait(pacing_state, now));
         FrameSchedule::Start
     }
 
@@ -61,6 +72,12 @@ impl FrameRuntime {
         }
         let previous = self.pacing_state.replace(pacing_state);
         self.fps.reset(now);
+        self.pending_wake = None;
+        self.consecutive_deadline_misses = 0;
+        self.select_profiler = SceneFrameProfiler::default();
+        self.decide_profiler = SceneFrameProfiler::default();
+        self.play_profiler = SceneFrameProfiler::default();
+        self.result_profiler = SceneFrameProfiler::default();
         if let Some(previous) = previous {
             tracing::info!(
                 previous_focused = previous.focused,
@@ -74,6 +91,33 @@ impl FrameRuntime {
                 "frame pacing state changed; FPS sample reset"
             );
         }
+    }
+
+    pub(super) fn record_wait_wake(
+        &mut self,
+        wait_started_at: Instant,
+        scheduled_deadline: Instant,
+        actual_wake_at: Instant,
+        effective_frame_limit: u32,
+    ) {
+        let frame_budget = frame_budget_or_zero(effective_frame_limit);
+        let wake_lateness = actual_wake_at.saturating_duration_since(scheduled_deadline);
+        let missed_by_one_budget = !frame_budget.is_zero() && wake_lateness >= frame_budget;
+        if missed_by_one_budget {
+            self.consecutive_deadline_misses = self.consecutive_deadline_misses.saturating_add(1);
+        } else {
+            self.consecutive_deadline_misses = 0;
+        }
+        self.pending_wake = Some(PendingFrameWake {
+            wait_started_at,
+            scheduled_deadline,
+            actual_wake_at,
+            consecutive_deadline_misses: self.consecutive_deadline_misses,
+        });
+    }
+
+    pub(super) fn current_pacing_timings(&self) -> FramePacingTimings {
+        self.current_pacing_timings
     }
 
     pub(super) fn record_surface_status(
@@ -134,6 +178,66 @@ pub(super) enum FrameWindowMode {
     Windowed,
     BorderlessFullscreen,
     ExclusiveFullscreen,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PendingFrameWake {
+    wait_started_at: Instant,
+    scheduled_deadline: Instant,
+    actual_wake_at: Instant,
+    consecutive_deadline_misses: u32,
+}
+
+impl PendingFrameWake {
+    fn finish(self, redraw_started_at: Instant, state: FramePacingState) -> FramePacingTimings {
+        FramePacingTimings {
+            effective_frame_limit: state.effective_frame_limit,
+            frame_budget_us: duration_us_saturating(frame_budget_or_zero(
+                state.effective_frame_limit,
+            )),
+            wait_wake_sampled: true,
+            scheduled_wait_us: duration_us_saturating(
+                self.scheduled_deadline.saturating_duration_since(self.wait_started_at),
+            ),
+            wake_lateness_us: duration_us_saturating(
+                self.actual_wake_at.saturating_duration_since(self.scheduled_deadline),
+            ),
+            redraw_after_wake_us: duration_us_saturating(
+                redraw_started_at.saturating_duration_since(self.actual_wake_at),
+            ),
+            consecutive_deadline_misses: self.consecutive_deadline_misses,
+            scheduled_deadline: Some(self.scheduled_deadline),
+            actual_wake_at: Some(self.actual_wake_at),
+            redraw_started_at: Some(redraw_started_at),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct FramePacingTimings {
+    pub(super) effective_frame_limit: u32,
+    pub(super) frame_budget_us: u64,
+    pub(super) wait_wake_sampled: bool,
+    pub(super) scheduled_wait_us: u64,
+    pub(super) wake_lateness_us: u64,
+    pub(super) redraw_after_wake_us: u64,
+    pub(super) consecutive_deadline_misses: u32,
+    pub(super) scheduled_deadline: Option<Instant>,
+    pub(super) actual_wake_at: Option<Instant>,
+    pub(super) redraw_started_at: Option<Instant>,
+}
+
+impl FramePacingTimings {
+    fn without_wait(state: FramePacingState, redraw_started_at: Instant) -> Self {
+        Self {
+            effective_frame_limit: state.effective_frame_limit,
+            frame_budget_us: duration_us_saturating(frame_budget_or_zero(
+                state.effective_frame_limit,
+            )),
+            redraw_started_at: Some(redraw_started_at),
+            ..Self::default()
+        }
+    }
 }
 
 /// 正常に present できたフレームだけを実経過時間で正規化し、1 秒ごとに
@@ -226,6 +330,14 @@ fn frame_budget(fps: u32) -> Duration {
     Duration::from_secs_f64(1.0 / f64::from(fps)).max(Duration::from_nanos(1))
 }
 
+fn frame_budget_or_zero(fps: u32) -> Duration {
+    if fps == 0 { Duration::ZERO } else { frame_budget(fps) }
+}
+
+fn duration_us_saturating(duration: Duration) -> u64 {
+    duration.as_micros().min(u128::from(u64::MAX)) as u64
+}
+
 fn fps_overlay_text(show_fps: bool, current_fps: u32, text: Localizer) -> String {
     if !show_fps || current_fps == 0 {
         return String::new();
@@ -283,7 +395,23 @@ struct SceneFrameProfiler {
     egui_us: u128,
     advance_active_play_us: u128,
     post_scene_us: u128,
+    wait_wake_samples: u128,
+    scheduled_wait_us: u128,
+    wake_lateness_us: u128,
+    redraw_after_wake_us: u128,
+    maximum_consecutive_deadline_misses: u32,
+    effective_frame_limit: u32,
+    frame_budget_us: u64,
+    last_scheduled_deadline: Option<Instant>,
+    last_actual_wake_at: Option<Instant>,
+    last_redraw_started_at: Option<Instant>,
     total_redraw_samples_us: Vec<u64>,
+    render_samples_us: Vec<u64>,
+    surface_samples_us: Vec<u64>,
+    queue_samples_us: Vec<u64>,
+    present_samples_us: Vec<u64>,
+    wake_lateness_samples_us: Vec<u64>,
+    redraw_after_wake_samples_us: Vec<u64>,
 }
 
 const FRAME_PROFILE_SAMPLE_CAPACITY: usize = 120;
@@ -297,6 +425,7 @@ pub(super) struct AppLoopFrameTimings {
     pub(super) egui_us: u64,
     pub(super) advance_active_play_us: u64,
     pub(super) post_scene_us: u64,
+    pub(super) pacing: FramePacingTimings,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -360,6 +489,9 @@ impl SceneFrameProfiler {
             self.rect_instances += timings.rect_instances as u128;
             self.image_instances += timings.image_instances as u128;
             self.text_instances += timings.text_instances as u128;
+            push_profile_sample(&mut self.surface_samples_us, timings.surface_us);
+            push_profile_sample(&mut self.queue_samples_us, timings.queue_us);
+            push_profile_sample(&mut self.present_samples_us, timings.present_us);
         }
         self.total_redraw_us += u128::from(app_loop.total_redraw_us);
         self.input_us += u128::from(app_loop.input_us);
@@ -368,9 +500,32 @@ impl SceneFrameProfiler {
         self.egui_us += u128::from(app_loop.egui_us);
         self.advance_active_play_us += u128::from(app_loop.advance_active_play_us);
         self.post_scene_us += u128::from(app_loop.post_scene_us);
+        self.effective_frame_limit = app_loop.pacing.effective_frame_limit;
+        self.frame_budget_us = app_loop.pacing.frame_budget_us;
+        self.last_redraw_started_at = app_loop.pacing.redraw_started_at;
+        if app_loop.pacing.wait_wake_sampled {
+            self.wait_wake_samples += 1;
+            self.scheduled_wait_us += u128::from(app_loop.pacing.scheduled_wait_us);
+            self.wake_lateness_us += u128::from(app_loop.pacing.wake_lateness_us);
+            self.redraw_after_wake_us += u128::from(app_loop.pacing.redraw_after_wake_us);
+            self.maximum_consecutive_deadline_misses = self
+                .maximum_consecutive_deadline_misses
+                .max(app_loop.pacing.consecutive_deadline_misses);
+            self.last_scheduled_deadline = app_loop.pacing.scheduled_deadline;
+            self.last_actual_wake_at = app_loop.pacing.actual_wake_at;
+            push_profile_sample(
+                &mut self.wake_lateness_samples_us,
+                u128::from(app_loop.pacing.wake_lateness_us),
+            );
+            push_profile_sample(
+                &mut self.redraw_after_wake_samples_us,
+                u128::from(app_loop.pacing.redraw_after_wake_us),
+            );
+        }
         if self.total_redraw_samples_us.len() < FRAME_PROFILE_SAMPLE_CAPACITY {
             self.total_redraw_samples_us.push(app_loop.total_redraw_us);
         }
+        push_profile_sample(&mut self.render_samples_us, render_us);
         if self.frames >= Self::LOG_EVERY_FRAMES {
             self.log_and_reset(profile);
         }
@@ -397,6 +552,8 @@ impl SceneFrameProfiler {
             fmt_profile_ms(self.video_upload_us, self.video_uploaded_frames.max(1));
         let snapshot_ms = fmt_profile_ms(self.snapshot_us, frames);
         let render_ms = fmt_profile_ms(self.render_us, frames);
+        let app_cpu_outside_render_ms =
+            fmt_profile_ms(self.total_redraw_us.saturating_sub(self.render_us), frames);
         let plan_ms = fmt_profile_ms(self.plan_us, frames);
         let draw_ms = fmt_profile_ms(self.draw_us, frames);
         let text_ms = fmt_profile_ms(self.text_us, frames);
@@ -415,7 +572,19 @@ impl SceneFrameProfiler {
         let egui_ms = fmt_profile_ms(self.egui_us, frames);
         let advance_active_play_ms = fmt_profile_ms(self.advance_active_play_us, frames);
         let post_scene_ms = fmt_profile_ms(self.post_scene_us, frames);
+        let wait_wake_samples = self.wait_wake_samples;
+        let scheduled_wait_ms = fmt_profile_ms(self.scheduled_wait_us, wait_wake_samples.max(1));
+        let wake_lateness_ms = fmt_profile_ms(self.wake_lateness_us, wait_wake_samples.max(1));
+        let redraw_after_wake_ms =
+            fmt_profile_ms(self.redraw_after_wake_us, wait_wake_samples.max(1));
         let total_redraw_percentiles = frame_duration_percentiles(&self.total_redraw_samples_us);
+        let render_percentiles = frame_duration_percentiles(&self.render_samples_us);
+        let surface_percentiles = frame_duration_percentiles(&self.surface_samples_us);
+        let queue_percentiles = frame_duration_percentiles(&self.queue_samples_us);
+        let present_percentiles = frame_duration_percentiles(&self.present_samples_us);
+        let wake_lateness_percentiles = frame_duration_percentiles(&self.wake_lateness_samples_us);
+        let redraw_after_wake_percentiles =
+            frame_duration_percentiles(&self.redraw_after_wake_samples_us);
         macro_rules! log_frame_profile {
             ($target:literal, $message:literal) => {
                 tracing::debug!(
@@ -431,6 +600,13 @@ impl SceneFrameProfiler {
                     video_uploaded_frames,
                     snapshot_ms,
                     render_ms,
+                    app_cpu_outside_render_ms,
+                    render_p95_ms = render_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p95_us)),
+                    render_p99_ms = render_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p99_us)),
+                    render_max_ms = render_percentiles
+                        .map(|value| fmt_profile_us_ms(value.max_us)),
                     plan_ms,
                     draw_ms,
                     text_ms,
@@ -438,10 +614,28 @@ impl SceneFrameProfiler {
                     upload_ms,
                     submit_ms,
                     surface_ms,
+                    surface_p95_ms = surface_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p95_us)),
+                    surface_p99_ms = surface_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p99_us)),
+                    surface_max_ms = surface_percentiles
+                        .map(|value| fmt_profile_us_ms(value.max_us)),
                     bind_ms,
                     encode_ms,
                     queue_ms,
+                    queue_p95_ms = queue_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p95_us)),
+                    queue_p99_ms = queue_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p99_us)),
+                    queue_max_ms = queue_percentiles
+                        .map(|value| fmt_profile_us_ms(value.max_us)),
                     present_ms,
+                    present_p95_ms = present_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p95_us)),
+                    present_p99_ms = present_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p99_us)),
+                    present_max_ms = present_percentiles
+                        .map(|value| fmt_profile_us_ms(value.max_us)),
                     total_redraw_ms,
                     total_redraw_p95_ms = total_redraw_percentiles
                         .map(|value| fmt_profile_us_ms(value.p95_us)),
@@ -455,6 +649,29 @@ impl SceneFrameProfiler {
                     egui_ms,
                     advance_active_play_ms,
                     post_scene_ms,
+                    effective_frame_limit = self.effective_frame_limit,
+                    frame_budget_ms = fmt_profile_us_ms(self.frame_budget_us),
+                    wait_wake_samples,
+                    scheduled_wait_ms,
+                    wake_lateness_ms,
+                    wake_lateness_p95_ms = wake_lateness_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p95_us)),
+                    wake_lateness_p99_ms = wake_lateness_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p99_us)),
+                    wake_lateness_max_ms = wake_lateness_percentiles
+                        .map(|value| fmt_profile_us_ms(value.max_us)),
+                    redraw_after_wake_ms,
+                    redraw_after_wake_p95_ms = redraw_after_wake_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p95_us)),
+                    redraw_after_wake_p99_ms = redraw_after_wake_percentiles
+                        .map(|value| fmt_profile_us_ms(value.p99_us)),
+                    redraw_after_wake_max_ms = redraw_after_wake_percentiles
+                        .map(|value| fmt_profile_us_ms(value.max_us)),
+                    maximum_consecutive_deadline_misses =
+                        self.maximum_consecutive_deadline_misses,
+                    last_scheduled_deadline = ?self.last_scheduled_deadline,
+                    last_actual_wake_at = ?self.last_actual_wake_at,
+                    last_redraw_started_at = ?self.last_redraw_started_at,
                     commands,
                     steps,
                     rect_steps,
@@ -498,6 +715,12 @@ fn fmt_profile_ms(total_us: u128, frames: u128) -> String {
 
 fn fmt_profile_us_ms(us: u64) -> String {
     format!("{:.3}", us as f64 / 1000.0)
+}
+
+fn push_profile_sample(samples: &mut Vec<u64>, value_us: u128) {
+    if samples.len() < FRAME_PROFILE_SAMPLE_CAPACITY {
+        samples.push(value_us.min(u128::from(u64::MAX)) as u64);
+    }
 }
 
 fn frame_duration_percentiles(samples: &[u64]) -> Option<FrameDurationPercentiles> {
@@ -650,6 +873,46 @@ mod tests {
         assert_eq!(pacer.next_deadline(started_at + budget, 120, false), None);
         assert_eq!(pacer.next_deadline(started_at + work, 120, true), None);
         assert_eq!(pacer.next_deadline(started_at + work, 0, false), None);
+    }
+
+    #[test]
+    fn frame_runtime_records_wait_wake_and_redraw_timing() {
+        let started_at = Instant::now();
+        let pacing = test_pacing_state(240);
+        let mut runtime = FrameRuntime::new(started_at);
+        runtime.sync_pacing_state(started_at, pacing);
+        let deadline = started_at + Duration::from_millis(4);
+        let actual_wake = deadline + Duration::from_millis(1);
+        runtime.record_wait_wake(started_at, deadline, actual_wake, 240);
+
+        assert!(matches!(
+            runtime.begin_scheduled_frame(actual_wake + Duration::from_micros(250), pacing),
+            FrameSchedule::Start
+        ));
+        let timings = runtime.current_pacing_timings();
+        assert!(timings.wait_wake_sampled);
+        assert_eq!(timings.effective_frame_limit, 240);
+        assert_eq!(timings.frame_budget_us, 4_166);
+        assert_eq!(timings.scheduled_wait_us, 4_000);
+        assert_eq!(timings.wake_lateness_us, 1_000);
+        assert_eq!(timings.redraw_after_wake_us, 250);
+        assert_eq!(timings.consecutive_deadline_misses, 0);
+        assert_eq!(timings.scheduled_deadline, Some(deadline));
+        assert_eq!(timings.actual_wake_at, Some(actual_wake));
+    }
+
+    #[test]
+    fn frame_runtime_counts_only_full_budget_wake_misses_as_consecutive() {
+        let started_at = Instant::now();
+        let deadline = started_at + Duration::from_millis(4);
+        let mut runtime = FrameRuntime::new(started_at);
+
+        runtime.record_wait_wake(started_at, deadline, deadline + Duration::from_millis(5), 240);
+        assert_eq!(runtime.consecutive_deadline_misses, 1);
+        runtime.record_wait_wake(started_at, deadline, deadline + Duration::from_millis(10), 240);
+        assert_eq!(runtime.consecutive_deadline_misses, 2);
+        runtime.record_wait_wake(started_at, deadline, deadline + Duration::from_millis(1), 240);
+        assert_eq!(runtime.consecutive_deadline_misses, 0);
     }
 
     #[test]

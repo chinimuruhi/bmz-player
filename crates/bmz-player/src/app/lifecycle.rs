@@ -2,13 +2,25 @@ use super::*;
 
 impl ApplicationHandler<AppUserEvent> for WinitApp {
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        if cause == StartCause::Init {
-            tracing::info!("winit app init");
-            self.ensure_window(event_loop);
-        } else if matches!(cause, StartCause::ResumeTimeReached { .. }) {
-            // `WaitUntil` の deadline 到達時だけ描画を要求する。待機中に届いた
-            // keyboard/device/user event は redraw を発生させず、その場で処理できる。
-            self.request_redraw();
+        match cause {
+            StartCause::Init => {
+                tracing::info!("winit app init");
+                self.ensure_window(event_loop);
+            }
+            StartCause::ResumeTimeReached { start, requested_resume } => {
+                let actual_wake_at = Instant::now();
+                let effective_frame_limit = self.current_frame_limit();
+                self.frame.record_wait_wake(
+                    start,
+                    requested_resume,
+                    actual_wake_at,
+                    effective_frame_limit,
+                );
+                // `WaitUntil` の deadline 到達時だけ描画を要求する。待機中に届いた
+                // keyboard/device/user event は redraw を発生させず、その場で処理できる。
+                self.request_redraw();
+            }
+            StartCause::WaitCancelled { .. } | StartCause::Poll => {}
         }
     }
 
@@ -170,6 +182,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 if !self.begin_scheduled_frame(event_loop) {
                     return;
                 }
+                let pacing_timings = self.frame.current_pacing_timings();
                 let limit_us = instant_elapsed_us_u64(limit_start);
                 let redraw_started_at = Instant::now();
                 let scene_before = self.current_scene_kind();
@@ -258,6 +271,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                             egui_us,
                             advance_active_play_us,
                             post_scene_us,
+                            pacing: pacing_timings,
                         },
                     );
                 }
