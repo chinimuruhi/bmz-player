@@ -231,7 +231,12 @@ mod tests {
 
         let (_, samples) = engine.clone_sample_bank().unwrap();
         let sample = samples.get(CHART_PREVIEW_SOUND_ID).unwrap();
-        assert_eq!(sample.sample_rate, 2_000);
-        assert_eq!(sample.frames, vec![0.0, 0.5, 1.0, 1.0]);
+        assert_eq!(sample.sample_rate(), 2_000);
+        assert_eq!(
+            (0..sample.frame_count())
+                .map(|frame| sample.sample_stereo(frame).0)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.5, 1.0, 1.0]
+        );
     }
 }

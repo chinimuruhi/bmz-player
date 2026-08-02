@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::mixer::{ActiveVoiceFadeOut, MixerState};
 use crate::queue::{AudioScheduler, RestartPolicy, ScheduledSound, ScheduledSoundQueue};
 use crate::sample::{DecodedSample, SampleBank};
@@ -53,6 +55,18 @@ impl AudioEngine {
             sample.resampled_to(self.mixer.output_sample_rate)
         };
         self.samples.insert(id, sample);
+    }
+
+    /// 読込・VOLWAV適用・出力レート化済みの共有PCMの一部を登録する。
+    /// BMSON `sound_channel` の slice を複数 `SoundId` から再生するために使う。
+    pub fn insert_shared_sample_region(
+        &mut self,
+        id: bmz_core::ids::SoundId,
+        source: Arc<DecodedSample>,
+        start_frame: usize,
+        end_frame: usize,
+    ) {
+        self.samples.insert_shared_region(id, source, start_frame, end_frame);
     }
 
     /// 出力サンプルレートを変更し、保持中の全サンプルを新レートへ揃える。
@@ -265,8 +279,13 @@ mod tests {
         );
 
         let sample = engine.samples.get(SoundId(1)).unwrap();
-        assert_eq!(sample.sample_rate, 48_000);
-        assert_eq!(sample.frames, vec![0.0, 0.5, 1.0, 1.0]);
+        assert_eq!(sample.sample_rate(), 48_000);
+        assert_eq!(
+            (0..sample.frame_count())
+                .map(|frame| sample.sample_stereo(frame).0)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.5, 1.0, 1.0]
+        );
     }
 
     #[test]
@@ -277,7 +296,46 @@ mod tests {
 
         engine.insert_sample(SoundId(1), sample);
 
-        assert_eq!(engine.samples.get(SoundId(1)).unwrap().frames.as_ptr(), frames_ptr);
+        assert_eq!(engine.samples.get(SoundId(1)).unwrap().source_frames_ptr(), frames_ptr);
+    }
+
+    #[test]
+    fn adjacent_shared_regions_play_without_crossing_boundaries() {
+        let mut engine = AudioEngine::new(48_000);
+        let source = Arc::new(DecodedSample {
+            channels: 1,
+            sample_rate: 48_000,
+            frames: vec![0.25, 0.5, 0.75, 1.0],
+        });
+        engine.insert_shared_sample_region(SoundId(1), source.clone(), 0, 2);
+        engine.insert_shared_sample_region(SoundId(2), source, 2, 4);
+        engine.schedule_all([
+            ScheduledSound {
+                start_frame: 0,
+                sound_id: SoundId(1),
+                volume: 1.0,
+                pan: 0.0,
+                loop_playback: false,
+                fade_in_frames: 0,
+                catch_up: false,
+                restart_policy: RestartPolicy::Overlap,
+            },
+            ScheduledSound {
+                start_frame: 2,
+                sound_id: SoundId(2),
+                volume: 1.0,
+                pan: 0.0,
+                loop_playback: false,
+                fade_in_frames: 0,
+                catch_up: false,
+                restart_policy: RestartPolicy::Overlap,
+            },
+        ]);
+
+        let mut output = vec![0.0; 8];
+        engine.render_stereo(0, &mut output);
+
+        assert_eq!(output, vec![0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0]);
     }
 
     #[test]
@@ -289,8 +347,9 @@ mod tests {
         );
 
         let sample = engine.samples.get(SoundId(1)).unwrap();
-        assert_eq!(sample.sample_rate, 48_000);
-        assert_eq!(sample.frames, vec![0.0, 1.0]);
+        assert_eq!(sample.sample_rate(), 48_000);
+        assert_eq!(sample.sample_stereo(0), (0.0, 0.0));
+        assert_eq!(sample.sample_stereo(1), (1.0, 1.0));
     }
 
     #[test]
@@ -302,8 +361,13 @@ mod tests {
         );
 
         let sample = engine.samples.get(SoundId(1)).unwrap();
-        assert_eq!(sample.sample_rate, 48_000);
-        assert_eq!(sample.frames, vec![0.0, 0.5, 1.0, 1.0]);
+        assert_eq!(sample.sample_rate(), 48_000);
+        assert_eq!(
+            (0..sample.frame_count())
+                .map(|frame| sample.sample_stereo(frame).0)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.5, 1.0, 1.0]
+        );
     }
 
     #[test]
@@ -356,8 +420,13 @@ mod tests {
 
         assert_eq!(engine.mixer.output_sample_rate, 48_000);
         let sample = engine.samples.get(SoundId(1)).unwrap();
-        assert_eq!(sample.sample_rate, 48_000);
-        assert_eq!(sample.frames, vec![0.0, 0.5, 1.0, 1.0]);
+        assert_eq!(sample.sample_rate(), 48_000);
+        assert_eq!(
+            (0..sample.frame_count())
+                .map(|frame| sample.sample_stereo(frame).0)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.5, 1.0, 1.0]
+        );
     }
 
     #[test]

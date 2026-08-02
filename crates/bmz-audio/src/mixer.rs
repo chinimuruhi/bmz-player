@@ -113,8 +113,8 @@ impl MixerState {
             let sample_frames = sample.frame_count();
             // 読込時リサンプル後はサンプルが出力レートと一致するため、補間不要の
             // ファストパス(整数インデックスで直接読み出し)で再生できる。
-            let native_rate = sample.sample_rate == output_sample_rate;
-            let step = sample.sample_rate as f64 / output_sample_rate as f64;
+            let native_rate = sample.sample_rate() == output_sample_rate;
+            let step = sample.sample_rate() as f64 / output_sample_rate as f64;
 
             if voice.started {
                 if output_start_frame > voice.next_output_frame {

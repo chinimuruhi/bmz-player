@@ -9,9 +9,63 @@ pub struct DecodedSample {
     pub frames: Vec<f32>,
 }
 
+/// 1 つのデコード済み PCM 内の再生範囲。
+///
+/// BMSON の `sound_channel` は同じ音声ファイルを複数の `c=true` ノートへ
+/// 分割できるため、`SoundId` ごとに PCM を複製せず共有元と frame 範囲だけを持つ。
+#[derive(Debug, Clone)]
+pub struct SampleRegion {
+    source: Arc<DecodedSample>,
+    start_frame: usize,
+    end_frame: usize,
+}
+
+impl SampleRegion {
+    fn new(source: Arc<DecodedSample>, start_frame: usize, end_frame: usize) -> Self {
+        let source_frames = source.frame_count();
+        let start_frame = start_frame.min(source_frames);
+        let end_frame = end_frame.clamp(start_frame, source_frames);
+        Self { source, start_frame, end_frame }
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.source.sample_rate
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.end_frame - self.start_frame
+    }
+
+    pub fn sample_stereo(&self, frame: usize) -> (f32, f32) {
+        if frame >= self.frame_count() {
+            return (0.0, 0.0);
+        }
+        self.source.sample_stereo(self.start_frame + frame)
+    }
+
+    pub fn sample_stereo_linear(&self, position: f64) -> (f32, f32) {
+        let frame = position.floor().max(0.0) as usize;
+        let frac = (position - frame as f64) as f32;
+        let (left_a, right_a) = self.sample_stereo(frame);
+        let (left_b, right_b) = self.sample_stereo(frame + 1);
+        (lerp(left_a, left_b, frac), lerp(right_a, right_b, frac))
+    }
+
+    /// 同じデコード済みPCMを参照しているかを返す。
+    #[cfg(test)]
+    pub(crate) fn shares_source_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.source, &other.source)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn source_frames_ptr(&self) -> *const f32 {
+        self.source.frames.as_ptr()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SampleBank {
-    samples: Vec<Option<Arc<DecodedSample>>>,
+    samples: Vec<Option<SampleRegion>>,
 }
 
 impl SampleBank {
@@ -23,24 +77,62 @@ impl SampleBank {
     }
 
     pub fn insert(&mut self, id: SoundId, sample: DecodedSample) {
-        let index = id.0 as usize;
-        self.reserve_slot(id);
-        self.samples[index] = Some(Arc::new(sample));
+        let source = Arc::new(sample);
+        self.insert_shared_region(id, source.clone(), 0, source.frame_count());
     }
 
-    pub fn get(&self, id: SoundId) -> Option<&DecodedSample> {
-        self.samples.get(id.0 as usize)?.as_deref()
+    /// 共有PCMの指定範囲を `SoundId` に登録する。
+    pub fn insert_shared_region(
+        &mut self,
+        id: SoundId,
+        source: Arc<DecodedSample>,
+        start_frame: usize,
+        end_frame: usize,
+    ) {
+        let index = id.0 as usize;
+        self.reserve_slot(id);
+        self.samples[index] = Some(SampleRegion::new(source, start_frame, end_frame));
+    }
+
+    pub fn get(&self, id: SoundId) -> Option<&SampleRegion> {
+        self.samples.get(id.0 as usize)?.as_ref()
     }
 
     /// 保持中の全サンプルを `target_rate` へリサンプルする。出力レート変更時に
     /// 呼ばれ、ミキサー側でのリアルタイムリサンプルを不要にする。
     pub fn resample_all_to(&mut self, target_rate: u32) {
-        for slot in self.samples.iter_mut().flatten() {
-            if slot.sample_rate != target_rate {
-                *slot = Arc::new(slot.resampled_to(target_rate));
+        let mut resampled_by_source =
+            std::collections::HashMap::<*const DecodedSample, Arc<DecodedSample>>::new();
+        for region in self.samples.iter_mut().flatten() {
+            if region.source.sample_rate == target_rate {
+                continue;
             }
+            let source = region.source.clone();
+            let source_key = Arc::as_ptr(&source);
+            let resampled = resampled_by_source
+                .entry(source_key)
+                .or_insert_with(|| Arc::new(source.resampled_to(target_rate)))
+                .clone();
+            if resampled.sample_rate != source.sample_rate {
+                let old_frame_count = source.frame_count();
+                let new_frame_count = resampled.frame_count();
+                region.start_frame =
+                    scale_region_boundary(region.start_frame, old_frame_count, new_frame_count);
+                region.end_frame =
+                    scale_region_boundary(region.end_frame, old_frame_count, new_frame_count)
+                        .max(region.start_frame);
+            }
+            region.source = resampled;
         }
     }
+}
+
+fn scale_region_boundary(boundary: usize, old_frame_count: usize, new_frame_count: usize) -> usize {
+    if old_frame_count == 0 {
+        return 0;
+    }
+    (boundary as u128 * new_frame_count as u128 / old_frame_count as u128)
+        .min(new_frame_count as u128) as usize
 }
 
 impl DecodedSample {
@@ -195,7 +287,37 @@ mod tests {
         bank.resample_all_to(48_000);
 
         let sample = bank.get(SoundId(1)).unwrap();
-        assert_eq!(sample.sample_rate, 48_000);
-        assert_eq!(sample.frames, vec![0.0, 0.5, 1.0, 1.0]);
+        assert_eq!(sample.sample_rate(), 48_000);
+        assert_eq!(
+            (0..sample.frame_count())
+                .map(|frame| sample.sample_stereo(frame).0)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.5, 1.0, 1.0]
+        );
+    }
+
+    #[test]
+    fn shared_regions_keep_one_source_and_follow_resampled_boundaries() {
+        let source = Arc::new(DecodedSample {
+            channels: 1,
+            sample_rate: 24_000,
+            frames: vec![0.0, 1.0, 2.0],
+        });
+        let mut bank = SampleBank::default();
+        bank.insert_shared_region(SoundId(1), source.clone(), 0, 1);
+        bank.insert_shared_region(SoundId(2), source, 1, 3);
+
+        assert!(bank.get(SoundId(1)).unwrap().shares_source_with(bank.get(SoundId(2)).unwrap()));
+        bank.resample_all_to(48_000);
+
+        let first = bank.get(SoundId(1)).unwrap();
+        let second = bank.get(SoundId(2)).unwrap();
+        assert!(first.shares_source_with(second));
+        assert_eq!(first.frame_count(), 2);
+        assert_eq!(second.frame_count(), 4);
+        assert_eq!(first.sample_stereo(0), (0.0, 0.0));
+        assert_eq!(first.sample_stereo(1), (0.5, 0.5));
+        assert_eq!(second.sample_stereo(0), (1.0, 1.0));
+        assert_eq!(second.sample_stereo(3), (2.0, 2.0));
     }
 }

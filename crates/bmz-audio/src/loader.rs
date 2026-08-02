@@ -1,5 +1,6 @@
 use std::collections::{HashMap, hash_map::Entry};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bmz_chart::model::{PlayableChart, SoundAssetRef, SoundSlice};
 use bmz_chart::sound_asset::sound_asset_candidates;
@@ -55,6 +56,12 @@ pub enum LoadedSampleStatus {
     Failed(String),
 }
 
+#[derive(Debug, Clone)]
+enum CachedDecode {
+    Loaded(Arc<DecodedSample>),
+    Failed(String),
+}
+
 pub fn load_chart_samples(
     engine: &mut AudioEngine,
     chart: &PlayableChart,
@@ -71,14 +78,22 @@ pub fn load_chart_samples_with_progress(
 ) -> Vec<LoadedSampleReport> {
     let volwav = volwav_factor(chart.metadata.volwav_percent);
     let total = chart.sounds.len();
-    let mut decoded_by_path = HashMap::new();
+    let mut candidates_by_declared_path = HashMap::<PathBuf, Vec<PathBuf>>::new();
+    let mut decoded_by_path = HashMap::<PathBuf, CachedDecode>::new();
     on_progress(0, total);
     chart
         .sounds
         .iter()
         .enumerate()
         .map(|(index, asset)| {
-            let report = load_asset(engine, asset, loader, volwav, &mut decoded_by_path);
+            let report = load_asset(
+                engine,
+                asset,
+                loader,
+                volwav,
+                &mut candidates_by_declared_path,
+                &mut decoded_by_path,
+            );
             on_progress(index + 1, total);
             report
         })
@@ -90,9 +105,14 @@ fn load_asset(
     asset: &SoundAssetRef,
     loader: &mut dyn SampleLoader,
     volwav: f32,
-    decoded_by_path: &mut HashMap<PathBuf, DecodedSample>,
+    candidates_by_declared_path: &mut HashMap<PathBuf, Vec<PathBuf>>,
+    decoded_by_path: &mut HashMap<PathBuf, CachedDecode>,
 ) -> LoadedSampleReport {
-    let candidates = sound_asset_candidates(&asset.path);
+    // 同じ宣言pathの各 SoundId は同じ候補列を使う。特に `stronger` の多数
+    // region では、毎回 filesystem 上の候補を stat しない。
+    let candidates = candidates_by_declared_path
+        .entry(asset.path.clone())
+        .or_insert_with(|| sound_asset_candidates(&asset.path));
     if candidates.is_empty() {
         let error = SampleLoadError::Io {
             path: asset.path.clone(),
@@ -106,44 +126,57 @@ fn load_asset(
 
     let mut last_error = None;
     let mut last_path = asset.path.clone();
-    for path in candidates {
+    for path in candidates.iter() {
         last_path = path.clone();
         let source = match decoded_by_path.entry(path.clone()) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => match loader.load(&path) {
-                Ok(sample) => entry.insert(sample),
+            Entry::Occupied(entry) => match entry.into_mut() {
+                CachedDecode::Loaded(sample) => sample.clone(),
+                CachedDecode::Failed(error) => {
+                    last_error = Some(error.clone());
+                    continue;
+                }
+            },
+            Entry::Vacant(entry) => match loader.load(path) {
+                Ok(mut sample) => {
+                    // 同一pathの VOLWAV 適用・出力レート化は最初の1回だけ行う。
+                    sample.apply_gain(volwav);
+                    let sample = if sample.sample_rate == engine.output_sample_rate() {
+                        sample
+                    } else {
+                        sample.resampled_to(engine.output_sample_rate())
+                    };
+                    let sample = Arc::new(sample);
+                    entry.insert(CachedDecode::Loaded(sample.clone()));
+                    sample
+                }
                 Err(error) => {
+                    let error = error.to_string();
+                    entry.insert(CachedDecode::Failed(error.clone()));
                     last_error = Some(error);
                     continue;
                 }
             },
         };
 
-        // BMSON の slice は source PCM の必要範囲だけをコピーする。以前は
-        // cache から `DecodedSample` 全体を clone してから切り出していたため、
-        // 1 本の長い音源を多数の c=true slice に分けると、slice ごとに全 PCM
-        // をコピーしていた。
-        let mut sample =
-            asset.slice.map_or_else(|| source.clone(), |slice| slice_sample(source, slice));
-        sample.apply_gain(volwav);
-        engine.insert_sample(asset.id, sample);
-        return LoadedSampleReport { path, status: LoadedSampleStatus::Loaded };
+        let (start_frame, end_frame) = asset
+            .slice
+            .map_or((0, source.frame_count()), |slice| slice_frame_range(&source, slice));
+        engine.insert_shared_sample_region(asset.id, source, start_frame, end_frame);
+        return LoadedSampleReport { path: path.clone(), status: LoadedSampleStatus::Loaded };
     }
 
     LoadedSampleReport {
         path: last_path,
         status: LoadedSampleStatus::Failed(
-            last_error
-                .map(|error| error.to_string())
-                .unwrap_or_else(|| "sample file not found".to_string()),
+            last_error.unwrap_or_else(|| "sample file not found".to_string()),
         ),
     }
 }
 
-fn slice_sample(sample: &DecodedSample, slice: SoundSlice) -> DecodedSample {
+fn slice_frame_range(sample: &DecodedSample, slice: SoundSlice) -> (usize, usize) {
     let channels = sample.channels as usize;
     if channels == 0 || sample.sample_rate == 0 {
-        return sample.clone();
+        return (0, sample.frame_count());
     }
     let frame_count = sample.frame_count();
     let start_frame = ((slice.start_us as u128 * sample.sample_rate as u128) / 1_000_000)
@@ -152,11 +185,7 @@ fn slice_sample(sample: &DecodedSample, slice: SoundSlice) -> DecodedSample {
         let duration_frames = (duration_us as u128 * sample.sample_rate as u128) / 1_000_000;
         (start_frame as u128 + duration_frames).min(frame_count as u128) as usize
     });
-    DecodedSample {
-        channels: sample.channels,
-        sample_rate: sample.sample_rate,
-        frames: sample.frames[start_frame * channels..end_frame * channels].to_vec(),
-    }
+    (start_frame, end_frame)
 }
 
 fn decode_wav(path: &Path, bytes: &[u8]) -> Result<DecodedSample, SampleLoadError> {
@@ -363,8 +392,8 @@ mod tests {
         load_chart_samples(&mut engine, &chart, &mut loader);
 
         let sample = engine.samples.get(SoundId(1)).unwrap();
-        assert_eq!(sample.frames[0], 0.5);
-        assert_eq!(sample.frames[1], -0.5);
+        assert_eq!(sample.sample_stereo(0), (0.5, 0.5));
+        assert_eq!(sample.sample_stereo(1), (-0.5, -0.5));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -400,14 +429,94 @@ mod tests {
 
         assert_eq!(loader.attempts, vec![path]);
         let first = engine.samples.get(SoundId(1)).unwrap();
-        assert_eq!(first.frames.len(), 14_400);
-        assert!((first.frames[0] - 2.0).abs() < 0.001);
-        assert!((first.frames[first.frames.len() - 1] - 4.0).abs() < 0.001);
+        assert_eq!(first.frame_count(), 14_400);
+        assert!((first.sample_stereo(0).0 - 2.0).abs() < 0.001);
+        assert!(first.sample_stereo(first.frame_count() - 1).0 > 4.99);
+        assert!(first.sample_stereo(first.frame_count() - 1).0 < 5.0);
 
         let second = engine.samples.get(SoundId(2)).unwrap();
-        assert_eq!(second.frames.len(), 24_000);
-        assert!((second.frames[0] - 5.0).abs() < 0.001);
-        assert!((second.frames[second.frames.len() - 1] - 9.0).abs() < 0.001);
+        assert_eq!(second.frame_count(), 24_000);
+        assert!((second.sample_stereo(0).0 - 5.0).abs() < 0.001);
+        assert!((second.sample_stereo(second.frame_count() - 1).0 - 9.0).abs() < 0.001);
+        assert!(first.shares_source_with(second));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn load_chart_samples_caches_candidates_and_decode_failures_by_actual_path() {
+        let mut engine = AudioEngine::default();
+        let dir = temp_dir("candidate-cache");
+        let requested = dir.join("full.wav");
+        let fallback = dir.join("full.ogg");
+        std::fs::write(&requested, b"invalid").unwrap();
+        std::fs::write(&fallback, b"valid").unwrap();
+        let chart = chart_with_sounds(vec![
+            SoundAssetRef { id: SoundId(1), path: requested.clone(), slice: None },
+            SoundAssetRef { id: SoundId(2), path: requested.clone(), slice: None },
+        ]);
+        let mut loader = TestLoader::default();
+        loader.failures.insert(requested.clone(), "decode failed".to_string());
+        loader.samples.insert(
+            fallback.clone(),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![0.5] },
+        );
+
+        let report = load_chart_samples(&mut engine, &chart, &mut loader);
+
+        // 2件目は1件目で解決した候補列と decode 結果を使う。これは多数regionで
+        // 同じpathを宣言する譜面でも stat/decodeを繰り返さないことを守る。
+        assert!(matches!(report[0].status, LoadedSampleStatus::Loaded));
+        assert!(matches!(report[1].status, LoadedSampleStatus::Loaded));
+        assert_eq!(loader.attempts, vec![requested, fallback]);
+        assert!(
+            engine
+                .samples
+                .get(SoundId(1))
+                .unwrap()
+                .shares_source_with(engine.samples.get(SoundId(2)).unwrap())
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn loads_two_thousand_regions_from_one_shared_source() {
+        let mut engine = AudioEngine::new(1_000);
+        let dir = temp_dir("many-shared-regions");
+        let path = dir.join("long-source.wav");
+        std::fs::write(&path, b"dummy").unwrap();
+        let chart = chart_with_sounds(
+            (0..2_000)
+                .map(|index| SoundAssetRef {
+                    id: SoundId(index),
+                    path: path.clone(),
+                    slice: Some(SoundSlice {
+                        start_us: u64::from(index) * 1_000,
+                        duration_us: Some(1_000),
+                    }),
+                })
+                .collect(),
+        );
+        let mut loader = TestLoader::default();
+        loader.samples.insert(
+            path.clone(),
+            DecodedSample {
+                channels: 1,
+                sample_rate: 1_000,
+                frames: (0..2_000).map(|value| value as f32).collect(),
+            },
+        );
+
+        let reports = load_chart_samples(&mut engine, &chart, &mut loader);
+
+        assert_eq!(reports.len(), 2_000);
+        assert_eq!(loader.attempts, vec![path]);
+        let first = engine.samples.get(SoundId(0)).unwrap();
+        let last = engine.samples.get(SoundId(1_999)).unwrap();
+        assert!(first.shares_source_with(last));
+        assert_eq!(first.frame_count(), 1);
+        assert_eq!(last.frame_count(), 1);
+        assert_eq!(first.sample_stereo(0), (0.0, 0.0));
+        assert_eq!(last.sample_stereo(0), (1_999.0, 1_999.0));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -56,8 +56,8 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
         preloaded.chart.lane_notes.iter().flatten().find_map(|note| note.sound),
         Some(key_id)
     );
-    assert!(preloaded.audio.samples.get(bgm_id).unwrap().frames[0] > 0.4);
-    assert!(preloaded.audio.samples.get(key_id).unwrap().frames[0] < -0.4);
+    assert!(preloaded.audio.samples.get(bgm_id).unwrap().sample_stereo(0).0 > 0.4);
+    assert!(preloaded.audio.samples.get(key_id).unwrap().sample_stereo(0).0 < -0.4);
     assert_eq!(progress.last(), Some(&(2, 2)));
 
     std::fs::remove_file(path).unwrap();
