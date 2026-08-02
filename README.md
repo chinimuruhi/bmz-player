@@ -33,7 +33,9 @@ Features
   - #PREVIEW 定義や preview.wav(.ogg) がない曲のプレビューを再生することができます
 - Discord Rich Presence
 - OBS WebSocket control integration
-**Don't use this application for playing copyrighted contents.**
+
+> [!CAUTION]
+> Don't use this application to play non-permitted copyrighted contents.
 
 ## Recommended Skins
 
