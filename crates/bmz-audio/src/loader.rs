@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::path::{Path, PathBuf};
 
 use bmz_chart::model::{PlayableChart, SoundAssetRef, SoundSlice};
@@ -108,20 +108,26 @@ fn load_asset(
     let mut last_path = asset.path.clone();
     for path in candidates {
         last_path = path.clone();
-        let decoded =
-            decoded_by_path.get(&path).cloned().map(Ok).unwrap_or_else(|| loader.load(&path));
-        match decoded {
-            Ok(mut sample) => {
-                decoded_by_path.entry(path.clone()).or_insert_with(|| sample.clone());
-                if let Some(slice) = asset.slice {
-                    sample = slice_sample(sample, slice);
+        let source = match decoded_by_path.entry(path.clone()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => match loader.load(&path) {
+                Ok(sample) => entry.insert(sample),
+                Err(error) => {
+                    last_error = Some(error);
+                    continue;
                 }
-                sample.apply_gain(volwav);
-                engine.insert_sample(asset.id, sample);
-                return LoadedSampleReport { path, status: LoadedSampleStatus::Loaded };
-            }
-            Err(error) => last_error = Some(error),
-        }
+            },
+        };
+
+        // BMSON の slice は source PCM の必要範囲だけをコピーする。以前は
+        // cache から `DecodedSample` 全体を clone してから切り出していたため、
+        // 1 本の長い音源を多数の c=true slice に分けると、slice ごとに全 PCM
+        // をコピーしていた。
+        let mut sample =
+            asset.slice.map_or_else(|| source.clone(), |slice| slice_sample(source, slice));
+        sample.apply_gain(volwav);
+        engine.insert_sample(asset.id, sample);
+        return LoadedSampleReport { path, status: LoadedSampleStatus::Loaded };
     }
 
     LoadedSampleReport {
@@ -134,10 +140,10 @@ fn load_asset(
     }
 }
 
-fn slice_sample(sample: DecodedSample, slice: SoundSlice) -> DecodedSample {
+fn slice_sample(sample: &DecodedSample, slice: SoundSlice) -> DecodedSample {
     let channels = sample.channels as usize;
     if channels == 0 || sample.sample_rate == 0 {
-        return sample;
+        return sample.clone();
     }
     let frame_count = sample.frame_count();
     let start_frame = ((slice.start_us as u128 * sample.sample_rate as u128) / 1_000_000)

@@ -29,7 +29,12 @@ impl AudioEngine {
 
     pub fn insert_sample(&mut self, id: bmz_core::ids::SoundId, sample: DecodedSample) {
         // 読込時に出力レートへ揃えておき、ミキサーでの逐次リサンプルを避ける。
-        let sample = sample.resampled_to(self.mixer.output_sample_rate);
+        // 一致済みのPCMはそのままSampleBankへ移動し、不要なframes cloneを避ける。
+        let sample = if sample.sample_rate == self.mixer.output_sample_rate {
+            sample
+        } else {
+            sample.resampled_to(self.mixer.output_sample_rate)
+        };
         self.samples.insert(id, sample);
     }
 
@@ -262,6 +267,17 @@ mod tests {
         let sample = engine.samples.get(SoundId(1)).unwrap();
         assert_eq!(sample.sample_rate, 48_000);
         assert_eq!(sample.frames, vec![0.0, 0.5, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn insert_sample_keeps_pcm_allocation_when_rate_already_matches() {
+        let mut engine = AudioEngine::new(48_000);
+        let sample = DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![0.0, 1.0] };
+        let frames_ptr = sample.frames.as_ptr();
+
+        engine.insert_sample(SoundId(1), sample);
+
+        assert_eq!(engine.samples.get(SoundId(1)).unwrap().frames.as_ptr(), frames_ptr);
     }
 
     #[test]
