@@ -89,8 +89,9 @@ pub(super) struct VideoModeSpec {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum VideoModeResolutionReason {
-    ConfiguredResolution,
-    ClosestSupportedResolution,
+    Configured,
+    ClosestSupported,
+    LegacyLargest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +99,7 @@ pub(super) enum VideoModeRefreshReason {
     ClosestAtOrAbove,
     HighestBelow,
     HighestUnlimited,
+    LegacyHighestAtLargestResolution,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,14 +123,14 @@ pub(super) fn select_exclusive_video_mode(
         .iter()
         .any(|mode| mode.width == requested_size.width && mode.height == requested_size.height)
     {
-        VideoModeResolutionReason::ConfiguredResolution
+        VideoModeResolutionReason::Configured
     } else {
-        VideoModeResolutionReason::ClosestSupportedResolution
+        VideoModeResolutionReason::ClosestSupported
     };
     let selected_resolution = candidates
         .iter()
         .filter(|mode| {
-            resolution_reason == VideoModeResolutionReason::ClosestSupportedResolution
+            resolution_reason == VideoModeResolutionReason::ClosestSupported
                 || (mode.width == requested_size.width && mode.height == requested_size.height)
         })
         .min_by_key(|mode| resolution_fallback_key(**mode, requested_size))?;
@@ -155,6 +157,28 @@ pub(super) fn select_exclusive_video_mode(
         (index, VideoModeRefreshReason::HighestBelow)
     };
     Some(VideoModeSelection { index, resolution_reason, refresh_reason })
+}
+
+/// macOS では設定解像度と target FPS を考慮する。他 platform は、このmacOS向け
+/// 修正で既存挙動を変えないよう、従来の「最大面積、その中で最高refresh rate」を保つ。
+pub(super) fn select_platform_exclusive_video_mode(
+    candidates: &[VideoModeSpec],
+    requested_size: PhysicalSize<u32>,
+    target_fps: u32,
+    is_macos: bool,
+) -> Option<VideoModeSelection> {
+    if is_macos {
+        return select_exclusive_video_mode(candidates, requested_size, target_fps);
+    }
+
+    let (index, _) = candidates.iter().enumerate().max_by_key(|(_, mode)| {
+        (u64::from(mode.width) * u64::from(mode.height), mode.refresh_millihertz)
+    })?;
+    Some(VideoModeSelection {
+        index,
+        resolution_reason: VideoModeResolutionReason::LegacyLargest,
+        refresh_reason: VideoModeRefreshReason::LegacyHighestAtLargestResolution,
+    })
 }
 
 fn resolution_fallback_key(
@@ -186,7 +210,12 @@ pub(super) fn pick_exclusive_video_mode(
             }
         })
         .collect::<Vec<_>>();
-    let selection = select_exclusive_video_mode(&specs, requested_size, target_fps)?;
+    let selection = select_platform_exclusive_video_mode(
+        &specs,
+        requested_size,
+        target_fps,
+        cfg!(target_os = "macos"),
+    )?;
     let selected = specs[selection.index];
     let monitor_size = monitor.size();
     let candidate_modes = specs

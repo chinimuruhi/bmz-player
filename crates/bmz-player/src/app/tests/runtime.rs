@@ -74,7 +74,17 @@ fn exclusive_video_mode_keeps_configured_resolution_before_refresh_rate() {
     let modes = [video_mode(3840, 2160, 160), video_mode(1920, 1080, 240)];
     let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240).unwrap();
     assert_eq!(selected.index, 1);
-    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::ConfiguredResolution);
+    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::Configured);
+}
+
+#[test]
+fn non_macos_exclusive_video_mode_preserves_largest_resolution_policy() {
+    let modes = [video_mode(3840, 2160, 160), video_mode(1920, 1080, 240)];
+    let selected =
+        select_platform_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240, false)
+            .unwrap();
+    assert_eq!(selected.index, 0);
+    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::LegacyLargest);
 }
 
 #[test]
@@ -118,7 +128,7 @@ fn exclusive_video_mode_uses_explicit_closest_resolution_fallback() {
     let modes = [video_mode(1280, 720, 240), video_mode(2560, 1440, 240)];
     let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240).unwrap();
     assert_eq!(selected.index, 0);
-    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::ClosestSupportedResolution);
+    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::ClosestSupported);
 }
 
 #[test]
