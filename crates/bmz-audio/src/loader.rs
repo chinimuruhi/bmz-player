@@ -510,6 +510,8 @@ mod tests {
 
         assert_eq!(reports.len(), 2_000);
         assert_eq!(loader.attempts, vec![path]);
+        assert_eq!(engine.samples.source_count(), 1);
+        assert_eq!(engine.samples.region_count(), 2_000);
         let first = engine.samples.get(SoundId(0)).unwrap();
         let last = engine.samples.get(SoundId(1_999)).unwrap();
         assert!(first.shares_source_with(last));

@@ -190,6 +190,8 @@ pub fn preload_play_session_for_chart_with_callbacks(
         audio_load_elapsed_ms = audio_load_elapsed.as_millis(),
         sound_sources = sound_counts.source_count,
         sound_regions = sound_counts.region_count,
+        decoded_sources = audio.samples.source_count(),
+        loaded_regions = audio.samples.region_count(),
         "play preload loaded audio"
     );
     let normalization_started_at = Instant::now();
@@ -244,6 +246,8 @@ pub fn preload_play_session_reloading_audio_with_progress(
         audio_load_elapsed_ms = audio_load_started_at.elapsed().as_millis(),
         sound_sources = sound_counts.source_count,
         sound_regions = sound_counts.region_count,
+        decoded_sources = audio.samples.source_count(),
+        loaded_regions = audio.samples.region_count(),
         "play quick retry reloaded audio"
     );
     PreloadedPlaySession {

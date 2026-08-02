@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use bmz_core::ids::SoundId;
@@ -96,6 +97,21 @@ impl SampleBank {
 
     pub fn get(&self, id: SoundId) -> Option<&SampleRegion> {
         self.samples.get(id.0 as usize)?.as_ref()
+    }
+
+    /// 登録済みの再生region数を返す。
+    pub fn region_count(&self) -> usize {
+        self.samples.iter().flatten().count()
+    }
+
+    /// regionが参照しているデコード済みPCM source数を返す。
+    pub fn source_count(&self) -> usize {
+        self.samples
+            .iter()
+            .flatten()
+            .map(|region| Arc::as_ptr(&region.source))
+            .collect::<HashSet<_>>()
+            .len()
     }
 
     /// 保持中の全サンプルを `target_rate` へリサンプルする。出力レート変更時に
