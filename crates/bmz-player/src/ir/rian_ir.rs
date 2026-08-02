@@ -28,6 +28,37 @@ pub const RIAN_IR_PROVIDER: &str = "rian-ir";
 pub const RIAN_IR_DEFAULT_BASE_URL: &str = "https://rianir.link/api/";
 pub const RIAN_IR_PUBLIC_BASE_URL: &str = "https://rianir.link/";
 
+/// Build the public rianIR ranking page for a chart.
+///
+/// The configured rianIR URL is normally the API base, but the profile UI
+/// also allows the public origin. Both forms must resolve to the web app's
+/// `/ranking?sha256=...` route rather than an API endpoint.
+pub fn chart_page_url(base_url: &str, sha256: &str) -> Result<String> {
+    let mut base = Url::parse(base_url).context("invalid rianIR public URL")?;
+    base.set_query(None);
+    base.set_fragment(None);
+
+    let mut path = base.path().trim_end_matches('/').to_string();
+    if path.is_empty() {
+        path.push('/');
+    } else if path == "/api" {
+        path = "/".to_string();
+    } else if path.ends_with("/api") {
+        path.truncate(path.len() - "/api".len());
+        if path.is_empty() {
+            path.push('/');
+        }
+    }
+    if !path.ends_with('/') {
+        path.push('/');
+    }
+    base.set_path(&path);
+
+    let mut page = base.join("ranking")?;
+    page.query_pairs_mut().append_pair("sha256", sha256);
+    Ok(page.to_string())
+}
+
 #[derive(Debug, Clone)]
 pub struct RianIrClient {
     base_url: Url,
@@ -412,6 +443,24 @@ mod tests {
         assert_eq!(
             parse_base_url("https://example.test/api/").unwrap().as_str(),
             "https://example.test/api/"
+        );
+    }
+
+    #[test]
+    fn chart_page_url_uses_rian_ranking_route_for_origin_and_api_urls() {
+        let sha256 = "ab".repeat(32);
+
+        assert_eq!(
+            chart_page_url("https://rianir.link/", &sha256).unwrap(),
+            format!("https://rianir.link/ranking?sha256={sha256}")
+        );
+        assert_eq!(
+            chart_page_url("https://rianir.link/api/", &sha256).unwrap(),
+            format!("https://rianir.link/ranking?sha256={sha256}")
+        );
+        assert_eq!(
+            chart_page_url("https://example.test/rianir/api/", &sha256).unwrap(),
+            format!("https://example.test/rianir/ranking?sha256={sha256}")
         );
     }
 

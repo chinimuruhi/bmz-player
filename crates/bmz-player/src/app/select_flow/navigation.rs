@@ -262,8 +262,19 @@ impl WinitApp {
             self.show_left_overlay_toast(text.text("toast-primary-ir-not-configured"));
             return;
         };
-        let url =
-            format!("{}/charts/{}", provider.base_url.trim_end_matches('/'), hash_to_hex(&sha256));
+        let sha256_hex = hash_to_hex(&sha256);
+        let url = if crate::ir::rian_ir::is_rian_ir_config(provider) {
+            match crate::ir::rian_ir::chart_page_url(&provider.base_url, &sha256_hex) {
+                Ok(url) => url,
+                Err(error) => {
+                    tracing::warn!(%error, "failed to build primary rianIR chart page URL");
+                    self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
+                    return;
+                }
+            }
+        } else {
+            format!("{}/charts/{sha256_hex}", provider.base_url.trim_end_matches('/'))
+        };
         match open_external_url(&url) {
             Ok(()) => {
                 self.show_left_overlay_toast(text.text("toast-primary-ir-opened"));
