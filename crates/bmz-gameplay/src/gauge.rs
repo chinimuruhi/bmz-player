@@ -355,7 +355,7 @@ impl GaugeState {
 
     /// Mine ノーツを踏んだときの直接ダメージ適用（beatoraja 準拠で
     /// gauge から `damage` を引く）。コンボ/スコアには影響しない。
-    pub fn apply_mine(&mut self, damage: u16) {
+    pub fn apply_mine(&mut self, damage: f64) {
         for gauge in &mut self.gauges {
             gauge.apply_mine(damage);
         }

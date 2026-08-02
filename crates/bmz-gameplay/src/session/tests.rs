@@ -117,7 +117,7 @@ fn ln_chart_with_start_sound_and_end_sound(end_sound: Option<SoundId>) -> Playab
     chart
 }
 
-fn chart_with_mine(time: TimeUs, damage: u16) -> PlayableChart {
+fn chart_with_mine(time: TimeUs, damage: f64) -> PlayableChart {
     let mut chart = chart_with_keysound();
     chart.lane_notes = std::array::from_fn(|_| Vec::new());
     chart.lane_notes[Lane::Key1.index()].push(NoteEvent {

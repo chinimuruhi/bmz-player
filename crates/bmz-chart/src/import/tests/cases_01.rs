@@ -235,8 +235,8 @@ fn imports_mine_notes_with_damage() {
         .filter(|n| n.kind == NoteKind::Mine)
         .collect();
     assert_eq!(mines.len(), 2);
-    assert_eq!(mines[0].damage, Some(8));
-    assert_eq!(mines[1].damage, Some(12));
+    assert_eq!(mines[0].damage, Some(8.0));
+    assert_eq!(mines[1].damage, Some(12.0));
     // total_notes は Tap/LongStart のみ。Mine はスコア対象外。
     assert_eq!(result.chart.total_notes, 0);
 

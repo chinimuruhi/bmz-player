@@ -292,7 +292,7 @@ fn ln_mode_scores_once_at_long_note_end() {
 
 #[test]
 fn process_mine_passes_applies_damage_for_held_human_lane() {
-    let mut session = session_with_autoplay(chart_with_mine(TimeUs(1_000_000), 8));
+    let mut session = session_with_autoplay(chart_with_mine(TimeUs(1_000_000), 8.0));
     session.autoplay = None;
     session.gauge.set_initial_value(50.0);
     session.lane_keyon_started_at[Lane::Key1.index()] = Some(TimeUs(900_000));
@@ -303,4 +303,17 @@ fn process_mine_passes_applies_damage_for_held_human_lane() {
     assert_eq!(session.pending_mine_hits.len(), 1);
     assert_eq!(session.pending_mine_hits[0].note_id, NoteId(7));
     assert!((session.gauge.current().value - 42.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn process_mine_passes_preserves_fractional_damage() {
+    let mut session = session_with_autoplay(chart_with_mine(TimeUs(1_000_000), 8.5));
+    session.autoplay = None;
+    session.gauge.set_initial_value(50.0);
+    session.lane_keyon_started_at[Lane::Key1.index()] = Some(TimeUs(900_000));
+
+    process_mine_passes(&mut session, TimeUs(1_000_000));
+
+    assert_eq!(session.pending_mine_hits[0].damage, 8.5);
+    assert!((session.gauge.current().value - 41.5).abs() < f32::EPSILON);
 }

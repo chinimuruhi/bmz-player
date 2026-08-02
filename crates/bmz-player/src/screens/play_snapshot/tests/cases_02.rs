@@ -45,7 +45,7 @@ fn cached_end_of_note_time_uses_last_renderable_note() {
         tick: ChartTick(5_760),
         time: TimeUs(3_000_000),
         sound: None,
-        damage: Some(10),
+        damage: Some(10.0),
     }];
     chart.end_time = TimeUs(3_000_000);
     let session = build_game_session(Arc::new(chart), &profile, PlaySessionOptions::default());

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn process_mine_passes_ignores_autoplay_lane() {
-    let mut session = session_with_autoplay(chart_with_mine(TimeUs(1_000_000), 8));
+    let mut session = session_with_autoplay(chart_with_mine(TimeUs(1_000_000), 8.0));
     session.lane_keyon_started_at[Lane::Key1.index()] = Some(TimeUs(900_000));
 
     process_mine_passes(&mut session, TimeUs(1_000_000));

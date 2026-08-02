@@ -107,7 +107,7 @@ pub(super) fn push_note_objects<T: KeyLayoutMapper>(
                 explicit_end_sound: false,
             },
             BmsNoteKind::Landmine => {
-                IntermediateObjectKind::MineNote { lane, wav_key: None, damage: wav_id }
+                IntermediateObjectKind::MineNote { lane, wav_key: None, damage: f64::from(wav_id) }
             }
         };
         objects.push(IntermediateObject {

@@ -117,6 +117,13 @@ pub fn import_bmson_to_intermediate(
     }
     apply_bmson_long_note_extensions(&mut intermediate, &rebuild_info.long_notes, layout);
     push_bmson_stop_objects(&mut intermediate, &bmson, &boundaries);
+    push_bmson_mine_objects(
+        &mut intermediate,
+        &bmson,
+        &boundaries,
+        layout,
+        &rebuild_info.mine_channel_wav_keys,
+    );
     intermediate.metadata.suppress_bar_lines = suppress_bar_lines;
     intermediate.metadata.judge_rank_spec = Some(JudgeRankSpec {
         value: bmson.info.judge_rank.as_f64() as i32,
@@ -370,6 +377,34 @@ fn push_bmson_stop_objects(
             position_den: u32::try_from(time.denominator().get()).unwrap_or(u32::MAX),
             kind: IntermediateObjectKind::BmsonStop { duration_pulses: event.duration, resolution },
         });
+    }
+}
+
+fn push_bmson_mine_objects(
+    intermediate: &mut IntermediateChart,
+    bmson: &Bmson<'_>,
+    boundaries: &super::bmson_timing::MeasureBoundaries,
+    layout: BmsonLaneLayout,
+    wav_keys: &[u16],
+) {
+    for (channel, wav_key) in bmson.mine_channels.iter().zip(wav_keys) {
+        let wav_key = (!channel.name.trim().is_empty()).then_some(*wav_key);
+        for event in &channel.notes {
+            let Some(lane) = event.x.and_then(|value| bmson_lane(value.get(), layout)) else {
+                continue;
+            };
+            let time = pulse_to_obj_time(event.y.0, boundaries);
+            intermediate.objects.push(IntermediateObject {
+                measure: u32::try_from(time.track().0).unwrap_or(u32::MAX),
+                position_num: u32::try_from(time.numerator()).unwrap_or(u32::MAX),
+                position_den: u32::try_from(time.denominator().get()).unwrap_or(u32::MAX),
+                kind: IntermediateObjectKind::MineNote {
+                    lane,
+                    wav_key,
+                    damage: event.damage.get(),
+                },
+            });
+        }
     }
 }
 

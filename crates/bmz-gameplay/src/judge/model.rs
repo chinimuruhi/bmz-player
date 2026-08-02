@@ -119,7 +119,8 @@ pub struct JudgementEvent {
 pub struct MineHitEvent {
     pub note_id: NoteId,
     pub lane: Lane,
-    pub damage: u16,
+    pub damage: f64,
+    pub sound: Option<bmz_core::ids::SoundId>,
     pub time: TimeUs,
 }
 

@@ -75,7 +75,7 @@ fn populate_visible_notes(
                             lane,
                             time: note.time,
                             y,
-                            damage: note.damage.unwrap_or(0),
+                            damage: note.damage.unwrap_or(0.0),
                         });
                     }
                 }

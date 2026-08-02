@@ -138,7 +138,7 @@ pub enum IntermediateObjectKind {
     MineNote {
         lane: Lane,
         wav_key: Option<u16>,
-        damage: u16,
+        damage: f64,
     },
     Bgm {
         wav_key: u16,
@@ -221,12 +221,12 @@ pub struct LaneObject {
     pub source: LaneObjectSource,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LaneObjectSource {
     Visible,
     Invisible,
     LongChannel { mode: Option<LongNoteMode>, explicit_end_sound: bool },
-    Mine { damage: u16 },
+    Mine { damage: f64 },
 }
 
 #[derive(Debug, Clone)]
@@ -234,7 +234,7 @@ pub enum ResolvedLaneEvent {
     Tap { lane: Lane, tick: ChartTick, time: TimeUs, wav_key: Option<u16> },
     Long { pair: LongNotePairDraft },
     Invisible { lane: Lane, tick: ChartTick, time: TimeUs, wav_key: Option<u16> },
-    Mine { lane: Lane, tick: ChartTick, time: TimeUs, wav_key: Option<u16>, damage: u16 },
+    Mine { lane: Lane, tick: ChartTick, time: TimeUs, wav_key: Option<u16>, damage: f64 },
 }
 
 #[derive(Debug, Clone)]

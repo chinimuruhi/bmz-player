@@ -497,6 +497,40 @@ fn bmson_stop_at_bpm_change_uses_the_new_bpm() {
 }
 
 #[test]
+fn bmson_mine_keeps_fractional_damage_and_channel_sound() {
+    let json = r#"{
+        "version": "1.0.0",
+        "info": {
+            "title": "Mine",
+            "artist": "Test",
+            "genre": "Test",
+            "level": 1,
+            "init_bpm": 120.0,
+            "judge_rank": 100.0,
+            "total": 100.0,
+            "resolution": 240,
+            "mode_hint": "beat-7k"
+        },
+        "mine_channels": [{
+            "name": "mine.wav",
+            "notes": [{"x": 1, "y": 240, "damage": 12.5}]
+        }],
+        "sound_channels": []
+    }"#;
+    let path = write_temp_file_with_ext(json, "bmson");
+    let result = import_chart(&path, None, false).unwrap();
+    let mine = &result.chart.lane_notes[bmz_core::lane::Lane::Key1.index()][0];
+    assert_eq!(mine.kind, crate::model::NoteKind::Mine);
+    assert_eq!(mine.damage, Some(12.5));
+    let sound = mine.sound.expect("mine channel name should become a chart sound");
+    assert_eq!(
+        result.chart.sounds[sound.0 as usize].path.file_name().and_then(|name| name.to_str()),
+        Some("mine.wav")
+    );
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
 fn imports_bmson_irregular_meter_lines() {
     let json = r#"{
         "version": "1.0.0",

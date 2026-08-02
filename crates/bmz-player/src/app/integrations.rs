@@ -231,9 +231,8 @@ impl WinitApp {
         }
     }
 
-    /// 当該フレームで踏んだ Mine の数だけ地雷 SE を鳴らす。
-    /// 連続ヒットを重ね鳴らししないよう、複数同時ヒットでも1回にまとめる
-    /// (`hits == 0` のときは no-op)。
+    /// 譜面側にキー音がない Mine を踏んだフレームで既定の地雷 SE を鳴らす。
+    /// 複数同時ヒットでも1回にまとめる (`hits == 0` のときは no-op)。
     pub(super) fn play_landmine_se(&self, hits: usize) {
         if hits == 0 {
             return;

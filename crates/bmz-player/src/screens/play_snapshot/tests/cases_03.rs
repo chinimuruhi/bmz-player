@@ -194,7 +194,7 @@ fn build_render_snapshot_routes_invisible_and_mine_correctly() {
         tick: ChartTick(0),
         time: TimeUs(1_000_000),
         sound: None,
-        damage: Some(8),
+        damage: Some(8.0),
     });
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let session = build_game_session(Arc::new(chart), &profile, PlaySessionOptions::default());
@@ -206,7 +206,7 @@ fn build_render_snapshot_routes_invisible_and_mine_correctly() {
     assert!(snapshot.visible_notes[Lane::Key3.index()].is_empty());
     // Mine は visible_mines 側に振り分けられる。damage も保持。
     assert_eq!(snapshot.visible_mines[Lane::Key3.index()].len(), 1);
-    assert_eq!(snapshot.visible_mines[Lane::Key3.index()][0].damage, 8);
+    assert_eq!(snapshot.visible_mines[Lane::Key3.index()][0].damage, 8.0);
     assert!(snapshot.visible_mines[Lane::Key1.index()].is_empty());
     assert!(snapshot.visible_mines[Lane::Key2.index()].is_empty());
 }

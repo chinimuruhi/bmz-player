@@ -2,13 +2,13 @@ use super::*;
 
 #[test]
 fn mine_hit_emits_event_with_damage() {
-    let chart = chart_with_mine(TimeUs(1_000_000), 8);
+    let chart = chart_with_mine(TimeUs(1_000_000), 8.0);
     let mut engine = JudgeEngine::new(windows());
 
     let outcome = engine.process_input(&chart, press_at(TimeUs(1_000_000)));
 
     assert_eq!(outcome.mine_hits.len(), 1);
-    assert_eq!(outcome.mine_hits[0].damage, 8);
+    assert_eq!(outcome.mine_hits[0].damage, 8.0);
     assert_eq!(outcome.mine_hits[0].note_id, NoteId(7));
     // Mine ヒットは通常判定とは別ベクタに入る。スコア対象ノーツが無いので
     // events は空、consumed_input も false のまま。
@@ -18,7 +18,7 @@ fn mine_hit_emits_event_with_damage() {
 
 #[test]
 fn mine_does_not_hit_outside_window() {
-    let chart = chart_with_mine(TimeUs(1_000_000), 8);
+    let chart = chart_with_mine(TimeUs(1_000_000), 8.0);
     let mut engine = JudgeEngine::new(windows());
 
     let outcome = engine.process_input(&chart, press_at(TimeUs(1_100_000)));
@@ -27,7 +27,7 @@ fn mine_does_not_hit_outside_window() {
 
 #[test]
 fn mine_hit_does_not_double_fire() {
-    let chart = chart_with_mine(TimeUs(1_000_000), 8);
+    let chart = chart_with_mine(TimeUs(1_000_000), 8.0);
     let mut engine = JudgeEngine::new(windows());
 
     let first = engine.process_input(&chart, press_at(TimeUs(1_000_000)));
@@ -39,7 +39,7 @@ fn mine_hit_does_not_double_fire() {
 
 #[test]
 fn mine_pass_hits_when_lane_is_held() {
-    let chart = chart_with_mine(TimeUs(1_000_000), 8);
+    let chart = chart_with_mine(TimeUs(1_000_000), 8.0);
     let mut engine = JudgeEngine::new(windows());
     let mut lane_keyon_started_at = [None; LANE_COUNT];
     lane_keyon_started_at[Lane::Key1.index()] = Some(TimeUs(900_000));
@@ -48,12 +48,12 @@ fn mine_pass_hits_when_lane_is_held() {
 
     assert_eq!(outcome.mine_hits.len(), 1);
     assert_eq!(outcome.mine_hits[0].note_id, NoteId(7));
-    assert_eq!(outcome.mine_hits[0].damage, 8);
+    assert_eq!(outcome.mine_hits[0].damage, 8.0);
 }
 
 #[test]
 fn mine_pass_without_pressed_lane_is_skipped() {
-    let chart = chart_with_mine(TimeUs(1_000_000), 8);
+    let chart = chart_with_mine(TimeUs(1_000_000), 8.0);
     let mut engine = JudgeEngine::new(windows());
     let lane_keyon_started_at = [None; LANE_COUNT];
 
@@ -64,7 +64,7 @@ fn mine_pass_without_pressed_lane_is_skipped() {
 
 #[test]
 fn mine_pass_ignores_key_pressed_after_mine_time() {
-    let chart = chart_with_mine(TimeUs(1_000_000), 8);
+    let chart = chart_with_mine(TimeUs(1_000_000), 8.0);
     let mut engine = JudgeEngine::new(windows());
     let mut lane_keyon_started_at = [None; LANE_COUNT];
     lane_keyon_started_at[Lane::Key1.index()] = Some(TimeUs(1_050_000));
@@ -76,7 +76,7 @@ fn mine_pass_ignores_key_pressed_after_mine_time() {
 
 #[test]
 fn mine_does_not_hit_after_it_already_passed_unpressed() {
-    let chart = chart_with_mine(TimeUs(1_000_000), 8);
+    let chart = chart_with_mine(TimeUs(1_000_000), 8.0);
     let mut engine = JudgeEngine::new(windows());
     let lane_keyon_started_at = [None; LANE_COUNT];
     engine.process_mine_passes(&chart, TimeUs(1_000_000), &lane_keyon_started_at);

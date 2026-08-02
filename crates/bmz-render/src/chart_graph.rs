@@ -239,7 +239,7 @@ mod tests {
             tick: ChartTick(192),
             time: TimeUs(0),
             sound: None,
-            damage: Some(200),
+            damage: Some(200.0),
         });
         let density = build_judge_graph_density(&chart);
         assert_eq!(density[0], 1);

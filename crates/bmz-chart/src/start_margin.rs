@@ -276,7 +276,7 @@ mod tests {
             tick: ChartTick(0),
             time: TimeUs(0),
             sound: None,
-            damage: Some(10),
+            damage: Some(10.0),
         });
         chart.end_time = TimeUs(0);
         assert_eq!(apply_start_note_margin(&mut chart), TimeUs(1_000_000));

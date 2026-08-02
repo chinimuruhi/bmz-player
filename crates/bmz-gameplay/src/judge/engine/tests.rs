@@ -150,7 +150,7 @@ fn release_lane_at(lane: Lane, time: TimeUs) -> InputEvent {
     }
 }
 
-fn chart_with_mine(time: TimeUs, damage: u16) -> PlayableChart {
+fn chart_with_mine(time: TimeUs, damage: f64) -> PlayableChart {
     let lane = Lane::Key1;
     let note = NoteEvent {
         id: NoteId(7),

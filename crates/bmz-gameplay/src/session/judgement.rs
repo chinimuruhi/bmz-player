@@ -67,9 +67,12 @@ pub fn apply_judge_outcome(
         events.push(event);
     }
     for hit in outcome.mine_hits {
-        // Mine はスコア/コンボに影響を与えず、ゲージのみ削る。SE 再生 (= app 層の
-        // 副作用) は `pending_mine_hits` に積んでフレーム終端で吸い出す。
+        // Mine はスコア/コンボに影響を与えず、ゲージのみ削る。譜面指定音は通常の
+        // keysound scheduler へ渡し、未指定時の既定SE判定はフレーム終端へ運ぶ。
         session.gauge.apply_mine(hit.damage);
+        if hit.sound.is_some() {
+            session.pending_keysounds.push(KeySoundEvent { note_id: hit.note_id, time: hit.time });
+        }
         session.pending_mine_hits.push(hit);
     }
     session.pending_keysounds.extend(outcome.keysounds);

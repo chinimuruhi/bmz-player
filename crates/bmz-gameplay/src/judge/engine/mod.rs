@@ -228,7 +228,8 @@ impl JudgeEngine {
                 outcome.mine_hits.push(MineHitEvent {
                     note_id: note.id,
                     lane,
-                    damage: note.damage.unwrap_or(0),
+                    damage: note.damage.unwrap_or(0.0),
+                    sound: note.sound,
                     time: note.time,
                 });
             }

@@ -59,7 +59,7 @@ enum TickObjectKind {
     MineNote {
         lane: Lane,
         wav_key: Option<u16>,
-        damage: u16,
+        damage: f64,
     },
     Bgm {
         wav_key: u16,

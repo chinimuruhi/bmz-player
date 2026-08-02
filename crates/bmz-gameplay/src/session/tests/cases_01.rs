@@ -216,6 +216,24 @@ fn unjudged_press_after_empty_poor_window_prefers_previous_invisible_keysound() 
 }
 
 #[test]
+fn mine_hit_schedules_its_chart_keysound() {
+    let mut chart = chart_with_mine(TimeUs(1_000_000), 12.5);
+    chart.lane_notes[Lane::Key1.index()][0].sound = Some(SoundId(7));
+    let mut session = session_with_autoplay(chart);
+    session.autoplay = None;
+    let mut audio = TestAudio::default();
+
+    process_session_input(&mut session, human_press(TimeUs(1_000_000)));
+    schedule_keysounds(&mut session, &mut audio);
+
+    assert_eq!(session.pending_mine_hits.len(), 1);
+    assert_eq!(session.pending_mine_hits[0].damage, 12.5);
+    assert_eq!(session.pending_mine_hits[0].sound, Some(SoundId(7)));
+    assert_eq!(audio.scheduled.len(), 1);
+    assert_eq!(audio.scheduled[0].sound_id, SoundId(7));
+}
+
+#[test]
 fn ln_release_does_not_replay_start_keysound_when_end_has_no_sound() {
     let mut session = session_with_autoplay(ln_chart_with_start_sound_and_end_sound(None));
     session.autoplay = None;

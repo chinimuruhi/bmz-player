@@ -53,6 +53,7 @@ pub(crate) struct BmsonLongNoteExtension {
 #[derive(Debug, Default)]
 pub(crate) struct BmsonRebuildInfo {
     pub long_notes: Vec<BmsonLongNoteExtension>,
+    pub mine_channel_wav_keys: Vec<u16>,
 }
 
 impl MeasureBoundaries {
@@ -313,16 +314,7 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
             })
         });
         bms.wav.wav_files.entry(obj_id).or_insert(wav_path);
-
-        for mine_event in &mine_channel.notes {
-            let time = pulse_to_obj_time(mine_event.y.0, boundaries);
-            let Some(channel_id) =
-                bmson_note_channel::<T>(mine_event.x, NoteKind::Landmine, lane_layout)
-            else {
-                continue;
-            };
-            bms.wav.notes.push_note(WavObj { offset: time, channel_id, wav_id: obj_id });
-        }
+        rebuild_info.mine_channel_wav_keys.push(obj_id.as_u16());
     }
 
     for key_channel in &bmson.key_channels {

@@ -403,7 +403,7 @@ pub struct VisibleMine {
     pub lane: Lane,
     pub time: TimeUs,
     pub y: f32,
-    pub damage: u16,
+    pub damage: f64,
 }
 
 /// ロングノート胴体の表示状態。beatoraja `drawLongNote` の longImage 選択に対応。

@@ -107,7 +107,7 @@ impl SingleGaugeState {
 
     /// Mine 用の直接減算（beatoraja は `Gauge.addValue(-damage)` 相当）。
     /// 通常の `apply` と違って guts 補正を入れず、min..=max にだけクランプする。
-    pub fn apply_mine(&mut self, damage: u16) {
+    pub fn apply_mine(&mut self, damage: f64) {
         if self.value <= 0.0 {
             return;
         }
