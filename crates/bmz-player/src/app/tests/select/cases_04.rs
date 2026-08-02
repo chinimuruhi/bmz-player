@@ -248,6 +248,20 @@ fn select_snapshot_rows_uses_policy_scored_note_count() {
 }
 
 #[test]
+fn select_snapshot_rows_exposes_effective_bms_scale_total() {
+    let mut row = select_chart_row(0);
+    let chart = row.chart.as_mut().unwrap();
+    chart.total_notes = 100;
+    chart.bms_total = 520.0;
+    let rows = vec![SelectItem::Chart(row)];
+    let profile = ProfileConfig::new_default("default", "Default", 0);
+
+    let snapshot = select_snapshot_rows(&rows, 0, 1, &profile, None, &HashMap::new());
+
+    assert_eq!(snapshot[0].chart_total_gauge, 520.0);
+}
+
+#[test]
 fn select_snapshot_rows_copies_course_best_score_summary() {
     let mut row = select_course_row(2, 2);
     row.best_score = Some(crate::storage::score_db::CourseBestScore {

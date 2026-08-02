@@ -75,6 +75,7 @@ enum TickObjectKind {
 struct PlayableChartDraft {
     identity: bmz_core::chart::ChartIdentity,
     metadata: ChartMetadata,
+    total_is_bmson_percent: bool,
     lane_notes: [Vec<NoteEvent>; LANE_COUNT],
     long_notes: Vec<LongNotePair>,
     bgm_events: Vec<SoundEvent>,

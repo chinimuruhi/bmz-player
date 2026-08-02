@@ -21,6 +21,7 @@ pub fn normalize_chart(
         sound_table.assets.clone(),
         bga_table.assets.clone(),
     );
+    draft.total_is_bmson_percent = intermediate.metadata.total_is_bmson_percent;
     let lane_buckets = collect_lane_objects(&tick_objects, &timing_map);
 
     let mut next_note_id = 0_u32;

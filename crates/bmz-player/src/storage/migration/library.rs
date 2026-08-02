@@ -372,7 +372,8 @@ pub const LIBRARY_MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 16,
-        // Raw BMS #TOTAL for beatoraja skin ref 368 (chart_totalgauge).
+        // Effective BMS-scale TOTAL for beatoraja skin ref 368 (chart_totalgauge).
+        // BMSON info.total is normalized before storage.
         // Distinct from gauge_total, which applies the gameplay default formula.
         statements: &["ALTER TABLE charts ADD COLUMN bms_total REAL NOT NULL DEFAULT 0;"],
     },

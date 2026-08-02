@@ -21,20 +21,24 @@ pub(super) fn finalize_playable_chart(mut draft: PlayableChartDraft) -> Playable
     draft.bar_lines.sort_by_key(|line| line.time);
 
     draft.total_notes = compute_total_notes(&draft.lane_notes);
+    let beatoraja_total_notes = beatoraja_total_note_count(
+        draft.total_notes,
+        draft.long_notes.iter().map(|pair| pair.mode),
+        draft.metadata.long_note_mode,
+    );
     if draft.metadata.difficulty_name.trim().is_empty()
         || draft.metadata.difficulty_name.trim() == "0"
     {
-        let difficulty_notes = beatoraja_difficulty_note_count(
-            draft.total_notes,
-            draft.long_notes.iter().map(|pair| pair.mode),
-            draft.metadata.long_note_mode,
-        );
         draft.metadata.difficulty_name = infer_beatoraja_difficulty_name(
             &draft.metadata.title,
             &draft.metadata.subtitle,
-            difficulty_notes,
+            beatoraja_total_notes,
         )
         .to_string();
+    }
+    if draft.total_is_bmson_percent {
+        draft.metadata.total =
+            Some(bmson_total_on_bms_scale(draft.metadata.total, beatoraja_total_notes));
     }
     draft.end_time = compute_end_time(&draft);
 
@@ -93,7 +97,7 @@ fn infer_beatoraja_difficulty_name(title: &str, subtitle: &str, total_notes: u32
     }
 }
 
-fn beatoraja_difficulty_note_count(
+fn beatoraja_total_note_count(
     total_notes: u32,
     long_note_modes: impl IntoIterator<Item = Option<LongNoteMode>>,
     default_mode: LongNoteMode,
@@ -104,6 +108,18 @@ fn beatoraja_difficulty_note_count(
             LongNoteMode::Cn | LongNoteMode::Hcn
         )))
     })
+}
+
+fn beatoraja_default_total(total_notes: u32) -> f64 {
+    let notes = f64::from(total_notes);
+    260.0_f64.max(7.605 * notes / (0.01 * notes + 6.5))
+}
+
+fn bmson_total_on_bms_scale(raw_total: Option<f64>, total_notes: u32) -> f64 {
+    let default_total = beatoraja_default_total(total_notes);
+    raw_total
+        .filter(|total| *total > 0.0)
+        .map_or(default_total, |total| total / 100.0 * default_total)
 }
 
 fn difficulty_name_in_text(text: &str) -> Option<&'static str> {
@@ -149,6 +165,7 @@ impl PlayableChartDraft {
         Self {
             identity,
             metadata,
+            total_is_bmson_percent: false,
             lane_notes: std::array::from_fn(|_| Vec::new()),
             long_notes: Vec::new(),
             bgm_events: Vec::new(),
@@ -176,7 +193,9 @@ impl PlayableChartDraft {
 
 #[cfg(test)]
 mod difficulty_tests {
-    use super::{beatoraja_difficulty_note_count, infer_beatoraja_difficulty_name};
+    use super::{
+        beatoraja_total_note_count, bmson_total_on_bms_scale, infer_beatoraja_difficulty_name,
+    };
     use crate::model::LongNoteMode;
 
     #[test]
@@ -198,8 +217,7 @@ mod difficulty_tests {
             let modes = std::iter::repeat_n(Some(LongNoteMode::Ln), ln)
                 .chain(std::iter::repeat_n(Some(LongNoteMode::Cn), cn))
                 .chain(std::iter::repeat_n(Some(LongNoteMode::Hcn), hcn));
-            let difficulty_notes =
-                beatoraja_difficulty_note_count(base_notes, modes, LongNoteMode::Cn);
+            let difficulty_notes = beatoraja_total_note_count(base_notes, modes, LongNoteMode::Cn);
             assert_eq!(difficulty_notes, expected_notes);
             assert_eq!(infer_beatoraja_difficulty_name(title, "", difficulty_notes), expected_name);
         }
@@ -208,8 +226,18 @@ mod difficulty_tests {
     #[test]
     fn counts_cn_and_hcn_ends_for_beatoraja_difficulty() {
         let modes = [Some(LongNoteMode::Ln), Some(LongNoteMode::Cn), Some(LongNoteMode::Hcn), None];
-        assert_eq!(beatoraja_difficulty_note_count(590, modes, LongNoteMode::Cn), 593);
-        assert_eq!(beatoraja_difficulty_note_count(590, modes, LongNoteMode::Ln), 592);
+        assert_eq!(beatoraja_total_note_count(590, modes, LongNoteMode::Cn), 593);
+        assert_eq!(beatoraja_total_note_count(590, modes, LongNoteMode::Ln), 592);
+    }
+
+    #[test]
+    fn converts_bmson_total_percent_to_beatoraja_bms_scale() {
+        assert_eq!(bmson_total_on_bms_scale(Some(100.0), 100), 260.0);
+        assert_eq!(bmson_total_on_bms_scale(Some(200.0), 100), 520.0);
+        assert_eq!(bmson_total_on_bms_scale(Some(0.0), 100), 260.0);
+
+        let expected = 7.605 * 1_000.0 / (10.0 + 6.5);
+        assert!((bmson_total_on_bms_scale(Some(100.0), 1_000) - expected).abs() < f64::EPSILON);
     }
 
     #[test]

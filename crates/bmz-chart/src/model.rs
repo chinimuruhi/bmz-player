@@ -48,6 +48,7 @@ pub struct ChartMetadata {
     pub judge_rank_spec: Option<JudgeRankSpec>,
     pub play_level: String,
     pub initial_bpm: f64,
+    /// Effective BMS-scale TOTAL after BMSON percentage normalization.
     pub total: Option<f64>,
     pub stage_file: String,
     pub banner_file: String,

@@ -30,7 +30,7 @@ use analysis_helpers::*;
 use path_helpers::*;
 use query_helpers::*;
 
-pub const CHART_IMPORT_VERSION: i64 = 6;
+pub const CHART_IMPORT_VERSION: i64 = 7;
 pub const CHART_LOUDNESS_ANALYSIS_VERSION: i64 = 1;
 const MAX_ANALYSIS_DISTRIBUTION_SECONDS: usize = 10 * 60;
 
@@ -75,7 +75,8 @@ pub struct ChartListItem {
     pub has_long_notes: bool,
     pub has_mines: bool,
     pub judge_rank: Option<i32>,
-    /// Raw BMS `#TOTAL` (`model.getTotal()`). Unset charts store `0.0`.
+    /// Effective BMS-scale TOTAL (`model.getTotal()` after BMSON normalization).
+    /// Unset BMS charts store `0.0`.
     pub bms_total: f64,
     pub ln_profile: ChartLnProfile,
     pub ln_counts: ChartLnCounts,

@@ -40,6 +40,8 @@ pub struct IntermediateMetadata {
     pub judge_rank_spec: Option<JudgeRankSpec>,
     pub initial_bpm: f64,
     pub total: Option<f64>,
+    /// BMSON `info.total` is a percentage of beatoraja's default BMS TOTAL.
+    pub total_is_bmson_percent: bool,
     pub stage_file: String,
     pub banner_file: String,
     pub backbmp_file: String,

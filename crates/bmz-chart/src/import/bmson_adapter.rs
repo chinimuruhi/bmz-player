@@ -115,6 +115,7 @@ pub fn import_bmson_to_intermediate(
     intermediate.metadata.subtitle =
         bmson_subtitle(bmson.info.subtitle.as_ref(), bmson.info.chart_name.as_ref());
     intermediate.metadata.difficulty_name.clear();
+    intermediate.metadata.total_is_bmson_percent = true;
     intermediate.metadata.play_level = bmson.info.level.to_string();
     apply_bmson_sound_slices(&mut intermediate, &rebuild_info.sound_slices);
     apply_bmson_layered_sounds(&mut intermediate, &rebuild_info.layered_sounds, layout);

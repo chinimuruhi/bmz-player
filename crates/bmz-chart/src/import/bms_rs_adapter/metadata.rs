@@ -24,6 +24,7 @@ pub(super) fn build_metadata(bms: &Bms) -> IntermediateMetadata {
         judge_rank_spec,
         initial_bpm,
         total,
+        total_is_bmson_percent: false,
         stage_file: bms
             .sprite
             .stage_file
