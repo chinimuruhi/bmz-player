@@ -272,12 +272,17 @@ pub(crate) fn rebuild_bms_timing_from_bmson<T: KeyLayoutMapper>(
         bms.scroll.scrolling_factor_changes.insert(time, ScrollingFactorObj { time, factor });
     }
 
+    let sound_slice_times = bmson_metric_times_us(
+        bmson,
+        bmson.sound_channels.iter().flat_map(|channel| channel.notes.iter().map(|note| note.y.0)),
+    );
+
     let mut rebuild_info = BmsonRebuildInfo::default();
     let mut sound_channel_wav_ids = Vec::with_capacity(bmson.sound_channels.len());
     for sound_channel in &bmson.sound_channels {
         let wav_path = PathBuf::from(sound_channel.name.as_ref());
         let mut wav_ids = HashMap::new();
-        for (pulse, slice) in bmson_sound_slice_plan(bmson, sound_channel) {
+        for (pulse, slice) in bmson_sound_slice_plan(sound_channel, &sound_slice_times) {
             let obj_id = wav_obj_id_issuer.next().unwrap_or_else(|| {
                 warnings.push(BmsonToBmsWarning::WavObjIdOutOfRange);
                 ObjId::null()
@@ -438,7 +443,10 @@ fn bmson_object_position(time: ObjTime) -> BmsonObjectPosition {
     }
 }
 
-fn bmson_sound_slice_plan(bmson: &Bmson<'_>, channel: &SoundChannel<'_>) -> Vec<(u64, SoundSlice)> {
+fn bmson_sound_slice_plan(
+    channel: &SoundChannel<'_>,
+    metric_times_us: &HashMap<u64, u64>,
+) -> Vec<(u64, SoundSlice)> {
     let mut positions = channel.notes.iter().map(|note| (note.y.0, note.c)).collect::<Vec<_>>();
     positions.sort_by_key(|(pulse, _)| *pulse);
     positions.dedup_by_key(|(pulse, _)| *pulse);
@@ -450,10 +458,8 @@ fn bmson_sound_slice_plan(bmson: &Bmson<'_>, channel: &SoundChannel<'_>) -> Vec<
             start_us = 0;
         }
         let duration_us = positions.get(index + 1).and_then(|&(next_pulse, next_continues)| {
-            next_continues.then(|| {
-                bmson_metric_time_us(bmson, next_pulse)
-                    .saturating_sub(bmson_metric_time_us(bmson, pulse))
-            })
+            next_continues
+                .then(|| metric_times_us[&next_pulse].saturating_sub(metric_times_us[&pulse]))
         });
         slices.push((pulse, SoundSlice { start_us, duration_us }));
         if let Some(duration_us) = duration_us {
@@ -463,44 +469,71 @@ fn bmson_sound_slice_plan(bmson: &Bmson<'_>, channel: &SoundChannel<'_>) -> Vec<
     slices
 }
 
-fn bmson_metric_time_us(bmson: &Bmson<'_>, target_pulse: u64) -> u64 {
+fn bmson_metric_times_us(
+    bmson: &Bmson<'_>,
+    target_pulses: impl IntoIterator<Item = u64>,
+) -> HashMap<u64, u64> {
     let resolution = bmson.info.resolution.get().max(1);
-    let mut event_pulses = bmson
-        .bpm_events
-        .iter()
-        .map(|event| event.y.0)
-        .chain(bmson.stop_events.iter().map(|event| event.y.0))
-        .filter(|pulse| *pulse < target_pulse)
-        .collect::<Vec<_>>();
+    let mut targets = target_pulses.into_iter().collect::<Vec<_>>();
+    targets.sort_unstable();
+    targets.dedup();
+
+    let mut bpm_by_pulse = HashMap::new();
+    let mut stop_durations_by_pulse = HashMap::<u64, Vec<u64>>::new();
+    for event in &bmson.bpm_events {
+        // 同一 pulse の BPM は source order の最後の定義が有効。
+        bpm_by_pulse.insert(event.y.0, event.bpm.get().max(1.0));
+    }
+    for event in &bmson.stop_events {
+        stop_durations_by_pulse.entry(event.y.0).or_default().push(event.duration);
+    }
+
+    let mut event_pulses =
+        bpm_by_pulse.keys().chain(stop_durations_by_pulse.keys()).copied().collect::<Vec<_>>();
     event_pulses.sort_unstable();
     event_pulses.dedup();
 
     let mut current_pulse = 0_u64;
     let mut current_time = 0_u64;
     let mut current_bpm = bmson.info.init_bpm.get().max(1.0);
-    for pulse in event_pulses {
-        current_time = current_time.saturating_add(bmson_pulse_span_us(
-            pulse.saturating_sub(current_pulse),
-            resolution,
-            current_bpm,
-        ));
-        current_pulse = pulse;
-        for event in bmson.bpm_events.iter().filter(|event| event.y.0 == pulse) {
-            current_bpm = event.bpm.get().max(1.0);
-        }
-        for event in bmson.stop_events.iter().filter(|event| event.y.0 == pulse) {
+    let mut event_index = 0;
+    let mut times = HashMap::with_capacity(targets.len());
+
+    for target_pulse in targets {
+        while event_pulses.get(event_index).is_some_and(|pulse| *pulse < target_pulse) {
+            let pulse = event_pulses[event_index];
             current_time = current_time.saturating_add(bmson_pulse_span_us(
-                event.duration,
+                pulse.saturating_sub(current_pulse),
                 resolution,
                 current_bpm,
             ));
+            current_pulse = pulse;
+            if let Some(bpm) = bpm_by_pulse.get(&pulse) {
+                current_bpm = *bpm;
+            }
+            if let Some(durations) = stop_durations_by_pulse.get(&pulse) {
+                for &duration in durations {
+                    current_time = current_time.saturating_add(bmson_pulse_span_us(
+                        duration,
+                        resolution,
+                        current_bpm,
+                    ));
+                }
+            }
+            event_index += 1;
         }
+
+        times.insert(
+            target_pulse,
+            current_time.saturating_add(bmson_pulse_span_us(
+                target_pulse.saturating_sub(current_pulse),
+                resolution,
+                current_bpm,
+            )),
+        );
     }
-    current_time.saturating_add(bmson_pulse_span_us(
-        target_pulse.saturating_sub(current_pulse),
-        resolution,
-        current_bpm,
-    ))
+
+    times
 }
 
 fn bmson_pulse_span_us(pulses: u64, resolution: u64, bpm: f64) -> u64 {
@@ -581,5 +614,24 @@ mod tests {
     fn build_measure_boundaries_defaults_to_common_time() {
         let boundaries = build_measure_boundaries(None, 240, 2_000);
         assert_eq!(boundaries.starts, vec![0, 960, 1_920, 2_880]);
+    }
+
+    #[test]
+    fn metric_time_cache_matches_bpm_and_stop_segment_rounding() {
+        let json = r#"{
+            "version":"1.0.0",
+            "info":{"title":"t","artist":"a","genre":"g","level":1,"init_bpm":120,"resolution":240},
+            "bpm_events":[{"y":240,"bpm":240}],
+            "stop_events":[{"y":480,"duration":240},{"y":480,"duration":120}],
+            "sound_channels":[]
+        }"#;
+        let bmson = bms_rs::bmson::parse_bmson(json).bmson.unwrap();
+
+        let times = bmson_metric_times_us(&bmson, [0, 240, 480, 720]);
+
+        assert_eq!(times[&0], 0);
+        assert_eq!(times[&240], 500_000);
+        assert_eq!(times[&480], 750_000);
+        assert_eq!(times[&720], 1_375_000);
     }
 }

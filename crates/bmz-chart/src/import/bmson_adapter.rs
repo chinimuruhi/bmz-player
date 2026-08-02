@@ -384,11 +384,21 @@ fn apply_bmson_sound_slices(
     intermediate: &mut IntermediateChart,
     extensions: &[BmsonSoundSliceExtension],
 ) {
-    for extension in extensions {
-        if let Some(wav) =
-            intermediate.resources.wavs.iter_mut().find(|wav| wav.key == extension.wav_key)
-        {
-            wav.slice = Some(extension.slice);
+    apply_bmson_sound_slices_to_wavs(&mut intermediate.resources.wavs, extensions);
+}
+
+fn apply_bmson_sound_slices_to_wavs(
+    wavs: &mut [super::intermediate::WavDef],
+    extensions: &[BmsonSoundSliceExtension],
+) {
+    let slices_by_wav_key = extensions
+        .iter()
+        .map(|extension| (extension.wav_key, extension.slice))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    for wav in wavs {
+        if let Some(slice) = slices_by_wav_key.get(&wav.key) {
+            wav.slice = Some(*slice);
         }
     }
 }
@@ -593,6 +603,32 @@ mod tests {
         assert_eq!(bmson_subtitle("", "ANOTHER"), "[ANOTHER]");
         assert_eq!(bmson_subtitle("Original", "ANOTHER"), "Original [ANOTHER]");
         assert_eq!(bmson_subtitle("Original", ""), "Original");
+    }
+
+    #[test]
+    fn apply_bmson_sound_slices_uses_last_extension_for_each_wav_key() {
+        use crate::import::intermediate::WavDef;
+        use crate::model::SoundSlice;
+
+        let mut wavs = vec![
+            WavDef { key: 1, path: PathBuf::from("first.wav"), slice: None },
+            WavDef { key: 2, path: PathBuf::from("second.wav"), slice: None },
+        ];
+        let extensions = [
+            BmsonSoundSliceExtension {
+                wav_key: 1,
+                slice: SoundSlice { start_us: 10, duration_us: Some(20) },
+            },
+            BmsonSoundSliceExtension {
+                wav_key: 1,
+                slice: SoundSlice { start_us: 30, duration_us: None },
+            },
+        ];
+
+        apply_bmson_sound_slices_to_wavs(&mut wavs, &extensions);
+
+        assert_eq!(wavs[0].slice, Some(SoundSlice { start_us: 30, duration_us: None }));
+        assert_eq!(wavs[1].slice, None);
     }
 
     #[test]

@@ -8,13 +8,19 @@ pub(super) fn build_sound_table(
 ) -> SoundTable {
     let mut by_wav_key = HashMap::new();
     let mut assets = Vec::new();
+    let mut resource_exists_by_path = HashMap::new();
     let base_dir = source_path.parent().unwrap_or_else(|| Path::new(""));
 
     for wav in &intermediate.resources.wavs {
         let id = SoundId(assets.len() as u32);
         let path = if wav.path.is_absolute() { wav.path.clone() } else { base_dir.join(&wav.path) };
-        if check_resource_existence && !sound_asset_exists(&path) {
-            warnings.push(ImportWarning::MissingSoundFile { path: path.clone() });
+        if check_resource_existence {
+            let exists = *resource_exists_by_path
+                .entry(path.clone())
+                .or_insert_with(|| sound_asset_exists(&path));
+            if !exists {
+                warnings.push(ImportWarning::MissingSoundFile { path: path.clone() });
+            }
         }
         by_wav_key.insert(wav.key, id);
         assets.push(SoundAssetRef { id, path, slice: wav.slice });
