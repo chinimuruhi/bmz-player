@@ -505,7 +505,7 @@ impl WinitApp {
             window.available_monitors(),
             window.primary_monitor(),
         );
-        window.set_fullscreen(fullscreen_from_config(&desired_mode, monitor));
+        window.set_fullscreen(fullscreen_from_config(&self.boot.app_config.video, monitor));
         tracing::info!(mode = ?desired_mode, "window mode updated");
         self.ui.applied_window_mode = desired_mode;
     }

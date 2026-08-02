@@ -1,4 +1,5 @@
 use super::*;
+use std::cmp::Reverse;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct WindowFocusUpdate {
@@ -55,15 +56,19 @@ pub(super) fn app_window_icon_png() -> &'static [u8] {
 /// 排他フルスクリーンはモニタの video mode が必要で、取得できない場合は
 /// ボーダレスへフォールバックする。
 pub(super) fn fullscreen_from_config(
-    mode: &WindowMode,
+    video: &crate::config::app_config::VideoConfig,
     monitor: Option<MonitorHandle>,
 ) -> Option<Fullscreen> {
-    match mode {
+    match &video.mode {
         WindowMode::Windowed => None,
         WindowMode::BorderlessFullscreen => Some(Fullscreen::Borderless(monitor)),
         WindowMode::ExclusiveFullscreen => {
             let monitor = monitor?;
-            match pick_exclusive_video_mode(&monitor) {
+            match pick_exclusive_video_mode(
+                &monitor,
+                PhysicalSize::new(video.width.max(1), video.height.max(1)),
+                video.target_fps,
+            ) {
                 Some(video_mode) => Some(Fullscreen::Exclusive(video_mode)),
                 None => {
                     tracing::warn!("no exclusive video mode available; using borderless");
@@ -74,12 +79,146 @@ pub(super) fn fullscreen_from_config(
     }
 }
 
-/// 排他フルスクリーン用に、解像度とリフレッシュレートが最大の video mode を選ぶ。
-pub(super) fn pick_exclusive_video_mode(monitor: &MonitorHandle) -> Option<VideoModeHandle> {
-    monitor.video_modes().max_by_key(|mode| {
-        let size = mode.size();
-        (u64::from(size.width) * u64::from(size.height), mode.refresh_rate_millihertz())
-    })
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct VideoModeSpec {
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) refresh_millihertz: u32,
+    pub(super) bit_depth: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum VideoModeResolutionReason {
+    ConfiguredResolution,
+    ClosestSupportedResolution,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum VideoModeRefreshReason {
+    ClosestAtOrAbove,
+    HighestBelow,
+    HighestUnlimited,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct VideoModeSelection {
+    pub(super) index: usize,
+    pub(super) resolution_reason: VideoModeResolutionReason,
+    pub(super) refresh_reason: VideoModeRefreshReason,
+}
+
+/// 設定解像度を優先し、その解像度内で target FPS に適した video mode を選ぶ。
+///
+/// 完全一致が無い場合だけ、width/height 差、面積差の順で最も近い対応解像度へ
+/// フォールバックする。同一解像度では target 以上の最も近い refresh rate、
+/// target 以上が無ければ最高 refresh rate、target=0 なら最高 refresh rate を使う。
+pub(super) fn select_exclusive_video_mode(
+    candidates: &[VideoModeSpec],
+    requested_size: PhysicalSize<u32>,
+    target_fps: u32,
+) -> Option<VideoModeSelection> {
+    let resolution_reason = if candidates
+        .iter()
+        .any(|mode| mode.width == requested_size.width && mode.height == requested_size.height)
+    {
+        VideoModeResolutionReason::ConfiguredResolution
+    } else {
+        VideoModeResolutionReason::ClosestSupportedResolution
+    };
+    let selected_resolution = candidates
+        .iter()
+        .filter(|mode| {
+            resolution_reason == VideoModeResolutionReason::ClosestSupportedResolution
+                || (mode.width == requested_size.width && mode.height == requested_size.height)
+        })
+        .min_by_key(|mode| resolution_fallback_key(**mode, requested_size))?;
+
+    let at_resolution = candidates.iter().enumerate().filter(|(_, mode)| {
+        mode.width == selected_resolution.width && mode.height == selected_resolution.height
+    });
+    let target_millihertz = u64::from(target_fps) * 1_000;
+    let (index, refresh_reason) = if target_fps == 0 {
+        let (index, _) =
+            at_resolution.max_by_key(|(_, mode)| (mode.refresh_millihertz, mode.bit_depth))?;
+        (index, VideoModeRefreshReason::HighestUnlimited)
+    } else if let Some((index, _)) = at_resolution
+        .clone()
+        .filter(|(_, mode)| u64::from(mode.refresh_millihertz) >= target_millihertz)
+        .min_by_key(|(_, mode)| {
+            (u64::from(mode.refresh_millihertz) - target_millihertz, Reverse(mode.bit_depth))
+        })
+    {
+        (index, VideoModeRefreshReason::ClosestAtOrAbove)
+    } else {
+        let (index, _) =
+            at_resolution.max_by_key(|(_, mode)| (mode.refresh_millihertz, mode.bit_depth))?;
+        (index, VideoModeRefreshReason::HighestBelow)
+    };
+    Some(VideoModeSelection { index, resolution_reason, refresh_reason })
+}
+
+fn resolution_fallback_key(
+    mode: VideoModeSpec,
+    requested_size: PhysicalSize<u32>,
+) -> (u64, u64, Reverse<u64>) {
+    let dimension_distance = u64::from(mode.width.abs_diff(requested_size.width))
+        + u64::from(mode.height.abs_diff(requested_size.height));
+    let mode_area = u64::from(mode.width) * u64::from(mode.height);
+    let requested_area = u64::from(requested_size.width) * u64::from(requested_size.height);
+    (dimension_distance, mode_area.abs_diff(requested_area), Reverse(mode_area))
+}
+
+pub(super) fn pick_exclusive_video_mode(
+    monitor: &MonitorHandle,
+    requested_size: PhysicalSize<u32>,
+    target_fps: u32,
+) -> Option<VideoModeHandle> {
+    let modes = monitor.video_modes().collect::<Vec<_>>();
+    let specs = modes
+        .iter()
+        .map(|mode| {
+            let size = mode.size();
+            VideoModeSpec {
+                width: size.width,
+                height: size.height,
+                refresh_millihertz: mode.refresh_rate_millihertz(),
+                bit_depth: mode.bit_depth(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let selection = select_exclusive_video_mode(&specs, requested_size, target_fps)?;
+    let selected = specs[selection.index];
+    let monitor_size = monitor.size();
+    let candidate_modes = specs
+        .iter()
+        .map(|mode| {
+            format!(
+                "{}x{}@{:.3}Hz/{}bpp",
+                mode.width,
+                mode.height,
+                f64::from(mode.refresh_millihertz) / 1_000.0,
+                mode.bit_depth
+            )
+        })
+        .collect::<Vec<_>>();
+    let monitor_name = monitor.name().unwrap_or_else(|| "unknown".to_string());
+    tracing::info!(
+        monitor = %monitor_name,
+        monitor_width = monitor_size.width,
+        monitor_height = monitor_size.height,
+        requested_width = requested_size.width,
+        requested_height = requested_size.height,
+        target_fps,
+        selected_width = selected.width,
+        selected_height = selected.height,
+        selected_refresh_hz = f64::from(selected.refresh_millihertz) / 1_000.0,
+        selected_bit_depth = selected.bit_depth,
+        resolution_reason = ?selection.resolution_reason,
+        refresh_reason = ?selection.refresh_reason,
+        candidate_modes = ?candidate_modes,
+        "selected exclusive fullscreen video mode"
+    );
+    modes.into_iter().nth(selection.index)
 }
 
 pub(super) fn format_error_chain(error: &anyhow::Error) -> String {

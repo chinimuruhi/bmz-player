@@ -65,6 +65,62 @@ fn non_macos_window_focus_preserves_event_state() {
     assert!(resolve_window_focus_update(false, true, false, false).effective_focused);
 }
 
+fn video_mode(width: u32, height: u32, refresh_hz: u32) -> VideoModeSpec {
+    VideoModeSpec { width, height, refresh_millihertz: refresh_hz * 1_000, bit_depth: 32 }
+}
+
+#[test]
+fn exclusive_video_mode_keeps_configured_resolution_before_refresh_rate() {
+    let modes = [video_mode(3840, 2160, 160), video_mode(1920, 1080, 240)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240).unwrap();
+    assert_eq!(selected.index, 1);
+    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::ConfiguredResolution);
+}
+
+#[test]
+fn exclusive_video_mode_selects_refresh_rate_for_target() {
+    let modes = [
+        video_mode(1920, 1080, 60),
+        video_mode(1920, 1080, 120),
+        video_mode(1920, 1080, 160),
+        video_mode(1920, 1080, 240),
+    ];
+    assert_eq!(
+        select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240).unwrap().index,
+        3
+    );
+
+    let below_target = &modes[..3];
+    let selected =
+        select_exclusive_video_mode(below_target, PhysicalSize::new(1920, 1080), 240).unwrap();
+    assert_eq!(selected.index, 2);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::HighestBelow);
+}
+
+#[test]
+fn exclusive_video_mode_prefers_rate_at_or_above_target() {
+    let modes = [video_mode(1920, 1080, 144), video_mode(1920, 1080, 240)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 160).unwrap();
+    assert_eq!(selected.index, 1);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::ClosestAtOrAbove);
+}
+
+#[test]
+fn exclusive_video_mode_uses_highest_rate_for_unlimited_target() {
+    let modes = [video_mode(1920, 1080, 60), video_mode(1920, 1080, 240)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 0).unwrap();
+    assert_eq!(selected.index, 1);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::HighestUnlimited);
+}
+
+#[test]
+fn exclusive_video_mode_uses_explicit_closest_resolution_fallback() {
+    let modes = [video_mode(1280, 720, 240), video_mode(2560, 1440, 240)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240).unwrap();
+    assert_eq!(selected.index, 0);
+    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::ClosestSupportedResolution);
+}
+
 #[test]
 fn focus_release_runs_only_on_effective_true_to_false_transition() {
     let first_loss = resolve_window_focus_update(true, false, false, true);

@@ -127,7 +127,7 @@ impl WinitApp {
         let video = &self.boot.app_config.video;
         let attributes =
             window_attributes_from_config(video).with_fullscreen(fullscreen_from_config(
-                &video.mode,
+                video,
                 select_monitor(
                     &video.monitor_name,
                     event_loop.available_monitors(),
