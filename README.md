@@ -39,7 +39,7 @@ Features
 
 - m-select (bundled)
 - Rm-skin (bundled)
-- Luxez-Flat (bundled)
+- Luxe Flat (bundled)
 - EC:FN / Starseeker ([https://kaidou0912.hatenablog.com/entry/2025/03/01/151604](https://kaidou0912.hatenablog.com/entry/2025/03/01/151604))
 - WMII ([https://wispworks-web.vercel.app/](https://wispworks-web.vercel.app/))
 - PeacefulPlay ([https://ralba-gear.hateblo.jp/entry/PeacefulPlay](https://ralba-gear.hateblo.jp/entry/PeacefulPlay))
