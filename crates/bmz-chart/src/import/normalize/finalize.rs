@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::LongNoteMode;
 
 pub(super) fn finalize_playable_chart(mut draft: PlayableChartDraft) -> PlayableChart {
     for lane_notes in &mut draft.lane_notes {
@@ -23,10 +24,15 @@ pub(super) fn finalize_playable_chart(mut draft: PlayableChartDraft) -> Playable
     if draft.metadata.difficulty_name.trim().is_empty()
         || draft.metadata.difficulty_name.trim() == "0"
     {
+        let difficulty_notes = beatoraja_difficulty_note_count(
+            draft.total_notes,
+            draft.long_notes.iter().map(|pair| pair.mode),
+            draft.metadata.long_note_mode,
+        );
         draft.metadata.difficulty_name = infer_beatoraja_difficulty_name(
             &draft.metadata.title,
             &draft.metadata.subtitle,
-            draft.total_notes,
+            difficulty_notes,
         )
         .to_string();
     }
@@ -85,6 +91,19 @@ fn infer_beatoraja_difficulty_name(title: &str, subtitle: &str, total_notes: u32
         1000..2000 => "ANOTHER",
         _ => "INSANE",
     }
+}
+
+fn beatoraja_difficulty_note_count(
+    total_notes: u32,
+    long_note_modes: impl IntoIterator<Item = Option<LongNoteMode>>,
+    default_mode: LongNoteMode,
+) -> u32 {
+    long_note_modes.into_iter().fold(total_notes, |count, mode| {
+        count.saturating_add(u32::from(matches!(
+            mode.unwrap_or(default_mode),
+            LongNoteMode::Cn | LongNoteMode::Hcn
+        )))
+    })
 }
 
 fn difficulty_name_in_text(text: &str) -> Option<&'static str> {
@@ -157,7 +176,8 @@ impl PlayableChartDraft {
 
 #[cfg(test)]
 mod difficulty_tests {
-    use super::infer_beatoraja_difficulty_name;
+    use super::{beatoraja_difficulty_note_count, infer_beatoraja_difficulty_name};
+    use crate::model::LongNoteMode;
 
     #[test]
     fn infers_difficulty_with_beatoraja_text_priority() {
@@ -169,11 +189,27 @@ mod difficulty_tests {
     #[test]
     fn infers_stronger_difficulties_from_playable_note_counts() {
         let title = "STRONGER (あたしは、もっと強く)";
-        for (total_notes, expected) in
-            [(299, "NORMAL"), (590, "NORMAL"), (1_238, "ANOTHER"), (1_593, "ANOTHER")]
-        {
-            assert_eq!(infer_beatoraja_difficulty_name(title, "", total_notes), expected);
+        for (base_notes, ln, cn, hcn, expected_notes, expected_name) in [
+            (299, 4, 8, 16, 323, "NORMAL"),
+            (590, 0, 54, 16, 660, "HYPER"),
+            (1_238, 0, 54, 16, 1_308, "ANOTHER"),
+            (1_593, 0, 53, 28, 1_674, "ANOTHER"),
+        ] {
+            let modes = std::iter::repeat_n(Some(LongNoteMode::Ln), ln)
+                .chain(std::iter::repeat_n(Some(LongNoteMode::Cn), cn))
+                .chain(std::iter::repeat_n(Some(LongNoteMode::Hcn), hcn));
+            let difficulty_notes =
+                beatoraja_difficulty_note_count(base_notes, modes, LongNoteMode::Cn);
+            assert_eq!(difficulty_notes, expected_notes);
+            assert_eq!(infer_beatoraja_difficulty_name(title, "", difficulty_notes), expected_name);
         }
+    }
+
+    #[test]
+    fn counts_cn_and_hcn_ends_for_beatoraja_difficulty() {
+        let modes = [Some(LongNoteMode::Ln), Some(LongNoteMode::Cn), Some(LongNoteMode::Hcn), None];
+        assert_eq!(beatoraja_difficulty_note_count(590, modes, LongNoteMode::Cn), 593);
+        assert_eq!(beatoraja_difficulty_note_count(590, modes, LongNoteMode::Ln), 592);
     }
 
     #[test]
