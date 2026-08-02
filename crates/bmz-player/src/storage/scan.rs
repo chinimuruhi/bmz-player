@@ -102,7 +102,7 @@ mod tests {
 
     use super::*;
     use crate::storage::common::configure_connection;
-    use crate::storage::library_db::LibraryDatabase;
+    use crate::storage::library_db::{LibraryDatabase, library_path_key};
     use crate::storage::migration::{LIBRARY_MIGRATIONS, run_migrations};
 
     fn scan_config() -> ScanConfig {
@@ -299,7 +299,7 @@ mod tests {
             .conn()
             .query_row(
                 "SELECT last_scan_at FROM roots WHERE path = ?1",
-                [missing_root.to_string_lossy().as_ref()],
+                [library_path_key(&missing_root)],
                 |row| row.get(0),
             )
             .unwrap();
@@ -307,7 +307,7 @@ mod tests {
             .conn()
             .query_row(
                 "SELECT last_scan_at FROM roots WHERE path = ?1",
-                [valid_root.to_string_lossy().as_ref()],
+                [library_path_key(&valid_root)],
                 |row| row.get(0),
             )
             .unwrap();
@@ -433,6 +433,70 @@ mod tests {
         assert_eq!(second.summary.skipped, 1);
         assert_eq!(forced.summary.imported, 1);
         assert_eq!(forced.summary.skipped, 0);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn forced_bmson_rescan_with_forward_slash_root_updates_the_existing_chart() {
+        let root = make_temp_dir("scan-bmson-path-key");
+        write_file(
+            &root.join("Normal.bmson"),
+            r#"{
+                "version": "1.0.0",
+                "info": {
+                    "title": "BMSON Path Key",
+                    "artist": "Test Artist",
+                    "genre": "Test",
+                    "level": 5,
+                    "init_bpm": 120.0,
+                    "judge_rank": 100.0,
+                    "total": 200.0,
+                    "resolution": 240
+                },
+                "sound_channels": []
+            }"#,
+        );
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure_connection(&conn).unwrap();
+        run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+        let mut db = LibraryDatabase::from_connection(conn);
+        let native_roots = vec![PathEntry {
+            path: root.to_string_lossy().into_owned(),
+            enabled: true,
+            recursive: true,
+        }];
+        let slash_roots = vec![PathEntry {
+            path: root.to_string_lossy().replace('\\', "/"),
+            enabled: true,
+            recursive: true,
+        }];
+
+        let first =
+            scan_song_roots(&mut db, &native_roots, &scan_config(), 1_700_000_050, false).unwrap();
+        let refreshed =
+            scan_song_roots(&mut db, &slash_roots, &scan_config(), 1_700_000_051, true).unwrap();
+
+        assert_eq!(first.summary.imported, 1);
+        assert_eq!(refreshed.summary.imported, 1);
+        let counts: (i64, i64, i64, i64) = db
+            .conn()
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM roots),
+                    (SELECT COUNT(*) FROM chart_files),
+                    (SELECT COUNT(*) FROM charts),
+                    (SELECT COUNT(*) FROM chart_file_links)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(counts, (1, 1, 1, 1));
+        let stored_path: String =
+            db.conn().query_row("SELECT path FROM chart_files", [], |row| row.get(0)).unwrap();
+        assert!(!stored_path.contains('\\'));
 
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -154,7 +154,7 @@ mod tests {
         run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 29);
+        assert_eq!(version, 30);
 
         let mut stmt = conn.prepare("PRAGMA table_info(charts)").unwrap();
         let columns = stmt
@@ -198,9 +198,21 @@ mod tests {
                 normalization_gain REAL,
                 loudness_analysis_version INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE roots (
+                id INTEGER PRIMARY KEY,
+                path TEXT NOT NULL UNIQUE,
+                last_scan_at INTEGER
+            );
             CREATE TABLE chart_files (
+                id INTEGER PRIMARY KEY,
+                root_id INTEGER,
+                path TEXT NOT NULL UNIQUE,
                 scanned_at INTEGER NOT NULL
             );
+            CREATE TABLE charts (id INTEGER PRIMARY KEY);
+            CREATE TABLE chart_file_links (chart_id INTEGER, chart_file_id INTEGER);
+            CREATE TABLE chart_import_warnings (chart_file_id INTEGER);
+            CREATE TABLE course_entries (chart_id INTEGER);
             INSERT INTO chart_analysis (
                 loudness_lufs, normalization_gain, loudness_analysis_version
             ) VALUES (-10.5, 0.75, 1);
@@ -346,8 +358,18 @@ mod tests {
                 loudness_analysis_version INTEGER NOT NULL DEFAULT 0
              );
              CREATE TABLE chart_files (
+                id INTEGER PRIMARY KEY,
+                root_id INTEGER,
+                path TEXT NOT NULL UNIQUE,
                 scanned_at INTEGER NOT NULL
              );
+             CREATE TABLE roots (
+                id INTEGER PRIMARY KEY,
+                path TEXT NOT NULL UNIQUE,
+                last_scan_at INTEGER
+             );
+             CREATE TABLE chart_file_links (chart_id INTEGER, chart_file_id INTEGER);
+             CREATE TABLE chart_import_warnings (chart_file_id INTEGER);
              INSERT INTO charts (headers_json) VALUES ('{\"002D9\":\"note data\"}');
              PRAGMA user_version = 21;",
         )
@@ -359,7 +381,7 @@ mod tests {
             conn.query_row("SELECT headers_json FROM charts", [], |row| row.get(0)).unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(headers_json, "{}");
-        assert_eq!(version, 29);
+        assert_eq!(version, 30);
     }
 
     #[test]
@@ -390,8 +412,18 @@ mod tests {
                 loudness_analysis_version INTEGER NOT NULL DEFAULT 0
              );
              CREATE TABLE chart_files (
+                id INTEGER PRIMARY KEY,
+                root_id INTEGER,
+                path TEXT NOT NULL UNIQUE,
                 scanned_at INTEGER NOT NULL
              );
+             CREATE TABLE roots (
+                id INTEGER PRIMARY KEY,
+                path TEXT NOT NULL UNIQUE,
+                last_scan_at INTEGER
+             );
+             CREATE TABLE chart_file_links (chart_id INTEGER, chart_file_id INTEGER);
+             CREATE TABLE chart_import_warnings (chart_file_id INTEGER);
              INSERT INTO charts (id, sha256, md5) VALUES
                 (10, 'preferred-sha', 'other-md5'),
                 (20, 'other-sha', 'fallback-md5');
@@ -415,7 +447,7 @@ mod tests {
             .unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(chart_ids, vec![Some(10), Some(20), None, Some(99)]);
-        assert_eq!(version, 29);
+        assert_eq!(version, 30);
     }
 
     #[test]

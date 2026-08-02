@@ -193,7 +193,7 @@ pub(super) fn upsert_chart_file(conn: &Connection, record: &ChartImportRecord<'_
     .query_row(
         params![
             record.root_id,
-            path_to_string(record.file_path),
+            path_key(record.file_path),
             record.file_size as i64,
             record.modified_at,
             hash_to_hex(&record.chart.identity.file_md5),

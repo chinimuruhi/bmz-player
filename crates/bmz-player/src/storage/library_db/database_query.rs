@@ -50,7 +50,7 @@ impl LibraryDatabase {
         self.conn
             .query_row(
                 "SELECT id FROM chart_files WHERE path = ?1",
-                params![path_to_string(path)],
+                params![path_key(path)],
                 |row| row.get(0),
             )
             .optional()
@@ -119,6 +119,7 @@ impl LibraryDatabase {
     }
 
     pub fn upsert_root(&mut self, path: &Path, enabled: bool, recursive: bool) -> Result<i64> {
+        let path = path_key(path);
         self.conn
             .prepare_cached(
                 "INSERT INTO roots (path, enabled, recursive)
@@ -127,11 +128,11 @@ impl LibraryDatabase {
                     enabled = excluded.enabled,
                     recursive = excluded.recursive",
             )?
-            .execute(params![path_to_string(path), enabled, recursive])?;
+            .execute(params![path, enabled, recursive])?;
 
         self.conn
             .prepare_cached("SELECT id FROM roots WHERE path = ?1")?
-            .query_row(params![path_to_string(path)], |row| row.get(0))
+            .query_row(params![path], |row| row.get(0))
             .map_err(Into::into)
     }
 
@@ -185,13 +186,7 @@ impl LibraryDatabase {
             RETURNING id",
             )?
             .query_row(
-                params![
-                    root_id,
-                    path_to_string(file_path),
-                    file_size as i64,
-                    modified_at,
-                    scanned_at
-                ],
+                params![root_id, path_key(file_path), file_size as i64, modified_at, scanned_at],
                 |row| row.get(0),
             )?;
         let previous_chart_id: Option<i64> = conn
@@ -617,7 +612,7 @@ impl LibraryDatabase {
                     ON charts.id = chart_file_links.chart_id
                 WHERE chart_files.path = ?1
                 LIMIT 1",
-                params![path_to_string(path)],
+                params![path_key(path)],
                 |row| {
                     let file_size: i64 = row.get(0)?;
                     Ok(ChartFileFingerprint {

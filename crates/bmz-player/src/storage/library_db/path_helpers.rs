@@ -4,6 +4,15 @@ pub(super) fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// Filesystem path key persisted in library.db.
+///
+/// Windows accepts both `\` and `/` as separators. Select navigation stores
+/// folder paths with `/`, so a partial rescan can otherwise rediscover a file
+/// under a different string than the original root scan.
+pub(super) fn path_key(path: &Path) -> String {
+    to_folder_key(&path_to_string(path))
+}
+
 pub(super) fn chart_file_path_candidates(path: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut push = |value: String| {
@@ -11,11 +20,9 @@ pub(super) fn chart_file_path_candidates(path: &Path) -> Vec<String> {
             out.push(value);
         }
     };
-    push(path_to_string(path));
-    push(to_folder_key(&path_to_string(path)));
+    push(path_key(path));
     if let Ok(canonical) = path.canonicalize() {
-        push(path_to_string(&canonical));
-        push(to_folder_key(&path_to_string(&canonical)));
+        push(path_key(&canonical));
     }
     out
 }
@@ -40,7 +47,7 @@ pub(super) fn escape_like(input: &str) -> String {
 }
 
 pub(super) fn folder_path(path: &Path) -> String {
-    to_folder_key(&path.parent().map(path_to_string).unwrap_or_default())
+    path.parent().map(path_key).unwrap_or_default()
 }
 
 pub(super) fn warning_details(warning: &ImportWarning) -> (String, String) {

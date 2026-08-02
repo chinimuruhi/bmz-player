@@ -30,6 +30,10 @@ use analysis_helpers::*;
 use path_helpers::*;
 use query_helpers::*;
 
+pub(crate) fn library_path_key(path: &Path) -> String {
+    path_helpers::path_key(path)
+}
+
 pub const CHART_IMPORT_VERSION: i64 = 7;
 pub const CHART_LOUDNESS_ANALYSIS_VERSION: i64 = 1;
 const MAX_ANALYSIS_DISTRIBUTION_SECONDS: usize = 10 * 60;

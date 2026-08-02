@@ -316,6 +316,168 @@ fn upsert_chart_import_updates_chart_in_place_when_content_changes() {
 }
 
 #[test]
+fn upsert_chart_import_treats_windows_separator_variants_as_the_same_path() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut db = LibraryDatabase::from_connection(conn);
+
+    let old = chart("old bmson import");
+    let old_id =
+        db.upsert_chart_import(&record_for_chart(r"G:\BMS\song\Normal.bmson", &old)).unwrap();
+
+    let refreshed = chart("refreshed bmson import");
+    let refreshed_id =
+        db.upsert_chart_import(&record_for_chart("G:/BMS/song/Normal.bmson", &refreshed)).unwrap();
+
+    assert_eq!(old_id, refreshed_id, "separator variants must update the same chart");
+    let counts: (i64, i64, i64) = db
+        .conn()
+        .query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM charts),
+                (SELECT COUNT(*) FROM chart_files),
+                (SELECT COUNT(*) FROM chart_file_links)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(counts, (1, 1, 1));
+
+    let (title, path): (String, String) = db
+        .conn()
+        .query_row(
+            "SELECT charts.title, chart_files.path
+             FROM charts
+             JOIN chart_file_links ON chart_file_links.chart_id = charts.id
+             JOIN chart_files ON chart_files.id = chart_file_links.chart_file_id",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(title, "refreshed bmson import");
+    assert_eq!(path, "G:/BMS/song/Normal.bmson");
+}
+
+#[test]
+fn library_migration_merges_windows_separator_variant_paths() {
+    let migration_index =
+        LIBRARY_MIGRATIONS.iter().position(|migration| migration.version == 30).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, &LIBRARY_MIGRATIONS[..migration_index]).unwrap();
+    let mut db = LibraryDatabase::from_connection(conn);
+
+    db.conn()
+        .execute_batch(
+            "INSERT INTO roots (id, path, enabled, recursive, last_scan_at) VALUES
+                (100, 'G:\\BMS', 1, 1, 10),
+                (101, 'G:/BMS', 1, 1, 20);",
+        )
+        .unwrap();
+
+    let old = chart("old bmson import");
+    let old_id = db
+        .upsert_chart_import(&record_for_chart("G:/BMS/song/old-placeholder.bmson", &old))
+        .unwrap();
+    let old_file_id =
+        db.chart_file_id_by_path(Path::new("G:/BMS/song/old-placeholder.bmson")).unwrap().unwrap();
+
+    let mut refreshed = chart("refreshed bmson import");
+    refreshed.identity = old.identity.clone();
+    let refreshed_id = db
+        .upsert_chart_import(&record_for_chart("G:/BMS/song/new-placeholder.bmson", &refreshed))
+        .unwrap();
+    let refreshed_file_id =
+        db.chart_file_id_by_path(Path::new("G:/BMS/song/new-placeholder.bmson")).unwrap().unwrap();
+
+    let copy_id =
+        db.upsert_chart_import(&record_for_chart("G:/BMS/copy/Normal.bmson", &refreshed)).unwrap();
+
+    db.conn()
+        .execute(
+            "UPDATE chart_files
+             SET root_id = 100, path = ?1, scanned_at = 10, first_seen_at = 5
+             WHERE id = ?2",
+            params![r"G:\BMS\song\Normal.bmson", old_file_id],
+        )
+        .unwrap();
+    db.conn()
+        .execute(
+            "UPDATE chart_files
+             SET root_id = 101, path = ?1, scanned_at = 20, first_seen_at = 15
+             WHERE id = ?2",
+            params!["G:/BMS/song/Normal.bmson", refreshed_file_id],
+        )
+        .unwrap();
+    db.conn()
+        .execute(
+            "INSERT INTO chart_import_warnings (chart_file_id, code, message, created_at)
+             VALUES (?1, 'OldWarning', 'stale', 10)",
+            params![old_file_id],
+        )
+        .unwrap();
+
+    let course = course_with_entries(vec![CourseEntry {
+        title_hint: "BMSON course entry".to_string(),
+        md5: Some(hash_to_hex(&old.identity.file_md5)),
+        sha256: Some(hash_to_hex(&old.identity.file_sha256)),
+        chart_id: None,
+    }]);
+    let course_id = db.upsert_course("table:test", &course, 0, 1).unwrap();
+    assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(old_id));
+
+    run_migrations(db.conn_mut(), &LIBRARY_MIGRATIONS[migration_index..]).unwrap();
+
+    let version: i32 =
+        db.conn().pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+    assert_eq!(version, 30);
+    assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(refreshed_id));
+    assert_ne!(copy_id, refreshed_id, "a real copy at another path must remain separate");
+
+    let counts: (i64, i64, i64, i64, i64) = db
+        .conn()
+        .query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM charts),
+                (SELECT COUNT(*) FROM chart_files),
+                (SELECT COUNT(*) FROM chart_file_links),
+                (SELECT COUNT(*) FROM chart_import_warnings),
+                (SELECT COUNT(*) FROM roots)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(counts, (2, 2, 2, 0, 1));
+
+    let (title, path, first_seen_at, scanned_at, root_id): (String, String, i64, i64, i64) = db
+        .conn()
+        .query_row(
+            "SELECT charts.title, chart_files.path, chart_files.first_seen_at,
+                    chart_files.scanned_at, chart_files.root_id
+             FROM charts
+             JOIN chart_file_links ON chart_file_links.chart_id = charts.id
+             JOIN chart_files ON chart_files.id = chart_file_links.chart_file_id
+             WHERE charts.id = ?1",
+            params![refreshed_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(title, "refreshed bmson import");
+    assert_eq!(path, "G:/BMS/song/Normal.bmson");
+    assert_eq!(first_seen_at, 5);
+    assert_eq!(scanned_at, 20);
+    assert_eq!(root_id, 101);
+
+    let (root_path, last_scan_at): (String, i64) = db
+        .conn()
+        .query_row("SELECT path, last_scan_at FROM roots", [], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap();
+    assert_eq!(root_path, "G:/BMS");
+    assert_eq!(last_scan_at, 20);
+}
+
+#[test]
 fn upsert_chart_import_creates_separate_charts_for_different_paths_with_same_sha256() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();

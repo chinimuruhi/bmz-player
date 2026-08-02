@@ -1,4 +1,5 @@
 use super::*;
+use crate::storage::library_db::library_path_key;
 
 /// 1回のバッチで並列パースするファイル数
 const IMPORT_BATCH_SIZE: usize = 256;
@@ -129,9 +130,9 @@ pub fn scan_song_roots_with_progress(
         let mut to_import: Vec<FileTodo> = Vec::new();
         let mut unchanged_count = 0_u32;
         for entry in &entries {
-            let key = entry.path.to_string_lossy();
+            let key = library_path_key(&entry.path);
             let unchanged = !force
-                && fingerprints.get(key.as_ref()).is_some_and(|fp| {
+                && fingerprints.get(&key).is_some_and(|fp| {
                     fp.file_size == entry.file_size
                         && fp.modified_at == entry.modified_at
                         && fp.import_version == CHART_IMPORT_VERSION
