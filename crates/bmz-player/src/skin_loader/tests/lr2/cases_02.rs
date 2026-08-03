@@ -140,6 +140,10 @@ fn wmii_fhd_lr2skin_keeps_score_graph_and_extended_bga_on_autoplay_when_availabl
         ready_timer_ms: Some(2_000),
         has_bga: true,
         bga_enabled: true,
+        bga_base: Some(bmz_render::skin::SkinBgaFrame::opaque(
+            bmz_render::skin::SkinTextureId(90_000),
+            SkinImageSize { width: 640.0, height: 480.0 },
+        )),
         autoplay: true,
         skin_loaded: true,
         total_notes: 1_000,
@@ -150,10 +154,48 @@ fn wmii_fhd_lr2skin_keeps_score_graph_and_extended_bga_on_autoplay_when_availabl
         ..Default::default()
     };
 
-    let items = decoded.document.static_render_items(
-        &sources,
-        &state,
-        &bmz_render::skin::SkinTextState::default(),
+    let text_state = bmz_render::skin::SkinTextState {
+        title: "AUTOPLAY UNIQUE TITLE",
+        artist: "AUTOPLAY UNIQUE ARTIST",
+        genre: "AUTOPLAY UNIQUE GENRE",
+        ..Default::default()
+    };
+    let items = decoded.document.static_render_items(&sources, &state, &text_state);
+
+    let bga_rects = items
+        .iter()
+        .filter_map(|item| match item {
+            bmz_render::skin::SkinRenderItem::Image { texture, rect, .. }
+                if *texture == bmz_render::skin::SkinTextureId(90_000) =>
+            {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        bga_rects.len(),
+        1,
+        "autoplay and Score Graph layouts must not render duplicate BGA destinations: {bga_rects:?}"
+    );
+    assert!((bga_rects[0].x - 732.0 / 1920.0).abs() < 0.01);
+    assert!((bga_rects[0].width - 1015.0 / 1920.0).abs() < 0.01);
+
+    let title_origins = items
+        .iter()
+        .filter_map(|item| match item {
+            bmz_render::skin::SkinRenderItem::Text { origin, text, .. }
+                if text == "AUTOPLAY UNIQUE TITLE" =>
+            {
+                Some(*origin)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        title_origins.len(),
+        1,
+        "expected one title without a duplicated graph-layout title: {title_origins:?}"
     );
 
     assert!(

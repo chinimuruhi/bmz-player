@@ -134,17 +134,17 @@ fn processor_keeps_score_graph_destinations_independent_from_autoplay() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();
     let mut header = Header::default();
-    header.selected_ops.extend([(39, true), (983, true)]);
+    header.selected_ops.extend([(39, true), (900, true)]);
     let mut builder = CsvBuilder::new(path, header, &files);
     let lines = [
         parse_csv_line("#IMAGE,parts/frame.png").unwrap(),
         parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
-        parse_csv_line("#IF,32,983").unwrap(),
+        parse_csv_line("#IF,32,900").unwrap(),
         parse_csv_line("#DST_IMAGE,0,1000,546,110,277,798,0,255,255,255,255,1,1,0,0,0,0,32,39,0")
             .unwrap(),
         parse_csv_line("#ENDIF").unwrap(),
     ];
-    let mut processor = Processor::new(HashMap::from([(39, true), (983, true)]));
+    let mut processor = Processor::new(HashMap::from([(39, true), (900, true)]));
 
     processor.process_lines(&lines, path, &mut builder).unwrap();
 
@@ -153,27 +153,80 @@ fn processor_keeps_score_graph_destinations_independent_from_autoplay() {
 }
 
 #[test]
-fn processor_does_not_let_autoplay_override_score_graph_judge_panel_layout() {
+fn processor_keeps_non_graph_layout_destinations_conditional_on_autoplay_off() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();
     let mut header = Header::default();
-    header.selected_ops.extend([(39, true), (981, true), (983, true)]);
+    header.selected_ops.extend([(39, true), (900, true)]);
+    let mut builder = CsvBuilder::new(path, header, &files);
+    let lines = [
+        parse_csv_line("#IF,32,900").unwrap(),
+        parse_csv_line("#SRC_BGA").unwrap(),
+        parse_csv_line("#DST_BGA,0,0,0,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0").unwrap(),
+        parse_csv_line("#SRC_TEXT,0,0,10,1,0").unwrap(),
+        parse_csv_line("#DST_TEXT,0,0,100,10,200,30,0,255,255,255,255,0,0,0,0,0,0,0,0,0").unwrap(),
+        parse_csv_line("#ENDIF").unwrap(),
+    ];
+    let mut processor = Processor::new(HashMap::from([(39, true), (900, true)]));
+
+    processor.process_lines(&lines, path, &mut builder).unwrap();
+
+    assert_eq!(builder.destinations[0]["op"].as_array().unwrap(), &[json!(32)]);
+    assert_eq!(builder.destinations[1]["op"].as_array().unwrap(), &[json!(32)]);
+}
+
+#[test]
+fn processor_prefers_matching_load_time_else_if_over_runtime_alias() {
+    let path = Path::new("skin/play/test.lr2skin");
+    let files = BTreeMap::new();
+    let mut header = Header::default();
+    header.selected_ops.insert(911, true);
     let mut builder = CsvBuilder::new(path, header, &files);
     let lines = [
         parse_csv_line("#IF,33").unwrap(),
-        parse_csv_line("#SETOPTION,985,1").unwrap(),
+        parse_csv_line("#SETOPTION,910,1").unwrap(),
         parse_csv_line("#ENDIF").unwrap(),
         parse_csv_line("#IMAGE,parts/frame.png").unwrap(),
-        parse_csv_line("#IF,981,985").unwrap(),
+        parse_csv_line("#IF,910").unwrap(),
         parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
         parse_csv_line("#DST_IMAGE,0,0,0,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0").unwrap(),
-        parse_csv_line("#ELSEIF,981,983").unwrap(),
+        parse_csv_line("#ELSEIF,911").unwrap(),
         parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
         parse_csv_line("#DST_IMAGE,0,0,100,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0")
             .unwrap(),
         parse_csv_line("#ENDIF").unwrap(),
     ];
-    let mut processor = Processor::new(HashMap::from([(39, true), (981, true), (983, true)]));
+    let mut processor = Processor::new(HashMap::from([(911, true)]));
+
+    processor.process_lines(&lines, path, &mut builder).unwrap();
+
+    assert_eq!(builder.destinations.len(), 1);
+    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(100));
+}
+
+#[test]
+fn processor_skips_runtime_else_if_before_matching_load_time_branch() {
+    let path = Path::new("skin/play/test.lr2skin");
+    let files = BTreeMap::new();
+    let mut header = Header::default();
+    header.selected_ops.insert(900, true);
+    let mut builder = CsvBuilder::new(path, header, &files);
+    let lines = [
+        parse_csv_line("#IMAGE,parts/frame.png").unwrap(),
+        parse_csv_line("#IF,33").unwrap(),
+        parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
+        parse_csv_line("#DST_IMAGE,0,0,0,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0").unwrap(),
+        parse_csv_line("#ELSEIF,41").unwrap(),
+        parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
+        parse_csv_line("#DST_IMAGE,0,0,50,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0")
+            .unwrap(),
+        parse_csv_line("#ELSEIF,900").unwrap(),
+        parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
+        parse_csv_line("#DST_IMAGE,0,0,100,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0")
+            .unwrap(),
+        parse_csv_line("#ENDIF").unwrap(),
+    ];
+    let mut processor = Processor::new(HashMap::from([(900, true)]));
 
     processor.process_lines(&lines, path, &mut builder).unwrap();
 
