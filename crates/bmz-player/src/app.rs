@@ -66,7 +66,8 @@ use crate::config::key_config::{
 };
 use crate::config::load::load_profile_config;
 use crate::config::play::{
-    TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN, input_bounce_config_from_profile,
+    TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN, clamp_hispeed,
+    input_bounce_config_from_profile,
 };
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,

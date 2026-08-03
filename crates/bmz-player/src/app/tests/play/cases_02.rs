@@ -175,8 +175,8 @@ fn adjusted_hispeed_uses_configured_step_and_clamps_range() {
     assert_eq!(adjusted_hispeed(2.0, HispeedChange::Up, 0.25), 2.25);
     assert_eq!(adjusted_hispeed(2.0, HispeedChange::Down, 0.25), 1.75);
     assert_eq!(adjusted_hispeed(2.0, HispeedChange::Up, 0.5), 2.5);
-    assert_eq!(adjusted_hispeed(10.0, HispeedChange::Up, 0.5), 10.0);
-    assert_eq!(adjusted_hispeed(0.5, HispeedChange::Down, 0.5), 0.5);
+    assert_eq!(adjusted_hispeed(20.0, HispeedChange::Up, 0.5), 20.0);
+    assert_eq!(adjusted_hispeed(0.01, HispeedChange::Down, 0.5), 0.01);
 }
 
 #[test]

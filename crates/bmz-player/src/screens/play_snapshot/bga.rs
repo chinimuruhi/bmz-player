@@ -51,7 +51,10 @@ pub(crate) fn display_duration_ms_for_bpm_hispeed(
     if scroll_multiplier <= 0.0 {
         return 0.0;
     }
-    BEATORAJA_DURATION_BPM_FACTOR_MS / now_bpm.max(1.0) / hispeed.max(0.01) / scroll_multiplier
+    BEATORAJA_DURATION_BPM_FACTOR_MS
+        / now_bpm.max(1.0)
+        / hispeed.max(crate::config::play::HISPEED_MIN)
+        / scroll_multiplier
         * visible_max
 }
 

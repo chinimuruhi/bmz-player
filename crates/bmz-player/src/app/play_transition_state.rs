@@ -151,13 +151,13 @@ impl PendingPlayLaneState {
         }
         let visible =
             crate::config::play::visible_lane_fraction(self.active_lane_cover(), self.lift);
-        self.hispeed = crate::screens::play_snapshot::hispeed_for_green_number_values(
-            self.target_green_number.max(1) as f32,
-            visible,
-            now_bpm.max(1.0) as f64,
-            1.0,
-        )
-        .clamp(0.5, 10.0);
+        self.hispeed =
+            clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
+                self.target_green_number.max(1) as f32,
+                visible,
+                now_bpm.max(1.0) as f64,
+                1.0,
+            ));
     }
 
     pub(super) fn refresh_cover_hispeed(&mut self, now_bpm: f32, speed_locked: bool) {

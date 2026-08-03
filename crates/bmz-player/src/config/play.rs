@@ -26,6 +26,13 @@ pub const DEFAULT_JUDGE_WINDOW: JudgeWindow = JudgeWindow {
 
 pub const TARGET_GREEN_NUMBER_MIN: u32 = 1;
 pub const TARGET_GREEN_NUMBER_MAX: u32 = 999;
+/// beatoraja `PlayConfig.HISPEED_MIN` / `HISPEED_MAX` compatible range.
+pub const HISPEED_MIN: f32 = 0.01;
+pub const HISPEED_MAX: f32 = 20.0;
+
+pub fn clamp_hispeed(hispeed: f32) -> f32 {
+    hispeed.clamp(HISPEED_MIN, HISPEED_MAX)
+}
 
 pub fn play_offsets_from_profile(profile: &ProfileConfig) -> PlayOffsets {
     PlayOffsets {

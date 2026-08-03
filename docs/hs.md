@@ -16,7 +16,8 @@ profile に項目がない場合の既定値は ON。`hispeed_auto_adjust = fals
 
 Normal Hispeed。設定画面では `NORMAL`、BMZ skin ref では `NHS` と表示する。
 
-NHS は `profile.lane.hispeed` の倍率をそのまま使う。倍率は `0.5..=10.0`、
+NHS は `profile.lane.hispeed` の倍率をそのまま使う。倍率は beatoraja の
+`PlayConfig.HISPEED_MIN` / `HISPEED_MAX` と同じ `0.01..=20.0`、
 操作は `profile.lane.hispeed_step_nhs` 刻み。既定値は 0.25 で、設定可能範囲は
 0.05..=1.00。
 
@@ -52,9 +53,12 @@ FHS ではこの式を逆向きに使う。
 hispeed = 240000 * visible * 0.6 / (target_green_number * bpm * scroll_multiplier)
 ```
 
-計算後の HS 倍率は `0.5..=10.0` に clamp する。`visible` はレーンカバーと
+計算後の HS 倍率は `0.01..=20.0` に clamp する。`visible` はレーンカバーと
 LIFT の合計を考慮した可視レーン率で、レーンカバー非表示中は `lane_cover = 0`
 として扱う。
+
+`#BPM 2222` と8倍小節を組み合わせる譜面など、BPM値自体が非常に高い譜面では、
+目標緑数字を維持するために 0.5 未満の HS が必要になる。
 
 `scroll_multiplier` は現在 tick の SCROLL factor と SPEED factor の積。SCROLL /
 SPEED がある譜面では、同じ BPM と緑数字でも HS 逆算結果が変わる。

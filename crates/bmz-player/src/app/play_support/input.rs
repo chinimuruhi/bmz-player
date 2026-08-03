@@ -148,6 +148,6 @@ pub(in crate::app) fn adjusted_hispeed(current: f32, change: HispeedChange, step
         HispeedChange::Down => -step,
         HispeedChange::Up => step,
     };
-    (current + delta).clamp(0.5, 10.0)
+    clamp_hispeed(current + delta)
 }
 use super::*;

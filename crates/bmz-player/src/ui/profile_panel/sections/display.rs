@@ -20,9 +20,12 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
                 ),
             };
             ui.add(
-                egui::Slider::new(&mut profile.lane.hispeed, 0.5..=10.0)
-                    .step_by(hispeed_step as f64)
-                    .text(tr!(text, "profile-display-hispeed")),
+                egui::Slider::new(
+                    &mut profile.lane.hispeed,
+                    crate::config::play::HISPEED_MIN..=crate::config::play::HISPEED_MAX,
+                )
+                .step_by(hispeed_step as f64)
+                .text(tr!(text, "profile-display-hispeed")),
             );
             egui::ComboBox::new("profile_hispeed_mode", tr!(text, "profile-display-hispeed-mode"))
                 .selected_text(hispeed_mode_label(profile.lane.hispeed_mode))

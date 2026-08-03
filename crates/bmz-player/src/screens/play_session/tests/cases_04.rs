@@ -122,13 +122,43 @@ fn build_game_session_keeps_active_offsets_with_empty_skin_history() {
 #[test]
 fn build_game_session_clamps_profile_hispeed() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed = 11.0;
+    profile.lane.hispeed = 21.0;
     let high = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
-    profile.lane.hispeed = 0.25;
+    profile.lane.hispeed = 0.005;
     let low = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
 
-    assert_eq!(high.hispeed, 10.0);
-    assert_eq!(low.hispeed, 0.5);
+    assert_eq!(high.hispeed, 20.0);
+    assert_eq!(low.hispeed, 0.01);
+}
+
+#[test]
+fn build_game_session_preserves_green_number_below_legacy_hispeed_floor() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.hispeed = 0.5;
+    profile.lane.sudden = 286;
+    profile.lane.lift = 150;
+    profile.lane.lift_enabled = true;
+    profile.lane.target_green_number = 251;
+    let mut high_bpm_chart = chart();
+    high_bpm_chart.metadata.initial_bpm = 2_222.0;
+
+    let session = build_game_session(
+        Arc::new(high_bpm_chart),
+        &profile,
+        PlaySessionOptions { hs_fix: HsFixOption::StartBpm, ..PlaySessionOptions::default() },
+    );
+
+    assert!((session.hispeed - 0.145_620_94).abs() < 0.000_001, "hispeed={}", session.hispeed);
+    assert!(session.hispeed < 0.5);
+    let duration_ms = crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(
+        2_222.0,
+        session.hispeed,
+        session.lane_cover,
+        session.lift,
+        1.0,
+    )
+    .round() as i32;
+    assert_eq!(bmz_render::skin::duration_to_green_number_ms(duration_ms), 251);
 }
 
 #[test]

@@ -25,7 +25,7 @@ pub(super) fn adjust_offset_ms(value: &mut i64, delta: i32) -> bool {
 pub(super) fn adjust_hispeed(value: &mut f32, delta: i32, step: f32, default_step: f32) -> bool {
     let before = *value;
     let step = normalize_hispeed_step(step, default_step);
-    *value = (*value + step * delta.signum() as f32).clamp(0.5, 10.0);
+    *value = clamp_hispeed(*value + step * delta.signum() as f32);
     (*value - before).abs() > f32::EPSILON
 }
 

@@ -105,7 +105,7 @@ pub(in crate::app) fn hispeed_for_green_number_at_bpm(
         target_bpm.max(1.0),
         scroll_multiplier,
     );
-    hispeed.clamp(0.5, 10.0)
+    clamp_hispeed(hispeed)
 }
 
 pub(in crate::app) fn floating_hispeed_target_bpm(

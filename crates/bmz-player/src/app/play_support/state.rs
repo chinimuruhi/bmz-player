@@ -78,7 +78,7 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
 
     let direct_hispeed_change = hispeed_changed;
     if direct_hispeed_change {
-        session.hispeed = profile.hispeed.clamp(0.5, 10.0);
+        session.hispeed = clamp_hispeed(profile.hispeed);
     }
 
     if session.hispeed_mode == HispeedMode::Floating {
@@ -278,11 +278,11 @@ pub(in crate::app) fn clamp_hispeed_for_profile(
     mode: HispeedModeConfig,
     step: f32,
 ) -> f32 {
-    let clamped = hispeed.clamp(0.5, 10.0);
+    let clamped = clamp_hispeed(hispeed);
     if mode == HispeedModeConfig::Normal
         && (normalize_hispeed_step(step, default_hispeed_step_nhs()) - 0.25).abs() < f32::EPSILON
     {
-        (clamped * 4.0).round().clamp(2.0, 40.0) / 4.0
+        clamp_hispeed((clamped * 4.0).round() / 4.0)
     } else {
         clamped
     }

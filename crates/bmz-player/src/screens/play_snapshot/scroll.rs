@@ -44,7 +44,7 @@ impl<'a> ScrollContext<'a> {
         if !self.scroll_integral.is_empty() || !self.speed_segments.is_empty() {
             return None;
         }
-        let hispeed = self.hispeed.max(0.01) as f64;
+        let hispeed = self.hispeed.max(crate::config::play::HISPEED_MIN) as f64;
         let visible = self.visible_lane_fraction.max(f32::EPSILON) as f64;
         Some(cursor_tick + self.lookahead_ticks * visible / hispeed + f64::EPSILON)
     }

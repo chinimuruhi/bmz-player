@@ -12,7 +12,7 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
                 lane.hispeed_mode = HispeedMode::Floating;
             }
             HispeedMode::Floating => {
-                lane.hispeed = lane.hispeed.clamp(0.5, 10.0);
+                lane.hispeed = clamp_hispeed(lane.hispeed);
                 lane.hispeed_mode = HispeedMode::Normal;
             }
         },
@@ -93,7 +93,7 @@ pub(in crate::app) fn apply_play_lane_action_to_session(
                     session.hispeed_mode = HispeedMode::Floating;
                 }
                 HispeedMode::Floating => {
-                    session.hispeed = session.hispeed.clamp(0.5, 10.0);
+                    session.hispeed = clamp_hispeed(session.hispeed);
                     session.hispeed_mode = HispeedMode::Normal;
                 }
             }

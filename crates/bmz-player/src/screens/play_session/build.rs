@@ -417,7 +417,7 @@ pub fn build_game_session_with_input_backend(
 }
 
 pub(super) fn clamp_hispeed(hispeed: f32) -> f32 {
-    hispeed.clamp(0.5, 10.0)
+    crate::config::play::clamp_hispeed(hispeed)
 }
 
 pub(super) fn hsfix_index_from_option(option: HsFixOption) -> i32 {
@@ -496,13 +496,12 @@ pub(super) fn initial_hispeed_for_mode(
     let scroll_multiplier =
         crate::screens::play_snapshot::current_scroll_multiplier(chart, timing_map, TimeUs(0));
     let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
-    crate::screens::play_snapshot::hispeed_for_green_number_values(
+    clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
         target_green_number as f32,
         visible_max,
         now_bpm,
         scroll_multiplier,
-    )
-    .clamp(0.5, 10.0)
+    ))
 }
 
 pub(super) fn hsfix_base_bpm_for_chart(
@@ -586,13 +585,12 @@ pub(super) fn placeholder_hispeed_for_mode(
     }
 
     let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
-    crate::screens::play_snapshot::hispeed_for_green_number_values(
+    clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
         target_green_number as f32,
         visible_max,
         now_bpm.max(1.0) as f64,
         1.0,
-    )
-    .clamp(0.5, 10.0)
+    ))
 }
 
 pub(super) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeAlgorithm {

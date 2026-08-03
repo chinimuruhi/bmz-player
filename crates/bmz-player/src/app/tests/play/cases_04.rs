@@ -422,6 +422,11 @@ fn normal_hispeed_rounding_restores_quarter_steps() {
 fn custom_hispeed_step_preserves_non_quarter_profile_values() {
     assert_eq!(clamp_hispeed_for_profile(2.3, HispeedModeConfig::Normal, 0.3), 2.3);
     assert_eq!(clamp_hispeed_for_profile(2.37, HispeedModeConfig::Floating, 0.5), 2.37);
+    assert_eq!(
+        clamp_hispeed_for_profile(0.145_620_94, HispeedModeConfig::Floating, 0.5),
+        0.145_620_94
+    );
+    assert_eq!(clamp_hispeed_for_profile(0.01, HispeedModeConfig::Normal, 0.25), 0.01);
 }
 
 #[test]
