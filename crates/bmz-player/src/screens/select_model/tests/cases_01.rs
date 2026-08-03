@@ -61,8 +61,6 @@ query = "mode == '7K' && level >= 10"
         "bmz-filter:custom",
         LnPolicySetting::AutoLn,
         RuleMode::Beatoraja,
-        &[],
-        None,
         None,
     )
     .unwrap();
@@ -75,6 +73,220 @@ query = "mode == '7K' && level >= 10"
         .collect::<Vec<_>>();
     assert_eq!(titles, ["High"]);
     std::fs::remove_dir_all(profile_root).unwrap();
+}
+
+#[test]
+fn virtual_folder_skips_difficulty_table_enrichment() {
+    let (mut library_db, score_db) = open_in_memory_dbs();
+    let mut mirrorworld = chart("War in the Mirrorworld[ANOTHER]");
+    mirrorworld.metadata.play_level = "11".to_string();
+    library_db
+        .upsert_chart_import(&record_for_chart("/songs/mirrorworld.bms", &mirrorworld))
+        .unwrap();
+    library_db
+        .upsert_difficulty_table(&difficulty_table_for_md5(
+            &mirrorworld.identity.file_md5,
+            "sl",
+            "0",
+        ))
+        .unwrap();
+
+    let profile_root = std::env::temp_dir().join(format!(
+        "bmz-virtual-no-table-enrichment-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    std::fs::create_dir_all(&profile_root).unwrap();
+    std::fs::write(
+        profile_root.join(VIRTUAL_FOLDER_CONFIG_FILE),
+        r#"
+version = 1
+
+[[folders]]
+id = "custom"
+name = "CUSTOM"
+query = "level == 11"
+"#,
+    )
+    .unwrap();
+
+    let items = load_select_items_in_virtual_folder(
+        &library_db,
+        &score_db,
+        &profile_root,
+        "bmz-filter:custom",
+        LnPolicySetting::AutoLn,
+        RuleMode::Beatoraja,
+        None,
+    )
+    .unwrap();
+    let row = items
+        .iter()
+        .find_map(|item| match item {
+            SelectItem::Chart(row) => Some(row),
+            _ => None,
+        })
+        .unwrap();
+
+    assert_eq!(row.chart.as_ref().unwrap().play_level, "11");
+    assert!(row.table_level.is_empty());
+    assert_eq!(row.table_text, DifficultyTableText::default());
+    std::fs::remove_dir_all(profile_root).unwrap();
+}
+
+#[test]
+fn folder_enrichment_keeps_hash_metadata_for_duplicate_hashes() {
+    let (mut library_db, mut score_db) = open_in_memory_dbs();
+    let duplicate = chart("Duplicate");
+    library_db
+        .upsert_chart_import(&record_for_chart("/songs/first/duplicate.bms", &duplicate))
+        .unwrap();
+    library_db
+        .upsert_chart_import(&record_for_chart("/songs/second/duplicate.bms", &duplicate))
+        .unwrap();
+    library_db
+        .upsert_difficulty_table(&difficulty_table_for_md5(&duplicate.identity.file_md5, "★", "3"))
+        .unwrap();
+    score_db.insert_score(&score_for_chart(duplicate.identity.file_sha256)).unwrap();
+    score_db
+        .upsert_replay_slot(&crate::storage::score_db::ReplaySlotRecord {
+            chart_sha256: duplicate.identity.file_sha256,
+            ln_policy: LnScorePolicy::ForceLn,
+            double_option: crate::select_options::DoubleOptionScoreBucket::Off,
+            rule_mode: RuleMode::Beatoraja,
+            slot: 0,
+            rule: crate::config::profile_config::ReplaySlotRule::Always,
+            replay_path: "replay/duplicate.toml".to_string(),
+            played_at: 1_700_000_030,
+            ex_score: 2,
+            bp: 0,
+            cb: 0,
+            max_combo: 1,
+            clear_rank: ClearType::Normal as u8,
+        })
+        .unwrap();
+
+    let items =
+        load_select_items_in_folder(&library_db, &score_db, "/songs", LnPolicySetting::AutoLn)
+            .unwrap();
+    let rows = items
+        .iter()
+        .filter_map(|item| match item {
+            SelectItem::Chart(row) => Some(row),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|row| row.best_score.is_some()));
+    assert!(rows.iter().all(|row| row.replay_slots == [true, false, false, false]));
+    assert_eq!(rows.iter().map(|row| row.table_level.as_str()).collect::<Vec<_>>(), ["★3", "★3"]);
+    assert_eq!(
+        rows.iter().map(|row| row.table_text.table_level.as_str()).collect::<Vec<_>>(),
+        ["★3", "★3"]
+    );
+}
+
+#[test]
+fn virtual_folder_deduplicates_sha256_before_limit() {
+    let (mut library_db, mut score_db) = open_in_memory_dbs();
+    let duplicate = chart("Duplicate");
+    let unique = chart("Unique");
+    library_db
+        .upsert_chart_import(&record_for_chart("/songs/first/duplicate.bms", &duplicate))
+        .unwrap();
+    library_db
+        .upsert_chart_import(&record_for_chart("/songs/second/duplicate.bms", &duplicate))
+        .unwrap();
+    library_db.upsert_chart_import(&record_for_chart("/songs/unique.bms", &unique)).unwrap();
+    score_db.insert_score(&score_for_chart(duplicate.identity.file_sha256)).unwrap();
+    score_db.insert_score(&score_for_chart(duplicate.identity.file_sha256)).unwrap();
+    score_db.insert_score(&score_for_chart(unique.identity.file_sha256)).unwrap();
+
+    let profile_root = std::env::temp_dir().join(format!(
+        "bmz-virtual-deduplicate-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    std::fs::create_dir_all(&profile_root).unwrap();
+    std::fs::write(
+        profile_root.join(VIRTUAL_FOLDER_CONFIG_FILE),
+        r#"
+version = 1
+
+[[folders]]
+id = "limited"
+name = "LIMITED"
+[folders.query]
+filter = "play_count > 0"
+order_by = "play_count desc"
+limit = 2
+"#,
+    )
+    .unwrap();
+
+    let items = load_select_items_in_virtual_folder(
+        &library_db,
+        &score_db,
+        &profile_root,
+        "bmz-filter:limited",
+        LnPolicySetting::AutoLn,
+        RuleMode::Beatoraja,
+        None,
+    )
+    .unwrap();
+    let titles = items
+        .iter()
+        .filter_map(|item| match item {
+            SelectItem::Chart(row) => Some(row.display_title()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(titles, ["Duplicate", "Unique"]);
+    std::fs::remove_dir_all(profile_root).unwrap();
+}
+
+#[test]
+fn built_in_score_folders_exclude_no_play_scores() {
+    let (mut library_db, mut score_db) = open_in_memory_dbs();
+    let mut played = chart("Played");
+    played.total_notes = 1;
+    let mut no_play = chart("No Play");
+    no_play.total_notes = 1;
+    library_db.upsert_chart_import(&record_for_chart("/songs/played.bms", &played)).unwrap();
+    library_db.upsert_chart_import(&record_for_chart("/songs/no-play.bms", &no_play)).unwrap();
+    score_db.insert_score(&score_for_chart(played.identity.file_sha256)).unwrap();
+    let mut no_play_score = score_for_chart(no_play.identity.file_sha256);
+    no_play_score.clear_type = ClearType::NoPlay;
+    score_db.insert_score(&no_play_score).unwrap();
+
+    let profile_root = std::env::temp_dir().join(format!(
+        "bmz-virtual-no-play-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    for path in ["bmz-filter:score-rank/aaa", "bmz-filter:my-best"] {
+        let items = load_select_items_in_virtual_folder(
+            &library_db,
+            &score_db,
+            &profile_root,
+            path,
+            LnPolicySetting::AutoLn,
+            RuleMode::Beatoraja,
+            None,
+        )
+        .unwrap();
+        let titles = items
+            .iter()
+            .filter_map(|item| match item {
+                SelectItem::Chart(row) => Some(row.display_title()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(titles, ["Played"], "unexpected items in {path}");
+    }
 }
 
 #[test]

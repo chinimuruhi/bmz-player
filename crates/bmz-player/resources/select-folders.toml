@@ -27,7 +27,7 @@ query = "score_updated_at in local_day({value})"
 id = "my-best"
 name = "MY BEST"
 [folders.query]
-filter = "play_count > 0"
+filter = "clear > 0 && play_count > 0"
 order_by = "play_count desc"
 limit = 10
 
@@ -48,13 +48,13 @@ items = [
 id = "score-rank"
 name = "SCORE RANK"
 items = [
-  { id = "aaa", name = "RANK AAA", query = "score_rate >= 88.88" },
-  { id = "aa", name = "RANK AA", query = "score_rate >= 77.77 && score_rate < 88.88" },
-  { id = "a", name = "RANK A", query = "score_rate >= 66.66 && score_rate < 77.77" },
-  { id = "b", name = "RANK B", query = "score_rate >= 55.55 && score_rate < 66.66" },
-  { id = "c", name = "RANK C", query = "score_rate >= 44.44 && score_rate < 55.55" },
-  { id = "d", name = "RANK D", query = "score_rate >= 33.33 && score_rate < 44.44" },
-  { id = "e", name = "RANK E", query = "score_rate >= 22.22 && score_rate < 33.33" },
+  { id = "aaa", name = "RANK AAA", query = "clear > 0 && score_rate >= 88.88" },
+  { id = "aa", name = "RANK AA", query = "clear > 0 && score_rate >= 77.77 && score_rate < 88.88" },
+  { id = "a", name = "RANK A", query = "clear > 0 && score_rate >= 66.66 && score_rate < 77.77" },
+  { id = "b", name = "RANK B", query = "clear > 0 && score_rate >= 55.55 && score_rate < 66.66" },
+  { id = "c", name = "RANK C", query = "clear > 0 && score_rate >= 44.44 && score_rate < 55.55" },
+  { id = "d", name = "RANK D", query = "clear > 0 && score_rate >= 33.33 && score_rate < 44.44" },
+  { id = "e", name = "RANK E", query = "clear > 0 && score_rate >= 22.22 && score_rate < 33.33" },
 ]
 
 [[folders]]

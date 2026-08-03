@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -400,9 +400,7 @@ pub fn load_select_items_in_virtual_folder(
     path: &str,
     ln_policy_setting: LnPolicySetting,
     rule_mode: RuleMode,
-    table_source_order: &[String],
     active_song_roots: Option<&[String]>,
-    active_table_sources: Option<&[String]>,
 ) -> Result<Vec<SelectItem>> {
     let folders = load_catalog(profile_root)?;
     let folder =
@@ -440,7 +438,7 @@ pub fn load_select_items_in_virtual_folder(
     let first_seen_map = library_db.chart_first_seen_at_by_chart_ids(&chart_ids)?;
     let local_days = score_db.recent_local_day_ranges(query.required_local_days().max(1))?;
     let update_start = local_days.last().map_or(0, |range| range.0);
-    let mut update_map = score_db.chart_update_times_since(&score_keys, update_start)?;
+    let update_map = score_db.chart_update_times_since(&score_keys, update_start)?;
 
     let mut candidates = charts
         .into_iter()
@@ -449,7 +447,7 @@ pub fn load_select_items_in_virtual_folder(
             analysis: analysis_map.remove(&chart.chart_id),
             score: score_map.get(&score_key).cloned(),
             first_seen_at: first_seen_map.get(&chart.chart_id).copied().unwrap_or(0),
-            update_times: update_map.remove(&score_key).unwrap_or_default(),
+            update_times: update_map.get(&score_key).cloned().unwrap_or_default(),
             chart,
             score_key,
         })
@@ -465,18 +463,18 @@ pub fn load_select_items_in_virtual_folder(
                 .then_with(|| left.chart.chart_id.cmp(&right.chart.chart_id))
         });
     }
+    let mut seen_sha256 = HashSet::new();
+    candidates.retain(|candidate| seen_sha256.insert(candidate.chart.sha256));
     if let Some(limit) = query_def.limit() {
         candidates.truncate(limit);
     }
 
-    chart_items_with_enrichment(
+    chart_items_without_table_enrichment(
         library_db,
         score_db,
         candidates.into_iter().map(|candidate| candidate.chart).collect(),
         ln_policy_setting,
         rule_mode,
-        table_source_order,
-        active_table_sources,
     )
 }
 

@@ -179,9 +179,7 @@ pub(in crate::app) fn build_select_items_for_stack(
                 path,
                 boot.profile_config.play.ln_mode_policy,
                 boot.profile_config.play.rule_mode,
-                &active_table_sources,
                 Some(&active_song_roots),
-                Some(&active_table_sources),
             ) {
                 Ok(items) => items,
                 Err(error) => {

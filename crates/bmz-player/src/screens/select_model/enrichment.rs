@@ -11,68 +11,117 @@ pub(super) fn chart_items_with_enrichment(
     table_source_order: &[String],
     active_table_sources: Option<&[String]>,
 ) -> Result<Vec<SelectItem>> {
+    chart_items_with_optional_table_enrichment(
+        library_db,
+        score_db,
+        all_charts,
+        ln_policy_setting,
+        rule_mode,
+        Some((table_source_order, active_table_sources)),
+    )
+}
+
+/// Wraps charts with runtime score metadata without querying difficulty tables.
+pub(super) fn chart_items_without_table_enrichment(
+    library_db: &LibraryDatabase,
+    score_db: &ScoreDatabase,
+    all_charts: Vec<ChartListItem>,
+    ln_policy_setting: LnPolicySetting,
+    rule_mode: RuleMode,
+) -> Result<Vec<SelectItem>> {
+    chart_items_with_optional_table_enrichment(
+        library_db,
+        score_db,
+        all_charts,
+        ln_policy_setting,
+        rule_mode,
+        None,
+    )
+}
+
+fn chart_items_with_optional_table_enrichment(
+    library_db: &LibraryDatabase,
+    score_db: &ScoreDatabase,
+    all_charts: Vec<ChartListItem>,
+    ln_policy_setting: LnPolicySetting,
+    rule_mode: RuleMode,
+    table_enrichment: Option<(&[String], Option<&[String]>)>,
+) -> Result<Vec<SelectItem>> {
     let keys: Vec<ScoreKey> =
         all_charts.iter().map(|c| score_key_for_chart(c, ln_policy_setting, rule_mode)).collect();
-    let mut score_map: HashMap<ScoreKey, BestScoreSummary> = score_db
+    let score_map: HashMap<ScoreKey, BestScoreSummary> = score_db
         .best_scores_for_charts(&keys)?
         .into_iter()
         .map(|s| {
             (ScoreKey::with_options(s.chart_sha256, s.ln_policy, s.double_option, s.rule_mode), s)
         })
         .collect();
-    let mut replay_slot_map = replay_slot_map(score_db, &keys)?;
+    let replay_slot_map = replay_slot_map(score_db, &keys)?;
     let chart_ids: Vec<i64> = all_charts.iter().map(|c| c.chart_id).collect();
     let mut analysis_map = library_db.chart_analysis_summaries_by_chart_ids(&chart_ids)?;
 
-    // MD5 lookup (multiple tables per MD5 joined with '/')
-    let md5_hexes: Vec<String> = all_charts.iter().map(|c| hash_to_hex(&c.md5)).collect();
-    let md5_refs: Vec<&str> = md5_hexes.iter().map(|s| s.as_str()).collect();
     let mut md5_level_map: HashMap<String, String> = HashMap::new();
     let mut md5_text_map: HashMap<String, DifficultyTableText> = HashMap::new();
-    let mut md5_entries = library_db.list_difficulty_table_entries_by_md5s(&md5_refs)?;
-    retain_active_table_entries(&mut md5_entries, active_table_sources);
-    sort_difficulty_table_entries(&mut md5_entries, table_source_order);
-    for e in md5_entries {
-        insert_table_level_and_text(&mut md5_level_map, &mut md5_text_map, e.md5.clone(), &e);
-    }
-
-    // SHA256 fallback for charts not matched by MD5
-    let missing_sha256_hexes: Vec<String> = all_charts
-        .iter()
-        .filter(|c| !md5_level_map.contains_key(&hash_to_hex(&c.md5)))
-        .map(|c| hash_to_hex(&c.sha256))
-        .collect();
     let mut sha256_level_map: HashMap<String, String> = HashMap::new();
     let mut sha256_text_map: HashMap<String, DifficultyTableText> = HashMap::new();
-    if !missing_sha256_hexes.is_empty() {
-        let sha256_refs: Vec<&str> = missing_sha256_hexes.iter().map(|s| s.as_str()).collect();
-        let mut sha256_entries =
-            library_db.list_difficulty_table_entries_by_sha256s(&sha256_refs)?;
-        retain_active_table_entries(&mut sha256_entries, active_table_sources);
-        sort_difficulty_table_entries(&mut sha256_entries, table_source_order);
-        for e in sha256_entries {
-            insert_table_level_and_text(
-                &mut sha256_level_map,
-                &mut sha256_text_map,
-                e.sha256.clone(),
-                &e,
-            );
+
+    if let Some((table_source_order, active_table_sources)) = table_enrichment {
+        // MD5 lookup (multiple tables per MD5 joined with '/')
+        let mut seen_md5 = HashSet::new();
+        let md5_hexes: Vec<String> = all_charts
+            .iter()
+            .map(|c| hash_to_hex(&c.md5))
+            .filter(|md5| seen_md5.insert(md5.clone()))
+            .collect();
+        let md5_refs: Vec<&str> = md5_hexes.iter().map(|s| s.as_str()).collect();
+        let mut md5_entries = library_db.list_difficulty_table_entries_by_md5s(&md5_refs)?;
+        retain_active_table_entries(&mut md5_entries, active_table_sources);
+        sort_difficulty_table_entries(&mut md5_entries, table_source_order);
+        for e in md5_entries {
+            insert_table_level_and_text(&mut md5_level_map, &mut md5_text_map, e.md5.clone(), &e);
+        }
+
+        // SHA256 fallback for charts not matched by MD5
+        let mut seen_sha256 = HashSet::new();
+        let missing_sha256_hexes: Vec<String> = all_charts
+            .iter()
+            .filter(|c| !md5_level_map.contains_key(&hash_to_hex(&c.md5)))
+            .map(|c| hash_to_hex(&c.sha256))
+            .filter(|sha256| seen_sha256.insert(sha256.clone()))
+            .collect();
+        if !missing_sha256_hexes.is_empty() {
+            let sha256_refs: Vec<&str> = missing_sha256_hexes.iter().map(|s| s.as_str()).collect();
+            let mut sha256_entries =
+                library_db.list_difficulty_table_entries_by_sha256s(&sha256_refs)?;
+            retain_active_table_entries(&mut sha256_entries, active_table_sources);
+            sort_difficulty_table_entries(&mut sha256_entries, table_source_order);
+            for e in sha256_entries {
+                insert_table_level_and_text(
+                    &mut sha256_level_map,
+                    &mut sha256_text_map,
+                    e.sha256.clone(),
+                    &e,
+                );
+            }
         }
     }
 
     let mut items = Vec::with_capacity(all_charts.len());
     for chart in all_charts {
         let score_key = score_key_for_chart(&chart, ln_policy_setting, rule_mode);
-        let best_score = score_map.remove(&score_key);
-        let replay_slots = replay_slot_map.remove(&score_key).unwrap_or([false; 4]);
+        let best_score = score_map.get(&score_key).cloned();
+        let replay_slots = replay_slot_map.get(&score_key).copied().unwrap_or([false; 4]);
         let md5_hex = hash_to_hex(&chart.md5);
         let sha256_hex = hash_to_hex(&chart.sha256);
         let table_level = md5_level_map
-            .remove(&md5_hex)
-            .or_else(|| sha256_level_map.remove(&sha256_hex))
+            .get(&md5_hex)
+            .cloned()
+            .or_else(|| sha256_level_map.get(&sha256_hex).cloned())
             .unwrap_or_default();
-        let table_text =
-            md5_text_map.remove(&md5_hex).or_else(|| sha256_text_map.remove(&sha256_hex));
+        let table_text = md5_text_map
+            .get(&md5_hex)
+            .cloned()
+            .or_else(|| sha256_text_map.get(&sha256_hex).cloned());
         let has_document = chart.has_document;
         items.push(SelectItem::Chart(SelectChartRow {
             chart_analysis: analysis_map.remove(&chart.chart_id),
