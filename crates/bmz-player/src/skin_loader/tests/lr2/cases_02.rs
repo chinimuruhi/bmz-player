@@ -103,7 +103,7 @@ fn wmii_fhd_lr2skin_renders_score_graph_bars_when_available() {
 }
 
 #[test]
-fn wmii_fhd_lr2skin_uses_score_graph_bga_layout_on_autoplay_when_available() {
+fn wmii_fhd_lr2skin_uses_autoplay_layout_and_hides_score_graph_when_available() {
     let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC.lr2skin");
     if !skin_path.is_file() {
@@ -178,7 +178,7 @@ fn wmii_fhd_lr2skin_uses_score_graph_bga_layout_on_autoplay_when_available() {
         1,
         "autoplay and Score Graph layouts must not render duplicate BGA destinations: {bga_rects:?}"
     );
-    assert!((bga_rects[0].x - 863.0 / 1920.0).abs() < 0.01);
+    assert!((bga_rects[0].x - 732.0 / 1920.0).abs() < 0.01);
     assert!((bga_rects[0].width - 1015.0 / 1920.0).abs() < 0.01);
 
     let title_origins = items
@@ -202,14 +202,14 @@ fn wmii_fhd_lr2skin_uses_score_graph_bga_layout_on_autoplay_when_available() {
         items.iter().any(|item| matches!(
             item,
             bmz_render::skin::SkinRenderItem::Image { rect, tint, .. }
-                if (rect.x - 857.0 / 1920.0).abs() < 0.01
+                if (rect.x - 726.0 / 1920.0).abs() < 0.01
                     && (rect.width - 1027.0 / 1920.0).abs() < 0.01
                     && tint.a > 0.5
         )),
-        "expected WMII Score Graph extended BGA frame to render during autoplay; got {items:?}"
+        "expected WMII autoplay BGA frame to render; got {items:?}"
     );
     assert!(
-        items.iter().any(|item| matches!(
+        !items.iter().any(|item| matches!(
             item,
             bmz_render::skin::SkinRenderItem::Image { rect, tint, .. }
                 if (rect.x - 546.0 / 1920.0).abs() < 0.01
@@ -217,17 +217,17 @@ fn wmii_fhd_lr2skin_uses_score_graph_bga_layout_on_autoplay_when_available() {
                     && (rect.height - 798.0 / 1080.0).abs() < 0.01
                     && tint.a > 0.5
         )),
-        "expected WMII Score Graph=On frame to remain visible during autoplay"
+        "WMII score graph frame must honor its autoplay-off condition"
     );
     assert!(
-        items.iter().any(|item| matches!(
+        !items.iter().any(|item| matches!(
             item,
             bmz_render::skin::SkinRenderItem::Image { rect, tint, .. }
                 if (rect.x - 551.0 / 1920.0).abs() < 0.01
                     && (rect.width - 267.0 / 1920.0).abs() < 0.01
                     && tint.a > 0.5
         )),
-        "expected WMII Score Graph=On target labels to remain visible during autoplay"
+        "WMII score graph labels must honor their autoplay-off condition"
     );
 }
 

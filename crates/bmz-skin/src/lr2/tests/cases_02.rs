@@ -130,7 +130,7 @@ fn processor_attaches_autoplay_runtime_op_to_destination() {
 }
 
 #[test]
-fn processor_keeps_score_graph_destinations_independent_from_autoplay() {
+fn processor_preserves_autoplay_off_on_score_graph_destinations() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();
     let mut header = Header::default();
@@ -149,7 +149,7 @@ fn processor_keeps_score_graph_destinations_independent_from_autoplay() {
     processor.process_lines(&lines, path, &mut builder).unwrap();
 
     let op = builder.destinations[0]["op"].as_array().unwrap();
-    assert_eq!(op, &[json!(39)]);
+    assert_eq!(op, &[json!(32), json!(39)]);
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn processor_keeps_non_graph_layout_destinations_conditional_on_autoplay_off() {
 }
 
 #[test]
-fn processor_prefers_score_graph_bga_layout_over_autoplay_bga_layout() {
+fn processor_preserves_autoplay_and_score_graph_layout_conditions() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();
     let mut header = Header::default();
@@ -200,15 +200,18 @@ fn processor_prefers_score_graph_bga_layout_over_autoplay_bga_layout() {
 
     processor.process_lines(&lines, path, &mut builder).unwrap();
 
-    assert_eq!(builder.destinations.len(), 2);
+    assert_eq!(builder.destinations.len(), 3);
     assert_eq!(builder.destinations[0]["id"], json!("bga"));
-    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(100));
-    assert!(builder.destinations[0]["op"].as_array().unwrap().is_empty());
-    assert_eq!(builder.destinations[1]["op"].as_array().unwrap(), &[json!(39)]);
+    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(0));
+    assert_eq!(builder.destinations[0]["op"].as_array().unwrap(), &[json!(33)]);
+    assert_eq!(builder.destinations[1]["id"], json!("bga"));
+    assert_eq!(builder.destinations[1]["dst"][0]["x"], json!(100));
+    assert_eq!(builder.destinations[1]["op"].as_array().unwrap(), &[json!(32)]);
+    assert_eq!(builder.destinations[2]["op"].as_array().unwrap(), &[json!(32), json!(39)]);
 }
 
 #[test]
-fn processor_prefers_matching_load_time_else_if_over_runtime_alias() {
+fn processor_guards_matching_load_time_else_if_with_negated_runtime_alias() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();
     let mut header = Header::default();
@@ -232,12 +235,15 @@ fn processor_prefers_matching_load_time_else_if_over_runtime_alias() {
 
     processor.process_lines(&lines, path, &mut builder).unwrap();
 
-    assert_eq!(builder.destinations.len(), 1);
-    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(100));
+    assert_eq!(builder.destinations.len(), 2);
+    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(0));
+    assert_eq!(builder.destinations[0]["op"].as_array().unwrap(), &[json!(33)]);
+    assert_eq!(builder.destinations[1]["dst"][0]["x"], json!(100));
+    assert_eq!(builder.destinations[1]["op"].as_array().unwrap(), &[json!(-33)]);
 }
 
 #[test]
-fn processor_skips_runtime_else_if_before_matching_load_time_branch() {
+fn processor_preserves_runtime_else_if_chain_before_load_time_branch() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();
     let mut header = Header::default();
@@ -262,8 +268,13 @@ fn processor_skips_runtime_else_if_before_matching_load_time_branch() {
 
     processor.process_lines(&lines, path, &mut builder).unwrap();
 
-    assert_eq!(builder.destinations.len(), 1);
-    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(100));
+    assert_eq!(builder.destinations.len(), 3);
+    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(0));
+    assert_eq!(builder.destinations[0]["op"].as_array().unwrap(), &[json!(33)]);
+    assert_eq!(builder.destinations[1]["dst"][0]["x"], json!(50));
+    assert_eq!(builder.destinations[1]["op"].as_array().unwrap(), &[json!(-33), json!(41)]);
+    assert_eq!(builder.destinations[2]["dst"][0]["x"], json!(100));
+    assert_eq!(builder.destinations[2]["op"].as_array().unwrap(), &[json!(-33), json!(-41)]);
 }
 
 #[test]

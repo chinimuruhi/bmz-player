@@ -102,26 +102,6 @@ impl<'a> CsvBuilder<'a> {
         ops
     }
 
-    pub(super) fn remove_option_from_current_destination(&mut self, option: i32) {
-        let Some(current) = &self.current else {
-            return;
-        };
-        let ids = current.variants.iter().map(|variant| variant.id.as_str()).collect::<Vec<_>>();
-        for destination in self.destinations.iter_mut().rev() {
-            if !destination
-                .get("id")
-                .and_then(JsonValue::as_str)
-                .is_some_and(|id| ids.contains(&id))
-            {
-                continue;
-            }
-            if let Some(ops) = destination.get_mut("op").and_then(JsonValue::as_array_mut) {
-                ops.retain(|value| value.as_i64() != Some(i64::from(option)));
-            }
-            break;
-        }
-    }
-
     pub(super) fn register_runtime_option_alias(
         &mut self,
         option: i32,
