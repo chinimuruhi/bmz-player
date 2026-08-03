@@ -375,6 +375,27 @@ fn starseeker_play_lua_skin_can_be_decoded_when_available() {
 }
 
 #[test]
+fn starseeker_metallic_blue_judge_parts_are_loaded_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/Starseeker/play/play7.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let files =
+        BTreeMap::from([("判定文字".to_string(), "custom/judge/metallic_blue".to_string())]);
+    let decoded =
+        decode_beatoraja_skin_with_options(&skin_path, SkinKind::Play, &BTreeMap::new(), &files)
+            .expect("decode Starseeker metallic_blue judge skin");
+
+    assert!(decoded.document.source.iter().any(|source| source.id == "judge_main"));
+    assert!(decoded.sources.iter().any(|source| source.source_id == "judge_main"));
+    assert!(decoded.document.image.iter().any(|image| image.id == "judgef-pg"));
+    assert!(decoded.document.value.iter().any(|value| value.id == "judgen-pg"));
+    assert!(decoded.document.judge.iter().any(|judge| judge.id == "judge"));
+}
+
+#[test]
 fn starseeker_result_lua_skin_renders_stat_details_when_available() {
     let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/Starseeker/result/result.luaskin");

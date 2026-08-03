@@ -28,6 +28,38 @@ fn lua_skin_luajava_stub_loads_legacy_sound_helper() {
 }
 
 #[test]
+fn lua_skin_global_luajava_exposes_gdx_graphics_dimensions() {
+    let root = unique_test_dir("bmz-skin-lua-global-luajava-graphics");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("play7.luaskin"),
+        r#"
+            local Gdx = luajava.bindClass("com.badlogic.gdx.Gdx")
+            local width = Gdx.graphics:getWidth()
+            local height = Gdx.graphics:getHeight()
+            return {
+                type = 0,
+                text = {
+                    {
+                        id = "dimensions",
+                        font = 1,
+                        size = 16,
+                        constantText = tostring(width) .. "x" .. tostring(height)
+                    }
+                }
+            }
+            "#,
+    )
+    .unwrap();
+
+    let loaded =
+        load_lua_skin_value(&root.join("play7.luaskin"), &BTreeMap::new(), &BTreeMap::new())
+            .unwrap();
+
+    assert_eq!(loaded.value["text"][0]["constantText"], "1920x1080");
+}
+
+#[test]
 fn lua_skin_luajava_input_stubs_are_neutral_during_load() {
     let root = unique_test_dir("bmz-skin-lua-luajava-input");
     fs::create_dir_all(&root).unwrap();

@@ -1,5 +1,8 @@
 use super::*;
 
+const LUA_LOAD_GRAPHICS_WIDTH: i32 = 1920;
+const LUA_LOAD_GRAPHICS_HEIGHT: i32 = 1080;
+
 #[derive(Debug)]
 pub(super) struct EventObserveBoolState {
     is_on: bool,
@@ -149,6 +152,12 @@ pub(super) fn create_luajava_gdx_stub(lua: &Lua) -> mlua::Result<Value> {
     input
         .set("isKeyPressed", lua.create_function(|_, (_self, _key): (Value, Value)| Ok(false))?)?;
     gdx.set("input", input)?;
+    let graphics = lua.create_table()?;
+    graphics
+        .set("getWidth", lua.create_function(|_, _self: Value| Ok(LUA_LOAD_GRAPHICS_WIDTH))?)?;
+    graphics
+        .set("getHeight", lua.create_function(|_, _self: Value| Ok(LUA_LOAD_GRAPHICS_HEIGHT))?)?;
+    gdx.set("graphics", graphics)?;
     Ok(Value::Table(gdx))
 }
 
