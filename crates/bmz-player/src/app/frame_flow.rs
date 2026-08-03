@@ -105,14 +105,17 @@ impl WinitApp {
         };
         let scene_kind = self.current_scene_kind();
         let scene = egui_scene_name(scene_kind);
+        let course_result_active =
+            matches!(scene_kind, AppSceneKind::Result) && self.result.finished_course.is_some();
+
+        // Result IR is consumed by both the skin snapshot and the optional egui panel.
+        // Keep its async state moving even while the hidden menu uses an idle egui frame.
+        self.update_result_ir_for_frame(scene_kind, course_result_active);
         if self.run_idle_egui_frame_if_available(&window, scene_kind, scene) {
             return;
         }
         let info = self.egui_debug_info(&window, scene);
         let skin_meta = self.egui_skin_meta();
-        let course_result_active =
-            matches!(scene_kind, AppSceneKind::Result) && self.result.finished_course.is_some();
-        self.prepare_egui_result_ir(scene_kind, course_result_active);
         self.update_egui_select_ir(scene_kind);
 
         // コース graph は egui を Option から取り出した後、clone せず参照で渡す。
@@ -255,7 +258,7 @@ impl WinitApp {
         }
     }
 
-    fn prepare_egui_result_ir(&mut self, scene_kind: AppSceneKind, course_result_active: bool) {
+    fn update_result_ir_for_frame(&mut self, scene_kind: AppSceneKind, course_result_active: bool) {
         if scene_kind == AppSceneKind::Result
             && self
                 .result
