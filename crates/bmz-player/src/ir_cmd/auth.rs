@@ -15,7 +15,7 @@ pub(super) async fn login(
         .providers
         .iter()
         .find(|entry| {
-            entry.provider == provider
+            same_provider_protocol(&entry.provider, provider)
                 && requested_base_url.as_ref().is_none_or(|url| entry.base_url == *url)
         })
         .map(|entry| entry.base_url.clone())
@@ -58,19 +58,19 @@ pub(super) async fn login(
         .ir
         .providers
         .iter()
-        .position(|entry| entry.provider == provider && entry.base_url == base_url)
+        .position(|entry| {
+            same_provider_protocol(&entry.provider, provider) && entry.base_url == base_url
+        })
         .or_else(|| {
-            profile
-                .ir
-                .providers
-                .iter()
-                .position(|entry| entry.provider == provider && entry.base_url.is_empty())
+            profile.ir.providers.iter().position(|entry| {
+                same_provider_protocol(&entry.provider, provider) && entry.base_url.is_empty()
+            })
         });
     let entry = match entry_index {
         Some(index) => &mut profile.ir.providers[index],
         None => {
             profile.ir.providers.push(IrProviderConfig {
-                provider: provider.to_string(),
+                provider: canonical_provider_protocol(provider).to_string(),
                 provider_key: String::new(),
                 base_url: String::new(),
                 enabled: false,
@@ -111,7 +111,7 @@ pub(super) async fn logout(
 ) -> Result<()> {
     let entry_index = profile.ir.providers.iter().position(|entry| {
         crate::ir::provider_key::configured_provider_key(entry) == Some(provider)
-            || entry.provider == provider
+            || same_provider_protocol(&entry.provider, provider)
     });
     let entry = entry_index.and_then(|index| profile.ir.providers.get(index));
     let credentials = match entry {
@@ -151,6 +151,18 @@ pub(super) async fn logout(
         println!("No stored credentials for {provider}.");
     }
     Ok(())
+}
+
+pub(super) fn canonical_provider_protocol(provider: &str) -> &'static str {
+    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+        crate::ir::rian_ir::RIAN_IR_PROVIDER
+    } else {
+        crate::ir::bmz_official::BMZ_IR_PROVIDER
+    }
+}
+
+pub(super) fn same_provider_protocol(left: &str, right: &str) -> bool {
+    canonical_provider_protocol(left) == canonical_provider_protocol(right)
 }
 
 pub(super) async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {

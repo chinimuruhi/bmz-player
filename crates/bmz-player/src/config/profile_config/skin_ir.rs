@@ -268,6 +268,8 @@ pub struct IrConfig {
     pub prefetch_rival_ranking_on_score_submit: bool,
 }
 
+pub const BUILTIN_IR_PROVIDER_COUNT: usize = 2;
+
 pub(super) fn default_true() -> bool {
     true
 }
@@ -277,10 +279,34 @@ impl Default for IrConfig {
         Self {
             primary_provider: String::new(),
             credential_store: IrCredentialStoreConfig::default(),
-            providers: Vec::new(),
+            providers: vec![IrProviderConfig::bmz_ir(), IrProviderConfig::rian_ir()],
             prefetch_global_ranking_on_score_submit: true,
             prefetch_rival_ranking_on_score_submit: true,
         }
+    }
+}
+
+impl IrConfig {
+    /// 先頭2枠を公式 BMZ IR / rianIR に固定し、既存のカスタム provider を後続へ保つ。
+    pub fn normalize_builtin_providers(&mut self) -> bool {
+        let previous = self.providers.clone();
+        let mut remaining = std::mem::take(&mut self.providers);
+
+        let mut bmz = take_matching_provider(&mut remaining, is_bmz_ir_builtin)
+            .unwrap_or_else(IrProviderConfig::bmz_ir);
+        bmz.provider = crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string();
+        bmz.base_url = crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL.to_string();
+
+        let mut rian = take_matching_provider(&mut remaining, is_rian_ir_builtin)
+            .unwrap_or_else(IrProviderConfig::rian_ir);
+        rian.provider = crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string();
+        rian.base_url = crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL.to_string();
+
+        self.providers = Vec::with_capacity(remaining.len() + BUILTIN_IR_PROVIDER_COUNT);
+        self.providers.push(bmz);
+        self.providers.push(rian);
+        self.providers.extend(remaining);
+        self.providers != previous
     }
 }
 
@@ -318,6 +344,89 @@ pub struct IrProviderConfig {
     pub last_login_at: Option<i64>,
     #[serde(default)]
     pub last_success_at: Option<i64>,
+}
+
+impl IrProviderConfig {
+    pub fn bmz_ir() -> Self {
+        Self::new(
+            crate::ir::bmz_official::BMZ_IR_PROVIDER,
+            crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL,
+        )
+    }
+
+    pub fn rian_ir() -> Self {
+        Self::new(crate::ir::rian_ir::RIAN_IR_PROVIDER, crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL)
+    }
+
+    pub fn custom() -> Self {
+        Self::new(crate::ir::bmz_official::BMZ_IR_PROVIDER, "")
+    }
+
+    fn new(provider: &str, base_url: &str) -> Self {
+        Self {
+            provider: provider.to_string(),
+            provider_key: String::new(),
+            base_url: base_url.to_string(),
+            enabled: false,
+            account_display_name: String::new(),
+            account_id: String::new(),
+            send_policy: IrSendPolicyConfig::default(),
+            role: IrProviderRoleConfig::default(),
+            last_login_at: None,
+            last_success_at: None,
+        }
+    }
+}
+
+fn take_matching_provider(
+    providers: &mut Vec<IrProviderConfig>,
+    predicate: impl Fn(&IrProviderConfig) -> bool,
+) -> Option<IrProviderConfig> {
+    let best_priority = providers
+        .iter()
+        .filter(|provider| predicate(provider))
+        .map(provider_migration_priority)
+        .max()?;
+    let index = providers.iter().position(|provider| {
+        predicate(provider) && provider_migration_priority(provider) == best_priority
+    })?;
+    Some(providers.remove(index))
+}
+
+fn provider_migration_priority(provider: &IrProviderConfig) -> (bool, bool, i64) {
+    (
+        !provider.provider_key.trim().is_empty(),
+        provider.enabled,
+        provider.last_login_at.unwrap_or(i64::MIN),
+    )
+}
+
+fn is_bmz_ir_builtin(provider: &IrProviderConfig) -> bool {
+    !crate::ir::rian_ir::is_rian_ir_config(provider)
+        && normalized_ir_base_url(&provider.base_url)
+            == normalized_ir_base_url(crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL)
+}
+
+fn is_rian_ir_builtin(provider: &IrProviderConfig) -> bool {
+    crate::ir::rian_ir::is_rian_ir_config(provider)
+        && [
+            crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL,
+            crate::ir::rian_ir::RIAN_IR_DEFAULT_BASE_URL,
+        ]
+        .into_iter()
+        .any(|url| normalized_ir_base_url(&provider.base_url) == normalized_ir_base_url(url))
+}
+
+pub fn normalized_ir_base_url(url: &str) -> Option<String> {
+    let mut parsed = reqwest::Url::parse(url.trim()).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    parsed.set_fragment(None);
+    parsed.set_query(None);
+    let path = parsed.path().trim_end_matches('/').to_string();
+    parsed.set_path(if path.is_empty() { "/" } else { &path });
+    Some(parsed.to_string().trim_end_matches('/').to_ascii_lowercase())
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]

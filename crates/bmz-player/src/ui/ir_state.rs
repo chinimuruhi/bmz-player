@@ -37,13 +37,6 @@ pub(super) struct IrProviderUiTarget {
     pub(super) base_url: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum IrProviderPreset {
-    BmzIr,
-    RianIr,
-    Other,
-}
-
 impl IrProviderUiTarget {
     pub(super) fn new(provider: String, base_url: String) -> Self {
         Self { provider, base_url }
@@ -56,9 +49,16 @@ impl IrProviderUiTarget {
 
 #[derive(Debug, Clone)]
 pub(super) struct IrProviderUiMessage {
+    pub(super) provider_index: Option<usize>,
     pub(super) target: IrProviderUiTarget,
     pub(super) ok: bool,
     pub(super) text: String,
+}
+
+impl IrProviderUiMessage {
+    pub(super) fn matches(&self, index: usize, provider: &str, base_url: &str) -> bool {
+        self.provider_index == Some(index) && self.target.matches(provider, base_url)
+    }
 }
 
 /// ログインタスクから UI スレッドへ返す結果。
@@ -74,6 +74,7 @@ pub(super) struct IrLoginOutcome {
 #[derive(Default)]
 pub(super) struct IrDeviceKeyUiState {
     pub(super) busy_provider: Option<String>,
+    pub(super) busy_provider_index: Option<usize>,
     pub(super) busy_target: Option<IrProviderUiTarget>,
     pub(super) message: Option<IrProviderUiMessage>,
     pub(super) receiver: Option<std::sync::mpsc::Receiver<Result<IrDeviceKeyOutcome, String>>>,
@@ -89,13 +90,16 @@ pub(super) struct IrDeviceKeyOutcome {
 impl IrDeviceKeyUiState {
     pub(super) fn is_busy_for(
         &self,
+        index: usize,
         provider_key: Option<&str>,
         provider: &str,
         base_url: &str,
     ) -> bool {
-        self.busy_provider
-            .as_deref()
-            .is_some_and(|busy_provider| Some(busy_provider) == provider_key)
+        self.busy_provider_index == Some(index)
+            && self
+                .busy_provider
+                .as_deref()
+                .is_some_and(|busy_provider| Some(busy_provider) == provider_key)
             && self.busy_target.as_ref().is_some_and(|target| target.matches(provider, base_url))
     }
 
@@ -109,10 +113,14 @@ impl IrDeviceKeyUiState {
             Err(error @ std::sync::mpsc::TryRecvError::Disconnected) => {
                 self.receiver = None;
                 self.busy_provider = None;
-                self.message = self.busy_target.take().map(|target| IrProviderUiMessage {
-                    target,
-                    ok: false,
-                    text: error.to_string(),
+                let provider_index = self.busy_provider_index.take();
+                self.message = self.busy_target.take().and_then(|target| {
+                    provider_index.map(|provider_index| IrProviderUiMessage {
+                        provider_index: Some(provider_index),
+                        target,
+                        ok: false,
+                        text: error.to_string(),
+                    })
                 });
                 return;
             }
@@ -120,8 +128,10 @@ impl IrDeviceKeyUiState {
         self.receiver = None;
         let target = self.busy_target.take();
         self.busy_provider = None;
+        let provider_index = self.busy_provider_index.take();
         self.message = match result {
-            Ok(outcome) => Some(IrProviderUiMessage {
+            Ok(outcome) => provider_index.map(|provider_index| IrProviderUiMessage {
+                provider_index: Some(provider_index),
                 target: IrProviderUiTarget::new(outcome.provider.clone(), outcome.base_url),
                 ok: true,
                 text: tr!(
@@ -132,14 +142,20 @@ impl IrDeviceKeyUiState {
                     "key_id" => outcome.key_id,
                 ),
             }),
-            Err(error) => {
-                target.map(|target| IrProviderUiMessage { target, ok: false, text: error })
-            }
+            Err(error) => target.and_then(|target| {
+                provider_index.map(|provider_index| IrProviderUiMessage {
+                    provider_index: Some(provider_index),
+                    target,
+                    ok: false,
+                    text: error,
+                })
+            }),
         };
     }
 
     pub(super) fn start_rotate(
         &mut self,
+        provider_index: usize,
         profile_root: std::path::PathBuf,
         provider: String,
         provider_key: String,
@@ -148,6 +164,7 @@ impl IrDeviceKeyUiState {
         let (sender, receiver) = std::sync::mpsc::channel();
         self.receiver = Some(receiver);
         self.busy_provider = Some(provider_key.clone());
+        self.busy_provider_index = Some(provider_index);
         self.busy_target = Some(IrProviderUiTarget::new(provider.clone(), base_url.clone()));
         self.message = None;
         tokio::spawn(async move {
@@ -181,6 +198,14 @@ impl IrDeviceKeyUiState {
             let _ = sender.send(outcome);
         });
     }
+
+    pub(super) fn remove_provider(&mut self, index: usize) {
+        self.busy_provider_index = shifted_index_after_removal(self.busy_provider_index, index);
+        self.message = self.message.take().and_then(|mut message| {
+            message.provider_index = shifted_index_after_removal(message.provider_index, index);
+            message.provider_index.map(|_| message)
+        });
+    }
 }
 
 impl IrLoginUiState {
@@ -204,6 +229,10 @@ impl IrLoginUiState {
                 Some(busy_index)
             }
         });
+        self.message = self.message.take().and_then(|mut message| {
+            message.provider_index = shifted_index_after_removal(message.provider_index, index);
+            message.provider_index.map(|_| message)
+        });
     }
 
     /// ログインタスクの完了を取り込み、成功時は provider 設定を更新する。
@@ -218,11 +247,14 @@ impl IrLoginUiState {
             Err(error @ std::sync::mpsc::TryRecvError::Disconnected) => {
                 self.receiver = None;
                 self.busy = false;
-                self.busy_form_index = None;
-                self.message = self.busy_target.take().map(|target| IrProviderUiMessage {
-                    target,
-                    ok: false,
-                    text: error.to_string(),
+                let provider_index = self.busy_form_index.take();
+                self.message = self.busy_target.take().and_then(|target| {
+                    provider_index.map(|provider_index| IrProviderUiMessage {
+                        provider_index: Some(provider_index),
+                        target,
+                        ok: false,
+                        text: error.to_string(),
+                    })
                 });
                 return false;
             }
@@ -237,7 +269,8 @@ impl IrLoginUiState {
                 {
                     form.password.clear();
                 }
-                self.message = Some(IrProviderUiMessage {
+                self.message = form_index.map(|form_index| IrProviderUiMessage {
+                    provider_index: Some(form_index),
                     target: IrProviderUiTarget::new(
                         outcome.provider.clone(),
                         outcome.base_url.clone(),
@@ -249,9 +282,12 @@ impl IrLoginUiState {
                         "display_name" => outcome.display_name.clone(),
                     ),
                 });
-                if let Some(entry) = profile.ir.providers.iter_mut().find(|entry| {
-                    entry.provider == outcome.provider && entry.base_url == outcome.base_url
-                }) {
+                if let Some(entry) = form_index
+                    .and_then(|index| profile.ir.providers.get_mut(index))
+                    .filter(|entry| {
+                        entry.provider == outcome.provider && entry.base_url == outcome.base_url
+                    })
+                {
                     entry.enabled = true;
                     entry.provider_key = outcome.provider_key.clone();
                     entry.account_id = outcome.account_id;
@@ -267,8 +303,14 @@ impl IrLoginUiState {
                 false
             }
             Err(error) => {
-                self.message =
-                    target.map(|target| IrProviderUiMessage { target, ok: false, text: error });
+                self.message = target.and_then(|target| {
+                    form_index.map(|form_index| IrProviderUiMessage {
+                        provider_index: Some(form_index),
+                        target,
+                        ok: false,
+                        text: error,
+                    })
+                });
                 false
             }
         }
@@ -331,6 +373,18 @@ impl IrLoginUiState {
             let _ = sender.send(outcome);
         });
     }
+}
+
+fn shifted_index_after_removal(current: Option<usize>, removed: usize) -> Option<usize> {
+    current.and_then(|current| {
+        if current == removed {
+            None
+        } else if current > removed {
+            Some(current - 1)
+        } else {
+            Some(current)
+        }
+    })
 }
 
 pub(super) fn now_unix_seconds() -> i64 {

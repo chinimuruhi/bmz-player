@@ -1,41 +1,6 @@
 use super::*;
 
 #[test]
-fn ir_provider_presets_recognize_official_and_legacy_urls() {
-    assert_eq!(
-        classify_ir_provider_preset(&test_ir_provider(
-            "bmz-official",
-            "https://bmz-player.hyrorre.workers.dev"
-        )),
-        IrProviderPreset::BmzIr
-    );
-    assert_eq!(
-        classify_ir_provider_preset(&test_ir_provider("rianIR", "https://rianir.link/api/")),
-        IrProviderPreset::RianIr
-    );
-    assert_eq!(
-        classify_ir_provider_preset(&test_ir_provider("rian-ir", "http://localhost:8888/api/")),
-        IrProviderPreset::Other
-    );
-}
-
-#[test]
-fn applying_ir_provider_presets_writes_canonical_values() {
-    let mut provider = test_ir_provider("custom", "http://localhost:8888/");
-    apply_ir_provider_preset(&mut provider, IrProviderPreset::BmzIr);
-    assert_eq!(provider.provider, "bmz");
-    assert_eq!(provider.base_url, "https://bmz-player.hyrorre.workers.dev/");
-
-    apply_ir_provider_preset(&mut provider, IrProviderPreset::RianIr);
-    assert_eq!(provider.provider, "rian-ir");
-    assert_eq!(provider.base_url, "https://rianir.link/");
-
-    apply_ir_provider_preset(&mut provider, IrProviderPreset::Other);
-    assert_eq!(provider.provider, "rian-ir");
-    assert_eq!(provider.base_url, "https://rianir.link/");
-}
-
-#[test]
 fn ir_login_forms_keep_provider_credentials_independent() {
     let mut state = IrLoginUiState::default();
     {
@@ -72,13 +37,14 @@ fn ir_login_forms_follow_provider_removal() {
 fn ir_device_key_idle_state_does_not_mark_unconfigured_provider_busy() {
     let state = IrDeviceKeyUiState::default();
 
-    assert!(!state.is_busy_for(None, "bmz", "https://example.com"));
+    assert!(!state.is_busy_for(0, None, "bmz", "https://example.com"));
 }
 
 #[test]
 fn ir_device_key_busy_state_matches_only_its_provider_target() {
     let state = IrDeviceKeyUiState {
         busy_provider: Some("bmz-dev".to_string()),
+        busy_provider_index: Some(1),
         busy_target: Some(IrProviderUiTarget::new(
             "bmz".to_string(),
             "https://example.com".to_string(),
@@ -86,9 +52,10 @@ fn ir_device_key_busy_state_matches_only_its_provider_target() {
         ..IrDeviceKeyUiState::default()
     };
 
-    assert!(state.is_busy_for(Some("bmz-dev"), "bmz", "https://example.com"));
-    assert!(!state.is_busy_for(None, "bmz", "https://example.com"));
-    assert!(!state.is_busy_for(Some("bmz-dev"), "bmz", "https://other.example.com"));
+    assert!(state.is_busy_for(1, Some("bmz-dev"), "bmz", "https://example.com"));
+    assert!(!state.is_busy_for(0, Some("bmz-dev"), "bmz", "https://example.com"));
+    assert!(!state.is_busy_for(1, None, "bmz", "https://example.com"));
+    assert!(!state.is_busy_for(1, Some("bmz-dev"), "bmz", "https://other.example.com"));
 }
 
 #[test]
@@ -117,6 +84,7 @@ fn ir_device_key_channel_disconnect_clears_busy_state() {
     drop(sender);
     let mut state = IrDeviceKeyUiState {
         busy_provider: Some("bmz-dev".to_string()),
+        busy_provider_index: Some(0),
         busy_target: Some(IrProviderUiTarget::new(
             "bmz".to_string(),
             "https://example.com".to_string(),
@@ -128,6 +96,7 @@ fn ir_device_key_channel_disconnect_clears_busy_state() {
     state.poll(Localizer::new(AppLocale::En));
 
     assert!(state.busy_provider.is_none());
+    assert!(state.busy_provider_index.is_none());
     assert!(state.busy_target.is_none());
     assert!(state.receiver.is_none());
     assert!(state.message.as_ref().is_some_and(|message| !message.ok));

@@ -14,6 +14,15 @@ fn ir_rival(id: &str, name: &str) -> IrRivalEntry {
 }
 
 #[test]
+fn ir_cli_provider_protocol_matches_builtin_aliases() {
+    assert!(auth::same_provider_protocol("bmz", "bmz-official"));
+    assert!(auth::same_provider_protocol("rianIR", "rian-ir"));
+    assert!(!auth::same_provider_protocol("bmz", "rian-ir"));
+    assert_eq!(auth::canonical_provider_protocol("bmz-official"), "bmz");
+    assert_eq!(auth::canonical_provider_protocol("rianIR"), "rian-ir");
+}
+
+#[test]
 fn sync_ir_rivals_adds_updates_and_prunes() {
     let mut profile = profile_with_entries();
 

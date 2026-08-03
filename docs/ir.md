@@ -154,6 +154,9 @@ SHA-256 fallback でラベルを付与する。
    既存ファイルは初回アクセスで自動移行する。
    Linux ビルドは Secret Service 用に libdbus が必要。
 3. **provider 設定**: `IrProviderConfig` に `base_url` と `provider_key` を追加。
+   `providers[0]` は BMZ IR、`providers[1]` は rianIR の固定枠とし、無効時も
+   profile に保持する。3枠目以降は BMZ / rianIR 互換プロトコルを選ぶ
+   カスタム URL 用とする。
    `provider_key` はクライアント側で URL から推測せず、BMZ IR サーバーの
    auth response から取得する。ローカル IR は `bmz-dev`、production IR は
    `bmz` を返す。サーバー側は `NUXT_IR_PROVIDER_KEY` で明示上書き可能。
@@ -317,6 +320,15 @@ send_policy = "always"
 role = "primary"
 
 [[ir.providers]]
+provider = "rian-ir"
+provider_key = ""
+base_url = "https://rianir.link/"
+enabled = false
+account_display_name = ""
+send_policy = "always"
+role = "submit_only"
+
+[[ir.providers]]
 provider = "bmz"
 provider_key = "bmz-dev"
 base_url = "http://localhost:3000"
@@ -325,6 +337,9 @@ account_display_name = "ExampleUser"
 send_policy = "complete_song"
 role = "submit_only"
 ```
+
+先頭2件は egui で削除・種別変更できない。追加 provider は3件目以降へ保存し、
+互換プロトコルとカスタム `base_url` をログイン前に設定する。
 
 保存してよいもの:
 

@@ -16,6 +16,9 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
             if !unrestricted {
                 ui.disable();
             }
+            if profile.ir.normalize_builtin_providers() {
+                section.save_clicked = true;
+            }
             sync_ir_provider_roles(&mut profile.ir);
             let primary_options: Vec<_> = profile
                 .ir
@@ -94,45 +97,27 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut provider.enabled, "");
                         ui.label(tr!(text, "profile-ir-provider", "number" => index + 1));
-                        if ui.button(tr!(text, "common-delete")).clicked() {
+                        if index >= BUILTIN_IR_PROVIDER_COUNT
+                            && ui.button(tr!(text, "common-delete")).clicked()
+                        {
                             remove_index = Some(index);
                         }
                     });
                     let provider_key = crate::ir::provider_key::configured_provider_key(provider)
                         .map(str::to_string);
-                    let endpoint_editable = provider_key.is_none() && !ir_login.busy;
-                    let mut preset = classify_ir_provider_preset(provider);
-                    let previous_preset = preset;
-                    ui.add_enabled_ui(endpoint_editable, |ui| {
-                        egui::ComboBox::new(
-                            ("profile_ir_provider_preset", index),
-                            tr!(text, "profile-ir-provider-kind"),
-                        )
-                        .selected_text(ir_provider_preset_label(text, preset))
-                        .show_ui(ui, |ui| {
-                            for value in [
-                                IrProviderPreset::BmzIr,
-                                IrProviderPreset::RianIr,
-                                IrProviderPreset::Other,
-                            ] {
-                                ui.selectable_value(
-                                    &mut preset,
-                                    value,
-                                    ir_provider_preset_label(text, value),
-                                );
-                            }
-                        });
-                    });
-                    if preset != previous_preset {
-                        apply_ir_provider_preset(provider, preset);
-                        if preset == IrProviderPreset::Other {
-                            provider.provider =
-                                crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string();
-                            provider.base_url.clear();
-                        }
-                    }
-                    match preset {
-                        IrProviderPreset::BmzIr | IrProviderPreset::RianIr => {
+                    let endpoint_editable = index >= BUILTIN_IR_PROVIDER_COUNT
+                        && provider_key.is_none()
+                        && !ir_login.busy;
+                    match index {
+                        0 | 1 => {
+                            ui.horizontal(|ui| {
+                                ui.label(tr!(text, "profile-ir-provider-kind"));
+                                ui.label(if index == 0 {
+                                    tr!(text, "profile-ir-provider-bmz")
+                                } else {
+                                    tr!(text, "profile-ir-provider-rian")
+                                });
+                            });
                             ui.horizontal(|ui| {
                                 ui.label(tr!(text, "profile-ir-base-url"));
                                 ui.add_enabled(
@@ -146,7 +131,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                                 );
                             });
                         }
-                        IrProviderPreset::Other => {
+                        _ => {
                             ui.add_enabled_ui(endpoint_editable, |ui| {
                                 let mut family = ir_provider_family(&provider.provider).to_string();
                                 let previous_family = family.clone();
@@ -227,9 +212,10 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                                 provider.base_url.clone(),
                             );
                         }
-                        let login_busy = ir_login.busy_target.as_ref().is_some_and(|target| {
-                            target.matches(&provider.provider, &provider.base_url)
-                        });
+                        let login_busy = ir_login.busy_form_index == Some(index)
+                            && ir_login.busy_target.as_ref().is_some_and(|target| {
+                                target.matches(&provider.provider, &provider.base_url)
+                            });
                         if login_busy {
                             ui.spinner();
                         }
@@ -252,6 +238,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                                     provider.account_display_name.clear();
                                     provider.last_login_at = None;
                                     ir_login.message = Some(IrProviderUiMessage {
+                                        provider_index: Some(index),
                                         target: row_target.clone(),
                                         ok: true,
                                         text: tr!(text, "profile-ir-logout-success"),
@@ -260,6 +247,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                                 }
                                 Err(error) => {
                                     ir_login.message = Some(IrProviderUiMessage {
+                                        provider_index: Some(index),
                                         target: row_target.clone(),
                                         ok: false,
                                         text: format!("{error:#}"),
@@ -270,6 +258,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                     });
                     ui.horizontal(|ui| {
                         let busy = ir_device_key.is_busy_for(
+                            index,
                             provider_key.as_deref(),
                             &provider.provider,
                             &provider.base_url,
@@ -286,6 +275,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                             .clicked()
                         {
                             ir_device_key.start_rotate(
+                                index,
                                 profile_root.to_path_buf(),
                                 provider.provider.clone(),
                                 provider_key.clone().unwrap_or_default(),
@@ -297,7 +287,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         }
                     });
                     if let Some(message) = &ir_login.message
-                        && message.target.matches(&provider.provider, &provider.base_url)
+                        && message.matches(index, &provider.provider, &provider.base_url)
                     {
                         let color = if message.ok {
                             egui::Color32::LIGHT_GREEN
@@ -307,7 +297,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         ui.colored_label(color, message.text.clone());
                     }
                     if let Some(message) = &ir_device_key.message
-                        && message.target.matches(&provider.provider, &provider.base_url)
+                        && message.matches(index, &provider.provider, &provider.base_url)
                     {
                         let color = if message.ok {
                             egui::Color32::LIGHT_GREEN
@@ -354,20 +344,10 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
             if let Some(index) = remove_index {
                 profile.ir.providers.remove(index);
                 ir_login.remove_provider_form(index);
+                ir_device_key.remove_provider(index);
             }
             if ui.button(tr!(text, "profile-ir-add-provider")).clicked() {
-                profile.ir.providers.push(IrProviderConfig {
-                    provider: crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string(),
-                    provider_key: String::new(),
-                    base_url: crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL.to_string(),
-                    enabled: false,
-                    account_display_name: String::new(),
-                    account_id: String::new(),
-                    send_policy: IrSendPolicyConfig::default(),
-                    role: IrProviderRoleConfig::default(),
-                    last_login_at: None,
-                    last_success_at: None,
-                });
+                profile.ir.providers.push(IrProviderConfig::custom());
             }
         },
     );

@@ -276,61 +276,6 @@ pub(in crate::ui) fn ir_provider_family(provider: &str) -> &'static str {
     }
 }
 
-pub(in crate::ui) fn normalized_ir_base_url(url: &str) -> Option<String> {
-    let mut parsed = reqwest::Url::parse(url.trim()).ok()?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return None;
-    }
-    parsed.set_fragment(None);
-    parsed.set_query(None);
-    let path = parsed.path().trim_end_matches('/').to_string();
-    parsed.set_path(if path.is_empty() { "/" } else { &path });
-    Some(parsed.to_string().trim_end_matches('/').to_ascii_lowercase())
-}
-
-pub(in crate::ui) fn classify_ir_provider_preset(provider: &IrProviderConfig) -> IrProviderPreset {
-    let normalized = normalized_ir_base_url(&provider.base_url);
-    let family = ir_provider_family(&provider.provider);
-    let bmz_url = normalized_ir_base_url(crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL);
-    let rian_public = normalized_ir_base_url(crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL);
-    let rian_api = normalized_ir_base_url(crate::ir::rian_ir::RIAN_IR_DEFAULT_BASE_URL);
-
-    if family == crate::ir::bmz_official::BMZ_IR_PROVIDER && normalized == bmz_url {
-        IrProviderPreset::BmzIr
-    } else if family == crate::ir::rian_ir::RIAN_IR_PROVIDER
-        && (normalized == rian_public || normalized == rian_api)
-    {
-        IrProviderPreset::RianIr
-    } else {
-        IrProviderPreset::Other
-    }
-}
-
-pub(in crate::ui) fn apply_ir_provider_preset(
-    provider: &mut IrProviderConfig,
-    preset: IrProviderPreset,
-) {
-    match preset {
-        IrProviderPreset::BmzIr => {
-            provider.provider = crate::ir::bmz_official::BMZ_IR_PROVIDER.to_string();
-            provider.base_url = crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL.to_string();
-        }
-        IrProviderPreset::RianIr => {
-            provider.provider = crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string();
-            provider.base_url = crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL.to_string();
-        }
-        IrProviderPreset::Other => {}
-    }
-}
-
-pub(in crate::ui) fn ir_provider_preset_label(text: Localizer, preset: IrProviderPreset) -> String {
-    match preset {
-        IrProviderPreset::BmzIr => tr!(text, "profile-ir-provider-bmz"),
-        IrProviderPreset::RianIr => tr!(text, "profile-ir-provider-rian"),
-        IrProviderPreset::Other => tr!(text, "profile-ir-provider-other"),
-    }
-}
-
 pub(in crate::ui) fn ir_send_policy_label(value: IrSendPolicyConfig) -> &'static str {
     match value {
         IrSendPolicyConfig::UpdateScore => "UPDATE SCORE",

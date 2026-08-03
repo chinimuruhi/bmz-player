@@ -22,8 +22,13 @@ fn parse_app_config(text: &str) -> Result<AppConfig> {
 
 pub fn load_profile_config(path: &Path) -> Result<ProfileConfig> {
     let text = std::fs::read_to_string(path)?;
-    let mut config: ProfileConfig = toml::from_str(&text)?;
+    parse_profile_config(&text)
+}
+
+fn parse_profile_config(text: &str) -> Result<ProfileConfig> {
+    let mut config: ProfileConfig = toml::from_str(text)?;
     config.skin.migrate_legacy_offsets();
+    config.ir.normalize_builtin_providers();
     normalize_profile_input(&mut config.input);
     validate_play_inherit_config(&config.input).map_err(|error| anyhow::anyhow!("{error}"))?;
     Ok(config)
@@ -49,5 +54,24 @@ mod tests {
         assert_eq!(loaded.songs.roots[0].path, "G:/BMS");
         assert!(!loaded.songs.roots[0].enabled);
         assert!(!loaded.songs.roots[0].recursive);
+    }
+
+    #[test]
+    fn parse_profile_config_restores_builtin_ir_provider_slots() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 1);
+        profile.ir.providers.clear();
+        let text = toml::to_string(&profile).unwrap();
+
+        let loaded = parse_profile_config(&text).unwrap();
+
+        assert_eq!(loaded.ir.providers.len(), 2);
+        assert_eq!(
+            loaded.ir.providers[0],
+            crate::config::profile_config::IrProviderConfig::bmz_ir()
+        );
+        assert_eq!(
+            loaded.ir.providers[1],
+            crate::config::profile_config::IrProviderConfig::rian_ir()
+        );
     }
 }
