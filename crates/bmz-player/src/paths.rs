@@ -6,6 +6,24 @@ use anyhow::{Context, Result, bail};
 pub const RESOURCE_PATH_PREFIX: &str = "resource:";
 pub const DATA_PATH_PREFIX: &str = "data:";
 
+/// ライブラリへ保存するファイルシステムパスを正準化する。
+///
+/// Windows の `canonicalize()` が付ける extended-length path prefix は
+/// 通常のパス操作や設定表示には不要なため取り除く。UNC パスは
+/// `\\?\UNC\server\share` から `//server/share` へ戻す。
+pub(crate) fn normalize_library_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let Some(without_prefix) = normalized.strip_prefix("//?/") else {
+        return normalized;
+    };
+
+    if without_prefix.get(..4).is_some_and(|prefix| prefix.eq_ignore_ascii_case("UNC/")) {
+        format!("//{}", &without_prefix[4..])
+    } else {
+        without_prefix.to_string()
+    }
+}
+
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 const APP_DIR_NAME: &str = "BMZ Player";
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
@@ -403,6 +421,13 @@ fn path_to_slash(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_library_path_removes_windows_extended_prefixes() {
+        assert_eq!(normalize_library_path(r"\\?\C:\Users\player\songs"), "C:/Users/player/songs");
+        assert_eq!(normalize_library_path("//?/C:/Users/player/songs"), "C:/Users/player/songs");
+        assert_eq!(normalize_library_path(r"\\?\UNC\server\share\songs"), "//server/share/songs");
+    }
 
     fn test_app_paths() -> AppPaths {
         AppPaths::from_dirs(

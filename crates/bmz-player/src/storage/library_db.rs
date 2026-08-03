@@ -10,6 +10,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::ln_policy::{ChartLnCounts, ChartLnProfile, LnPolicySetting, LnScorePolicy};
+use crate::paths::normalize_library_path;
 
 pub use super::course_db::{StoredCourse, StoredCourseEntry};
 pub use super::difficulty_table_db::{

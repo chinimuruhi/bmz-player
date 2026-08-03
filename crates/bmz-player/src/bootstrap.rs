@@ -3,11 +3,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 
-use crate::config::app_config::{AppConfig, PathEntry, normalize_song_root_path};
+use crate::config::app_config::{AppConfig, PathEntry};
 use crate::config::load::{load_app_config, load_profile_config};
 use crate::config::profile_config::ProfileConfig;
 use crate::config::save::{save_app_config, save_profile_config};
-use crate::paths::{AppPaths, ProfilePaths, resolve_app_paths, resolve_profile_paths};
+use crate::paths::{
+    AppPaths, ProfilePaths, normalize_library_path, resolve_app_paths, resolve_profile_paths,
+};
 use crate::screens::play_start::{
     PlayStartOptions, StartedInputPlaySession, start_running_play_session_for_chart,
     start_running_play_session_for_chart_with_input_backend,
@@ -87,7 +89,7 @@ pub fn bootstrap() -> Result<BootstrappedApp> {
 
     let mut app_config = load_or_create_app_config(&app_paths)?;
     if let Some(sample_root) = bundled_sample_song_root(&app_paths) {
-        let sample_root_str = normalize_song_root_path(&sample_root.to_string_lossy());
+        let sample_root_str = normalize_library_path(&sample_root.to_string_lossy());
         if !app_config.songs.roots.iter().any(|r| r.path == sample_root_str) {
             app_config.songs.roots.push(PathEntry {
                 path: sample_root_str,
@@ -156,7 +158,7 @@ fn startup_scan_roots(app_config: &AppConfig, sample_root: Option<&Path>) -> Vec
     };
 
     if let Some(sample_root) = sample_root {
-        let sample_root = normalize_song_root_path(&sample_root.to_string_lossy());
+        let sample_root = normalize_library_path(&sample_root.to_string_lossy());
         if !roots.iter().any(|root| root.path == sample_root) {
             roots.push(PathEntry { path: sample_root, enabled: true, recursive: true });
         }
@@ -257,7 +259,7 @@ mod tests {
             recursive: false,
         });
 
-        let roots = startup_scan_roots(&config, Some(Path::new(r"G:\samples")));
+        let roots = startup_scan_roots(&config, Some(Path::new(r"\\?\G:\samples")));
 
         assert_eq!(roots.len(), 1);
         assert_eq!(roots[0].path, "G:/samples");

@@ -6,9 +6,9 @@ pub(super) fn path_to_string(path: &Path) -> String {
 
 /// Filesystem path key persisted in library.db.
 ///
-/// Windows accepts both `\` and `/` as separators. Select navigation stores
-/// folder paths with `/`, so a partial rescan can otherwise rediscover a file
-/// under a different string than the original root scan.
+/// Windows accepts both `\` and `/` as separators and `canonicalize()` can add
+/// an extended-length prefix. Select navigation stores ordinary `/` paths, so
+/// a partial rescan can otherwise rediscover a file under a different key.
 pub(super) fn path_key(path: &Path) -> String {
     to_folder_key(&path_to_string(path))
 }
@@ -28,9 +28,10 @@ pub(super) fn chart_file_path_candidates(path: &Path) -> Vec<String> {
 }
 
 /// `charts.folder_path` はスラッシュ `/` を正準とする。
-/// Windows のバックスラッシュ区切りをスラッシュに変換する。
+/// Windows のバックスラッシュ区切りをスラッシュに変換し、extended-length
+/// path prefix を取り除く。
 pub(super) fn to_folder_key(path: &str) -> String {
-    path.replace('\\', "/")
+    normalize_library_path(path)
 }
 
 /// Escapes SQL LIKE wildcards so user input is matched literally.

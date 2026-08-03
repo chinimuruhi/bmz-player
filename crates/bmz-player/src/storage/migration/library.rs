@@ -675,4 +675,231 @@ pub const LIBRARY_MIGRATIONS: &[Migration] = &[
             DROP TABLE bmz_root_path_survivors;
         "#],
     },
+    Migration {
+        version: 31,
+        // Windows canonicalization can prefix local paths with `\\?\` and UNC
+        // paths with `\\?\UNC\`. Strip those prefixes and merge any rows that
+        // already exist under the corresponding ordinary path.
+        statements: &[r#"
+            CREATE TEMP TABLE bmz31_root_path_keys (
+                id INTEGER PRIMARY KEY,
+                path_key TEXT NOT NULL
+            );
+            INSERT INTO bmz31_root_path_keys (id, path_key)
+            SELECT
+                id,
+                CASE
+                    WHEN LOWER(SUBSTR(normalized_path, 1, 8)) = '//?/unc/'
+                        THEN '//' || SUBSTR(normalized_path, 9)
+                    WHEN SUBSTR(normalized_path, 1, 4) = '//?/'
+                        THEN SUBSTR(normalized_path, 5)
+                    ELSE normalized_path
+                END
+            FROM (
+                SELECT id, REPLACE(path, '\', '/') AS normalized_path
+                FROM roots
+            );
+
+            CREATE TEMP TABLE bmz31_root_path_survivors AS
+            SELECT path_key, id AS keep_root_id
+            FROM (
+                SELECT
+                    id,
+                    path_key,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY path_key
+                        ORDER BY id DESC
+                    ) AS path_rank
+                FROM bmz31_root_path_keys
+            )
+            WHERE path_rank = 1;
+
+            CREATE TEMP TABLE bmz31_root_path_map AS
+            SELECT path_keys.id AS old_root_id, survivors.keep_root_id
+            FROM bmz31_root_path_keys path_keys
+            JOIN bmz31_root_path_survivors survivors
+              ON survivors.path_key = path_keys.path_key;
+
+            CREATE UNIQUE INDEX bmz31_root_path_map_old_idx
+                ON bmz31_root_path_map(old_root_id);
+            CREATE INDEX bmz31_root_path_map_keep_idx
+                ON bmz31_root_path_map(keep_root_id);
+
+            UPDATE roots AS keep
+            SET last_scan_at = (
+                SELECT MAX(candidate.last_scan_at)
+                FROM roots candidate
+                JOIN bmz31_root_path_map path_map
+                  ON path_map.old_root_id = candidate.id
+                WHERE path_map.keep_root_id = keep.id
+            )
+            WHERE keep.id IN (SELECT keep_root_id FROM bmz31_root_path_survivors);
+
+            UPDATE chart_files
+            SET root_id = (
+                SELECT path_map.keep_root_id
+                FROM bmz31_root_path_map path_map
+                WHERE path_map.old_root_id = chart_files.root_id
+            )
+            WHERE root_id IN (
+                SELECT old_root_id
+                FROM bmz31_root_path_map
+                WHERE old_root_id <> keep_root_id
+            );
+
+            DELETE FROM roots
+            WHERE id IN (
+                SELECT old_root_id
+                FROM bmz31_root_path_map
+                WHERE old_root_id <> keep_root_id
+            );
+
+            UPDATE roots
+            SET path = (
+                SELECT path_keys.path_key
+                FROM bmz31_root_path_keys path_keys
+                WHERE path_keys.id = roots.id
+            );
+
+            CREATE TEMP TABLE bmz31_chart_file_path_keys (
+                id INTEGER PRIMARY KEY,
+                path_key TEXT NOT NULL
+            );
+            INSERT INTO bmz31_chart_file_path_keys (id, path_key)
+            SELECT
+                id,
+                CASE
+                    WHEN LOWER(SUBSTR(normalized_path, 1, 8)) = '//?/unc/'
+                        THEN '//' || SUBSTR(normalized_path, 9)
+                    WHEN SUBSTR(normalized_path, 1, 4) = '//?/'
+                        THEN SUBSTR(normalized_path, 5)
+                    ELSE normalized_path
+                END
+            FROM (
+                SELECT id, REPLACE(path, '\', '/') AS normalized_path
+                FROM chart_files
+            );
+
+            CREATE TEMP TABLE bmz31_chart_file_path_survivors AS
+            SELECT path_key, id AS keep_file_id
+            FROM (
+                SELECT
+                    path_keys.id,
+                    path_keys.path_key,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY path_keys.path_key
+                        ORDER BY chart_files.scanned_at DESC, path_keys.id DESC
+                    ) AS path_rank
+                FROM bmz31_chart_file_path_keys path_keys
+                JOIN chart_files ON chart_files.id = path_keys.id
+            )
+            WHERE path_rank = 1;
+
+            CREATE TEMP TABLE bmz31_chart_file_path_map AS
+            SELECT
+                path_keys.id AS old_file_id,
+                survivors.keep_file_id,
+                old_link.chart_id AS old_chart_id,
+                keep_link.chart_id AS keep_chart_id
+            FROM bmz31_chart_file_path_keys path_keys
+            JOIN bmz31_chart_file_path_survivors survivors
+              ON survivors.path_key = path_keys.path_key
+            LEFT JOIN chart_file_links old_link
+              ON old_link.chart_file_id = path_keys.id
+            LEFT JOIN chart_file_links keep_link
+              ON keep_link.chart_file_id = survivors.keep_file_id;
+
+            CREATE UNIQUE INDEX bmz31_chart_file_path_map_old_idx
+                ON bmz31_chart_file_path_map(old_file_id);
+            CREATE INDEX bmz31_chart_file_path_map_keep_idx
+                ON bmz31_chart_file_path_map(keep_file_id);
+            CREATE INDEX bmz31_chart_file_path_map_old_chart_idx
+                ON bmz31_chart_file_path_map(old_chart_id);
+
+            UPDATE chart_files AS keep
+            SET first_seen_at = (
+                SELECT MIN(candidate.first_seen_at)
+                FROM chart_files candidate
+                JOIN bmz31_chart_file_path_map path_map
+                  ON path_map.old_file_id = candidate.id
+                WHERE path_map.keep_file_id = keep.id
+            )
+            WHERE keep.id IN (
+                SELECT keep_file_id FROM bmz31_chart_file_path_survivors
+            );
+
+            UPDATE course_entries AS entry
+            SET chart_id = (
+                SELECT path_map.keep_chart_id
+                FROM bmz31_chart_file_path_map path_map
+                WHERE path_map.old_chart_id = entry.chart_id
+                  AND path_map.old_file_id <> path_map.keep_file_id
+                ORDER BY path_map.old_file_id DESC
+                LIMIT 1
+            )
+            WHERE EXISTS (
+                SELECT 1
+                FROM bmz31_chart_file_path_map path_map
+                WHERE path_map.old_chart_id = entry.chart_id
+                  AND path_map.old_file_id <> path_map.keep_file_id
+            );
+
+            DELETE FROM chart_import_warnings
+            WHERE chart_file_id IN (
+                SELECT old_file_id
+                FROM bmz31_chart_file_path_map
+                WHERE old_file_id <> keep_file_id
+            );
+
+            DELETE FROM chart_file_links
+            WHERE chart_file_id IN (
+                SELECT old_file_id
+                FROM bmz31_chart_file_path_map
+                WHERE old_file_id <> keep_file_id
+            );
+
+            DELETE FROM chart_files
+            WHERE id IN (
+                SELECT old_file_id
+                FROM bmz31_chart_file_path_map
+                WHERE old_file_id <> keep_file_id
+            );
+
+            DELETE FROM charts
+            WHERE id IN (
+                SELECT old_chart_id
+                FROM bmz31_chart_file_path_map
+                WHERE old_file_id <> keep_file_id
+                  AND old_chart_id IS NOT NULL
+            )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM chart_file_links
+                  WHERE chart_file_links.chart_id = charts.id
+              );
+
+            UPDATE chart_files
+            SET path = (
+                SELECT path_keys.path_key
+                FROM bmz31_chart_file_path_keys path_keys
+                WHERE path_keys.id = chart_files.id
+            );
+
+            UPDATE charts
+            SET folder_path = CASE
+                WHEN LOWER(SUBSTR(REPLACE(folder_path, '\', '/'), 1, 8)) = '//?/unc/'
+                    THEN '//' || SUBSTR(REPLACE(folder_path, '\', '/'), 9)
+                WHEN SUBSTR(REPLACE(folder_path, '\', '/'), 1, 4) = '//?/'
+                    THEN SUBSTR(REPLACE(folder_path, '\', '/'), 5)
+                ELSE REPLACE(folder_path, '\', '/')
+            END;
+
+            DROP TABLE bmz31_chart_file_path_map;
+            DROP TABLE bmz31_chart_file_path_survivors;
+            DROP TABLE bmz31_chart_file_path_keys;
+            DROP TABLE bmz31_root_path_map;
+            DROP TABLE bmz31_root_path_survivors;
+            DROP TABLE bmz31_root_path_keys;
+        "#],
+    },
 ];

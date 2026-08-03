@@ -38,7 +38,7 @@ mod tests {
     fn parse_app_config_normalizes_and_deduplicates_song_roots() {
         let mut config = AppConfig::default();
         config.songs.roots = vec![
-            PathEntry { path: r"G:\BMS".to_string(), enabled: false, recursive: false },
+            PathEntry { path: r"\\?\G:\BMS".to_string(), enabled: false, recursive: false },
             PathEntry { path: "G:/BMS".to_string(), enabled: true, recursive: true },
         ];
         let text = toml::to_string(&config).unwrap();

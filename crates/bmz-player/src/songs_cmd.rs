@@ -3,10 +3,10 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 
 use crate::cli::SongsCommand;
-use crate::config::app_config::{PathEntry, normalize_song_root_path};
+use crate::config::app_config::PathEntry;
 use crate::config::load::load_app_config;
 use crate::config::save::save_app_config;
-use crate::paths::resolve_app_paths;
+use crate::paths::{normalize_library_path, resolve_app_paths};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::migration::migrate_library_db;
 use crate::storage::scan::{
@@ -29,8 +29,8 @@ pub fn add_song_root_entry(
     recursive: bool,
     enabled: bool,
 ) -> Result<()> {
-    let path = normalize_song_root_path(path);
-    if roots.iter().any(|root| normalize_song_root_path(&root.path) == path) {
+    let path = normalize_library_path(path);
+    if roots.iter().any(|root| normalize_library_path(&root.path) == path) {
         bail!("already configured: {path}");
     }
     roots.push(PathEntry { path, recursive, enabled });
@@ -272,7 +272,7 @@ mod tests {
     fn add_song_root_normalizes_and_rejects_separator_variant() {
         let mut roots = Vec::new();
 
-        add_song_root_entry(&mut roots, r"G:\BMS", true, true).unwrap();
+        add_song_root_entry(&mut roots, r"\\?\G:\BMS", true, true).unwrap();
 
         assert_eq!(roots[0].path, "G:/BMS");
         let error = add_song_root_entry(&mut roots, "G:/BMS", false, false).unwrap_err();

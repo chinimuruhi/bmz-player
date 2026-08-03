@@ -316,7 +316,7 @@ fn upsert_chart_import_updates_chart_in_place_when_content_changes() {
 }
 
 #[test]
-fn upsert_chart_import_treats_windows_separator_variants_as_the_same_path() {
+fn upsert_chart_import_treats_windows_extended_path_as_the_same_path() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();
     run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
@@ -324,13 +324,13 @@ fn upsert_chart_import_treats_windows_separator_variants_as_the_same_path() {
 
     let old = chart("old bmson import");
     let old_id =
-        db.upsert_chart_import(&record_for_chart(r"G:\BMS\song\Normal.bmson", &old)).unwrap();
+        db.upsert_chart_import(&record_for_chart(r"\\?\G:\BMS\song\Normal.bmson", &old)).unwrap();
 
     let refreshed = chart("refreshed bmson import");
     let refreshed_id =
         db.upsert_chart_import(&record_for_chart("G:/BMS/song/Normal.bmson", &refreshed)).unwrap();
 
-    assert_eq!(old_id, refreshed_id, "separator variants must update the same chart");
+    assert_eq!(old_id, refreshed_id, "path variants must update the same chart");
     let counts: (i64, i64, i64) = db
         .conn()
         .query_row(
@@ -431,7 +431,7 @@ fn library_migration_merges_windows_separator_variant_paths() {
 
     let version: i32 =
         db.conn().pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-    assert_eq!(version, 30);
+    assert_eq!(version, 31);
     assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(refreshed_id));
     assert_ne!(copy_id, refreshed_id, "a real copy at another path must remain separate");
 
@@ -475,6 +475,139 @@ fn library_migration_merges_windows_separator_variant_paths() {
         .unwrap();
     assert_eq!(root_path, "G:/BMS");
     assert_eq!(last_scan_at, 20);
+}
+
+#[test]
+fn library_migration_removes_windows_extended_path_prefixes() {
+    let migration_index =
+        LIBRARY_MIGRATIONS.iter().position(|migration| migration.version == 31).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, &LIBRARY_MIGRATIONS[..migration_index]).unwrap();
+    let mut db = LibraryDatabase::from_connection(conn);
+
+    db.conn()
+        .execute_batch(
+            "INSERT INTO roots (id, path, enabled, recursive, last_scan_at) VALUES
+                (200, '//?/C:/songs', 1, 1, 10),
+                (201, 'C:/songs', 1, 1, 20),
+                (202, '//?/D:/sample', 1, 1, 30);",
+        )
+        .unwrap();
+
+    let old_id = db
+        .upsert_chart_import(&record_for_chart("C:/placeholder/old.bms", &chart("old extended")))
+        .unwrap();
+    let old_file_id =
+        db.chart_file_id_by_path(Path::new("C:/placeholder/old.bms")).unwrap().unwrap();
+    let keep_id = db
+        .upsert_chart_import(&record_for_chart("C:/placeholder/keep.bms", &chart("ordinary")))
+        .unwrap();
+    let keep_file_id =
+        db.chart_file_id_by_path(Path::new("C:/placeholder/keep.bms")).unwrap().unwrap();
+    let only_id = db
+        .upsert_chart_import(&record_for_chart("D:/placeholder/only.bms", &chart("prefix only")))
+        .unwrap();
+    let only_file_id =
+        db.chart_file_id_by_path(Path::new("D:/placeholder/only.bms")).unwrap().unwrap();
+
+    db.conn()
+        .execute(
+            "UPDATE chart_files
+             SET root_id = 200, path = '//?/C:/songs/track.bms',
+                 scanned_at = 10, first_seen_at = 5
+             WHERE id = ?1",
+            [old_file_id],
+        )
+        .unwrap();
+    db.conn()
+        .execute("UPDATE charts SET folder_path = '//?/C:/songs' WHERE id = ?1", [old_id])
+        .unwrap();
+    db.conn()
+        .execute(
+            "UPDATE chart_files
+             SET root_id = 201, path = 'C:/songs/track.bms',
+                 scanned_at = 20, first_seen_at = 15
+             WHERE id = ?1",
+            [keep_file_id],
+        )
+        .unwrap();
+    db.conn()
+        .execute("UPDATE charts SET folder_path = 'C:/songs' WHERE id = ?1", [keep_id])
+        .unwrap();
+    db.conn()
+        .execute(
+            "UPDATE chart_files
+             SET root_id = 202, path = '//?/D:/sample/sample.bms',
+                 scanned_at = 30, first_seen_at = 25
+             WHERE id = ?1",
+            [only_file_id],
+        )
+        .unwrap();
+    db.conn()
+        .execute("UPDATE charts SET folder_path = '//?/D:/sample' WHERE id = ?1", [only_id])
+        .unwrap();
+
+    run_migrations(db.conn_mut(), &LIBRARY_MIGRATIONS[migration_index..]).unwrap();
+
+    let version: i32 =
+        db.conn().pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+    assert_eq!(version, 31);
+    let counts: (i64, i64, i64) = db
+        .conn()
+        .query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM roots),
+                (SELECT COUNT(*) FROM chart_files),
+                (SELECT COUNT(*) FROM charts)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(counts, (2, 2, 2));
+
+    let (path, root_id, first_seen_at): (String, i64, i64) = db
+        .conn()
+        .query_row(
+            "SELECT path, root_id, first_seen_at FROM chart_files WHERE id = ?1",
+            [keep_file_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(path, "C:/songs/track.bms");
+    assert_eq!(root_id, 201);
+    assert_eq!(first_seen_at, 5);
+    let old_chart_count: i64 = db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM charts WHERE id = ?1", [old_id], |row| row.get(0))
+        .unwrap();
+    assert_eq!(old_chart_count, 0);
+
+    let (root_path, last_scan_at): (String, i64) = db
+        .conn()
+        .query_row("SELECT path, last_scan_at FROM roots WHERE id = 201", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(root_path, "C:/songs");
+    assert_eq!(last_scan_at, 20);
+
+    let (file_path, folder_path, root_path): (String, String, String) = db
+        .conn()
+        .query_row(
+            "SELECT chart_files.path, charts.folder_path, roots.path
+             FROM chart_files
+             JOIN chart_file_links ON chart_file_links.chart_file_id = chart_files.id
+             JOIN charts ON charts.id = chart_file_links.chart_id
+             JOIN roots ON roots.id = chart_files.root_id
+             WHERE chart_files.id = ?1",
+            [only_file_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(file_path, "D:/sample/sample.bms");
+    assert_eq!(folder_path, "D:/sample");
+    assert_eq!(root_path, "D:/sample");
 }
 
 #[test]

@@ -236,7 +236,7 @@ fn ensure_default_difficulty_tables_adds_missing_without_reenabling_existing() {
 #[test]
 fn normalize_song_roots_keeps_first_entry_and_is_idempotent() {
     let mut roots = vec![
-        PathEntry { path: r"G:\BMS\songs".to_string(), enabled: false, recursive: false },
+        PathEntry { path: r"\\?\G:\BMS\songs".to_string(), enabled: false, recursive: false },
         PathEntry { path: "G:/BMS/songs".to_string(), enabled: true, recursive: true },
         PathEntry { path: "H:/BMS".to_string(), enabled: true, recursive: true },
     ];

@@ -46,7 +46,7 @@ mod tests {
     fn serialize_app_config_normalizes_and_deduplicates_song_roots() {
         let mut config = AppConfig::default();
         config.songs.roots = vec![
-            PathEntry { path: r"G:\BMS".to_string(), enabled: true, recursive: true },
+            PathEntry { path: "//?/G:/BMS".to_string(), enabled: true, recursive: true },
             PathEntry { path: "G:/BMS".to_string(), enabled: false, recursive: false },
         ];
 

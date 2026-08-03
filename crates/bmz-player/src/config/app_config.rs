@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::paths::normalize_library_path;
+
 pub const DEFAULT_DISCORD_APPLICATION_ID: &str = "1524506927315419448";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,21 +44,13 @@ pub struct PathEntry {
     pub recursive: bool,
 }
 
-/// `config.toml` に保存する曲ルートは `/` 区切りを正準とする。
-///
-/// Windows は `\\` と `/` の両方を受け付けるため、区切り文字だけが異なる
-/// 同一ルートを設定上も同じパスとして扱う。
-pub fn normalize_song_root_path(path: &str) -> String {
-    path.replace('\\', "/")
-}
-
-/// 曲ルートを正規化し、区切り文字だけが異なる重複を取り除く。
+/// 曲ルートを正規化し、区切り文字やWindows拡張パス接頭辞だけが異なる重複を取り除く。
 ///
 /// 表示順と設定値を安定させるため、同一パスでは先頭の entry を残す。
 pub fn normalize_song_root_paths(roots: &mut Vec<PathEntry>) -> bool {
     let mut changed = false;
     for root in roots.iter_mut() {
-        let normalized = normalize_song_root_path(&root.path);
+        let normalized = normalize_library_path(&root.path);
         if root.path != normalized {
             root.path = normalized;
             changed = true;

@@ -154,7 +154,7 @@ mod tests {
         run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 30);
+        assert_eq!(version, 31);
 
         let mut stmt = conn.prepare("PRAGMA table_info(charts)").unwrap();
         let columns = stmt
@@ -209,7 +209,10 @@ mod tests {
                 path TEXT NOT NULL UNIQUE,
                 scanned_at INTEGER NOT NULL
             );
-            CREATE TABLE charts (id INTEGER PRIMARY KEY);
+            CREATE TABLE charts (
+                id INTEGER PRIMARY KEY,
+                folder_path TEXT NOT NULL DEFAULT ''
+            );
             CREATE TABLE chart_file_links (chart_id INTEGER, chart_file_id INTEGER);
             CREATE TABLE chart_import_warnings (chart_file_id INTEGER);
             CREATE TABLE course_entries (chart_id INTEGER);
@@ -338,7 +341,8 @@ mod tests {
                 id INTEGER PRIMARY KEY,
                 headers_json TEXT NOT NULL,
                 sha256 TEXT NOT NULL DEFAULT '',
-                md5 TEXT NOT NULL DEFAULT ''
+                md5 TEXT NOT NULL DEFAULT '',
+                folder_path TEXT NOT NULL DEFAULT ''
              );
              CREATE TABLE course_entries (
                 chart_id INTEGER,
@@ -381,7 +385,7 @@ mod tests {
             conn.query_row("SELECT headers_json FROM charts", [], |row| row.get(0)).unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(headers_json, "{}");
-        assert_eq!(version, 30);
+        assert_eq!(version, 31);
     }
 
     #[test]
@@ -391,7 +395,8 @@ mod tests {
             "CREATE TABLE charts (
                 id INTEGER PRIMARY KEY,
                 sha256 TEXT NOT NULL,
-                md5 TEXT NOT NULL
+                md5 TEXT NOT NULL,
+                folder_path TEXT NOT NULL DEFAULT ''
              );
              CREATE TABLE course_entries (
                 position INTEGER PRIMARY KEY,
@@ -447,7 +452,7 @@ mod tests {
             .unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(chart_ids, vec![Some(10), Some(20), None, Some(99)]);
-        assert_eq!(version, 30);
+        assert_eq!(version, 31);
     }
 
     #[test]
