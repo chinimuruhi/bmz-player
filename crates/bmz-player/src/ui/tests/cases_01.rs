@@ -134,6 +134,19 @@ fn ir_device_key_channel_disconnect_clears_busy_state() {
 }
 
 #[test]
+fn optional_timestamp_formats_datetime_to_minute_precision() {
+    assert_eq!(format_optional_timestamp(None), "-");
+    assert_eq!(format_datetime_minute(2026, 8, 4, 9, 7), "2026-08-04 09:07");
+
+    let epoch = format_optional_timestamp(Some(0));
+    assert_eq!(epoch.len(), 16);
+    assert_eq!(&epoch[4..5], "-");
+    assert_eq!(&epoch[7..8], "-");
+    assert_eq!(&epoch[10..11], " ");
+    assert_eq!(&epoch[13..14], ":");
+}
+
+#[test]
 fn cjk_font_definitions_keep_latin_first_and_preserve_face_indices() {
     use bmz_render::FontCoverage;
     use bmz_render::renderer::SystemFontData;

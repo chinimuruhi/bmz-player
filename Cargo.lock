@@ -658,6 +658,7 @@ dependencies = [
  "gilrs",
  "image",
  "keyring",
+ "libc",
  "rayon",
  "reqwest",
  "rfd",
