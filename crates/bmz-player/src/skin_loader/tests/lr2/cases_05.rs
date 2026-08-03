@@ -169,6 +169,114 @@ fn wmii_fhd_lr2skin_renders_judge_and_combo_when_available() {
 }
 
 #[test]
+fn wmii_fhd_lr2skin_displayjudge_follows_skin_option_in_normal_play_and_autoplay_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC.lr2skin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let decode = |displayjudge: &str| {
+        decode_beatoraja_skin_with_options(
+            &skin_path,
+            SkinKind::Play,
+            &BTreeMap::from([
+                ("Displayjudge".to_string(), displayjudge.to_string()),
+                ("Score Graph".to_string(), "On".to_string()),
+            ]),
+            &BTreeMap::new(),
+        )
+        .unwrap()
+    };
+    let panel_is_visible = |decoded: &DecodedSkin, autoplay| {
+        let frame_texture = decoded
+            .sources
+            .iter()
+            .find(|source| source.source_id == "1")
+            .expect("WMII frame source should load")
+            .texture;
+        let sources = decoded
+            .sources
+            .iter()
+            .map(|source| {
+                (
+                    source.source_id.clone(),
+                    SkinDocumentTexture {
+                        source_id: source.source_id.clone(),
+                        texture: source.texture,
+                        source_size: SkinImageSize {
+                            width: source.size.width,
+                            height: source.size.height,
+                        },
+                    },
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        let state = bmz_render::skin::SkinDrawState {
+            elapsed_ms: 2_000,
+            play_timer_ms: Some(2_000),
+            autoplay,
+            ..Default::default()
+        };
+        decoded
+            .document
+            .static_render_items(&sources, &state, &bmz_render::skin::SkinTextState::default())
+            .iter()
+            .any(|item| {
+                matches!(
+                    item,
+                    bmz_render::skin::SkinRenderItem::Image { texture, rect, tint, .. }
+                        if *texture == frame_texture
+                            && (rect.x - 561.0 / 1920.0).abs() < 0.01
+                            && (rect.width - 247.0 / 1920.0).abs() < 0.01
+                            && (rect.height - 123.0 / 1080.0).abs() < 0.01
+                            && tint.a > 0.5
+                )
+            })
+    };
+
+    let enabled = decode("ON");
+    assert!(panel_is_visible(&enabled, false));
+    assert!(panel_is_visible(&enabled, true));
+
+    let disabled = decode("OFF");
+    assert!(!panel_is_visible(&disabled, false));
+    assert!(!panel_is_visible(&disabled, true));
+}
+
+#[test]
+fn wmii_fhd_lr2skin_visual_offset_uses_csv_signed_keta_and_blank_fill_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC.lr2skin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let decoded = decode_beatoraja_skin_with_options(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::from([
+            ("Displayjudge".to_string(), "ON".to_string()),
+            ("Score Graph".to_string(), "On".to_string()),
+        ]),
+        &BTreeMap::new(),
+    )
+    .unwrap();
+    let visual_offsets = decoded
+        .document
+        .value
+        .iter()
+        .filter(|value| value.ref_id == 12 && value.divx == 12 && value.divy == 2)
+        .collect::<Vec<_>>();
+
+    assert!(!visual_offsets.is_empty(), "expected WMII CSV visual-offset number");
+    assert!(
+        visual_offsets.iter().all(|value| value.digit == 3 && value.zeropadding == 2),
+        "LR2 CSV signed keta must include one sign cell and default to blank fill: {visual_offsets:?}"
+    );
+}
+
+#[test]
 fn wmii_fhd_lr2skin_dp_renders_judge_detail_panel_when_available() {
     let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC_DP.lr2skin");

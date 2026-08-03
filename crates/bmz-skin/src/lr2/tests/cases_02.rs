@@ -130,24 +130,55 @@ fn processor_attaches_autoplay_runtime_op_to_destination() {
 }
 
 #[test]
-fn processor_keeps_autoplay_off_on_score_graph_destinations() {
+fn processor_keeps_score_graph_destinations_independent_from_autoplay() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();
-    let mut builder = CsvBuilder::new(path, Header::default(), &files);
+    let mut header = Header::default();
+    header.selected_ops.extend([(39, true), (983, true)]);
+    let mut builder = CsvBuilder::new(path, header, &files);
     let lines = [
         parse_csv_line("#IMAGE,parts/frame.png").unwrap(),
         parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
-        parse_csv_line("#IF,32").unwrap(),
-        parse_csv_line("#DST_IMAGE,0,0,0,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,39,0,0")
+        parse_csv_line("#IF,32,983").unwrap(),
+        parse_csv_line("#DST_IMAGE,0,1000,546,110,277,798,0,255,255,255,255,1,1,0,0,0,0,32,39,0")
             .unwrap(),
         parse_csv_line("#ENDIF").unwrap(),
     ];
-    let mut processor = Processor::new(HashMap::new());
+    let mut processor = Processor::new(HashMap::from([(39, true), (983, true)]));
 
     processor.process_lines(&lines, path, &mut builder).unwrap();
 
     let op = builder.destinations[0]["op"].as_array().unwrap();
-    assert_eq!(op, &[json!(32), json!(39)]);
+    assert_eq!(op, &[json!(39)]);
+}
+
+#[test]
+fn processor_does_not_let_autoplay_override_score_graph_judge_panel_layout() {
+    let path = Path::new("skin/play/test.lr2skin");
+    let files = BTreeMap::new();
+    let mut header = Header::default();
+    header.selected_ops.extend([(39, true), (981, true), (983, true)]);
+    let mut builder = CsvBuilder::new(path, header, &files);
+    let lines = [
+        parse_csv_line("#IF,33").unwrap(),
+        parse_csv_line("#SETOPTION,985,1").unwrap(),
+        parse_csv_line("#ENDIF").unwrap(),
+        parse_csv_line("#IMAGE,parts/frame.png").unwrap(),
+        parse_csv_line("#IF,981,985").unwrap(),
+        parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
+        parse_csv_line("#DST_IMAGE,0,0,0,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0").unwrap(),
+        parse_csv_line("#ELSEIF,981,983").unwrap(),
+        parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
+        parse_csv_line("#DST_IMAGE,0,0,100,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0")
+            .unwrap(),
+        parse_csv_line("#ENDIF").unwrap(),
+    ];
+    let mut processor = Processor::new(HashMap::from([(39, true), (981, true), (983, true)]));
+
+    processor.process_lines(&lines, path, &mut builder).unwrap();
+
+    assert_eq!(builder.destinations.len(), 1);
+    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(100));
 }
 
 #[test]

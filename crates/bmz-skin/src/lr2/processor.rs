@@ -12,6 +12,7 @@ struct IfState {
     parent_active: bool,
     branch_taken: bool,
     active: bool,
+    score_graph_layout: bool,
     runtime_ops: Vec<i32>,
     runtime_branches: Vec<Vec<i32>>,
 }
@@ -46,7 +47,14 @@ impl Processor {
                 if runtime_ops.is_empty() {
                     self.ops.insert(index, value);
                     builder.header.selected_ops.insert(index, value);
-                } else {
+                } else if !(index == 985
+                    && runtime_ops == [33]
+                    && self.ops.get(&39).copied().unwrap_or(false))
+                {
+                    // WMII derives its judge-panel layout option 985 from either
+                    // Score Graph=Off or autoplay. BMZ keeps LR2 autoplay as a
+                    // runtime condition, but the skin settings must remain the
+                    // authority for panel/graph visibility in both play modes.
                     if value && !self.ops.get(&index.abs()).copied().unwrap_or(false) {
                         self.runtime_aliases.entry(index.abs()).or_insert(runtime_ops.clone());
                     }
@@ -67,7 +75,19 @@ impl Processor {
                 }
                 continue;
             }
-            builder.execute(line)?;
+            if self.active_score_graph_layout() && line.command.starts_with("DST_") {
+                let mut line = line.clone();
+                for index in 18..=20 {
+                    if parse_i32(line.fields.get(index)) == 32
+                        && let Some(field) = line.fields.get_mut(index)
+                    {
+                        field.clear();
+                    }
+                }
+                builder.execute(&line)?;
+            } else {
+                builder.execute(line)?;
+            }
         }
         builder.conditional_ops.clear();
         Ok(())
@@ -84,12 +104,14 @@ impl Processor {
         match line.command.as_str() {
             "IF" => {
                 let parent_active = self.active();
+                let score_graph_layout = self.is_score_graph_layout_branch(line);
                 let eval = self.eval_if(line);
                 let condition = parent_active && eval.matches;
                 self.stack.push(IfState {
                     parent_active,
                     branch_taken: condition,
                     active: condition,
+                    score_graph_layout: condition && score_graph_layout,
                     runtime_ops: if condition { eval.runtime_ops.clone() } else { Vec::new() },
                     runtime_branches: if condition && !eval.runtime_ops.is_empty() {
                         vec![eval.runtime_ops]
@@ -103,6 +125,7 @@ impl Processor {
                 let Some(mut state) = self.stack.pop() else {
                     return true;
                 };
+                let score_graph_layout = self.is_score_graph_layout_branch(line);
                 if !state.runtime_branches.is_empty() {
                     let eval = self.eval_if(line);
                     if !state.parent_active || !eval.matches || eval.runtime_ops.is_empty() {
@@ -128,6 +151,7 @@ impl Processor {
                     state.branch_taken |= state.active;
                     state.runtime_ops = if state.active { eval.runtime_ops } else { Vec::new() };
                 }
+                state.score_graph_layout = state.active && score_graph_layout;
                 self.stack.push(state);
                 true
             }
@@ -146,6 +170,7 @@ impl Processor {
                         state.runtime_ops.clear();
                     }
                     state.branch_taken = true;
+                    state.score_graph_layout = false;
                 }
                 true
             }
@@ -164,12 +189,18 @@ impl Processor {
     pub(super) fn eval_if(&mut self, line: &CsvLine) -> IfEval {
         let mut runtime_ops = Vec::new();
         let ops = self.ops.clone();
+        let score_graph_layout_branch = self.is_score_graph_layout_branch(line);
         let dependencies = &mut self.option_dependencies;
         let matches =
             line.fields.iter().skip(1).filter(|field| !field.trim().is_empty()).all(|field| {
                 let option = parse_option_token(field);
                 let option_id = option.abs();
-                if let Some(alias) = self.runtime_aliases.get(&option_id) {
+                if option == 32 && score_graph_layout_branch {
+                    // WMII wraps Score Graph=On layouts in OPTION_AUTOPLAYOFF.
+                    // BMZ intentionally lets the selected Score Graph option
+                    // control visibility even during autoplay.
+                    true
+                } else if let Some(alias) = self.runtime_aliases.get(&option_id) {
                     if option >= 0 {
                         runtime_ops.extend(alias.iter().copied());
                         true
@@ -191,6 +222,20 @@ impl Processor {
                 }
             });
         IfEval { matches, runtime_ops }
+    }
+
+    fn is_score_graph_layout_branch(&self, line: &CsvLine) -> bool {
+        self.ops.get(&39).copied().unwrap_or(false)
+            && line
+                .fields
+                .iter()
+                .skip(1)
+                .map(|field| parse_option_token(field).abs())
+                .any(|option| matches!(option, 983 | 984))
+    }
+
+    fn active_score_graph_layout(&self) -> bool {
+        self.stack.iter().any(|state| state.active && state.score_graph_layout)
     }
 
     pub(super) fn active_runtime_ops(&self) -> Vec<i32> {

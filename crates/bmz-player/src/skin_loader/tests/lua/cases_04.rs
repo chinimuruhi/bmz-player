@@ -99,3 +99,32 @@ fn select_lua_skins_decode_with_explicit_library_root_when_available() {
         );
     }
 }
+
+#[test]
+fn wmii_fhd_lua_visual_offset_preserves_json_digit_and_no_padding_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/WMII_FHD/play/play7wide.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let decoded = decode_beatoraja_skin_with_options(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::from([("Display Judge Panel".to_string(), "On".to_string())]),
+        &BTreeMap::new(),
+    )
+    .unwrap();
+    let visual_offset = decoded
+        .document
+        .value
+        .iter()
+        .find(|value| value.id == "judgetiming")
+        .expect("expected WMII Lua visual-offset number");
+
+    assert_eq!(visual_offset.ref_id, 12);
+    assert_eq!((visual_offset.divx, visual_offset.divy), (12, 2));
+    assert_eq!(visual_offset.digit, 4, "Lua/JSON digit must not gain a sign cell");
+    assert_eq!(visual_offset.zeropadding, 0);
+    assert_eq!(visual_offset.padding, 0);
+}
