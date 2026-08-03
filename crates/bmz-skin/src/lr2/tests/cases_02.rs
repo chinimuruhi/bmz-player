@@ -176,6 +176,38 @@ fn processor_keeps_non_graph_layout_destinations_conditional_on_autoplay_off() {
 }
 
 #[test]
+fn processor_prefers_score_graph_bga_layout_over_autoplay_bga_layout() {
+    let path = Path::new("skin/play/test.lr2skin");
+    let files = BTreeMap::new();
+    let mut header = Header::default();
+    header.selected_ops.extend([(39, true), (900, true)]);
+    let mut builder = CsvBuilder::new(path, header, &files);
+    let lines = [
+        parse_csv_line("#IMAGE,parts/frame.png").unwrap(),
+        parse_csv_line("#IF,33").unwrap(),
+        parse_csv_line("#SRC_BGA").unwrap(),
+        parse_csv_line("#DST_BGA,0,0,0,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0").unwrap(),
+        parse_csv_line("#ENDIF").unwrap(),
+        parse_csv_line("#IF,32,900").unwrap(),
+        parse_csv_line("#SRC_BGA").unwrap(),
+        parse_csv_line("#DST_BGA,0,0,100,10,20,30,40,0,255,255,255,255,0,0,0,0,0,0,0,0,0").unwrap(),
+        parse_csv_line("#SRC_IMAGE,0,0,0,0,10,10,1,1,0,0").unwrap(),
+        parse_csv_line("#DST_IMAGE,0,0,200,10,20,30,40,0,255,255,255,255,0,0,0,0,0,32,39,0")
+            .unwrap(),
+        parse_csv_line("#ENDIF").unwrap(),
+    ];
+    let mut processor = Processor::new(HashMap::from([(39, true), (900, true)]));
+
+    processor.process_lines(&lines, path, &mut builder).unwrap();
+
+    assert_eq!(builder.destinations.len(), 2);
+    assert_eq!(builder.destinations[0]["id"], json!("bga"));
+    assert_eq!(builder.destinations[0]["dst"][0]["x"], json!(100));
+    assert!(builder.destinations[0]["op"].as_array().unwrap().is_empty());
+    assert_eq!(builder.destinations[1]["op"].as_array().unwrap(), &[json!(39)]);
+}
+
+#[test]
 fn processor_prefers_matching_load_time_else_if_over_runtime_alias() {
     let path = Path::new("skin/play/test.lr2skin");
     let files = BTreeMap::new();

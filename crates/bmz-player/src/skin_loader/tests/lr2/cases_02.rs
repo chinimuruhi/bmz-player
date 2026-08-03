@@ -103,7 +103,7 @@ fn wmii_fhd_lr2skin_renders_score_graph_bars_when_available() {
 }
 
 #[test]
-fn wmii_fhd_lr2skin_keeps_score_graph_and_extended_bga_on_autoplay_when_available() {
+fn wmii_fhd_lr2skin_uses_score_graph_bga_layout_on_autoplay_when_available() {
     let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC.lr2skin");
     if !skin_path.is_file() {
@@ -178,7 +178,7 @@ fn wmii_fhd_lr2skin_keeps_score_graph_and_extended_bga_on_autoplay_when_availabl
         1,
         "autoplay and Score Graph layouts must not render duplicate BGA destinations: {bga_rects:?}"
     );
-    assert!((bga_rects[0].x - 732.0 / 1920.0).abs() < 0.01);
+    assert!((bga_rects[0].x - 863.0 / 1920.0).abs() < 0.01);
     assert!((bga_rects[0].width - 1015.0 / 1920.0).abs() < 0.01);
 
     let title_origins = items
@@ -202,11 +202,11 @@ fn wmii_fhd_lr2skin_keeps_score_graph_and_extended_bga_on_autoplay_when_availabl
         items.iter().any(|item| matches!(
             item,
             bmz_render::skin::SkinRenderItem::Image { rect, tint, .. }
-                if (rect.x - 726.0 / 1920.0).abs() < 0.01
+                if (rect.x - 857.0 / 1920.0).abs() < 0.01
                     && (rect.width - 1027.0 / 1920.0).abs() < 0.01
                     && tint.a > 0.5
         )),
-        "expected WMII autoplay extended BGA frame to render; got {items:?}"
+        "expected WMII Score Graph extended BGA frame to render during autoplay; got {items:?}"
     );
     assert!(
         items.iter().any(|item| matches!(

@@ -1,6 +1,7 @@
 use super::*;
 
 const OPTION_AUTOPLAYOFF: i32 = 32;
+const OPTION_AUTOPLAYON: i32 = 33;
 const OPTION_SCOREGRAPH: i32 = 39;
 
 pub(super) struct Processor {
@@ -36,10 +37,24 @@ impl Processor {
         current_path: &Path,
         builder: &mut CsvBuilder,
     ) -> Result<()> {
+        let mut has_selected_score_graph_layout = false;
         for (index, line) in lines.iter().enumerate() {
-            let prefer_load_time_else_if = line.command == "IF"
-                && self.has_matching_load_time_else_if(&lines[index.saturating_add(1)..]);
-            if self.handle_control_with_preference(line, prefer_load_time_else_if) {
+            let branch_lines = &lines[index.saturating_add(1)..];
+            if !has_selected_score_graph_layout {
+                has_selected_score_graph_layout = self.has_selected_score_graph_layout(lines);
+            }
+            let prefer_load_time_else_if =
+                line.command == "IF" && self.has_matching_load_time_else_if(branch_lines);
+            let promote_score_graph_layout = has_selected_score_graph_layout
+                && self.is_selected_score_graph_layout_branch(line, branch_lines);
+            let suppress_autoplay_bga_layout = has_selected_score_graph_layout
+                && self.is_autoplay_bga_layout_branch(line, branch_lines);
+            if self.handle_control_with_preference(
+                line,
+                prefer_load_time_else_if,
+                promote_score_graph_layout,
+                suppress_autoplay_bga_layout,
+            ) {
                 continue;
             }
             if !self.active() {
@@ -95,20 +110,26 @@ impl Processor {
     }
 
     pub(super) fn handle_control(&mut self, line: &CsvLine) -> bool {
-        self.handle_control_with_preference(line, false)
+        self.handle_control_with_preference(line, false, false, false)
     }
 
     fn handle_control_with_preference(
         &mut self,
         line: &CsvLine,
         prefer_load_time_else_if: bool,
+        promote_score_graph_layout: bool,
+        suppress_autoplay_bga_layout: bool,
     ) -> bool {
         match line.command.as_str() {
             "IF" => {
                 let parent_active = self.active();
-                let eval = self.eval_if(line);
+                let mut eval = self.eval_if(line);
+                if promote_score_graph_layout {
+                    eval.runtime_ops.retain(|option| option.abs() != OPTION_AUTOPLAYOFF);
+                }
                 let condition = parent_active
                     && eval.matches
+                    && !suppress_autoplay_bga_layout
                     && (!prefer_load_time_else_if || eval.runtime_ops.is_empty());
                 self.stack.push(IfState {
                     parent_active,
@@ -226,13 +247,50 @@ impl Processor {
 
     fn is_score_graph_destination(&self, line: &CsvLine) -> bool {
         self.ops.get(&OPTION_SCOREGRAPH).copied().unwrap_or(false)
-            && line.command.starts_with("DST_")
-            && line
-                .fields
-                .iter()
-                .skip(18)
-                .take(3)
-                .any(|field| parse_option_token(field) == OPTION_SCOREGRAPH)
+            && destination_has_option(line, OPTION_SCOREGRAPH)
+    }
+
+    fn has_selected_score_graph_layout(&self, lines: &[CsvLine]) -> bool {
+        lines.iter().enumerate().any(|(index, line)| {
+            self.is_selected_score_graph_layout_branch(line, &lines[index.saturating_add(1)..])
+        })
+    }
+
+    fn is_selected_score_graph_layout_branch(
+        &self,
+        line: &CsvLine,
+        branch_lines: &[CsvLine],
+    ) -> bool {
+        self.ops.get(&OPTION_SCOREGRAPH).copied().unwrap_or(false)
+            && line.command == "IF"
+            && condition_has_option(line, OPTION_AUTOPLAYOFF)
+            && self.condition_matches_ignoring(line, OPTION_AUTOPLAYOFF)
+            && branch_contains(branch_lines, |line| line.command == "SRC_BGA")
+            && branch_contains(branch_lines, |line| destination_has_option(line, OPTION_SCOREGRAPH))
+    }
+
+    fn is_autoplay_bga_layout_branch(&self, line: &CsvLine, branch_lines: &[CsvLine]) -> bool {
+        line.command == "IF"
+            && condition_has_option(line, OPTION_AUTOPLAYON)
+            && self.condition_matches_ignoring(line, OPTION_AUTOPLAYON)
+            && branch_contains(branch_lines, |line| line.command == "SRC_BGA")
+    }
+
+    fn condition_matches_ignoring(&self, line: &CsvLine, ignored_option: i32) -> bool {
+        line.fields.iter().skip(1).filter(|field| !field.trim().is_empty()).all(|field| {
+            let option = parse_option_token(field);
+            let option_id = option.abs();
+            if option == ignored_option {
+                true
+            } else if self.runtime_aliases.contains_key(&option_id)
+                || is_runtime_lr2_option(option_id)
+            {
+                false
+            } else {
+                let enabled = self.ops.get(&option_id).copied().unwrap_or(false);
+                if option >= 0 { enabled } else { !enabled }
+            }
+        })
     }
 
     fn has_matching_load_time_else_if(&self, lines: &[CsvLine]) -> bool {
@@ -275,4 +333,32 @@ impl Processor {
             .flat_map(|state| state.runtime_ops.iter().copied())
             .collect()
     }
+}
+
+fn condition_has_option(line: &CsvLine, option: i32) -> bool {
+    line.fields
+        .iter()
+        .skip(1)
+        .filter(|field| !field.trim().is_empty())
+        .any(|field| parse_option_token(field) == option)
+}
+
+fn destination_has_option(line: &CsvLine, option: i32) -> bool {
+    line.command.starts_with("DST_")
+        && line.fields.iter().skip(18).take(3).any(|field| parse_option_token(field) == option)
+}
+
+fn branch_contains(lines: &[CsvLine], predicate: impl Fn(&CsvLine) -> bool) -> bool {
+    let mut depth = 0usize;
+    for line in lines {
+        match line.command.as_str() {
+            "IF" => depth = depth.saturating_add(1),
+            "ENDIF" if depth == 0 => break,
+            "ENDIF" => depth = depth.saturating_sub(1),
+            "ELSEIF" | "ELSE" if depth == 0 => break,
+            _ if predicate(line) => return true,
+            _ => {}
+        }
+    }
+    false
 }
