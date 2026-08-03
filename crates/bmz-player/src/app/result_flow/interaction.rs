@@ -17,6 +17,9 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if self.handle_result_ir_scroll_control(control, pressed, repeat) {
+            return true;
+        }
         if pressed
             && !repeat
             && self.result_input_ready()
@@ -71,6 +74,9 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if self.handle_result_ir_scroll_control(control, pressed, repeat) {
+            return true;
+        }
         if pressed
             && !repeat
             && self.result_input_ready()
@@ -114,6 +120,114 @@ impl WinitApp {
             }
             _ => false,
         }
+    }
+
+    pub(super) fn handle_result_ir_scroll_control(
+        &mut self,
+        control: &PhysicalControl,
+        pressed: bool,
+        repeat: bool,
+    ) -> bool {
+        let Some(control_name) = physical_control_name(control) else {
+            return false;
+        };
+        let Some(rows) = result_ir_scroll_rows_for_control(control_name, &self.select.select_keys)
+        else {
+            return false;
+        };
+
+        if !pressed {
+            self.clear_result_ir_scroll_hold_control(control_name);
+            return self.result_ir_scroll_interactive();
+        }
+        if !self.result_ir_scroll_interactive() {
+            self.clear_result_ir_scroll_input();
+            return false;
+        }
+
+        // アナログ軸の合成 Press は tick 比例スクロールと重複させない。
+        if control_name.starts_with("Axis") || repeat {
+            return true;
+        }
+
+        if self.scroll_result_ir_rows(rows) {
+            self.start_result_ir_scroll_hold(rows, control_name);
+        }
+        true
+    }
+
+    pub(super) fn result_ir_scroll_interactive(&self) -> bool {
+        if self.result.result_exit.is_some() || !self.result_input_ready() {
+            return false;
+        }
+        let Some(document) = self.renderer.result_skin_document() else {
+            return false;
+        };
+        self.result.result_ir.is_some()
+            && result_ir_scroll_supported(document, self.result.result_panel)
+    }
+
+    pub(super) fn scroll_result_ir_rows(&mut self, rows: i32) -> bool {
+        if !self.result_ir_scroll_interactive() {
+            return false;
+        }
+        let changed = self
+            .result
+            .result_ir
+            .as_mut()
+            .is_some_and(|result_ir| result_ir.scroll_skin_rows(rows));
+        if changed {
+            self.play_system_sound(crate::system_sound::SoundType::Scratch);
+        }
+        changed
+    }
+
+    pub(super) fn start_result_ir_scroll_hold(&mut self, rows: i32, control: &str) {
+        let now = Instant::now();
+        let scroll = &mut self.result.result_ir_scroll;
+        scroll.hold_rows = rows;
+        scroll.hold_started_at = Some(now);
+        scroll.hold_last_trigger_at = Some(now);
+        scroll.hold_control = Some(control.to_string());
+    }
+
+    pub(super) fn advance_result_ir_scroll_hold(&mut self) {
+        if !self.ui.focused || !self.result_ir_scroll_interactive() {
+            self.clear_result_ir_scroll_input();
+            return;
+        }
+        let scroll = &self.result.result_ir_scroll;
+        let (rows, Some(started_at), Some(last_trigger_at)) =
+            (scroll.hold_rows, scroll.hold_started_at, scroll.hold_last_trigger_at)
+        else {
+            return;
+        };
+        let now = Instant::now();
+        if now.duration_since(started_at) < self.select_scroll_duration_low()
+            || now.duration_since(last_trigger_at) < self.select_scroll_duration_high()
+        {
+            return;
+        }
+        self.result.result_ir_scroll.hold_last_trigger_at = Some(now);
+        self.scroll_result_ir_rows(rows);
+    }
+
+    pub(super) fn clear_result_ir_scroll_hold_control(&mut self, control: &str) {
+        if self.result.result_ir_scroll.hold_control.as_deref() == Some(control) {
+            self.clear_result_ir_scroll_hold();
+        }
+    }
+
+    pub(super) fn clear_result_ir_scroll_hold(&mut self) {
+        let scroll = &mut self.result.result_ir_scroll;
+        scroll.hold_rows = 0;
+        scroll.hold_started_at = None;
+        scroll.hold_last_trigger_at = None;
+        scroll.hold_control = None;
+    }
+
+    pub(super) fn clear_result_ir_scroll_input(&mut self) {
+        self.result.result_ir_scroll = ResultIrScrollRuntime::default();
     }
 
     pub(super) fn save_finished_play_replay_slot(&mut self, slot: u8) -> bool {
@@ -272,6 +386,7 @@ impl WinitApp {
             return false;
         };
         self.result.result_panel = panel;
+        self.clear_result_ir_scroll_input();
         tracing::info!(panel = self.result.result_panel, "result panel changed");
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
         true
@@ -296,6 +411,7 @@ impl WinitApp {
             return false;
         }
         result_ir.select_tab(tab);
+        self.clear_result_ir_scroll_input();
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
         true
     }

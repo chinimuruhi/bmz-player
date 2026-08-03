@@ -159,6 +159,18 @@ pub(super) struct ResultRuntimeState {
     pub(super) result_gauge_graph_type: i32,
     /// Lua Result スキンの展開パネル (0=非表示、1=IR、2=グラフ)。
     pub(super) result_panel: i32,
+    /// Result IR のキー長押し・アナログスクラッチ用入力状態。
+    pub(super) result_ir_scroll: ResultIrScrollRuntime,
+}
+
+#[derive(Default)]
+pub(super) struct ResultIrScrollRuntime {
+    pub(super) hold_rows: i32,
+    pub(super) hold_started_at: Option<Instant>,
+    pub(super) hold_last_trigger_at: Option<Instant>,
+    pub(super) hold_control: Option<String>,
+    pub(super) analog_buffer: i32,
+    pub(super) analog_last_tick_at: Option<Instant>,
 }
 
 pub(super) struct AppJobs {

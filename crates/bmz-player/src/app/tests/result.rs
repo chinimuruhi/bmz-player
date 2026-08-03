@@ -492,6 +492,46 @@ fn result_panel_support_requires_default_and_runtime_draw_gate() {
 }
 
 #[test]
+fn result_ir_scroll_supports_panel_and_always_visible_skins() {
+    let always_visible: SkinDocument = serde_json::from_value(serde_json::json!({
+        "type": 7,
+        "slider": [{"id": "ir", "type": 8}]
+    }))
+    .unwrap();
+    assert!(result_ir_scroll_supported(&always_visible, 0));
+
+    let panel: SkinDocument = serde_json::from_value(serde_json::json!({
+        "type": 7,
+        "resultPanelDefault": 2,
+        "slider": [{"id": "ir", "type": 8}],
+        "destination": [{
+            "id": "ir",
+            "draw": "result_panel(1)",
+            "dst": [{"x": 0, "y": 0, "w": 1, "h": 1}]
+        }]
+    }))
+    .unwrap();
+    assert!(result_ir_scroll_supported(&panel, 1));
+    assert!(!result_ir_scroll_supported(&panel, 2));
+
+    let without_slider: SkinDocument =
+        serde_json::from_value(serde_json::json!({"type": 7})).unwrap();
+    assert!(!result_ir_scroll_supported(&without_slider, 0));
+}
+
+#[test]
+fn result_ir_scroll_controls_match_select_navigation() {
+    let keys = default_select_keys();
+    assert_eq!(result_ir_scroll_rows_for_control("ArrowUp", &keys), Some(-1));
+    assert_eq!(result_ir_scroll_rows_for_control("ArrowDown", &keys), Some(1));
+    assert_eq!(result_ir_scroll_rows_for_control("DPadUp", &keys), Some(-1));
+    assert_eq!(result_ir_scroll_rows_for_control("DPadDown", &keys), Some(1));
+    assert_eq!(result_ir_scroll_rows_for_control("Axis1+", &keys), Some(-1));
+    assert_eq!(result_ir_scroll_rows_for_control("Axis1-", &keys), Some(1));
+    assert_eq!(result_ir_scroll_rows_for_control("Button1", &keys), None);
+}
+
+#[test]
 fn result_action_resolves_from_held_lanes() {
     // beatoraja 準拠: Key5 のみ → 別配置 (REPLAY_DIFFERENT)。
     assert_eq!(result_action_for_held_lanes(true, false), Some(ResultRetryMode::DifferentArrange));

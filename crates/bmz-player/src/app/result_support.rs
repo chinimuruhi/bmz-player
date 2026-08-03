@@ -19,6 +19,20 @@ pub(super) fn result_skin_click_action(event_id: i32) -> Option<ResultSkinClickA
     }
 }
 
+/// Result IR の相対スクロール量を返す。末尾方向を正とする。
+pub(super) fn result_ir_scroll_rows_for_control(
+    control: &str,
+    bindings: &SelectKeyBindings,
+) -> Option<i32> {
+    match control {
+        "ArrowUp" | "DPadUp" => Some(-1),
+        "ArrowDown" | "DPadDown" => Some(1),
+        _ if bindings.is_select_scratch_down(control) => Some(1),
+        _ if bindings.is_select_scratch_up(control) => Some(-1),
+        _ => None,
+    }
+}
+
 /// コース曲間の中間リザルトかどうか。active_course を保持したまま finished_play
 /// だけが立ち、finished_course はまだ無い状態を指す。中間リザルトでは retry を
 /// 無効化し、次の曲へ進むだけにする (beatoraja MusicResult のコース分岐相当)。

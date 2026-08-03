@@ -17,6 +17,15 @@ pub(super) fn result_panel_supported(document: &SkinDocument) -> bool {
             .any(|destination| destination.draw.contains("result_panel("))
 }
 
+/// Result IR の行スクロールを現在の skin 表示で受け付けるか。
+///
+/// WMII / Luxe Flat のように panel gate を持つ skin は IR panel (1) のみ、
+/// mz-select のように常時 IR を表示する skin は type 8 slider があれば有効にする。
+pub(super) fn result_ir_scroll_supported(document: &SkinDocument, result_panel: i32) -> bool {
+    document.slider.iter().any(|slider| slider.slider_type == 8)
+        && (!result_panel_supported(document) || result_panel == 1)
+}
+
 #[cfg(test)]
 pub(super) fn result_scene_duration_for_document(document: Option<&SkinDocument>) -> Duration {
     document

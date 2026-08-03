@@ -361,10 +361,29 @@ impl ResultIrState {
     pub fn set_skin_scroll_rate(&mut self, value: f32) {
         let max = self.skin_scroll_max();
         let offset = ((value.clamp(0.0, 1.0) * max as f32).round() as usize).min(max);
-        match self.active_tab {
-            ResultRankingTab::Global => self.global_skin_scroll_offset = offset,
-            ResultRankingTab::SelfAndRivals => self.self_and_rivals_skin_scroll_offset = offset,
+        self.set_skin_scroll_offset(offset);
+    }
+
+    /// 表示中の Result IR ランキングを行単位で相対移動する。
+    ///
+    /// 正は末尾方向、負は先頭方向。実際に表示位置が変わった場合だけ true を返す。
+    pub fn scroll_skin_rows(&mut self, rows: i32) -> bool {
+        let max = self.skin_scroll_max();
+        let stored = self.skin_scroll_offset_for(self.active_tab);
+        let current = stored.min(max);
+        let next = if rows >= 0 {
+            current.saturating_add(rows as usize).min(max)
+        } else {
+            current.saturating_sub(rows.unsigned_abs() as usize)
+        };
+        if next == current {
+            if stored != current {
+                self.set_skin_scroll_offset(current);
+            }
+            return false;
         }
+        self.set_skin_scroll_offset(next);
+        true
     }
 
     fn skin_scroll_max(&self) -> usize {
@@ -380,6 +399,13 @@ impl ResultIrState {
         match tab {
             ResultRankingTab::Global => self.global_skin_scroll_offset,
             ResultRankingTab::SelfAndRivals => self.self_and_rivals_skin_scroll_offset,
+        }
+    }
+
+    fn set_skin_scroll_offset(&mut self, offset: usize) {
+        match self.active_tab {
+            ResultRankingTab::Global => self.global_skin_scroll_offset = offset,
+            ResultRankingTab::SelfAndRivals => self.self_and_rivals_skin_scroll_offset = offset,
         }
     }
 
@@ -627,6 +653,16 @@ mod tests {
         );
         state.active_tab = ResultRankingTab::Global;
         assert_eq!(state.skin_snapshot().scroll_offset, 3);
+
+        assert!(state.scroll_skin_rows(1));
+        assert_eq!(state.skin_snapshot().scroll_offset, 4);
+        assert!(state.scroll_skin_rows(-100));
+        assert_eq!(state.skin_snapshot().scroll_offset, 0);
+        assert!(!state.scroll_skin_rows(-1));
+
+        state.global = RankingLoadState::Loading;
+        assert!(!state.scroll_skin_rows(1));
+        assert_eq!(state.skin_snapshot().scroll_offset, 0);
     }
 
     #[test]

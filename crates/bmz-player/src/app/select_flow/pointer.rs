@@ -10,6 +10,17 @@ impl WinitApp {
             )));
             return;
         }
+        if matches!(self.view_state(), AppViewState::Result) {
+            if let Some(select_move) = select_wheel_move(delta) {
+                let rows = match select_move {
+                    SelectMove::Previous => -1,
+                    SelectMove::Next => 1,
+                    _ => 0,
+                };
+                self.scroll_result_ir_rows(rows);
+            }
+            return;
+        }
         if !matches!(self.view_state(), AppViewState::Select) {
             return;
         }

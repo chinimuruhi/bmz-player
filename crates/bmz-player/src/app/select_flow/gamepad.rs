@@ -16,6 +16,7 @@ impl WinitApp {
             }
             self.reset_select_analog_scroll();
             self.reset_play_analog_scroll();
+            self.clear_result_ir_scroll_input();
             return;
         }
         if should_log_raw_input {
@@ -75,6 +76,9 @@ impl WinitApp {
 
     pub(super) fn route_gamepad_axis_ticks(&mut self, axis: &str, ticks: i32) {
         if self.apply_play_analog_option_ticks(axis, ticks) {
+            return;
+        }
+        if self.accumulate_result_ir_analog_ticks(axis, ticks) {
             return;
         }
         self.accumulate_select_analog_ticks(axis, ticks);
@@ -184,6 +188,55 @@ impl WinitApp {
     pub(super) fn reset_play_analog_scroll(&mut self) {
         self.play.play_analog_scroll_buffer = 0;
         self.play.play_analog_last_tick_at = None;
+    }
+
+    pub(super) fn accumulate_result_ir_analog_ticks(&mut self, axis: &str, ticks: i32) -> bool {
+        if !matches!(self.view_state(), AppViewState::Result) {
+            return false;
+        }
+        let Some(delta) = select_analog_scroll_delta(axis, ticks, &self.select.select_keys) else {
+            return false;
+        };
+        if !self.result_ir_scroll_interactive() {
+            self.reset_result_ir_analog_scroll();
+            return true;
+        }
+
+        let now = Instant::now();
+        let scroll = &mut self.result.result_ir_scroll;
+        let idle = scroll.analog_last_tick_at.is_none_or(|last| {
+            now.duration_since(last) > Duration::from_millis(SELECT_ANALOG_SCROLL_TOLERANCE_MS)
+        });
+        scroll.analog_last_tick_at = Some(now);
+        if idle {
+            scroll.analog_buffer = 0;
+        }
+        scroll.analog_buffer += delta;
+        true
+    }
+
+    pub(super) fn advance_result_ir_analog_scroll(&mut self) {
+        if !self.ui.focused
+            || !matches!(self.view_state(), AppViewState::Result)
+            || !self.result_ir_scroll_interactive()
+        {
+            self.reset_result_ir_analog_scroll();
+            return;
+        }
+        let ticks_per_scroll = self.boot.profile_config.input.analog_ticks_per_scroll.max(1) as i32;
+        let rows = take_analog_scroll_steps(
+            &mut self.result.result_ir_scroll.analog_buffer,
+            ticks_per_scroll,
+        );
+        for _ in 0..rows.abs() {
+            self.scroll_result_ir_rows(rows.signum());
+        }
+    }
+
+    pub(super) fn reset_result_ir_analog_scroll(&mut self) {
+        let scroll = &mut self.result.result_ir_scroll;
+        scroll.analog_buffer = 0;
+        scroll.analog_last_tick_at = None;
     }
 
     /// 蓄積したアナログ tick を analog_ticks_per_scroll ごとに 1 移動へ変換する。

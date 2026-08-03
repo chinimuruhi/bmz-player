@@ -85,6 +85,7 @@ impl WinitApp {
             .and_then(|document| document.result_panel_default)
             .filter(|panel| (0..=2).contains(panel))
             .unwrap_or(0);
+        self.clear_result_ir_scroll_input();
     }
 
     pub(super) fn refresh_result_favorite_chart(&mut self) {

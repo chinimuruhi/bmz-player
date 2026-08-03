@@ -28,6 +28,7 @@ fn mz_select_result_uses_runtime_decisions_and_draws_note_graphs() {
             (421, 1),
             (422, 1),
         ]),
+        option_values: BTreeMap::from([(51, true)]),
         ..LuaLoadRuntimeState::default()
     };
     let decoded = decode_beatoraja_skin_with_options_and_runtime_state(
@@ -38,6 +39,8 @@ fn mz_select_result_uses_runtime_decisions_and_draws_note_graphs() {
         &runtime_state,
     )
     .expect("decode mz-select result skin with runtime result values");
+
+    assert!(decoded.document.slider.iter().any(|slider| slider.slider_type == 8));
 
     let timing = decoded
         .document

@@ -97,6 +97,7 @@ fn luxe_flat_result_decodes_local_panel_state_and_tab_actions() {
     .expect("unmodified Luxe Flat result should decode through the BMZ loader");
 
     assert_eq!(loaded.document.result_panel_default, Some(2));
+    assert!(loaded.document.slider.iter().any(|slider| slider.slider_type == 8));
     assert_eq!(
         loaded
             .document

@@ -254,6 +254,7 @@ impl WinitApp {
                 result_key7_held: false,
                 result_gauge_graph_type: GaugeType::Normal as i32,
                 result_panel: 0,
+                result_ir_scroll: ResultIrScrollRuntime::default(),
             },
             jobs: AppJobs {
                 table_fetch,

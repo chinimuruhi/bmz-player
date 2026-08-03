@@ -17,6 +17,7 @@ impl WinitApp {
         self.result.result_exit = None;
         self.result.result_key5_held = false;
         self.result.result_key7_held = false;
+        self.clear_result_ir_scroll_input();
         self.clear_play_meta_image_state();
         // リザルト画面を抜けたら、まだ鳴っていても余韻再生を止める。
         self.audio.draining_audio = None;

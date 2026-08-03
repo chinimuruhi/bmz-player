@@ -174,6 +174,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     self.clear_select_hold();
                     self.reset_select_analog_scroll();
                     self.reset_play_analog_scroll();
+                    self.clear_result_ir_scroll_input();
                     self.clear_play_control_holds();
                 }
             }
@@ -206,7 +207,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let input_start = Instant::now();
                 self.poll_gamepad_events();
                 self.advance_select_hold_move();
+                self.advance_result_ir_scroll_hold();
                 self.advance_select_analog_scroll();
+                self.advance_result_ir_analog_scroll();
                 let input_us = instant_elapsed_us_u64(input_start);
                 let background_start = Instant::now();
                 self.poll_chart_bga_texture_load();

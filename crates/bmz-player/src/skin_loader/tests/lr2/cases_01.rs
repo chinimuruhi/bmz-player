@@ -25,6 +25,7 @@ fn wmii_result_decodes_with_virtual_io_and_graph_default() {
     .expect("unmodified WMII result should decode through the BMZ loader");
 
     assert_eq!(loaded.document.result_panel_default, Some(2));
+    assert!(loaded.document.slider.iter().any(|slider| slider.slider_type == 8));
     assert_eq!(
         loaded
             .document
