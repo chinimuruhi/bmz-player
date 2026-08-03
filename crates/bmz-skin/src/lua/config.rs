@@ -35,40 +35,6 @@ pub(super) fn skin_config_options_from_header(
     result
 }
 
-/// 無効な destination が Lua 評価時にも座標を要求するスキン向けの退避値。
-/// property ごとに末尾の選択肢を採用し、通常の選択で初期化されなかった optional
-/// layout を構築できるようにする。呼び出し元は描画用の有効 op を元選択で上書きする。
-pub(super) fn fallback_skin_config_options(
-    header: &JsonValue,
-    selected_options: &BTreeMap<String, i64>,
-) -> BTreeMap<String, i64> {
-    let mut fallback = selected_options.clone();
-    let Some(properties) = header.get("property").and_then(JsonValue::as_array) else {
-        return fallback;
-    };
-
-    for property in properties {
-        let Some(name) = property.get("name").and_then(JsonValue::as_str) else {
-            continue;
-        };
-        let Some(op) = property
-            .get("item")
-            .and_then(JsonValue::as_array)
-            .and_then(|items| items.last())
-            .and_then(|item| item.get("op"))
-            .and_then(json_integer)
-        else {
-            continue;
-        };
-        fallback.insert(name.to_string(), op);
-    }
-    fallback
-}
-
-pub(super) fn lua_nil_arithmetic_error(error: &mlua::Error) -> bool {
-    error.to_string().contains("attempt to perform arithmetic on a nil value")
-}
-
 pub(super) fn option_value_to_op(items: &[JsonValue], value: &str) -> Option<i64> {
     if let Ok(op) = value.parse::<i64>() {
         return items

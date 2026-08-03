@@ -269,6 +269,5 @@ pub(super) fn lua_table_to_json(
         );
     }
     repair_result_table_title_text(path, &mut object);
-    repair_result_course_title_text(path, &mut object);
     Ok(JsonValue::Object(object))
 }

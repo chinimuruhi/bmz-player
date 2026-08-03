@@ -12,7 +12,7 @@
     { "id": "result_label", "constantText": "RESULT", "size": 24 },
     { "id": "result_title", "ref": 12, "size": 30, "overflow": 1 },
     { "id": "result_artist", "ref": 16, "size": 18, "overflow": 1 },
-    { "id": "difficulty_name", "size": 18, "overflow": 1 },
+    { "id": "difficulty_name", "value_expr": "bmz:difficulty_name", "size": 18, "overflow": 1 },
     { "id": "result_table", "ref": 1003, "size": 16, "overflow": 1 },
     { "id": "result_level_label", "constantText": "LEVEL", "size": 12 },
     { "id": "result_level", "numberRef": 96, "size": 28 },

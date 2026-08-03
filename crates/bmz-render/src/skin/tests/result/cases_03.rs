@@ -302,7 +302,7 @@ fn format_rm_skin_course_table_text_matches_lua_branches() {
 }
 
 #[test]
-fn skin_state_text_course_table_uses_value_expr_and_table_id() {
+fn skin_state_text_course_table_requires_value_expr() {
     use crate::snapshot::CourseStageMarker;
 
     let state = SkinTextState {
@@ -321,11 +321,11 @@ fn skin_state_text_course_table_uses_value_expr_and_table_id() {
     assert_eq!(skin_state_text(&by_expr, &state), "Insane > ★12");
 
     let by_id = SkinTextDef { id: "table".to_string(), ..SkinTextDef::default() };
-    assert_eq!(skin_state_text(&by_id, &state), "Insane > ★12");
+    assert_eq!(skin_state_text(&by_id, &state), "");
 
     let course_state =
         SkinTextState { course_stage: Some(CourseStageMarker::Stage1), ..state.clone() };
-    assert_eq!(skin_state_text(&by_id, &course_state), "COURSE : STAGE 1");
+    assert_eq!(skin_state_text(&by_id, &course_state), "");
 
     let by_ref = |ref_id| SkinTextDef { ref_id, ..SkinTextDef::default() };
     assert_eq!(skin_state_text(&by_ref(1001), &state), "Insane");

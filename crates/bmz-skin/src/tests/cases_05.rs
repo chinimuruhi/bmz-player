@@ -468,58 +468,6 @@ fn lua_skin_infers_rm_skin_score_diff_draw() {
 }
 
 #[test]
-fn lua_skin_inherits_end_of_note_timer_for_duplicate_shadow_layer() {
-    let root = unique_test_dir("bmz-skin-eon-shadow");
-    fs::create_dir_all(&root).unwrap();
-    fs::write(
-        root.join("play7.luaskin"),
-        r#"
-            return {
-                type = 0,
-                source = {
-                    { id = "system", path = "system.png" },
-                },
-                image = {
-                    { id = "eon", src = "system", x = 0, y = 0, w = 390, h = 35 },
-                },
-                destination = {
-                    {
-                        id = "eon",
-                        draw = function() return true end,
-                        dst = {{ x = 693, y = 522, w = 390, h = 35, r = 64, g = 64, b = 64 }},
-                    },
-                    {
-                        id = "eon",
-                        timer = 143,
-                        dst = {{ x = 693, y = 522, w = 390, h = 35 }},
-                    },
-                },
-            }
-            "#,
-    )
-    .unwrap();
-
-    let loaded = load_lua_skin(
-        &root.join("play7.luaskin"),
-        SkinKind::Play,
-        &BTreeMap::new(),
-        &BTreeMap::new(),
-    )
-    .unwrap();
-    let timers: Vec<_> = loaded
-        .document
-        .destination
-        .iter()
-        .filter_map(|entry| match entry {
-            bmz_skin_document::DestinationListEntry::Single(destination) => destination.timer,
-            _ => None,
-        })
-        .collect();
-
-    assert_eq!(timers, vec![143, 143]);
-}
-
-#[test]
 fn rm_skin_play7_convert_warnings_baseline() {
     let skin_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/Rm-skin/play7main.luaskin");

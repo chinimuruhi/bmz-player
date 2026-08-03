@@ -55,6 +55,9 @@ pub(super) fn skin_state_text_with_draw_state(
             full_label(state.title, state.subtitle)
         );
     }
+    if text.value_expr.trim() == SKIN_EXPR_DIFFICULTY_NAME {
+        return state.difficulty_name.to_string();
+    }
     if !text.constant_text.is_empty() {
         return text.constant_text.clone();
     }
@@ -90,28 +93,8 @@ pub(super) fn skin_state_text_with_draw_state(
             state.table_text_fallback,
         );
     }
-    if text.id == "table" {
-        return format_rm_skin_course_table_text(
-            state.course_stage,
-            state.table_text_primary,
-            state.table_text_secondary,
-            state.table_text_fallback,
-        );
-    }
     if text.id.contains("bartext") {
         return state.bar_text.to_string();
-    }
-    if text.id == "table_level" {
-        return state.table_level.to_string();
-    }
-    if text.id == "difficulty" || text.id == "difficulty_name" {
-        return state.difficulty_name.to_string();
-    }
-    if text.id == "level" || text.id == "play_level" {
-        return state.play_level.to_string();
-    }
-    if matches!(text.id.as_str(), "grade_diff" | "gradediff" | "dj_level_diff") {
-        return state.grade_diff.to_string();
     }
     match text.id.as_str() {
         "bmz_select_arrange" => return state.select_arrange.to_string(),

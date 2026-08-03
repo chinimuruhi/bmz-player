@@ -232,6 +232,26 @@ fn skin_state_text_maps_string_refs() {
     // Unknown ref → empty
     assert_eq!(skin_state_text(&make_text(99), &state), "");
 
+    let difficulty = SkinTextDef {
+        id: "difficulty_name".to_string(),
+        value_expr: SKIN_EXPR_DIFFICULTY_NAME.to_string(),
+        ..SkinTextDef::default()
+    };
+    assert_eq!(
+        skin_state_text(
+            &difficulty,
+            &SkinTextState { difficulty_name: "ANOTHER", ..SkinTextState::default() },
+        ),
+        "ANOTHER"
+    );
+    assert_eq!(
+        skin_state_text(
+            &SkinTextDef { id: "difficulty_name".to_string(), ..SkinTextDef::default() },
+            &SkinTextState { difficulty_name: "ANOTHER", ..SkinTextState::default() },
+        ),
+        ""
+    );
+
     let m_select_bar_text =
         SkinTextDef { id: "default_songlist2_bartext".to_string(), ..SkinTextDef::default() };
     assert_eq!(

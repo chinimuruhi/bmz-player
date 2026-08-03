@@ -248,7 +248,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             let Some(source) = resolve_document_source(sources, &image.src) else {
                 return Some(None);
             };
-            let pixel_rect = skin_image_pixel_rect(image, images);
+            let pixel_rect = skin_image_pixel_rect(image);
             let mut uv = skin_image_texture_region_for_state(
                 image,
                 source.source_size,
@@ -389,7 +389,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             let Some(source) = resolve_document_source(sources, &image.src) else {
                 return Some(None);
             };
-            let pixel_rect = skin_image_pixel_rect(image, images);
+            let pixel_rect = skin_image_pixel_rect(image);
             let (rect, uv) = stretch_skin_image_geometry(
                 destination.stretch,
                 normalize_skin_frame_rect(frame, self.w, self.h),
@@ -459,7 +459,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                     return None;
                 }
                 let source = resolve_document_source(sources, &image.src)?;
-                let pixel_rect = skin_image_pixel_rect(image, images);
+                let pixel_rect = skin_image_pixel_rect(image);
                 let mut uv = skin_image_texture_region_for_state(
                     image,
                     source.source_size,

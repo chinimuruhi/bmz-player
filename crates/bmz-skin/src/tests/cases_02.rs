@@ -98,7 +98,7 @@ fn lua_skin_main_state_offset_exposes_load_time_values_by_id() {
 }
 
 #[test]
-fn lua_skin_runtime_stub_treats_normal_play_as_autoplay_off() {
+fn lua_skin_uses_explicit_play_mode_options() {
     let root = unique_test_dir("bmz-skin-lua");
     fs::create_dir_all(&root).unwrap();
     fs::write(
@@ -121,9 +121,23 @@ fn lua_skin_runtime_stub_treats_normal_play_as_autoplay_off() {
         )
         .unwrap();
 
-    let loaded =
+    let unresolved =
         load_lua_skin_value(&root.join("play7.luaskin"), &BTreeMap::new(), &BTreeMap::new())
             .unwrap();
+    assert_eq!(unresolved.value["graph"].as_array().map(Vec::len), Some(0));
+    assert_eq!(unresolved.value["image"].as_array().map(Vec::len), Some(0));
+
+    let runtime_state = LuaLoadRuntimeState {
+        option_values: BTreeMap::from([(32, true), (33, false)]),
+        ..LuaLoadRuntimeState::default()
+    };
+    let loaded = load_lua_skin_value_with_runtime_state(
+        &root.join("play7.luaskin"),
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &runtime_state,
+    )
+    .unwrap();
 
     assert_eq!(loaded.value["graph"][0]["id"], "score");
     assert_eq!(loaded.value["image"].as_array().map(Vec::len), Some(0));

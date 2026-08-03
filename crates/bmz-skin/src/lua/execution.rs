@@ -75,83 +75,51 @@ pub(super) fn execute_lua_skin(
             && !warning.starts_with("mixed lua table converted to object at ")
     });
 
-    // Lua スキンには、無効な `op` を持つ destination でも Lua の table 構築時に
-    // 座標を評価するものがある。選択中の property ではその座標が初期化されない場合、
-    // 最終的には描画されない destination でも nil 算術でロード全体が失敗してしまう。
-    // その場合だけ各 property の末尾選択肢で再評価する。描画時の有効 op は呼び出し側が
-    // 元の選択値から設定するため、この再試行で無効 destination が表示されることはない。
-    let fallback_skin_options = fallback_skin_config_options(&header_json, &skin_options);
-    let mut use_fallback_options = false;
-    let (mut json, dependencies, main_state_probe, result_panel_default, scene_audio_actions) = loop {
-        let active_skin_options =
-            if use_fallback_options { &fallback_skin_options } else { &skin_options };
-        let lua = Lua::new();
-        let instruction_budget = install_instruction_limit(&lua);
-        let dependencies = Arc::new(Mutex::new(SkinLoadDependencies::default()));
-        let main_state_probe = install_sandbox(
-            &lua,
-            path_context,
-            options,
-            Some(active_skin_options),
-            &skin_files,
-            &skin_file_dependency_names_from_header(&header_json),
-            &skin_offsets,
-            &resolved_runtime_state,
-            virtual_io_files,
-            Some(dependencies.clone()),
-        )?;
-        let value = match lua
-            .load(&source)
-            .set_name(input.to_string_lossy().as_ref())
-            .eval::<Value>()
-        {
-            Ok(value) => value,
-            Err(error)
-                if !use_fallback_options
-                    && fallback_skin_options != skin_options
-                    && lua_nil_arithmetic_error(&error) =>
-            {
-                use_fallback_options = true;
-                warnings.push(
-                    "retried lua skin with fallback property options after nil arithmetic in an inactive destination"
-                        .to_string(),
-                );
-                continue;
-            }
-            Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to execute lua skin: {}", input.display()));
-            }
-        };
-        let scene_audio_actions = {
-            let mut probe =
-                main_state_probe.lock().map_err(|_| anyhow!("main_state probe lock poisoned"))?;
-            let actions = probe.take_audio_actions();
-            probe.capture_audio_actions = false;
-            actions
-        };
-        instruction_budget.begin_inference();
-        let json = lua_value_to_json(
-            &lua,
-            value,
-            "$",
-            0,
-            &mut warnings,
-            &main_state_probe,
-            &instruction_budget,
-            &mut table_budget,
-        )?;
-        let result_panel_default =
-            lua.globals().get::<Value>("Expand_op").ok().and_then(lua_result_panel_value).or_else(
-                || main_state_probe.lock().ok().and_then(|probe| probe.result_panel_default),
-            );
-        break (json, dependencies, main_state_probe, result_panel_default, scene_audio_actions);
+    let lua = Lua::new();
+    let instruction_budget = install_instruction_limit(&lua);
+    let dependencies = Arc::new(Mutex::new(SkinLoadDependencies::default()));
+    let main_state_probe = install_sandbox(
+        &lua,
+        path_context,
+        options,
+        Some(&skin_options),
+        &skin_files,
+        &skin_file_dependency_names_from_header(&header_json),
+        &skin_offsets,
+        &resolved_runtime_state,
+        virtual_io_files,
+        Some(dependencies.clone()),
+    )?;
+    let value = lua
+        .load(&source)
+        .set_name(input.to_string_lossy().as_ref())
+        .eval::<Value>()
+        .with_context(|| format!("failed to execute lua skin: {}", input.display()))?;
+    let scene_audio_actions = {
+        let mut probe =
+            main_state_probe.lock().map_err(|_| anyhow!("main_state probe lock poisoned"))?;
+        let actions = probe.take_audio_actions();
+        probe.capture_audio_actions = false;
+        actions
     };
+    instruction_budget.begin_inference();
+    let mut json = lua_value_to_json(
+        &lua,
+        value,
+        "$",
+        0,
+        &mut warnings,
+        &main_state_probe,
+        &instruction_budget,
+        &mut table_budget,
+    )?;
+    let result_panel_default = lua
+        .globals()
+        .get::<Value>("Expand_op")
+        .ok()
+        .and_then(lua_result_panel_value)
+        .or_else(|| main_state_probe.lock().ok().and_then(|probe| probe.result_panel_default));
     record_static_skin_config_option_dependencies(&source, &skin_options, &dependencies);
-    if use_fallback_options && let Ok(mut dependencies) = dependencies.lock() {
-        // fallback 側の Lua 分岐で収集した依存関係は元選択の cache key に使えない。
-        dependencies.opaque = true;
-    }
 
     if let JsonValue::Object(ref mut root) = json {
         postprocess_lua_skin_json(root, &mut warnings);
@@ -265,8 +233,6 @@ pub(super) fn execute_lua_skin(
         .map_err(|_| anyhow!("main_state probe lock poisoned"))?
         .runtime_draw_paths
         .clone();
-    let active_skin_options =
-        if use_fallback_options { &fallback_skin_options } else { &skin_options };
     let lua_runtime = if runtime_draw_paths.is_empty() {
         None
     } else {
@@ -275,7 +241,7 @@ pub(super) fn execute_lua_skin(
             path_context,
             source: &source,
             options,
-            skin_config_options: active_skin_options,
+            skin_config_options: &skin_options,
             skin_files: &skin_files,
             skin_file_dependency_names: &skin_file_dependency_names_from_header(&header_json),
             skin_offsets: &skin_offsets,

@@ -284,7 +284,7 @@ fn ecfn_play7_pre_notes_judge_line_renders_in_front_when_available() {
 }
 
 #[test]
-fn ecfn_play14_judge1_combo_is_right_of_judge_when_available() {
+fn ecfn_play14_judge1_combo_is_right_of_judge_with_score_graph_when_available() {
     use std::collections::HashMap;
 
     use bmz_core::lane::Lane;
@@ -298,8 +298,10 @@ fn ecfn_play14_judge1_combo_is_right_of_judge_when_available() {
     if !skin_path.is_file() {
         return;
     }
-    let decoded = decode_beatoraja_skin(&skin_path, SkinKind::Play)
-        .expect("ECFN play14 should decode with default options");
+    let options = BTreeMap::from([("スコアグラフ".to_string(), "On".to_string())]);
+    let decoded =
+        decode_beatoraja_skin_with_options(&skin_path, SkinKind::Play, &options, &BTreeMap::new())
+            .expect("ECFN play14 should decode when its score graph layout is enabled");
     let judge0 = decoded.document.judge.iter().find(|judge| judge.id == "judge").expect("judge");
     let judge1 = decoded.document.judge.iter().find(|judge| judge.id == "judge1").expect("judge1");
     assert_eq!(judge0.index, 0);

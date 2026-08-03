@@ -37,20 +37,7 @@ pub(super) fn skin_expr_references_lane_cover_number(expr: &str) -> bool {
         || (1312..=1327).any(|ref_id| expr.contains(&format!("number({ref_id})")))
 }
 
-/// Starseeker 閉店の `src = 0, x = 0, y = 0` sentinel は `system` の黒 1px
-/// (`black` image と同じ UV) を指す。ECFN の判定ラインなど、`src = 0` でも
-/// 明示的な crop 座標を持つ画像はそのまま扱う。
-pub(super) fn skin_image_pixel_rect(
-    image: &SkinImageDef,
-    images: &HashMap<&str, &SkinImageDef>,
-) -> (i32, i32, i32, i32) {
-    if image.src == "0"
-        && image.x == 0
-        && image.y == 0
-        && let Some(black) = images.get("black")
-    {
-        return (black.x, black.y, black.w, black.h);
-    }
+pub(super) fn skin_image_pixel_rect(image: &SkinImageDef) -> (i32, i32, i32, i32) {
     (image.x, image.y, image.w, image.h)
 }
 

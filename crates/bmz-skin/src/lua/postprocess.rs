@@ -227,7 +227,6 @@ pub(super) fn postprocess_lua_skin_json(
     warnings: &mut Vec<String>,
 ) {
     repair_malformed_destination_ops(root, warnings);
-    repair_select_score_rate_punctuation(root);
     let repaired = repair_keybeam_destination_draws(root);
     warnings.retain(|warning| {
         !repaired.iter().any(|index| {

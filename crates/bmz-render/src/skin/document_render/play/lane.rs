@@ -53,7 +53,7 @@ macro_rules! skin_document_render_play_lane_methods {
                 let Some(source) = resolve_document_source(sources, &image.src) else {
                     continue;
                 };
-                let pixel_rect = skin_image_pixel_rect(image, &images);
+                let pixel_rect = skin_image_pixel_rect(image);
                 let (rect, uv) = stretch_skin_image_geometry(
                     destination.stretch,
                     normalize_skin_frame_rect(frame, self.w, self.h),

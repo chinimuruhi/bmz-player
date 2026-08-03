@@ -141,6 +141,7 @@
     },
     {
       "id": "difficulty_name",
+      "value_expr": "bmz:difficulty_name",
       "size": 18,
       "overflow": 1
     },

@@ -325,7 +325,6 @@ pub fn load_lua_skin_header_value_with_path_context(
 fn normalize_lua_skin_document(value: JsonValue) -> JsonValue {
     let value = bmz_skin_document::normalize_lua_json_skin_integer_numbers(value);
     let value = normalize_lua_skin_category_map(value);
-    let value = normalize_lua_end_of_note_shadow_destinations(value);
     let value = normalize_lua_skin_offset_map(value);
     let value = normalize_lua_skin_category_labels(value);
     normalize_lua_skin_offset_flags(value)
@@ -425,95 +424,6 @@ fn normalize_lua_skin_offset_flags(value: JsonValue) -> JsonValue {
 /// array of offset definitions.
 fn normalize_lua_skin_offset_map(value: JsonValue) -> JsonValue {
     normalize_lua_skin_offset_map_for_key(None, value)
-}
-
-fn normalize_lua_end_of_note_shadow_destinations(value: JsonValue) -> JsonValue {
-    let JsonValue::Object(mut map) = value else {
-        return value;
-    };
-    let Some(JsonValue::Array(mut destinations)) = map.remove("destination") else {
-        return JsonValue::Object(map);
-    };
-
-    let end_of_note_destinations = destinations
-        .iter()
-        .filter_map(|destination| {
-            let JsonValue::Object(destination) = destination else {
-                return None;
-            };
-            let timer = destination.get("timer").and_then(JsonValue::as_i64)?;
-            if !matches!(timer, 143 | 144) {
-                return None;
-            }
-            Some((
-                destination.get("id").and_then(JsonValue::as_str)?.to_string(),
-                single_dst_geometry(destination)?,
-                timer,
-            ))
-        })
-        .collect::<Vec<_>>();
-
-    if end_of_note_destinations.is_empty() {
-        map.insert("destination".to_string(), JsonValue::Array(destinations));
-        return JsonValue::Object(map);
-    }
-
-    for destination in &mut destinations {
-        let JsonValue::Object(destination) = destination else {
-            continue;
-        };
-        if destination.contains_key("timer")
-            || destination
-                .get("draw")
-                .and_then(JsonValue::as_str)
-                .is_some_and(json_draw_is_restrictive)
-            || destination.get("op").is_some_and(json_array_has_entries)
-        {
-            continue;
-        }
-        let Some(id) = destination.get("id").and_then(JsonValue::as_str) else {
-            continue;
-        };
-        let Some(geometry) = single_dst_geometry(destination) else {
-            continue;
-        };
-        let Some((_, _, timer)) = end_of_note_destinations
-            .iter()
-            .find(|(end_id, end_geometry, _)| end_id == id && *end_geometry == geometry)
-        else {
-            continue;
-        };
-        destination
-            .insert("timer".to_string(), JsonValue::Number(serde_json::Number::from(*timer)));
-    }
-
-    map.insert("destination".to_string(), JsonValue::Array(destinations));
-    JsonValue::Object(map)
-}
-
-fn single_dst_geometry(destination: &JsonMap<String, JsonValue>) -> Option<(i64, i64, i64, i64)> {
-    let dst = destination.get("dst")?.as_array()?;
-    if dst.len() != 1 {
-        return None;
-    }
-    let JsonValue::Object(frame) = &dst[0] else {
-        return None;
-    };
-    Some((
-        frame.get("x").and_then(JsonValue::as_i64).unwrap_or(0),
-        frame.get("y").and_then(JsonValue::as_i64).unwrap_or(0),
-        frame.get("w").and_then(JsonValue::as_i64).unwrap_or(0),
-        frame.get("h").and_then(JsonValue::as_i64).unwrap_or(0),
-    ))
-}
-
-fn json_array_has_entries(value: &JsonValue) -> bool {
-    value.as_array().is_some_and(|entries| !entries.is_empty())
-}
-
-fn json_draw_is_restrictive(draw: &str) -> bool {
-    let draw = draw.trim();
-    !draw.is_empty() && draw != "number(0) >= 0"
 }
 
 fn normalize_lua_skin_offset_map_for_key(key: Option<&str>, value: JsonValue) -> JsonValue {

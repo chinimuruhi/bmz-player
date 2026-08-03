@@ -463,11 +463,7 @@ impl MainStateProbe {
 
     pub(super) fn option(&mut self, option_id: i32) -> bool {
         if matches!(self.mode, MainStateProbeMode::RuntimeStub) {
-            let value = self
-                .option_values
-                .get(&option_id)
-                .copied()
-                .unwrap_or_else(|| lua_runtime_stub_option(option_id));
+            let value = self.option_values.get(&option_id).copied().unwrap_or(false);
             self.record_load_time_option_dependency(option_id, value);
             return value;
         }

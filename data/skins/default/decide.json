@@ -11,7 +11,7 @@
     { "id": "decide_ready", "constantText": "GET READY", "size": 42 },
     { "id": "decide_title", "ref": 12, "size": 34, "overflow": 1 },
     { "id": "decide_artist", "ref": 16, "size": 20, "overflow": 1 },
-    { "id": "difficulty_name", "size": 22, "overflow": 1 },
+    { "id": "difficulty_name", "value_expr": "bmz:difficulty_name", "size": 22, "overflow": 1 },
     { "id": "decide_level_label", "constantText": "LEVEL", "size": 13 },
     { "id": "decide_level", "numberRef": 96, "size": 34 },
     { "id": "decide_bpm_label", "constantText": "BPM MIN / MAX", "size": 13 },

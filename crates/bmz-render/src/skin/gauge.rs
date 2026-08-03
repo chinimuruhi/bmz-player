@@ -143,18 +143,11 @@ pub(super) fn skin_gauge_part_rect(rect: Rect, parts: i32, part: i32, reverse: b
     }
 }
 
-/// Starseeker 等の閉店 Lua は `src = "bg"` / `src = 0` と書くが、実体は `system.png`。
 pub(super) fn resolve_document_source<'a>(
     sources: &'a HashMap<String, SkinDocumentTexture>,
     src: &str,
 ) -> Option<&'a SkinDocumentTexture> {
-    if let Some(texture) = sources.get(src) {
-        return Some(texture);
-    }
-    match src {
-        "bg" | "0" => sources.get("system"),
-        _ => None,
-    }
+    sources.get(src)
 }
 
 pub(super) fn destination_render_layer<'a>(

@@ -1,14 +1,10 @@
 use super::*;
 
-/// Starseeker 等で `groove_frame_iidx` destination が `groove_frame` image を共有する。
 pub(super) fn skin_image_for_destination_id<'a>(
     destination_id: &str,
     images: &'a HashMap<&str, &SkinImageDef>,
 ) -> Option<&'a SkinImageDef> {
-    images
-        .get(destination_id)
-        .copied()
-        .or_else(|| destination_id.strip_suffix("_iidx").and_then(|base| images.get(base)).copied())
+    images.get(destination_id).copied()
 }
 
 pub(super) fn beatoraja_direct_image_source_id(destination_id: &str) -> Option<String> {

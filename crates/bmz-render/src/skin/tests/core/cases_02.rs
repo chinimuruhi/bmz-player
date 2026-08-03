@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn static_render_items_resolve_iidx_destination_with_base_image() {
+fn static_render_items_require_an_exact_destination_image_id() {
     let document: SkinDocument = serde_json::from_str(
             r#"
             {
@@ -32,8 +32,7 @@ fn static_render_items_resolve_iidx_destination_with_base_image() {
     let (behind, front, _) =
         document.static_render_items_split(&sources, &state, &SkinTextState::default());
     let items = behind.into_iter().chain(front).collect::<Vec<_>>();
-    assert_eq!(items.len(), 1);
-    assert!(matches!(items[0], SkinRenderItem::Image { .. }));
+    assert!(items.is_empty());
 }
 
 #[test]
@@ -666,7 +665,7 @@ fn skin_document_resolves_special_black_fade_rect() {
 }
 
 #[test]
-fn src_zero_image_uses_black_pixel_crop() {
+fn src_zero_image_keeps_its_explicit_pixel_crop() {
     let document: SkinDocument = serde_json::from_str(
             r#"
             {
@@ -687,9 +686,8 @@ fn src_zero_image_uses_black_pixel_crop() {
         .unwrap();
     let images = document.image_map();
     let image = images.get("7").unwrap();
-    let black = images.get("black").unwrap();
-    let rect = skin_image_pixel_rect(image, &images);
-    assert_eq!(rect, (black.x, black.y, black.w, black.h));
+    let rect = skin_image_pixel_rect(image);
+    assert_eq!(rect, (0, 0, 8, 8));
 }
 
 #[test]
@@ -711,7 +709,7 @@ fn src_zero_with_explicit_crop_keeps_pixel_rect() {
     .unwrap();
     let images = document.image_map();
     let image = images.get("15").unwrap();
-    let rect = skin_image_pixel_rect(image, &images);
+    let rect = skin_image_pixel_rect(image);
     assert_eq!(rect, (16, 0, 8, 8));
 }
 
@@ -763,7 +761,7 @@ fn failed_close_black_fades_in_over_fullscreen() {
             "#,
     )
     .unwrap();
-    let sources = mock_source("system", 1920.0, 1080.0);
+    let sources = mock_source("bg", 1920.0, 1080.0);
 
     let inactive = document.static_image_render_items(
         &sources,

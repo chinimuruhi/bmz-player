@@ -26,7 +26,6 @@ fn judge_region_state(region: usize, ms: i32, image_index: usize) -> JudgeRegion
     }
 }
 
-/// Starseeker 閉店の `black` 相当: `src = "bg"` を `system` に解決し、timer 3 で暗転フェード。
 fn mock_source(id: &str, width: f32, height: f32) -> HashMap<String, SkinDocumentTexture> {
     let mut map = HashMap::new();
     map.insert(

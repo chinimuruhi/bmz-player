@@ -14,14 +14,6 @@ pub(super) fn lua_runtime_stub_number(ref_id: i32) -> i32 {
     }
 }
 
-pub(super) fn lua_runtime_stub_option(option_id: i32) -> bool {
-    match option_id {
-        // OPTION_AUTOPLAYOFF. Some Lua play skins build their score graph only for normal play.
-        32 => true,
-        _ => false,
-    }
-}
-
 pub(super) fn create_main_state_stub(
     lua: &Lua,
     probe: Arc<Mutex<MainStateProbe>>,
