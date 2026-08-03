@@ -193,23 +193,26 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         ui.label("Key");
                         ui.monospace(&provider_key_text);
                     });
-                    ui.horizontal(|ui| {
-                        ui.label(if is_rian {
-                            tr!(text, "profile-ir-login-id")
-                        } else {
-                            tr!(text, "profile-ir-email")
+                    let credentials_ready = {
+                        let form = ir_login.provider_form_mut(index);
+                        ui.horizontal(|ui| {
+                            ui.label(if is_rian {
+                                tr!(text, "profile-ir-login-id")
+                            } else {
+                                tr!(text, "profile-ir-email")
+                            });
+                            ui.text_edit_singleline(&mut form.email);
                         });
-                        ui.text_edit_singleline(&mut ir_login.email);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(tr!(text, "profile-ir-password"));
-                        ui.add(egui::TextEdit::singleline(&mut ir_login.password).password(true));
-                    });
+                        ui.horizontal(|ui| {
+                            ui.label(tr!(text, "profile-ir-password"));
+                            ui.add(egui::TextEdit::singleline(&mut form.password).password(true));
+                        });
+                        !form.email.is_empty() && !form.password.is_empty()
+                    };
                     ui.horizontal(|ui| {
                         let can_login = !ir_login.busy
                             && normalized_ir_base_url(&provider.base_url).is_some()
-                            && !ir_login.email.is_empty()
-                            && !ir_login.password.is_empty();
+                            && credentials_ready;
                         if ui
                             .add_enabled(
                                 can_login,
@@ -218,6 +221,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                             .clicked()
                         {
                             ir_login.start_login(
+                                index,
                                 profile_root.to_path_buf(),
                                 provider.provider.clone(),
                                 provider.base_url.clone(),
@@ -265,8 +269,11 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         }
                     });
                     ui.horizontal(|ui| {
-                        let busy =
-                            ir_device_key.busy_provider.as_deref() == provider_key.as_deref();
+                        let busy = ir_device_key.is_busy_for(
+                            provider_key.as_deref(),
+                            &provider.provider,
+                            &provider.base_url,
+                        );
                         let can_rotate = !busy
                             && !provider.base_url.is_empty()
                             && provider_key.is_some()
@@ -346,6 +353,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
             }
             if let Some(index) = remove_index {
                 profile.ir.providers.remove(index);
+                ir_login.remove_provider_form(index);
             }
             if ui.button(tr!(text, "profile-ir-add-provider")).clicked() {
                 profile.ir.providers.push(IrProviderConfig {

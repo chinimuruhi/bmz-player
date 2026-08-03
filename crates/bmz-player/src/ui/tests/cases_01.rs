@@ -36,6 +36,104 @@ fn applying_ir_provider_presets_writes_canonical_values() {
 }
 
 #[test]
+fn ir_login_forms_keep_provider_credentials_independent() {
+    let mut state = IrLoginUiState::default();
+    {
+        let form = state.provider_form_mut(0);
+        form.email = "alice@example.com".to_string();
+        form.password = "alice-password".to_string();
+    }
+    {
+        let form = state.provider_form_mut(1);
+        form.email = "bob".to_string();
+        form.password = "bob-password".to_string();
+    }
+
+    assert_eq!(state.provider_form_mut(0).email, "alice@example.com");
+    assert_eq!(state.provider_form_mut(0).password, "alice-password");
+    assert_eq!(state.provider_form_mut(1).email, "bob");
+    assert_eq!(state.provider_form_mut(1).password, "bob-password");
+}
+
+#[test]
+fn ir_login_forms_follow_provider_removal() {
+    let mut state = IrLoginUiState::default();
+    state.provider_form_mut(0).email = "first".to_string();
+    state.provider_form_mut(1).email = "second".to_string();
+    state.busy_form_index = Some(1);
+
+    state.remove_provider_form(0);
+
+    assert_eq!(state.provider_form_mut(0).email, "second");
+    assert_eq!(state.busy_form_index, Some(0));
+}
+
+#[test]
+fn ir_device_key_idle_state_does_not_mark_unconfigured_provider_busy() {
+    let state = IrDeviceKeyUiState::default();
+
+    assert!(!state.is_busy_for(None, "bmz", "https://example.com"));
+}
+
+#[test]
+fn ir_device_key_busy_state_matches_only_its_provider_target() {
+    let state = IrDeviceKeyUiState {
+        busy_provider: Some("bmz-dev".to_string()),
+        busy_target: Some(IrProviderUiTarget::new(
+            "bmz".to_string(),
+            "https://example.com".to_string(),
+        )),
+        ..IrDeviceKeyUiState::default()
+    };
+
+    assert!(state.is_busy_for(Some("bmz-dev"), "bmz", "https://example.com"));
+    assert!(!state.is_busy_for(None, "bmz", "https://example.com"));
+    assert!(!state.is_busy_for(Some("bmz-dev"), "bmz", "https://other.example.com"));
+}
+
+#[test]
+fn ir_login_channel_disconnect_clears_busy_state() {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    drop(sender);
+    let mut state = IrLoginUiState::default();
+    state.busy = true;
+    state.busy_form_index = Some(0);
+    state.busy_target =
+        Some(IrProviderUiTarget::new("bmz".to_string(), "https://example.com".to_string()));
+    state.receiver = Some(receiver);
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+
+    assert!(!state.poll(&mut profile, Localizer::new(AppLocale::En)));
+    assert!(!state.busy);
+    assert!(state.busy_form_index.is_none());
+    assert!(state.busy_target.is_none());
+    assert!(state.receiver.is_none());
+    assert!(state.message.as_ref().is_some_and(|message| !message.ok));
+}
+
+#[test]
+fn ir_device_key_channel_disconnect_clears_busy_state() {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    drop(sender);
+    let mut state = IrDeviceKeyUiState {
+        busy_provider: Some("bmz-dev".to_string()),
+        busy_target: Some(IrProviderUiTarget::new(
+            "bmz".to_string(),
+            "https://example.com".to_string(),
+        )),
+        receiver: Some(receiver),
+        ..IrDeviceKeyUiState::default()
+    };
+
+    state.poll(Localizer::new(AppLocale::En));
+
+    assert!(state.busy_provider.is_none());
+    assert!(state.busy_target.is_none());
+    assert!(state.receiver.is_none());
+    assert!(state.message.as_ref().is_some_and(|message| !message.ok));
+}
+
+#[test]
 fn cjk_font_definitions_keep_latin_first_and_preserve_face_indices() {
     use bmz_render::FontCoverage;
     use bmz_render::renderer::SystemFontData;

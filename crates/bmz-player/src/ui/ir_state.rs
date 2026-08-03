@@ -4,12 +4,18 @@
 /// 結果は channel 経由で次フレーム以降に反映する。
 #[derive(Default)]
 pub(super) struct IrLoginUiState {
-    pub(super) email: String,
-    pub(super) password: String,
+    provider_forms: Vec<IrLoginForm>,
     pub(super) busy: bool,
+    pub(super) busy_form_index: Option<usize>,
     pub(super) busy_target: Option<IrProviderUiTarget>,
     pub(super) message: Option<IrProviderUiMessage>,
     pub(super) receiver: Option<std::sync::mpsc::Receiver<Result<IrLoginOutcome, String>>>,
+}
+
+#[derive(Default)]
+pub(super) struct IrLoginForm {
+    pub(super) email: String,
+    pub(super) password: String,
 }
 
 #[derive(Default)]
@@ -81,12 +87,35 @@ pub(super) struct IrDeviceKeyOutcome {
 }
 
 impl IrDeviceKeyUiState {
+    pub(super) fn is_busy_for(
+        &self,
+        provider_key: Option<&str>,
+        provider: &str,
+        base_url: &str,
+    ) -> bool {
+        self.busy_provider
+            .as_deref()
+            .is_some_and(|busy_provider| Some(busy_provider) == provider_key)
+            && self.busy_target.as_ref().is_some_and(|target| target.matches(provider, base_url))
+    }
+
     pub(super) fn poll(&mut self, text: Localizer) {
         let Some(receiver) = &self.receiver else {
             return;
         };
-        let Ok(result) = receiver.try_recv() else {
-            return;
+        let result = match receiver.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(error @ std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.receiver = None;
+                self.busy_provider = None;
+                self.message = self.busy_target.take().map(|target| IrProviderUiMessage {
+                    target,
+                    ok: false,
+                    text: error.to_string(),
+                });
+                return;
+            }
         };
         self.receiver = None;
         let target = self.busy_target.take();
@@ -155,21 +184,59 @@ impl IrDeviceKeyUiState {
 }
 
 impl IrLoginUiState {
+    pub(super) fn provider_form_mut(&mut self, index: usize) -> &mut IrLoginForm {
+        if self.provider_forms.len() <= index {
+            self.provider_forms.resize_with(index + 1, IrLoginForm::default);
+        }
+        &mut self.provider_forms[index]
+    }
+
+    pub(super) fn remove_provider_form(&mut self, index: usize) {
+        if index < self.provider_forms.len() {
+            self.provider_forms.remove(index);
+        }
+        self.busy_form_index = self.busy_form_index.and_then(|busy_index| {
+            if busy_index == index {
+                None
+            } else if busy_index > index {
+                Some(busy_index - 1)
+            } else {
+                Some(busy_index)
+            }
+        });
+    }
+
     /// ログインタスクの完了を取り込み、成功時は provider 設定を更新する。
     /// profile 設定が更新された (保存が必要な) 場合に true を返す。
     pub(super) fn poll(&mut self, profile: &mut ProfileConfig, text: Localizer) -> bool {
         let Some(receiver) = &self.receiver else {
             return false;
         };
-        let Ok(result) = receiver.try_recv() else {
-            return false;
+        let result = match receiver.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(error @ std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.receiver = None;
+                self.busy = false;
+                self.busy_form_index = None;
+                self.message = self.busy_target.take().map(|target| IrProviderUiMessage {
+                    target,
+                    ok: false,
+                    text: error.to_string(),
+                });
+                return false;
+            }
         };
         self.receiver = None;
         self.busy = false;
+        let form_index = self.busy_form_index.take();
         let target = self.busy_target.take();
         match result {
             Ok(outcome) => {
-                self.password.clear();
+                if let Some(form) = form_index.and_then(|index| self.provider_forms.get_mut(index))
+                {
+                    form.password.clear();
+                }
                 self.message = Some(IrProviderUiMessage {
                     target: IrProviderUiTarget::new(
                         outcome.provider.clone(),
@@ -210,17 +277,22 @@ impl IrLoginUiState {
     /// ログインタスクを起動する。
     pub(super) fn start_login(
         &mut self,
+        form_index: usize,
         profile_root: std::path::PathBuf,
         provider: String,
         base_url: String,
     ) {
+        let Some(form) = self.provider_forms.get(form_index) else {
+            return;
+        };
+        let email = form.email.clone();
+        let password = form.password.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         self.receiver = Some(receiver);
         self.busy = true;
+        self.busy_form_index = Some(form_index);
         self.busy_target = Some(IrProviderUiTarget::new(provider.clone(), base_url.clone()));
         self.message = None;
-        let email = self.email.clone();
-        let password = self.password.clone();
         tokio::spawn(async move {
             let outcome = async {
                 let tokens = if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
