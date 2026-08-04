@@ -225,7 +225,7 @@ fn dst_if_value_uses_default_when_option_disabled() {
                 "source": [{ "id": "src", "path": "a.png" }],
                 "image": [{ "id": "img", "src": "src", "w": 10, "h": 10 }],
                 "destination": [
-                    { "id": "img", "dst": [
+                    { "id": "img", "loop": 500, "dst": [
                         { "if": [920], "value": { "time": 0, "x": 100, "y": 200, "w": 50, "h": 50 } },
                         { "time": 500 }
                     ]}

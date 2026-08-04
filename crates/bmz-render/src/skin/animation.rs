@@ -429,18 +429,17 @@ pub(super) fn resolve_destination_frame(
     let animations = flatten_dst_entries(&destination.dst, enabled_options);
     // `cycle` はアニメーション終端（最後のキーフレーム時刻）。
     let cycle = animations.iter().filter_map(|a| a.time).max().unwrap_or(0);
-    let elapsed_ms = match destination.loop_time {
+    let loop_point = destination.loop_time.unwrap_or(0);
+    let elapsed_ms = match loop_point {
         // loop:負値 → ループせず、終端を過ぎたら描画しない（READY やボム等の単発演出）。
-        Some(loop_point) if loop_point < 0 => {
+        loop_point if loop_point < 0 => {
             if elapsed_ms > cycle {
                 return None;
             }
             elapsed_ms
         }
-        // loop:0以上 → 終端到達後 loop_point 時刻へループバック。
-        Some(loop_point) => resolve_loop_elapsed(loop_point, elapsed_ms, cycle),
-        // loop 未指定 → ループなし。1回再生して最終フレームを保持する。
-        None => elapsed_ms,
+        // loop未指定または0以上 → 終端到達後 loop_point 時刻へループバック。
+        loop_point => resolve_loop_elapsed(loop_point, elapsed_ms, cycle),
     };
     let acc = destination_interpolation_acc_from_frames(&animations);
     let mut frame = ResolvedSkinFrame::default();
@@ -465,15 +464,15 @@ pub(super) fn resolve_single_destination_frame(
     state: &SkinDrawState,
 ) -> Option<ResolvedSkinFrame> {
     let cycle = animation.time.unwrap_or(0);
-    let elapsed_ms = match destination.loop_time {
-        Some(loop_point) if loop_point < 0 => {
+    let loop_point = destination.loop_time.unwrap_or(0);
+    let elapsed_ms = match loop_point {
+        loop_point if loop_point < 0 => {
             if elapsed_ms > cycle {
                 return None;
             }
             elapsed_ms
         }
-        Some(loop_point) => resolve_loop_elapsed(loop_point, elapsed_ms, cycle),
-        None => elapsed_ms,
+        loop_point => resolve_loop_elapsed(loop_point, elapsed_ms, cycle),
     };
     let mut frame = ResolvedSkinFrame::default();
     apply_skin_animation(&mut frame, &animation, state);

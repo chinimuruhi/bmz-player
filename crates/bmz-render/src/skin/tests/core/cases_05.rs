@@ -27,9 +27,18 @@ fn single_frame_destination_preserves_start_and_loop_semantics() {
     .unwrap();
 
     assert!(resolve_destination_frame(&destination, 999, &[], &SkinDrawState::default()).is_none());
-    let frame = resolve_destination_frame(&destination, 1000, &[], &SkinDrawState::default())
+    assert!(
+        resolve_destination_frame(&destination, 1000, &[], &SkinDrawState::default()).is_none()
+    );
+
+    let held: SkinDestinationDef = serde_json::from_str(
+        r#"{ "id": "flash", "loop": 1000, "dst": [{ "time": 1000, "x": 2, "y": 3, "w": 10, "h": 20 }] }"#,
+    )
+    .unwrap();
+    let frame = resolve_destination_frame(&held, 1000, &[], &SkinDrawState::default())
         .expect("single frame starts at its keyframe time");
     assert_eq!((frame.x, frame.y, frame.w, frame.h), (2, 3, 10, 20));
+    assert!(resolve_destination_frame(&held, 1001, &[], &SkinDrawState::default()).is_some());
 
     let disappearing: SkinDestinationDef = serde_json::from_str(
             r#"{ "id": "flash", "loop": -1, "dst": [{ "time": 1000, "x": 2, "y": 3, "w": 10, "h": 20 }] }"#,
@@ -41,10 +50,30 @@ fn single_frame_destination_preserves_start_and_loop_semantics() {
 }
 
 #[test]
+fn omitted_loop_restarts_destination_animation_from_zero() {
+    let destination: SkinDestinationDef = serde_json::from_str(
+        r#"{ "id": "rhythm", "timer": 140, "dst": [
+                { "time": 0, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "time": 1000, "x": 100 }
+            ]}"#,
+    )
+    .unwrap();
+
+    let before = resolve_destination_frame(&destination, 999, &[], &SkinDrawState::default())
+        .expect("animation should reach its final keyframe");
+    let restarted = resolve_destination_frame(&destination, 1000, &[], &SkinDrawState::default())
+        .expect("animation should restart at its first keyframe");
+
+    assert_eq!(before.x, 100);
+    assert_eq!(restarted.x, 0);
+}
+
+#[test]
 fn destination_frame_h_expr_resolves_fast_slow_breakdown_height() {
     let destination: SkinDestinationDef = serde_json::from_str(&format!(
         r#"{{
                 "id": "graph_r",
+                "loop": 1000,
                 "dst": [
                     {{ "time": 0, "x": 0, "y": 0, "w": 10, "h": 0 }},
                     {{ "time": 1000, "h_expr": "{}(422)" }}

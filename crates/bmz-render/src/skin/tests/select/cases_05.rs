@@ -286,7 +286,7 @@ fn judge_timer_elapsed_ms_selects_animation_frame() {
                 "source": [{ "id": 1, "path": "system.png" }],
                 "image": [{ "id": "panel", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 }],
                 "destination": [
-                    { "id": "panel", "timer": 46, "dst": [
+                    { "id": "panel", "timer": 46, "loop": 200, "dst": [
                         { "time": 0,   "x": 0,   "y": 0, "w": 10, "h": 10 },
                         { "time": 200, "x": 50,  "y": 0, "w": 10, "h": 10 }
                     ]}

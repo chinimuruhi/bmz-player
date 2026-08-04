@@ -18,11 +18,11 @@ fn static_image_cache_does_not_freeze_destination_animation() {
                     { "id": "background", "dst": [
                         { "time": 0, "x": 10, "y": 0, "w": 10, "h": 10 }
                     ]},
-                    { "id": "animated", "dst": [
+                    { "id": "animated", "loop": 100, "dst": [
                         { "time": 0, "x": 20, "y": 0, "w": 10, "h": 10 },
                         { "time": 100, "x": 60, "y": 0, "w": 10, "h": 10 }
                     ]},
-                    { "id": "delayed", "dst": [
+                    { "id": "delayed", "loop": 50, "dst": [
                         { "time": 50, "x": 80, "y": 0, "w": 10, "h": 10 }
                     ]}
                 ]

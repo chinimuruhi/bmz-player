@@ -228,7 +228,7 @@ fn skin_document_applies_declared_14k_turntable_offsets_with_beatoraja_rotation(
 }
 
 #[test]
-fn skin_document_samples_destination_keyframes_by_elapsed_time() {
+fn skin_document_samples_and_repeats_destination_keyframes_by_elapsed_time() {
     let document: SkinDocument = serde_json::from_str(
         r#"
             {
@@ -280,7 +280,7 @@ fn skin_document_samples_destination_keyframes_by_elapsed_time() {
     );
     assert!(
         matches!(late[0], SkinRenderItem::Image { rect: Rect { x, width, .. }, tint: Color { a, .. }, .. }
-                if approx_eq(x, 0.6) && approx_eq(width, 0.2) && approx_eq(a, 128.0 / 255.0))
+                if approx_eq(x, 0.15) && approx_eq(width, 0.1) && approx_eq(a, 192.0 / 255.0))
     );
 }
 
