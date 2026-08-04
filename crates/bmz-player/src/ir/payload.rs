@@ -18,7 +18,10 @@ use super::types::{
 #[derive(Debug, Clone)]
 pub struct IrSubmissionContext {
     pub played_at: i64,
-    pub duration_ms: Option<u64>,
+    /// Hardware-paced time actually played from chart time zero to the terminal state.
+    pub play_duration_ms: Option<u64>,
+    /// Duration stored by the library scan, before play-time chart transforms.
+    pub chart_length_ms: Option<u64>,
     pub ln_policy: LnScorePolicy,
     /// FORCE変換前の元譜面に含まれるLN種別。
     pub source_ln_profile: ChartLnProfile,
@@ -92,13 +95,17 @@ pub fn build_score_submission(
     let ghost =
         encode_beatoraja_ghost(&result.score.ghost).ok().filter(|encoded| !encoded.is_empty());
 
+    let mut chart_payload =
+        build_ir_chart_payload_with_ln_profile(chart, context.source_ln_profile);
+    chart_payload.length_ms = context.chart_length_ms;
+
     IrScoreSubmission {
         client: IrClientInfo {
             name: "BMZ".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             platform: std::env::consts::OS.to_string(),
         },
-        chart: build_ir_chart_payload_with_ln_profile(chart, context.source_ln_profile),
+        chart: chart_payload,
         rule: IrRulePayload {
             play_mode: play_mode_payload(chart.metadata.key_mode.as_str()),
             key_mode: chart.metadata.key_mode.as_str().to_string(),
@@ -112,7 +119,7 @@ pub fn build_score_submission(
         result: IrResultPayload {
             clear: result.clear_type.as_str().to_string(),
             played_at: context.played_at,
-            duration_ms: context.duration_ms,
+            duration_ms: context.play_duration_ms,
             judges: IrJudgePayload {
                 fast: IrJudgeSidePayload {
                     pgreat: judges.fast_pgreat,
@@ -173,6 +180,7 @@ fn build_ir_chart_payload_with_ln_profile(
     IrChartPayload {
         sha256: hash_to_hex(&chart.identity.file_sha256),
         md5: Some(hash_to_hex(&chart.identity.file_md5)),
+        length_ms: None,
         ln_profile: IrChartLnProfile {
             has_undefined_ln: ln_profile.has_undefined_ln,
             has_defined_ln: ln_profile.has_defined_ln,
@@ -348,7 +356,8 @@ mod tests {
             &result,
             IrSubmissionContext {
                 played_at: 100,
-                duration_ms: Some(123_456),
+                play_duration_ms: Some(123_456),
+                chart_length_ms: Some(125_000),
                 ln_policy: LnScorePolicy::ForceLn,
                 source_ln_profile: ChartLnProfile { has_defined_cn: true, ..Default::default() },
                 gauge_option: "normal".to_string(),
@@ -370,6 +379,7 @@ mod tests {
         assert_eq!(payload.result.min_bp, 6);
         assert_eq!(payload.result.min_cb, 3);
         assert_eq!(payload.result.duration_ms, Some(123_456));
+        assert_eq!(payload.chart.length_ms, Some(125_000));
         assert_eq!(payload.result.pass_notes, None);
         assert_eq!(payload.rule.ln_policy, LnScorePolicy::ForceLn);
         assert_eq!(payload.rule.effective_ln_mode, IrEffectiveLnMode::Ln);

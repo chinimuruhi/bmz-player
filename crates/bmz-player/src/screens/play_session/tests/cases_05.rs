@@ -21,6 +21,7 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
     let preloaded = preload_play_session_reloading_audio_with_progress(
         Arc::clone(&chart),
         crate::ln_policy::ChartLnProfile::default(),
+        123_456,
         48_000,
         0.75,
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&chart),
@@ -30,6 +31,7 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
     );
 
     assert!(Arc::ptr_eq(&preloaded.chart, &chart));
+    assert_eq!(preloaded.chart_length_ms, 123_456);
     assert_eq!(preloaded.chart_normalization_gain, 0.75);
     assert_eq!(preloaded.score_key, score_key);
     assert!(

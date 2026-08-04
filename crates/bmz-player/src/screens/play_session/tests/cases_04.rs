@@ -468,8 +468,10 @@ fn load_prepared_play_session_for_chart_loads_audio_samples() {
         PlaySessionOptions::default(),
     )
     .unwrap();
+    let library_length_ms = library_db.list_charts_by_ids(&[chart_id]).unwrap()[0].length_ms;
 
     assert_eq!(prepared.session.chart.metadata.title, "Prepared");
+    assert_eq!(prepared.chart_length_ms, library_length_ms.max(0) as u64);
     assert_eq!(prepared.audio.mixer.output_sample_rate, 48_000);
     assert!(matches!(prepared.sample_report[0].status, LoadedSampleStatus::Loaded));
     assert!(prepared.audio.samples.get(SoundId(0)).is_some());
@@ -527,6 +529,7 @@ fn preload_reports_prepared_chart_before_audio_progress() {
 
     let reported_chart = reported_chart.into_inner().expect("reported chart");
     assert!(Arc::ptr_eq(&reported_chart.chart, &preloaded.chart));
+    assert_eq!(reported_chart.chart_length_ms, preloaded.chart_length_ms);
     assert_eq!(reported_chart.applied_arrange.pattern, preloaded.applied_arrange.pattern);
     assert_eq!(reported_chart.applied_arrange.arrange, ArrangeOption::Random);
 

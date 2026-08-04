@@ -179,6 +179,8 @@ fn finish_session_result_returns_summary() {
             ir_config: &crate::config::profile_config::IrConfig::default(),
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             played_at: 1_700_000_102,
             applied_arrange: &applied_arrange,
             target_ex_score: Some(1600),
@@ -233,6 +235,8 @@ fn finish_session_result_course_stage_rounds_summary_clear_type() {
             ir_config: &crate::config::profile_config::IrConfig::default(),
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             played_at: 1_700_000_109,
             applied_arrange: &AppliedArrange::default(),
             target_ex_score: None,
@@ -307,6 +311,8 @@ fn finish_session_result_course_stage_enqueues_ir_with_rounded_clear_type() {
             ir_config: &ir_config,
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             played_at: 1_700_000_110,
             applied_arrange: &AppliedArrange::default(),
             target_ex_score: None,
@@ -375,6 +381,8 @@ fn finish_session_result_enqueues_ir_jobs_for_enabled_providers() {
             ir_config: &ir_config,
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: Some(123_456),
+            play_duration_ms: Some(120_000),
             played_at: 1_700_000_108,
             applied_arrange: &AppliedArrange::default(),
             target_ex_score: None,
@@ -389,7 +397,8 @@ fn finish_session_result_enqueues_ir_jobs_for_enabled_providers() {
     let jobs = network_db.pending_ir_score_jobs(1_700_000_108, 10).unwrap();
     assert_eq!(jobs.len(), 1);
     let payload: serde_json::Value = serde_json::from_str(&jobs[0].payload_json).unwrap();
-    assert_eq!(payload["result"]["duration_ms"], 123_456);
+    assert_eq!(payload["chart"]["length_ms"], 123_456);
+    assert_eq!(payload["result"]["duration_ms"], 120_000);
 
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -428,6 +437,8 @@ fn finish_session_result_once_reuses_cached_result() {
             ir_config: &crate::config::profile_config::IrConfig::default(),
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             played_at: 1_700_000_103,
             applied_arrange: &AppliedArrange::default(),
             target_ex_score: None,
@@ -448,6 +459,8 @@ fn finish_session_result_once_reuses_cached_result() {
             ir_config: &crate::config::profile_config::IrConfig::default(),
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             played_at: 1_700_000_104,
             applied_arrange: &AppliedArrange::default(),
             target_ex_score: None,
@@ -499,6 +512,8 @@ fn finish_session_result_skips_storage_for_autoplay() {
             ir_config: &crate::config::profile_config::IrConfig::default(),
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             played_at: 1_700_000_105,
             applied_arrange: &AppliedArrange::default(),
             target_ex_score: None,
@@ -551,6 +566,8 @@ fn finish_session_result_skips_storage_for_replay_playback() {
             ir_config: &crate::config::profile_config::IrConfig::default(),
             session: &session,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             played_at: 1_700_000_106,
             applied_arrange: &AppliedArrange::default(),
             target_ex_score: None,

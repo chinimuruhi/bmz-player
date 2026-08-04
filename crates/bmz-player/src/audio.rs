@@ -98,6 +98,10 @@ pub struct AudioRuntime {
 pub struct RunningPlaySession {
     pub session: GameSession,
     pub source_ln_profile: ChartLnProfile,
+    /// Duration recorded in `library.db` when this play was preloaded.
+    pub chart_length_ms: u64,
+    /// Frozen hardware-clock duration from chart time zero to the first terminal state.
+    pub play_duration_ms: Option<u64>,
     pub audio: AppAudioOutput,
     pub pending_audio: ScheduledSoundQueue,
     pub pending_keysound_volumes: Vec<(bmz_core::ids::SoundId, f32)>,
@@ -159,6 +163,16 @@ impl RunningPlaySession {
         self.audio.pause()?;
         self.session.audio_clock = self.audio.clock();
         Ok(())
+    }
+
+    pub fn finish_play_duration_ms(&mut self) -> u64 {
+        if let Some(duration_ms) = self.play_duration_ms {
+            return duration_ms;
+        }
+
+        let duration_ms = (self.audio.clock().elapsed_since(TimeUs(0)).0.max(0) / 1_000) as u64;
+        self.play_duration_ms = Some(duration_ms);
+        duration_ms
     }
 }
 
@@ -262,6 +276,8 @@ pub fn open_prepared_play_audio(
         render_snapshot_cache: prepared.render_snapshot_cache,
         session,
         source_ln_profile: prepared.source_ln_profile,
+        chart_length_ms: prepared.chart_length_ms,
+        play_duration_ms: None,
         audio,
         pending_audio: ScheduledSoundQueue::new(),
         pending_keysound_volumes: Vec::new(),

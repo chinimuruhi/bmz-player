@@ -287,9 +287,23 @@ rianIR の数値 enum を持ち込まない。
 rianIR/beatoraja の `miss` は見逃しではなく Empty Poor に相当する。BMZ の `Poor` と
 `EmptyPoor` を合算してはならない。FAST/SLOW は各判定の合計値へ畳み込む。
 
-`date` はunix秒で送る。現行rianIRでは `length` の秒・ミリ秒解釈が内部で不一致の
-ため、既存Java connectorに合わせて `length=0` とし、`play_duration` だけを秒単位で
-送る。単位契約がrianIR側で統一された後に曲長送信を有効化する。
+`date` はunix秒で送る。曲長はプレイ時の変換後譜面から再計算せず、スキャン時に
+`library.db.charts.length_ms` へ保存した値を使う。legacy互換の `length` は秒、
+`length_ms` はミリ秒で同じ曲長を送る。実プレイ時間はアプリの描画時刻ではなく
+audio output callbackのフレーム数から、譜面時刻0（READY用の負の開始マージンは除外）
+から最初の `Finished` / `Failed` までを計測し、`play_duration` は秒、
+`play_duration_ms` はミリ秒で送る。
+
+BMS `#RANDOM` / `#SETRANDOM` を含む譜面は `has_random=true` を送り、曲長を0には
+しない。rianIR側はこのフラグがtrueのときだけ曲長と実プレイ時間の速度検査を
+スキップする。`Failed` も途中落ちを正常に記録できるよう速度検査の対象外とする。
+非RANDOMのclear scoreはserverと同じ許容幅（短い側 `0.85 * length - 5秒`、長い側
+`1.15 * length + 15秒`）をBMZでもqueue投入前に検査し、恒久的に400になるjobを
+作らない。
+
+duration-aware対応前に保存済みのqueue jobには `chart.length_ms` が無いため、再送時は
+`length=0` の旧wire形式を維持し、当時の譜面終了時刻を実プレイ時間として
+`play_duration_ms` へ読み替えない。
 
 曲名などの文字列 metadata は `B64:<base64>` 形式を使用し、UTF-8 と JSON escaping の
 差で署名や request が壊れないようにする。

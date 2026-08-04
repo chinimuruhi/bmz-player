@@ -49,6 +49,9 @@ pub struct IrChartPayload {
     pub sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub md5: Option<String>,
+    /// Library scan duration. Absent on jobs created before duration-aware IR payloads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_ms: Option<u64>,
     pub ln_profile: IrChartLnProfile,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub title: String,

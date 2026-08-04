@@ -161,6 +161,7 @@ impl AppliedArrange {
 pub struct PreparedPlaySession {
     pub session: GameSession,
     pub source_ln_profile: ChartLnProfile,
+    pub chart_length_ms: u64,
     pub audio: AudioEngine,
     pub sample_report: Vec<LoadedSampleReport>,
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
@@ -179,6 +180,7 @@ pub struct PreparedPlaySession {
 pub struct PreparedPlayChart {
     pub chart: Arc<PlayableChart>,
     pub source_ln_profile: ChartLnProfile,
+    pub chart_length_ms: u64,
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
@@ -187,6 +189,7 @@ pub struct PreparedPlayChart {
 pub struct PreloadedPlaySession {
     pub chart: Arc<PlayableChart>,
     pub source_ln_profile: ChartLnProfile,
+    pub chart_length_ms: u64,
     pub audio: AudioEngine,
     pub sample_report: Vec<LoadedSampleReport>,
     pub chart_normalization_gain: f32,
@@ -200,6 +203,7 @@ impl PreloadedPlaySession {
         PreparedPlayChart {
             chart: Arc::clone(&self.chart),
             source_ln_profile: self.source_ln_profile,
+            chart_length_ms: self.chart_length_ms,
             render_snapshot_cache: self.render_snapshot_cache.clone(),
             applied_arrange: self.applied_arrange.clone(),
             score_key: self.score_key,

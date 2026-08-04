@@ -49,6 +49,19 @@ impl AudioClock {
         let delta_frames = delta_us * self.sample_rate as u128 / 1_000_000u128;
         self.start_output_frame + delta_frames as u64
     }
+
+    /// Returns hardware-paced output time elapsed since a chart timestamp.
+    ///
+    /// Time before `since`, such as the READY margin before chart time zero, is excluded.
+    pub fn elapsed_since(&self, since: TimeUs) -> TimeUs {
+        if !self.running {
+            return TimeUs(0);
+        }
+
+        let since_frame = self.time_to_output_frame(since);
+        let current_frame = self.current_frame.load(Ordering::Relaxed);
+        TimeUs(frame_to_us(current_frame.saturating_sub(since_frame), self.sample_rate))
+    }
 }
 
 pub fn frame_to_us(frame: u64, sample_rate: u32) -> i64 {
@@ -65,5 +78,16 @@ mod tests {
 
         assert_eq!(clock.now(), TimeUs(0));
         assert_eq!(clock.time_to_output_frame(TimeUs(1_000_000)), 48_000);
+        assert_eq!(clock.elapsed_since(TimeUs(0)), TimeUs(0));
+    }
+
+    #[test]
+    fn elapsed_since_excludes_negative_chart_margin() {
+        let current_frame = Arc::new(AtomicU64::new(192_000));
+        let clock =
+            AudioClock::with_position(48_000, 96_000, -1_000_000, Arc::clone(&current_frame), true);
+
+        assert_eq!(clock.time_to_output_frame(TimeUs(0)), 144_000);
+        assert_eq!(clock.elapsed_since(TimeUs(0)), TimeUs(1_000_000));
     }
 }

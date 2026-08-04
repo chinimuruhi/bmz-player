@@ -12,6 +12,27 @@ pub fn score_submission_supported(_ln_policy: LnScorePolicy, double_option: Doub
     !matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
 }
 
+/// Mirrors rianIR's non-random clear-score duration guard before queueing a retry job.
+pub fn score_duration_plausible(
+    clear: &str,
+    length_ms: Option<u64>,
+    play_duration_ms: Option<u64>,
+    has_random: bool,
+) -> bool {
+    let (Some(length_ms), Some(play_duration_ms)) = (length_ms, play_duration_ms) else {
+        return true;
+    };
+    if has_random || matches!(clear, "NoPlay" | "Failed") || length_ms == 0 || play_duration_ms == 0
+    {
+        return true;
+    }
+
+    let length_ms = length_ms as f64;
+    let play_duration_ms = play_duration_ms as f64;
+    play_duration_ms <= length_ms * 1.15 + 15_000.0
+        && play_duration_ms >= length_ms * 0.85 - 5_000.0
+}
+
 pub fn course_submission_supported(
     ln_setting: LnPolicySetting,
     double_option: DoubleOption,
@@ -77,7 +98,7 @@ pub(super) fn score_request(
         "minbpm": payload.chart.bpm.and_then(|bpm| bpm.min).unwrap_or(0.0),
         "maxbpm": payload.chart.bpm.and_then(|bpm| bpm.max).unwrap_or(0.0),
         "song_level": payload.chart.level.unwrap_or(0),
-        "length": 0,
+        "length": payload.chart.length_ms.map(|ms| ms as f64 / 1000.0).unwrap_or(0.0),
         "clear_type": clear_type_id(&payload.result.clear)?,
         "exscore": payload.result.ex_score,
         "maxcombo": payload.result.max_combo,
@@ -97,10 +118,17 @@ pub(super) fn score_request(
         "play_assist": 0,
         "play_gauge": gauge_type_id(&payload.rule.gauge)?,
         "total_notes": payload.result.notes,
-        // length=0 の場合は現行 server の比率検査対象外。実プレイ時間自体は秒で保存する。
         "play_duration": payload.result.duration_ms.map(|ms| ms as f64 / 1000.0).unwrap_or(0.0),
         "body": body,
     });
+    // `length_ms` is also the version marker for duration-aware queue jobs. Jobs
+    // serialized by older BMZ versions retain their legacy wire shape and do not
+    // reinterpret chart end time as hardware-clock play duration.
+    if let Some(length_ms) = payload.chart.length_ms {
+        request["length_ms"] = json!(length_ms);
+        request["play_duration_ms"] = json!(payload.result.duration_ms.unwrap_or_default());
+        request["has_random"] = json!(payload.chart.features.random);
+    }
     request["ln_mode_format"] = Value::String("canonical-v1".to_string());
     let signature = signature(
         api_token,

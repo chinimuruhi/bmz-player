@@ -165,6 +165,7 @@ impl WinitApp {
             chart_id,
             chart,
             source_ln_profile,
+            chart_length_ms: active.running.chart_length_ms,
             render_snapshot_cache,
             chart_normalization_gain: active.running.session.audio_mix.chart_normalization_gain,
             applied_arrange,
@@ -185,6 +186,7 @@ impl WinitApp {
             chart_id,
             chart: Some(Arc::clone(&running.session.chart)),
             source_ln_profile: Some(running.source_ln_profile),
+            chart_length_ms: running.chart_length_ms,
             render_snapshot_cache: Some(running.render_snapshot_cache.clone()),
             chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
             applied_arrange: Some(running.applied_arrange.clone()),
@@ -298,6 +300,7 @@ impl WinitApp {
         let chart = Arc::clone(cache.chart.as_ref().expect("SameArrange cache includes chart"));
         let source_ln_profile =
             cache.source_ln_profile.expect("SameArrange cache includes source LN profile");
+        let chart_length_ms = cache.chart_length_ms;
         let render_snapshot_cache = cache
             .render_snapshot_cache
             .clone()
@@ -325,6 +328,7 @@ impl WinitApp {
         let _ = preview_prepared_chart.set(PreparedPlayChart {
             chart: Arc::clone(&chart),
             source_ln_profile,
+            chart_length_ms,
             render_snapshot_cache: render_snapshot_cache.clone(),
             applied_arrange: applied_arrange.clone(),
             score_key,
@@ -338,6 +342,7 @@ impl WinitApp {
                     crate::screens::play_session::preload_play_session_reloading_audio_with_progress(
                         chart,
                         source_ln_profile,
+                        chart_length_ms,
                         sample_rate,
                         chart_normalization_gain,
                         render_snapshot_cache,
@@ -449,6 +454,8 @@ impl WinitApp {
                 return false;
             };
             active_play.running.session.state = bmz_gameplay::session::PlayState::Finished;
+            let chart_length_ms = active_play.running.chart_length_ms;
+            let play_duration_ms = active_play.running.finish_play_duration_ms();
             match crate::screens::play_finish::finish_session_result_once(
                 &mut active_play.running.finished,
                 &mut self.boot.score_db,
@@ -461,6 +468,8 @@ impl WinitApp {
                     played_at: now_unix_seconds(),
                     applied_arrange: &active_play.running.applied_arrange,
                     source_ln_profile: active_play.running.source_ln_profile,
+                    chart_length_ms: Some(chart_length_ms),
+                    play_duration_ms: Some(play_duration_ms),
                     target_ex_score: active_play.running.target_ex_score,
                     target_name: &active_play.running.target,
                     score_key: active_play.running.score_key,

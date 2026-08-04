@@ -120,6 +120,8 @@ pub fn advance_play_screen_until_result(
                 played_at,
                 applied_arrange,
                 source_ln_profile: crate::ln_policy::ChartLnProfile::from_chart(&session.chart),
+                chart_length_ms: None,
+                play_duration_ms: None,
                 target_ex_score: None,
                 score_key: crate::storage::score_db::ScoreKey::new(
                     session.chart.identity.file_sha256,
@@ -363,6 +365,8 @@ pub fn advance_running_play_session_until_result(
     apply_running_play_mode_to_snapshot(&mut frame.render_snapshot, running);
     running.result_graph.record_frame(&frame);
     if matches!(frame.state, PlayState::Finished | PlayState::Failed) {
+        let chart_length_ms = running.chart_length_ms;
+        let play_duration_ms = running.finish_play_duration_ms();
         let mut finished = finish_session_result_once(
             &mut running.finished,
             score_db,
@@ -375,6 +379,8 @@ pub fn advance_running_play_session_until_result(
                 played_at,
                 applied_arrange: &running.applied_arrange,
                 source_ln_profile: running.source_ln_profile,
+                chart_length_ms: Some(chart_length_ms),
+                play_duration_ms: Some(play_duration_ms),
                 target_ex_score: running.target_ex_score,
                 target_name: &running.target,
                 score_key: running.score_key,

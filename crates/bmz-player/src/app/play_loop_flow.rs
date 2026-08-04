@@ -101,6 +101,8 @@ impl WinitApp {
                 } else {
                     crate::screens::play_finish::FinishResultMode::Normal
                 };
+                let chart_length_ms = active_play.running.chart_length_ms;
+                let play_duration_ms = active_play.running.finish_play_duration_ms();
                 let early_finished = match crate::screens::play_finish::finish_session_result_once(
                     &mut active_play.running.finished,
                     &mut self.boot.score_db,
@@ -113,6 +115,8 @@ impl WinitApp {
                         played_at: now_unix_seconds(),
                         applied_arrange: &active_play.running.applied_arrange,
                         source_ln_profile: active_play.running.source_ln_profile,
+                        chart_length_ms: Some(chart_length_ms),
+                        play_duration_ms: Some(play_duration_ms),
                         target_ex_score: active_play.running.target_ex_score,
                         target_name: &active_play.running.target,
                         score_key: active_play.running.score_key,

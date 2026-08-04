@@ -173,7 +173,7 @@ mod request;
 
 pub use request::{
     body_for_rule_mode, body_for_rule_name, course_submission_supported, is_rian_ir_config,
-    is_rian_ir_provider, score_submission_supported,
+    is_rian_ir_provider, score_duration_plausible, score_submission_supported,
 };
 
 #[cfg(test)]
@@ -198,6 +198,7 @@ mod tests {
             chart: IrChartPayload {
                 sha256: "ab".repeat(32),
                 md5: Some("cd".repeat(16)),
+                length_ms: Some(123_456),
                 ln_profile: IrChartLnProfile { has_defined_cn: true, ..Default::default() },
                 title: "タイトル".to_string(),
                 subtitle: String::new(),
@@ -312,7 +313,47 @@ mod tests {
         assert_eq!(request["pgreat"], 90);
         assert_eq!(request["poor"], 5);
         assert_eq!(request["miss"], 5);
+        assert_eq!(request["length"], 123.456);
+        assert_eq!(request["length_ms"], 123_456);
         assert_eq!(request["play_duration"], 120.0);
+        assert_eq!(request["play_duration_ms"], 120_000);
+        assert_eq!(request["has_random"], false);
+    }
+
+    #[test]
+    fn score_request_sends_random_flag_without_zeroing_length() {
+        let mut payload = sample_payload();
+        payload.chart.features.random = true;
+
+        let request = score_request(&payload, "player", "token").unwrap();
+
+        assert_eq!(request["length_ms"], 123_456);
+        assert_eq!(request["has_random"], true);
+    }
+
+    #[test]
+    fn legacy_queued_score_keeps_legacy_duration_shape() {
+        let mut payload = sample_payload();
+        payload.chart.length_ms = None;
+
+        let request = score_request(&payload, "player", "token").unwrap();
+
+        assert_eq!(request["length"], 0.0);
+        assert_eq!(request["play_duration"], 120.0);
+        assert!(request.get("length_ms").is_none());
+        assert!(request.get("play_duration_ms").is_none());
+        assert!(request.get("has_random").is_none());
+    }
+
+    #[test]
+    fn score_duration_preflight_matches_server_bounds_and_exemptions() {
+        assert!(score_duration_plausible("Hard", Some(100_000), Some(80_000), false));
+        assert!(score_duration_plausible("Hard", Some(100_000), Some(129_999), false));
+        assert!(!score_duration_plausible("Hard", Some(100_000), Some(79_999), false));
+        assert!(!score_duration_plausible("Hard", Some(100_000), Some(130_001), false));
+        assert!(score_duration_plausible("Failed", Some(100_000), Some(1_000), false));
+        assert!(score_duration_plausible("Hard", Some(100_000), Some(1_000), true));
+        assert!(score_duration_plausible("Hard", None, Some(1_000), false));
     }
 
     #[test]

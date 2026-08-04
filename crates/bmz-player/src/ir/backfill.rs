@@ -601,6 +601,8 @@ fn chart_payload_from_library(
     IrChartPayload {
         sha256: hash_to_hex(&chart.sha256),
         md5: Some(hash_to_hex(&chart.md5)),
+        // Backfill scores do not have a hardware-clock play duration to pair with this value.
+        length_ms: None,
         ln_profile: IrChartLnProfile {
             has_undefined_ln: chart.ln_profile.has_undefined_ln,
             has_defined_ln: chart.ln_profile.has_defined_ln,

@@ -99,6 +99,8 @@ pub fn store_session_result(
             played_at,
             applied_arrange,
             source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
             target_ex_score: None,
             score_key,
             practice_mode,
@@ -116,6 +118,8 @@ pub struct FinishSessionResultRequest<'a> {
     pub played_at: i64,
     pub applied_arrange: &'a AppliedArrange,
     pub source_ln_profile: ChartLnProfile,
+    pub chart_length_ms: Option<u64>,
+    pub play_duration_ms: Option<u64>,
     pub target_ex_score: Option<u32>,
     pub score_key: ScoreKey,
     pub practice_mode: bool,
@@ -135,6 +139,8 @@ pub fn finish_session_result(
         played_at,
         applied_arrange,
         source_ln_profile,
+        chart_length_ms,
+        play_duration_ms,
         target_ex_score,
         score_key,
         practice_mode,
@@ -241,6 +247,8 @@ pub fn finish_session_result(
                 score_key,
                 applied_arrange,
                 source_ln_profile,
+                chart_length_ms,
+                play_duration_ms,
                 summary: &mut summary,
                 previous_best: previous_best.as_ref(),
             },
@@ -265,10 +273,6 @@ pub fn finish_session_result(
 
 fn chart_playtime_seconds(chart: &bmz_chart::model::PlayableChart) -> u32 {
     (chart.end_time.0.max(0) / 1_000_000).min(i64::from(u32::MAX)) as u32
-}
-
-fn chart_duration_ms(chart: &bmz_chart::model::PlayableChart) -> u64 {
-    (chart.end_time.0.max(0) / 1_000) as u64
 }
 
 fn clear_type_from_name(name: &str) -> Option<ClearType> {
@@ -296,6 +300,8 @@ struct EnqueueIrJobsRequest<'a> {
     score_key: ScoreKey,
     applied_arrange: &'a AppliedArrange,
     source_ln_profile: ChartLnProfile,
+    chart_length_ms: Option<u64>,
+    play_duration_ms: Option<u64>,
     summary: &'a mut ResultSummary,
     previous_best: Option<&'a crate::storage::score_db::BestScoreSummary>,
 }
@@ -313,6 +319,8 @@ fn enqueue_ir_jobs(
         score_key,
         applied_arrange,
         source_ln_profile,
+        chart_length_ms,
+        play_duration_ms,
         summary,
         previous_best,
     } = request;
@@ -342,7 +350,8 @@ fn enqueue_ir_jobs(
         result,
         IrSubmissionContext {
             played_at,
-            duration_ms: Some(chart_duration_ms(&session.chart)),
+            play_duration_ms,
+            chart_length_ms,
             ln_policy: score_key.ln_policy,
             source_ln_profile,
             gauge_option: result.gauge_type.as_str().to_string(),
@@ -371,6 +380,23 @@ fn enqueue_ir_jobs(
         return;
     };
     for provider in enabled {
+        if crate::ir::rian_ir::is_rian_ir_config(provider)
+            && !crate::ir::rian_ir::score_duration_plausible(
+                result.clear_type.as_str(),
+                chart_length_ms,
+                play_duration_ms,
+                session.chart.metadata.has_bms_random,
+            )
+        {
+            let error = format!(
+                "rianIR duration check rejected locally: length_ms={}, play_duration_ms={}",
+                chart_length_ms.unwrap_or_default(),
+                play_duration_ms.unwrap_or_default()
+            );
+            summary.ir_last_error = Some(error.clone());
+            tracing::warn!(%error, "skipped implausible rianIR score job");
+            continue;
+        }
         let Some(provider_key) = crate::ir::provider_key::configured_provider_key(provider) else {
             summary.ir_last_error = Some(format!(
                 "IR provider '{}' is missing provider_key; log in again",
@@ -451,6 +477,8 @@ pub fn finish_session_result_once(
             played_at: request.played_at,
             applied_arrange: request.applied_arrange,
             source_ln_profile: request.source_ln_profile,
+            chart_length_ms: request.chart_length_ms,
+            play_duration_ms: request.play_duration_ms,
             target_ex_score: request.target_ex_score,
             score_key: request.score_key,
             practice_mode: request.practice_mode,
@@ -470,6 +498,8 @@ pub struct FinishSessionResultOnceRequest<'a> {
     pub played_at: i64,
     pub applied_arrange: &'a AppliedArrange,
     pub source_ln_profile: ChartLnProfile,
+    pub chart_length_ms: Option<u64>,
+    pub play_duration_ms: Option<u64>,
     pub target_ex_score: Option<u32>,
     pub target_name: &'a str,
     pub score_key: ScoreKey,

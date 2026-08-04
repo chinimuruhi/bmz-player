@@ -22,6 +22,7 @@ pub(super) struct PlayMediaCache {
     /// Present for SameArrange reuse of the exact chart Arc.
     pub(super) chart: Option<std::sync::Arc<PlayableChart>>,
     pub(super) source_ln_profile: Option<crate::ln_policy::ChartLnProfile>,
+    pub(super) chart_length_ms: u64,
     pub(super) render_snapshot_cache:
         Option<crate::screens::play_snapshot::PlayRenderSnapshotCache>,
     pub(super) chart_normalization_gain: f32,

@@ -390,6 +390,16 @@ impl LibraryDatabase {
         Ok(out)
     }
 
+    /// Returns the duration recorded by the library scan for a chart.
+    pub fn chart_length_ms_by_id(&self, chart_id: i64) -> Result<Option<i64>> {
+        self.conn
+            .query_row("SELECT length_ms FROM charts WHERE id = ?1", params![chart_id], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn chart_analysis_by_chart_id(&self, chart_id: i64) -> Result<Option<ChartAnalysis>> {
         self.conn
             .query_row(

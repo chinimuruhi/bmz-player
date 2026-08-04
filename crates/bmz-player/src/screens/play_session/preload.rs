@@ -155,6 +155,8 @@ pub fn preload_play_session_for_chart_with_callbacks(
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
     let preload_started_at = Instant::now();
+    let chart_length_ms =
+        library_db.chart_length_ms_by_id(chart_id)?.unwrap_or_default().max(0) as u64;
     let chart_parse_started_at = Instant::now();
     let imported = load_transformed_chart_for_play(library_db, chart_id, &options)?;
     let chart_parse_elapsed = chart_parse_started_at.elapsed();
@@ -165,6 +167,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         ),
         chart,
         source_ln_profile: imported.source_ln_profile,
+        chart_length_ms,
         applied_arrange: imported.applied_arrange,
         score_key: imported.score_key,
     };
@@ -215,6 +218,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
     Ok(PreloadedPlaySession {
         chart: prepared_chart.chart,
         source_ln_profile: prepared_chart.source_ln_profile,
+        chart_length_ms: prepared_chart.chart_length_ms,
         audio,
         sample_report,
         chart_normalization_gain,
@@ -233,6 +237,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
 pub fn preload_play_session_reloading_audio_with_progress(
     chart: Arc<PlayableChart>,
     source_ln_profile: ChartLnProfile,
+    chart_length_ms: u64,
     sample_rate: u32,
     chart_normalization_gain: f32,
     render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
@@ -256,6 +261,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
     PreloadedPlaySession {
         chart,
         source_ln_profile,
+        chart_length_ms,
         audio,
         sample_report,
         chart_normalization_gain,
@@ -407,6 +413,7 @@ pub fn build_practice_prepared_from_preloaded(
     PreparedPlaySession {
         session,
         source_ln_profile: preloaded.source_ln_profile,
+        chart_length_ms: preloaded.chart_length_ms,
         audio: preloaded.audio,
         sample_report: preloaded.sample_report,
         render_snapshot_cache,
@@ -435,6 +442,7 @@ pub fn build_prepared_play_session_from_preloaded(
     PreparedPlaySession {
         session,
         source_ln_profile: preloaded.source_ln_profile,
+        chart_length_ms: preloaded.chart_length_ms,
         audio: preloaded.audio,
         sample_report: preloaded.sample_report,
         render_snapshot_cache: preloaded.render_snapshot_cache,

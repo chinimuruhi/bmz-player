@@ -46,6 +46,8 @@ impl WinitApp {
         let finished = match ending.finished.take() {
             Some(finished) => finished,
             None => {
+                let chart_length_ms = started.running.chart_length_ms;
+                let play_duration_ms = started.running.finish_play_duration_ms();
                 match crate::screens::play_finish::finish_session_result_once(
                     &mut started.running.finished,
                     &mut self.boot.score_db,
@@ -58,6 +60,8 @@ impl WinitApp {
                         played_at: now_unix_seconds(),
                         applied_arrange: &started.running.applied_arrange,
                         source_ln_profile: started.running.source_ln_profile,
+                        chart_length_ms: Some(chart_length_ms),
+                        play_duration_ms: Some(play_duration_ms),
                         target_ex_score: started.running.target_ex_score,
                         target_name: &started.running.target,
                         score_key: started.running.score_key,
