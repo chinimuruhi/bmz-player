@@ -277,24 +277,9 @@ fn load_header(path: &Path, options: &BTreeMap<String, String>) -> Result<Loaded
             continue;
         }
         match line.command.as_str() {
-            "RESOLUTION" => match parse_i32(line.fields.get(1)) {
-                1 => {
-                    header.w = 1280;
-                    header.h = 720;
-                }
-                2 => {
-                    header.w = 1920;
-                    header.h = 1080;
-                }
-                3 => {
-                    header.w = 3840;
-                    header.h = 2160;
-                }
-                _ => {
-                    header.w = 640;
-                    header.h = 480;
-                }
-            },
+            "RESOLUTION" => {
+                (header.w, header.h) = lr2_resolution(line);
+            }
             "INFORMATION" => {
                 header.skin_type = parse_i32(line.fields.get(1));
                 header.name = field(line, 2).to_string();
@@ -372,6 +357,21 @@ fn load_header(path: &Path, options: &BTreeMap<String, String>) -> Result<Loaded
         opaque: false,
     };
     Ok(LoadedHeader { header, dependencies })
+}
+
+fn lr2_resolution(line: &CsvLine) -> (u32, u32) {
+    let width_or_preset = parse_i32(line.fields.get(1));
+    let height = parse_i32(line.fields.get(2));
+    if width_or_preset > 0 && height > 0 {
+        return (width_or_preset as u32, height as u32);
+    }
+
+    match width_or_preset {
+        1 => (1280, 720),
+        2 => (1920, 1080),
+        3 => (3840, 2160),
+        _ => (640, 480),
+    }
 }
 
 fn apply_selected_header_options(header: &mut Header, options: &BTreeMap<String, String>) {

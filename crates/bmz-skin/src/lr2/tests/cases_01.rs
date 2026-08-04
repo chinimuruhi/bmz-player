@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn lr2_resolution_accepts_presets_and_explicit_dimensions() {
+    for (source, expected) in [
+        ("#RESOLUTION,1", (1280, 720)),
+        ("#RESOLUTION,2,", (1920, 1080)),
+        ("#RESOLUTION,3", (3840, 2160)),
+        ("#RESOLUTION,1920,1080", (1920, 1080)),
+        ("#RESOLUTION,1280,720", (1280, 720)),
+    ] {
+        let line = parse_csv_line(source).expect("valid RESOLUTION command");
+        assert_eq!(lr2_resolution(&line), expected, "source: {source}");
+    }
+}
+
+#[test]
 fn lr2_asset_path_strips_theme_prefix() {
     assert_eq!(
         normalize_lr2_asset_path(r".\LR2files\Theme\WMII_FHD\play\parts\note\*.png"),
