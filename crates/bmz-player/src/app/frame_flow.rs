@@ -111,12 +111,14 @@ impl WinitApp {
         // Result IR is consumed by both the skin snapshot and the optional egui panel.
         // Keep its async state moving even while the hidden menu uses an idle egui frame.
         self.update_result_ir_for_frame(scene_kind, course_result_active);
+        // Select IR is consumed by the select skin snapshot. Keep its debounce,
+        // request, and completion handling moving while the hidden menu uses an idle frame.
+        self.update_egui_select_ir(scene_kind);
         if self.run_idle_egui_frame_if_available(&window, scene_kind, scene) {
             return;
         }
         let info = self.egui_debug_info(&window, scene);
         let skin_meta = self.egui_skin_meta();
-        self.update_egui_select_ir(scene_kind);
 
         // コース graph は egui を Option から取り出した後、clone せず参照で渡す。
         let course_result = self.result.finished_course.as_ref();
