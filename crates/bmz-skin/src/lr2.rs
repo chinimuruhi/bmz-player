@@ -56,6 +56,7 @@ struct Header {
     author: String,
     w: u32,
     h: u32,
+    explicit_resolution_dimensions: bool,
     fadeout: i32,
     input: i32,
     scene: i32,
@@ -85,6 +86,7 @@ impl Default for Header {
             author: String::new(),
             w: 1280,
             h: 720,
+            explicit_resolution_dimensions: false,
             fadeout: 0,
             input: 0,
             scene: 0,
@@ -279,6 +281,8 @@ fn load_header(path: &Path, options: &BTreeMap<String, String>) -> Result<Loaded
         match line.command.as_str() {
             "RESOLUTION" => {
                 (header.w, header.h) = lr2_resolution(line);
+                header.explicit_resolution_dimensions =
+                    lr2_resolution_has_explicit_dimensions(line);
             }
             "INFORMATION" => {
                 header.skin_type = parse_i32(line.fields.get(1));
@@ -372,6 +376,10 @@ fn lr2_resolution(line: &CsvLine) -> (u32, u32) {
         3 => (3840, 2160),
         _ => (640, 480),
     }
+}
+
+fn lr2_resolution_has_explicit_dimensions(line: &CsvLine) -> bool {
+    parse_i32(line.fields.get(1)) > 0 && parse_i32(line.fields.get(2)) > 0
 }
 
 fn apply_selected_header_options(header: &mut Header, options: &BTreeMap<String, String>) {

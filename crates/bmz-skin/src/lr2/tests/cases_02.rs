@@ -491,6 +491,47 @@ fn wmii_fhd_lr2skin_parse_has_no_unsupported_command_warnings_when_available() {
 }
 
 #[test]
+fn openlr2_wmii_bombs_and_key_beams_follow_lift_when_available() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/WMII_FHD_LR2/play/FHDPLAY_AC_Battle.lr2skin");
+    if !path.is_file() {
+        return;
+    }
+
+    let loaded = load_lr2_csv_skin_value(&path, &BTreeMap::new(), &BTreeMap::new()).unwrap();
+    let destinations = loaded.value["destination"].as_array().expect("destination array");
+    let mut bomb_count = 0;
+    let mut key_beam_count = 0;
+    for destination in destinations {
+        let timer = destination["timer"].as_i64().unwrap_or(0);
+        let follows_lift = destination["offset"] == LR2_OFFSET_LIFT
+            || destination["offsets"]
+                .as_array()
+                .is_some_and(|offsets| offsets.contains(&json!(LR2_OFFSET_LIFT)));
+        if (50..90).contains(&timer) {
+            bomb_count += 1;
+            assert!(follows_lift, "bomb destination should follow lift: {destination}");
+        } else if (100..140).contains(&timer) {
+            let frames = destination["dst"].as_array().expect("destination frames");
+            let first_height = frames.first().and_then(|frame| frame["h"].as_i64()).unwrap_or(0);
+            let last_height = frames.last().and_then(|frame| frame["h"].as_i64()).unwrap_or(0);
+            if first_height.saturating_abs() >= 100 || last_height.saturating_abs() >= 100 {
+                key_beam_count += 1;
+                assert!(follows_lift, "key beam destination should follow lift: {destination}");
+            } else {
+                assert!(
+                    !follows_lift,
+                    "short key light should keep its LR2 position: {destination}"
+                );
+            }
+        }
+    }
+
+    assert!(bomb_count > 0, "expected WMII bomb destinations");
+    assert!(key_beam_count > 0, "expected WMII key beam destinations");
+}
+
+#[test]
 fn wmii_fhd_lr2skin_dp_keeps_internal_setoption_ops_when_available() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC_DP.lr2skin");

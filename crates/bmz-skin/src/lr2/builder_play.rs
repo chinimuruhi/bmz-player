@@ -1,6 +1,28 @@
 use super::*;
 
 impl<'a> CsvBuilder<'a> {
+    pub(super) fn complete_open_lr2_note_adjustment_effects(&mut self) {
+        if !self.header.explicit_resolution_dimensions {
+            return;
+        }
+
+        for destination in &mut self.destinations {
+            let offset = destination.get("offset").and_then(JsonValue::as_i64).unwrap_or(0);
+            if !open_lr2_effect_follows_note_adjustment(destination)
+                // OpenLR2 treats DST fields 21/22 as opt4/opt5. opt4=1/2 rotates the
+                // 1P/2P scratch image, so keep that value while adding the lift offset.
+                || !matches!(offset, 0..=2)
+                || destination
+                    .get("offsets")
+                    .and_then(JsonValue::as_array)
+                    .is_some_and(|offsets| !offsets.is_empty())
+            {
+                continue;
+            }
+            destination["offsets"] = json!([LR2_OFFSET_LIFT]);
+        }
+    }
+
     pub(super) fn add_note_source(&mut self, line: &CsvLine, slot: NoteSlot) {
         self.add_note_source_with_animation(line, slot, true);
     }
@@ -397,5 +419,26 @@ impl<'a> CsvBuilder<'a> {
             "isDisapearLineLinkLift": lr2_hidden_link_lift(line, &values),
         }));
         self.set_current(id);
+    }
+}
+
+fn open_lr2_effect_follows_note_adjustment(destination: &JsonValue) -> bool {
+    let timer = destination.get("timer").and_then(JsonValue::as_i64).unwrap_or(0);
+    if (50..90).contains(&timer) {
+        return true;
+    }
+    if !(100..140).contains(&timer) {
+        return false;
+    }
+
+    let Some(frames) = destination.get("dst").and_then(JsonValue::as_array) else {
+        return false;
+    };
+    let frame_height = |frame: &JsonValue| {
+        frame.get("h").and_then(JsonValue::as_i64).unwrap_or(0).saturating_abs()
+    };
+    match (frames.first(), frames.last()) {
+        (Some(first), Some(last)) => frame_height(first) >= 100 || frame_height(last) >= 100,
+        _ => false,
     }
 }

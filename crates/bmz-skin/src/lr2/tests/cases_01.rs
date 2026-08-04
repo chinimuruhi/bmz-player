@@ -2,16 +2,101 @@ use super::*;
 
 #[test]
 fn lr2_resolution_accepts_presets_and_explicit_dimensions() {
-    for (source, expected) in [
-        ("#RESOLUTION,1", (1280, 720)),
-        ("#RESOLUTION,2,", (1920, 1080)),
-        ("#RESOLUTION,3", (3840, 2160)),
-        ("#RESOLUTION,1920,1080", (1920, 1080)),
-        ("#RESOLUTION,1280,720", (1280, 720)),
+    for (source, expected, has_explicit_dimensions) in [
+        ("#RESOLUTION,1", (1280, 720), false),
+        ("#RESOLUTION,2,", (1920, 1080), false),
+        ("#RESOLUTION,3", (3840, 2160), false),
+        ("#RESOLUTION,1920,1080", (1920, 1080), true),
+        ("#RESOLUTION,1280,720", (1280, 720), true),
     ] {
         let line = parse_csv_line(source).expect("valid RESOLUTION command");
         assert_eq!(lr2_resolution(&line), expected, "source: {source}");
+        assert_eq!(
+            lr2_resolution_has_explicit_dimensions(&line),
+            has_explicit_dimensions,
+            "source: {source}"
+        );
     }
+}
+
+#[test]
+fn explicit_resolution_lr2_effects_follow_open_lr2_note_adjustment() {
+    let files = BTreeMap::new();
+    let skin_path = unique_test_dir("bmz-lr2-openlr2-effects").join("play.lr2skin");
+    let mut builder = CsvBuilder::new(
+        &skin_path,
+        Header { w: 1920, h: 1080, explicit_resolution_dimensions: true, ..Header::default() },
+        &files,
+    );
+    builder.destinations = vec![
+        json!({ "id": "bomb", "timer": 50, "offset": 0, "dst": [{ "h": 300 }] }),
+        json!({ "id": "ln-bomb", "timer": 89, "offset": 0, "dst": [{ "h": 300 }] }),
+        json!({
+            "id": "key-beam",
+            "timer": 100,
+            "offset": 0,
+            "dst": [{ "h": 0 }, { "h": 723 }]
+        }),
+        json!({
+            "id": "scratch-key-beam",
+            "timer": 110,
+            "offset": 1,
+            "dst": [{ "h": 0 }, { "h": 723 }]
+        }),
+        json!({
+            "id": "short-key-light",
+            "timer": 139,
+            "offset": 0,
+            "dst": [{ "h": 0 }, { "h": 99 }]
+        }),
+        json!({ "id": "unrelated", "timer": 49, "offset": 0, "dst": [{ "h": 300 }] }),
+        json!({ "id": "custom-offset", "timer": 51, "offset": 32, "dst": [{ "h": 300 }] }),
+        json!({
+            "id": "offset-list",
+            "timer": 101,
+            "offset": 0,
+            "offsets": [32],
+            "dst": [{ "h": 723 }]
+        }),
+    ];
+
+    builder.complete_open_lr2_note_adjustment_effects();
+
+    for id in ["bomb", "ln-bomb", "key-beam", "scratch-key-beam"] {
+        let destination =
+            builder.destinations.iter().find(|destination| destination["id"] == id).unwrap();
+        assert_eq!(destination["offsets"], json!([LR2_OFFSET_LIFT]), "id: {id}");
+    }
+    for id in ["short-key-light", "unrelated", "custom-offset", "offset-list"] {
+        let destination =
+            builder.destinations.iter().find(|destination| destination["id"] == id).unwrap();
+        if id == "offset-list" {
+            assert_eq!(destination["offsets"], json!([32]));
+        } else {
+            assert!(destination.get("offsets").is_none(), "id: {id}");
+        }
+    }
+}
+
+#[test]
+fn preset_resolution_lr2_effects_do_not_gain_lift_offsets() {
+    let files = BTreeMap::new();
+    let skin_path = unique_test_dir("bmz-lr2-preset-effects").join("play.lr2skin");
+    let mut builder =
+        CsvBuilder::new(&skin_path, Header { w: 1920, h: 1080, ..Header::default() }, &files);
+    builder.destinations = vec![
+        json!({ "id": "bomb", "timer": 50, "offset": 0, "dst": [{ "h": 300 }] }),
+        json!({
+            "id": "key-beam",
+            "timer": 100,
+            "offset": 0,
+            "dst": [{ "h": 0 }, { "h": 723 }]
+        }),
+    ];
+
+    builder.complete_open_lr2_note_adjustment_effects();
+
+    assert!(builder.destinations.iter().all(|destination| destination.get("offsets").is_none()));
 }
 
 #[test]
