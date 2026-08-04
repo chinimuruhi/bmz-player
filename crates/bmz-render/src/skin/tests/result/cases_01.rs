@@ -102,6 +102,26 @@ fn wmii_result_draw_predicates_use_runtime_score_and_nearest_rank() {
 }
 
 #[test]
+fn wmii_next_rank_draw_predicates_use_forward_rank_boundaries() {
+    let a_minus = SkinDrawState { ex_score: 120, total_notes: 100, ..Default::default() };
+    assert!(eval_skin_draw_condition("wmii_next_rank_stage(3)", &a_minus));
+    assert!(!eval_skin_draw_condition("wmii_next_rank_stage(2)", &a_minus));
+    assert!(eval_skin_draw_condition("wmii_next_rank_diff_nonzero()", &a_minus));
+    assert!(!eval_skin_draw_condition("wmii_next_rank_diff_zero()", &a_minus));
+
+    let aa_minus = SkinDrawState { ex_score: 155, total_notes: 100, ..Default::default() };
+    assert!(eval_skin_draw_condition("wmii_next_rank_stage(2)", &aa_minus));
+
+    let max_minus = SkinDrawState { ex_score: 188, total_notes: 100, ..Default::default() };
+    assert!(eval_skin_draw_condition("wmii_next_rank_stage(8)", &max_minus));
+
+    let max = SkinDrawState { ex_score: 200, total_notes: 100, ..Default::default() };
+    assert!(eval_skin_draw_condition("wmii_next_rank_stage(0)", &max));
+    assert!(eval_skin_draw_condition("wmii_next_rank_diff_zero()", &max));
+    assert!(!eval_skin_draw_condition("wmii_next_rank_diff_nonzero()", &max));
+}
+
+#[test]
 fn result_key_mode_ops_use_result_key_mode() {
     let result_5k = SkinDrawState {
         result_failed: Some(false),

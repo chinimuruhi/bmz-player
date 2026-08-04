@@ -116,6 +116,33 @@ pub(in crate::skin) fn wmii_next_rank_diff(state: &SkinDrawState) -> Option<i64>
     Some(0)
 }
 
+pub(in crate::skin) fn wmii_next_rank_stage(state: &SkinDrawState) -> Option<i32> {
+    let ex_score = i64::from(state.ex_score);
+    let total_notes = i64::from(state.total_notes);
+    let max_score = total_notes.checked_mul(2)?;
+    if max_score <= 0 {
+        return None;
+    }
+    let ex_score = ex_score.clamp(0, max_score);
+    for (numerator, denominator, stage) in [
+        (6_i64, 27_i64, 7_i32),
+        (9, 27, 6),
+        (12, 27, 5),
+        (15, 27, 4),
+        (18, 27, 3),
+        (21, 27, 2),
+        (24, 27, 1),
+        (17, 18, 8),
+        (1, 1, 0),
+    ] {
+        let threshold = div_ceil(max_score * numerator, denominator);
+        if ex_score < threshold {
+            return Some(stage);
+        }
+    }
+    Some(0)
+}
+
 pub(in crate::skin) fn next_rank_grade(state: &SkinDrawState) -> Option<&'static str> {
     let ex_score = state.select_ex_score.unwrap_or(state.ex_score) as i64;
     let total_notes = state.select_total_notes.max(state.total_notes) as i64;

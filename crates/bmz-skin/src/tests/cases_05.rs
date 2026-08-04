@@ -560,6 +560,43 @@ fn wmii_fhd_play_lua_features_when_available() {
             vec![("extrastage", "!option(1080)"), ("practice", "option(1080)"),],
             "stage predicates for {name}"
         );
+        let next_rank_draws = loaded
+            .document
+            .destination
+            .iter()
+            .filter_map(|entry| match entry {
+                bmz_skin_document::DestinationListEntry::Single(destination)
+                    if destination.id.starts_with("nextRank") || destination.id == "diff_rank" =>
+                {
+                    Some((destination.id.as_str(), destination.draw.as_str()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            next_rank_draws.contains(&("nextRank-0", "wmii_next_rank_stage(0)")),
+            "MAX stage predicate for {name}: {next_rank_draws:?}"
+        );
+        assert!(
+            next_rank_draws.contains(&("nextRank-3", "wmii_next_rank_stage(3)")),
+            "A stage predicate for {name}: {next_rank_draws:?}"
+        );
+        assert!(
+            next_rank_draws.contains(&("nextRank-2", "wmii_next_rank_stage(2)")),
+            "AA stage predicate for {name}: {next_rank_draws:?}"
+        );
+        assert!(
+            next_rank_draws.contains(&("nextRank-0", "wmii_next_rank_stage(8)")),
+            "MAX- stage predicate for {name}: {next_rank_draws:?}"
+        );
+        assert!(
+            next_rank_draws.contains(&("nextRankMinus", "wmii_next_rank_diff_nonzero()")),
+            "negative difference predicate for {name}: {next_rank_draws:?}"
+        );
+        assert!(
+            next_rank_draws.contains(&("nextRankPlus", "wmii_next_rank_diff_zero()")),
+            "zero difference predicate for {name}: {next_rank_draws:?}"
+        );
         let next_rank = loaded
             .document
             .value

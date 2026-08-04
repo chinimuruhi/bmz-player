@@ -164,6 +164,83 @@ fn wmii_next_rank_diff(ex_score: i32, total_notes: i32) -> Option<i32> {
     Some(0)
 }
 
+fn wmii_next_rank_stage(ex_score: i32, total_notes: i32) -> Option<i32> {
+    let max_score = total_notes.checked_mul(2)?;
+    if max_score <= 0 {
+        return None;
+    }
+    let ex_score = ex_score.clamp(0, max_score);
+    for (numerator, denominator, stage) in [
+        (6, 27, 7),
+        (9, 27, 6),
+        (12, 27, 5),
+        (15, 27, 4),
+        (18, 27, 3),
+        (21, 27, 2),
+        (24, 27, 1),
+        (17, 18, 8),
+        (1, 1, 0),
+    ] {
+        let threshold = (max_score * numerator + denominator - 1) / denominator;
+        if ex_score < threshold {
+            return Some(stage);
+        }
+    }
+    Some(0)
+}
+
+fn verify_wmii_next_rank_predicate(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+    expected: impl Fn(i32, i32) -> bool,
+) -> bool {
+    if collect_number_refs(function, main_state_probe).as_deref() != Some(&[71, 74]) {
+        return false;
+    }
+    for total_notes in [9, 10, 37] {
+        for ex_score in 0..=total_notes * 2 {
+            let actual = call_draw_with_numbers(
+                function,
+                main_state_probe,
+                BTreeMap::from([(71, ex_score), (74, total_notes)]),
+            );
+            if actual != Some(expected(ex_score, total_notes)) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+pub(in crate::lua) fn verify_wmii_next_rank_stage_draw(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+    stage: i32,
+) -> bool {
+    (0..=8).contains(&stage)
+        && verify_wmii_next_rank_predicate(function, main_state_probe, |ex_score, total_notes| {
+            wmii_next_rank_stage(ex_score, total_notes) == Some(stage)
+        })
+}
+
+pub(in crate::lua) fn verify_wmii_next_rank_diff_zero_draw(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+) -> bool {
+    verify_wmii_next_rank_predicate(function, main_state_probe, |ex_score, total_notes| {
+        wmii_next_rank_diff(ex_score, total_notes) == Some(0)
+    })
+}
+
+pub(in crate::lua) fn verify_wmii_next_rank_diff_nonzero_draw(
+    function: &Function,
+    main_state_probe: &Arc<Mutex<MainStateProbe>>,
+) -> bool {
+    verify_wmii_next_rank_predicate(function, main_state_probe, |ex_score, total_notes| {
+        wmii_next_rank_diff(ex_score, total_notes).is_some_and(|diff| diff != 0)
+    })
+}
+
 pub(in crate::lua) fn luxe_flat_nearest_rank_diff(ex_score: i32, total_notes: i32) -> Option<i32> {
     let max = total_notes.checked_mul(2)?;
     if max <= 0 {
@@ -201,6 +278,36 @@ pub(in crate::lua) fn infer_result_score_draw(
             infer_modern_chic_ir_score_rate_band(function, id, main_state_probe)
         }
         "irYouFrame" => infer_ir_ranking_user_draw(function, main_state_probe),
+        "nextRankMinus" => {
+            if verify_wmii_next_rank_stage_draw(function, main_state_probe, 8) {
+                return Some("wmii_next_rank_stage(8)".to_string());
+            }
+            verify_wmii_next_rank_diff_nonzero_draw(function, main_state_probe)
+                .then(|| "wmii_next_rank_diff_nonzero()".to_string())
+        }
+        "nextRankPlus" => verify_wmii_next_rank_diff_zero_draw(function, main_state_probe)
+            .then(|| "wmii_next_rank_diff_zero()".to_string()),
+        "diff_rank" => {
+            if verify_wmii_next_rank_diff_nonzero_draw(function, main_state_probe) {
+                return Some("wmii_next_rank_diff_nonzero()".to_string());
+            }
+            verify_wmii_next_rank_diff_zero_draw(function, main_state_probe)
+                .then(|| "wmii_next_rank_diff_zero()".to_string())
+        }
+        id if id
+            .strip_prefix("nextRank-")
+            .and_then(|stage| stage.parse::<i32>().ok())
+            .is_some() =>
+        {
+            let stage = id.strip_prefix("nextRank-")?.parse::<i32>().ok()?;
+            if verify_wmii_next_rank_stage_draw(function, main_state_probe, stage) {
+                return Some(format!("wmii_next_rank_stage({stage})"));
+            }
+            if stage == 0 && verify_wmii_next_rank_stage_draw(function, main_state_probe, 8) {
+                return Some("wmii_next_rank_stage(8)".to_string());
+            }
+            None
+        }
         id if id.starts_with("nextRank") => {
             let grade = id.strip_prefix("nextRank")?;
             for sign in ["plus", "minus"] {
@@ -218,10 +325,6 @@ pub(in crate::lua) fn infer_result_score_draw(
             .then(|| "nearest_rank_sign(plus)".to_string()),
         "diff_minus" => verify_nearest_rank_draw(function, main_state_probe, None, "minus")
             .then(|| "nearest_rank_sign(minus)".to_string()),
-        "diff_rank" => ["plus", "minus"].into_iter().find_map(|sign| {
-            verify_nearest_rank_draw(function, main_state_probe, None, sign)
-                .then(|| format!("nearest_rank_sign({sign})"))
-        }),
         _ => None,
     }
 }
