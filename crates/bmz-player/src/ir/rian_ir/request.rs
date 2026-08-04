@@ -8,9 +8,8 @@ pub fn is_rian_ir_config(provider: &IrProviderConfig) -> bool {
     is_rian_ir_provider(&provider.provider) || is_rian_ir_provider(&provider.provider_key)
 }
 
-pub fn score_submission_supported(ln_policy: LnScorePolicy, double_option: DoubleOption) -> bool {
-    matches!(ln_policy, LnScorePolicy::ForceLn | LnScorePolicy::ForceCn | LnScorePolicy::ForceHcn)
-        && !matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
+pub fn score_submission_supported(_ln_policy: LnScorePolicy, double_option: DoubleOption) -> bool {
+    !matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
 }
 
 pub fn course_submission_supported(
@@ -41,12 +40,6 @@ pub fn body_for_rule_name(rule_mode: &str) -> Result<&'static str> {
 pub(super) fn ensure_score_payload_supported(payload: &IrScoreSubmission) -> Result<()> {
     let double =
         payload.play_options.get("applied_double_option").and_then(Value::as_str).unwrap_or("off");
-    if !matches!(
-        payload.rule.ln_policy,
-        LnScorePolicy::ForceLn | LnScorePolicy::ForceCn | LnScorePolicy::ForceHcn
-    ) {
-        bail!("rianIR sends only normalized FORCE LN/CN/HCN scores");
-    }
     if matches!(double, "battle" | "battle_auto_scratch" | "battle_assist") {
         bail!("rianIR does not accept BATTLE / BATTLE AS scores");
     }
@@ -60,7 +53,8 @@ pub(super) fn score_request(
 ) -> Result<Value> {
     let judges = aggregate_judges(payload.result.judges);
     let body = body_for_rule_name(&payload.rule.rule_mode)?;
-    let effective_ln_mode = effective_ln_mode_id(payload.rule.ln_policy);
+    let song_ln_mode = source_ln_mode_id(payload.chart.ln_profile);
+    let ln_mode = played_ln_mode_id(payload.chart.ln_profile, payload.rule.ln_policy);
     let played_at = payload.result.played_at;
     let mut request = json!({
         "player_name": player_id,
@@ -78,8 +72,8 @@ pub(super) fn score_request(
         "artist": b64(&payload.chart.artist),
         "subartist": b64(&payload.chart.subartists.join(", ")),
         "play_mode": play_mode(&payload.chart.mode),
-        "song_ln_mode": effective_ln_mode,
-        "ln_mode": client_ln_mode(payload.rule.ln_policy),
+        "song_ln_mode": song_ln_mode,
+        "ln_mode": ln_mode,
         "minbpm": payload.chart.bpm.and_then(|bpm| bpm.min).unwrap_or(0.0),
         "maxbpm": payload.chart.bpm.and_then(|bpm| bpm.max).unwrap_or(0.0),
         "song_level": payload.chart.level.unwrap_or(0),
@@ -107,6 +101,7 @@ pub(super) fn score_request(
         "play_duration": payload.result.duration_ms.map(|ms| ms as f64 / 1000.0).unwrap_or(0.0),
         "body": body,
     });
+    request["ln_mode_format"] = Value::String("canonical-v1".to_string());
     let signature = signature(
         api_token,
         &[
@@ -241,12 +236,30 @@ pub(super) fn play_mode(mode: &str) -> String {
     }
 }
 
-pub(super) fn effective_ln_mode_id(policy: LnScorePolicy) -> u8 {
-    match policy {
-        LnScorePolicy::AutoLn | LnScorePolicy::ForceLn => 1,
-        LnScorePolicy::AutoCn | LnScorePolicy::ForceCn => 2,
-        LnScorePolicy::AutoHcn | LnScorePolicy::ForceHcn => 3,
+fn chart_ln_profile(profile: IrChartLnProfile) -> ChartLnProfile {
+    ChartLnProfile {
+        has_undefined_ln: profile.has_undefined_ln,
+        has_defined_ln: profile.has_defined_ln,
+        has_defined_cn: profile.has_defined_cn,
+        has_defined_hcn: profile.has_defined_hcn,
     }
+}
+
+fn ln_mode_id(mode: Option<LongNoteMode>) -> u8 {
+    match mode {
+        None => 0,
+        Some(LongNoteMode::Ln) => 1,
+        Some(LongNoteMode::Cn) => 2,
+        Some(LongNoteMode::Hcn) => 3,
+    }
+}
+
+pub(super) fn source_ln_mode_id(profile: IrChartLnProfile) -> u8 {
+    ln_mode_id(crate::ln_policy::source_ln_mode(chart_ln_profile(profile)))
+}
+
+pub(super) fn played_ln_mode_id(profile: IrChartLnProfile, policy: LnScorePolicy) -> u8 {
+    ln_mode_id(crate::ln_policy::played_ln_mode(chart_ln_profile(profile), policy))
 }
 
 pub(super) fn effective_ln_mode_id_from_name(policy: &str) -> Result<u8> {
@@ -255,14 +268,6 @@ pub(super) fn effective_ln_mode_id_from_name(policy: &str) -> Result<u8> {
         "ForceCn" => Ok(2),
         "ForceHcn" => Ok(3),
         other => bail!("unsupported rianIR LN policy '{other}'"),
-    }
-}
-
-pub(super) fn client_ln_mode(policy: LnScorePolicy) -> u8 {
-    match policy {
-        LnScorePolicy::AutoLn | LnScorePolicy::ForceLn => 0,
-        LnScorePolicy::AutoCn | LnScorePolicy::ForceCn => 1,
-        LnScorePolicy::AutoHcn | LnScorePolicy::ForceHcn => 2,
     }
 }
 

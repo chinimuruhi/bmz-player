@@ -4,7 +4,7 @@ use bmz_gameplay::gauge::gauge_total_for_chart;
 use bmz_gameplay::result::PlayResult;
 use bmz_gameplay::score::scored_note_count;
 
-use crate::ln_policy::{ChartLnProfile, LnScorePolicy};
+use crate::ln_policy::{ChartLnProfile, LnScorePolicy, played_ln_mode};
 use crate::select_options::{ArrangeOption, DoubleOption, DoubleOptionScoreBucket};
 use crate::storage::common::hash_to_hex;
 use crate::storage::score_db::encode_beatoraja_ghost;
@@ -20,7 +20,8 @@ pub struct IrSubmissionContext {
     pub played_at: i64,
     pub duration_ms: Option<u64>,
     pub ln_policy: LnScorePolicy,
-    pub effective_ln_mode: LongNoteMode,
+    /// FORCE変換前の元譜面に含まれるLN種別。
+    pub source_ln_profile: ChartLnProfile,
     pub gauge_option: String,
     pub device_type: InputDeviceKind,
     pub idempotency_key: String,
@@ -43,6 +44,8 @@ pub fn build_score_submission(
     result: &PlayResult,
     context: IrSubmissionContext,
 ) -> IrScoreSubmission {
+    let effective_ln_mode =
+        played_ln_mode(context.source_ln_profile, context.ln_policy).unwrap_or(LongNoteMode::Ln);
     let judges = &result.score.judges;
     let mut play_options = std::collections::BTreeMap::new();
     let arrange_1p = arrange_option_ir(context.arrange).to_string();
@@ -95,13 +98,13 @@ pub fn build_score_submission(
             version: env!("CARGO_PKG_VERSION").to_string(),
             platform: std::env::consts::OS.to_string(),
         },
-        chart: build_ir_chart_payload(chart),
+        chart: build_ir_chart_payload_with_ln_profile(chart, context.source_ln_profile),
         rule: IrRulePayload {
             play_mode: play_mode_payload(chart.metadata.key_mode.as_str()),
             key_mode: chart.metadata.key_mode.as_str().to_string(),
             gauge: context.gauge_option,
             ln_policy: context.ln_policy,
-            effective_ln_mode: effective_ln_mode_payload(context.effective_ln_mode),
+            effective_ln_mode: effective_ln_mode_payload(effective_ln_mode),
             judge_algorithm: "bmz_v1".to_string(),
             scoring: "bms_ex_score_v1".to_string(),
             rule_mode: context.rule_mode.clone(),
@@ -148,7 +151,13 @@ pub fn build_score_submission(
 }
 
 pub fn build_ir_chart_payload(chart: &PlayableChart) -> IrChartPayload {
-    let ln_profile = ChartLnProfile::from_chart(chart);
+    build_ir_chart_payload_with_ln_profile(chart, ChartLnProfile::from_chart(chart))
+}
+
+fn build_ir_chart_payload_with_ln_profile(
+    chart: &PlayableChart,
+    ln_profile: ChartLnProfile,
+) -> IrChartPayload {
     let (min_bpm, max_bpm) = chart_bpm_range(chart);
     let total_notes = scored_note_count(chart);
     let gauge_total = gauge_total_for_chart(chart.metadata.total, total_notes);
@@ -341,7 +350,7 @@ mod tests {
                 played_at: 100,
                 duration_ms: Some(123_456),
                 ln_policy: LnScorePolicy::ForceLn,
-                effective_ln_mode: LongNoteMode::Ln,
+                source_ln_profile: ChartLnProfile { has_defined_cn: true, ..Default::default() },
                 gauge_option: "normal".to_string(),
                 device_type: InputDeviceKind::Controller,
                 idempotency_key: "score_local_1".to_string(),
@@ -363,6 +372,9 @@ mod tests {
         assert_eq!(payload.result.duration_ms, Some(123_456));
         assert_eq!(payload.result.pass_notes, None);
         assert_eq!(payload.rule.ln_policy, LnScorePolicy::ForceLn);
+        assert_eq!(payload.rule.effective_ln_mode, IrEffectiveLnMode::Ln);
+        assert!(payload.chart.ln_profile.has_defined_cn);
+        assert!(!payload.chart.ln_profile.has_defined_ln);
         assert_eq!(payload.rule.rule_mode, "Beatoraja");
         assert_eq!(payload.rule.key_mode, "7K");
         assert_eq!(

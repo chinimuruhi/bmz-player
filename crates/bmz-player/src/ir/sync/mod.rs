@@ -209,6 +209,63 @@ mod tests {
     }
 
     #[test]
+    fn queued_local_backfill_is_blocked_only_for_rian_ir() {
+        let payload: IrScoreSubmission = serde_json::from_value(serde_json::json!({
+            "client": { "name": "BMZ", "version": "test", "platform": "test" },
+            "chart": {
+                "sha256": "00",
+                "ln_profile": {
+                    "has_undefined_ln": false,
+                    "has_defined_ln": false,
+                    "has_defined_cn": true,
+                    "has_defined_hcn": false
+                },
+                "mode": "7K",
+                "notes": { "total": 0, "ln": 0, "cn": 0, "hcn": 0, "mine": 0 },
+                "features": {
+                    "random": false,
+                    "stop": false,
+                    "ln": false,
+                    "cn": true,
+                    "hcn": false,
+                    "mine": false
+                }
+            },
+            "rule": {
+                "play_mode": "single",
+                "key_mode": "7K",
+                "gauge": "Hard",
+                "ln_policy": "ForceCn",
+                "effective_ln_mode": "cn",
+                "judge_algorithm": "bmz_v1",
+                "scoring": "bms_ex_score_v1"
+            },
+            "result": {
+                "clear": "Hard",
+                "played_at": 0,
+                "judges": {
+                    "fast": { "pgreat": 0, "great": 0, "good": 0, "bad": 0, "poor": 0, "empty_poor": 0 },
+                    "slow": { "pgreat": 0, "great": 0, "good": 0, "bad": 0, "poor": 0, "empty_poor": 0 }
+                },
+                "ex_score": 0,
+                "max_combo": 0,
+                "notes": 0,
+                "min_bp": 0,
+                "min_cb": 0
+            },
+            "play_options": { "submission_source": "local_backfill" },
+            "idempotency_key": "test"
+        }))
+        .unwrap();
+        let rian = IrProviderConfig::rian_ir();
+        let bmz = IrProviderConfig::bmz_ir();
+
+        let error = ensure_score_payload_allowed(&rian, &payload).unwrap_err();
+        assert_eq!(error.to_string(), "rianIR local score backfill is disabled");
+        assert!(ensure_score_payload_allowed(&bmz, &payload).is_ok());
+    }
+
+    #[test]
     fn ir_submission_log_is_jsonl_under_logs_dir() {
         let stamp =
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();

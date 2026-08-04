@@ -10,7 +10,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::config::profile_config::{IrConfig, IrProviderConfig};
-use crate::ln_policy::LnScorePolicy;
+use crate::ln_policy::{LnScorePolicy, played_ln_mode};
 use crate::select_options::{ArrangeOption, DoubleOption, DoubleOptionScoreBucket};
 use crate::storage::common::{hash_to_hex, hex_to_hash};
 use crate::storage::library_db::{ChartAnalysis, ChartListItem, LibraryDatabase};
@@ -218,6 +218,9 @@ fn resolve_target_provider(
 }
 
 fn target_from_provider(provider: &IrProviderConfig) -> Result<TargetProvider> {
+    if crate::ir::rian_ir::is_rian_ir_config(provider) {
+        bail!("rianIR local score backfill is disabled");
+    }
     if !provider.enabled {
         bail!("IR provider '{}' is disabled", provider.provider);
     }
@@ -514,7 +517,7 @@ fn build_local_score_submission(
                 row.gauge_option.clone()
             },
             ln_policy: row.ln_policy,
-            effective_ln_mode: effective_ln_mode_payload(row.ln_policy),
+            effective_ln_mode: effective_ln_mode_payload(chart.ln_profile, row.ln_policy),
             judge_algorithm: "bmz_v1".to_string(),
             scoring: "bms_ex_score_v1".to_string(),
             rule_mode: row.rule_mode.clone(),
@@ -641,19 +644,14 @@ fn long_note_counts_for_policy(chart: &ChartListItem, policy: LnScorePolicy) -> 
     }
 }
 
-fn effective_ln_mode_payload(policy: LnScorePolicy) -> IrEffectiveLnMode {
-    match effective_ln_mode_from_score_policy(policy) {
+fn effective_ln_mode_payload(
+    profile: crate::ln_policy::ChartLnProfile,
+    policy: LnScorePolicy,
+) -> IrEffectiveLnMode {
+    match played_ln_mode(profile, policy).unwrap_or(LongNoteMode::Ln) {
         LongNoteMode::Ln => IrEffectiveLnMode::Ln,
         LongNoteMode::Cn => IrEffectiveLnMode::Cn,
         LongNoteMode::Hcn => IrEffectiveLnMode::Hcn,
-    }
-}
-
-fn effective_ln_mode_from_score_policy(policy: LnScorePolicy) -> LongNoteMode {
-    match policy {
-        LnScorePolicy::AutoLn | LnScorePolicy::ForceLn => LongNoteMode::Ln,
-        LnScorePolicy::AutoCn | LnScorePolicy::ForceCn => LongNoteMode::Cn,
-        LnScorePolicy::AutoHcn | LnScorePolicy::ForceHcn => LongNoteMode::Hcn,
     }
 }
 

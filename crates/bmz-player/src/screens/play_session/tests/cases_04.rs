@@ -407,6 +407,19 @@ fn load_game_session_counts_cn_ends_from_source_chart() {
         ..Default::default()
     };
     assert_eq!(scored_note_count_for_chart(&library_db, chart_id, &force_ln).unwrap(), 1);
+    let force_ln_setting =
+        PlaySessionOptions { ln_policy_setting: LnPolicySetting::ForceLn, ..Default::default() };
+    let transformed =
+        load_transformed_chart_for_play(&library_db, chart_id, &force_ln_setting).unwrap();
+    assert!(transformed.source_ln_profile.has_defined_cn);
+    assert!(!transformed.source_ln_profile.has_defined_ln);
+    assert!(
+        transformed
+            .chart
+            .long_notes
+            .iter()
+            .all(|pair| pair.mode == Some(bmz_chart::model::LongNoteMode::Ln))
+    );
     let battle = PlaySessionOptions { double_option: DoubleOption::Battle, ..Default::default() };
     assert_eq!(scored_note_count_for_chart(&library_db, chart_id, &battle).unwrap(), 4);
     let profile = ProfileConfig::new_default("default", "Default", 1);

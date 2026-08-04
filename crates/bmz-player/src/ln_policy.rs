@@ -127,6 +127,63 @@ impl ChartLnProfile {
     }
 }
 
+pub const fn source_ln_mode(profile: ChartLnProfile) -> Option<LongNoteMode> {
+    if profile.has_defined_hcn {
+        Some(LongNoteMode::Hcn)
+    } else if profile.has_defined_cn {
+        Some(LongNoteMode::Cn)
+    } else if profile.has_defined_ln || profile.has_undefined_ln {
+        Some(LongNoteMode::Ln)
+    } else {
+        None
+    }
+}
+
+/// 実際に降らせたLN種別。AUTOは定義済み種別を維持し、未定義LNへ
+/// 適用したfallbackとの上位種を返す。FORCEは全LNを指定種別へ変換する。
+pub fn played_ln_mode(profile: ChartLnProfile, policy: LnScorePolicy) -> Option<LongNoteMode> {
+    if !profile.has_any_ln() {
+        return None;
+    }
+
+    match policy {
+        LnScorePolicy::ForceLn => Some(LongNoteMode::Ln),
+        LnScorePolicy::ForceCn => Some(LongNoteMode::Cn),
+        LnScorePolicy::ForceHcn => Some(LongNoteMode::Hcn),
+        LnScorePolicy::AutoLn | LnScorePolicy::AutoCn | LnScorePolicy::AutoHcn => {
+            let defined = if profile.has_defined_hcn {
+                Some(LongNoteMode::Hcn)
+            } else if profile.has_defined_cn {
+                Some(LongNoteMode::Cn)
+            } else if profile.has_defined_ln {
+                Some(LongNoteMode::Ln)
+            } else {
+                None
+            };
+            let undefined = if profile.has_undefined_ln {
+                Some(match policy {
+                    LnScorePolicy::AutoLn => LongNoteMode::Ln,
+                    LnScorePolicy::AutoCn => LongNoteMode::Cn,
+                    LnScorePolicy::AutoHcn => LongNoteMode::Hcn,
+                    LnScorePolicy::ForceLn | LnScorePolicy::ForceCn | LnScorePolicy::ForceHcn => {
+                        unreachable!()
+                    }
+                })
+            } else {
+                None
+            };
+            match (defined, undefined) {
+                (Some(LongNoteMode::Hcn), _) | (_, Some(LongNoteMode::Hcn)) => {
+                    Some(LongNoteMode::Hcn)
+                }
+                (Some(LongNoteMode::Cn), _) | (_, Some(LongNoteMode::Cn)) => Some(LongNoteMode::Cn),
+                (Some(LongNoteMode::Ln), _) | (_, Some(LongNoteMode::Ln)) => Some(LongNoteMode::Ln),
+                (None, None) => None,
+            }
+        }
+    }
+}
+
 impl LnPolicySetting {
     pub const ORDER: [Self; 6] =
         [Self::AutoLn, Self::AutoCn, Self::AutoHcn, Self::ForceLn, Self::ForceCn, Self::ForceHcn];
@@ -401,6 +458,36 @@ mod tests {
         assert_eq!(
             score_ln_policy(LnPolicySetting::ForceHcn, DEFINED_CN_ONLY),
             LnScorePolicy::ForceHcn
+        );
+    }
+
+    #[test]
+    fn source_ln_mode_uses_highest_defined_mode_and_maps_undefined_to_ln() {
+        assert_eq!(source_ln_mode(NONE), None);
+        assert_eq!(source_ln_mode(UNDEFINED_ONLY), Some(LongNoteMode::Ln));
+        assert_eq!(source_ln_mode(DEFINED_LN_ONLY), Some(LongNoteMode::Ln));
+        assert_eq!(source_ln_mode(DEFINED_MIXED), Some(LongNoteMode::Cn));
+        assert_eq!(
+            source_ln_mode(ChartLnProfile { has_defined_hcn: true, ..DEFINED_MIXED }),
+            Some(LongNoteMode::Hcn)
+        );
+    }
+
+    #[test]
+    fn played_ln_mode_distinguishes_auto_fallback_from_force_conversion() {
+        assert_eq!(played_ln_mode(NONE, LnScorePolicy::ForceHcn), None);
+        assert_eq!(played_ln_mode(DEFINED_CN_ONLY, LnScorePolicy::ForceLn), Some(LongNoteMode::Ln));
+        assert_eq!(played_ln_mode(DEFINED_MIXED, LnScorePolicy::AutoLn), Some(LongNoteMode::Cn));
+        assert_eq!(
+            played_ln_mode(UNDEFINED_AND_DEFINED, LnScorePolicy::AutoHcn),
+            Some(LongNoteMode::Hcn)
+        );
+        assert_eq!(
+            played_ln_mode(
+                ChartLnProfile { has_defined_hcn: true, ..DEFINED_MIXED },
+                LnScorePolicy::AutoLn,
+            ),
+            Some(LongNoteMode::Hcn)
         );
     }
 

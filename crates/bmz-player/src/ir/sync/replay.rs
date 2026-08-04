@@ -172,6 +172,7 @@ pub(super) async fn submit_job_payload(
     let mut payload: IrScoreSubmission =
         serde_json::from_str(payload_json).context("failed to parse stored IR payload")?;
     normalize_legacy_score_seed_options(&mut payload);
+    ensure_score_payload_allowed(provider, &payload)?;
     let provider_key = crate::ir::provider_key::configured_provider_key(provider)
         .context("IR provider key is not set; log in again")?;
     let credentials =
@@ -190,4 +191,16 @@ pub(super) async fn submit_job_payload(
         IrSubmitOptions { ranking_scopes: vec![IrRankingScope::Global], ranking_limit: 20 };
     let response = client.submit_score(&payload, &options).await?;
     Ok((request_json, serde_json::to_string(&response)?))
+}
+
+pub(super) fn ensure_score_payload_allowed(
+    provider: &IrProviderConfig,
+    payload: &IrScoreSubmission,
+) -> Result<()> {
+    if crate::ir::rian_ir::is_rian_ir_config(provider)
+        && crate::ir::backfill::is_local_backfill_submission(payload)
+    {
+        bail!("rianIR local score backfill is disabled");
+    }
+    Ok(())
 }

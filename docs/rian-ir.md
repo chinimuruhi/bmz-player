@@ -56,7 +56,9 @@ rianIR は BMZ 公式 IR とは別 provider とする。credential、送信 queu
 - 選曲・リザルト・CLIのglobal単曲ランキング取得
 - 選曲・リザルトのglobal courseランキング取得
 - BMZ内部hashと分離した `rian_course_hash_v1` によるcourse送信・ランキング取得
-- 正規化後Force LN/CN/HCNだけをqueueへ入れるprovider別eligibility
+- 元譜面のLN構成と実際に適用したLN種別を分離した `canonical-v1` 送信
+- 正規化後のAuto/Force LN/CN/HCNすべてに対応するprovider別eligibility
+- rianIR向けlocal score backfillの新規投入・既存queue送信の無効化
 - Battle / Battle ASの非送信
 - rianIR成功後にBMZ公式IR用replay/evidence jobを作らないcapability分離
 
@@ -158,7 +160,7 @@ UIへ表示する機能は後続課題とする。
 
 - 通常の手動プレイである。
 - chart の SHA-256 を取得できる。
-- 正規化後の `LnScorePolicy` が `ForceLn` / `ForceCn` / `ForceHcn` のいずれかである。
+- 元譜面のLN profileと、正規化後の `LnScorePolicy` を取得できる。
 - `DoubleOption` が `Off` または `Flip` である。
 - rianIR が受理する key mode である。
 - score/result の必須値が rianIR の範囲に収まる。
@@ -168,7 +170,6 @@ UIへ表示する機能は後続課題とする。
 - autoplay
 - replay再生
 - practice
-- `LnScorePolicy::AutoLn` / `AutoCn` / `AutoHcn`
 - `DoubleOption::Battle`
 - `DoubleOption::BattleAutoScratch`（画面表記 `BATTLE AS`）
 - 中断され、rianIR の score contract を満たさない result
@@ -179,22 +180,31 @@ DP契約で扱う。
 
 ## LN Contract
 
-profile の生の `ln_mode_policy` ではなく、chart の LN profile と組み合わせて
-`score_ln_policy()` で正規化した後の `LnScorePolicy` を送信判定に使う。
+BMZは単曲score requestへ `ln_mode_format=canonical-v1` を必ず付ける。
+FORCE変換後のchartから元譜面の構成を逆算せず、import直後に取得したLN profileを
+プレイ終了まで保持する。
 
-| 正規化後 policy | 送信 | rianIR `ln_mode` |
-| --- | --- | ---: |
-| `ForceLn` | 可 | `0` |
-| `ForceCn` | 可 | `1` |
-| `ForceHcn` | 可 | `2` |
-| `AutoLn` | 不可 | - |
-| `AutoCn` | 不可 | - |
-| `AutoHcn` | 不可 | - |
+`song_ln_mode` は譜面に含まれるLN種別を表し、混在時は HCN > CN > LN の順で
+上位種を採用する。
 
-LN の無い譜面は BMZ 側で `ForceLn` へ正規化されるため送信可能である。
-`song_ln_mode` は正規化後のeffective modeに従い、Force LN/CN/HCNを
-それぞれ `1` / `2` / `3` として送る。したがってLNの無い譜面も初期版では
-`song_ln_mode=1` となる。rianIRのscore recordには実効LN/CN/HCNが保存される。
+| 元譜面 | `song_ln_mode` |
+| --- | ---: |
+| LN系ノートなし | `0` |
+| 定義LNのみ、未定義LNのみ、またはその混在 | `1` |
+| CNを含み、HCNを含まない | `2` |
+| HCNを含む | `3` |
+
+`ln_mode` は実際に適用された譜面のLN種別を表す。LN系ノートがなければ設定に
+かかわらず `0`、FORCE LN/CN/HCNならそれぞれ `1` / `2` / `3` とする。AUTOでは
+定義済みLNの種別を維持し、未定義LNに適用するfallbackを加えた結果から
+HCN > CN > LN の上位種を採用する。したがって、定義CN譜面をFORCE LNで
+プレイした場合は `song_ln_mode=2, ln_mode=1`、LN+CN混在譜面をAUTO LNで
+プレイした場合は `song_ln_mode=2, ln_mode=2` となる。
+
+過去スコアpayloadの組み立て自体も同じ規則で実効LN種別を算出する。ただし、
+rianIRへのlocal score backfillは運用上無効化する。`ir upload-local` でrianIRを
+指定した場合はqueueへ投入せずエラーにし、以前に作成済みの
+`submission_source=local_backfill` jobも送信直前に拒否する。
 
 rianIR のランキング取得 API が `ln_mode` を filter/group key に含めるまでは、
 異なる FORCE mode のスコアが混ざる可能性がある。初期版はこの制約を明示した上で
@@ -452,8 +462,11 @@ rianIR側の初期作業は次に限定する。
 - `RuleMode` 3種と `client=bmz-player` の mapping。
 - clear type、gauge、assist、legacy option の全 enum mapping。
 - `Poor -> poor`、`EmptyPoor -> miss` と FAST/SLOW 集計。
-- `ForceLn/Cn/Hcn` の `ln_mode` mapping と Auto 3種の送信拒否。
-- LNなし譜面が正規化後 `ForceLn` として送信可能になること。
+- `ln_mode_format=canonical-v1` が常に付くこと。
+- LNなし、未定義LN、定義LN/CN/HCN、混在譜面について、Auto/Forceの
+  `song_ln_mode` / `ln_mode` matrixが規則どおりになること。
+- Auto 3種を送信でき、LNなし譜面は設定にかかわらず `0 / 0` になること。
+- rianIR向けlocal score backfillが新規投入時と既存queue送信時の双方で拒否されること。
 - 4K/6K/8Kを含む全対応 key mode の `play_mode` mapping。
 - 1P/2P の F-RANDOM / MF-RANDOM structured field。
 - Off/Flip は送信でき、Battle/Battle AS は送信できないこと。

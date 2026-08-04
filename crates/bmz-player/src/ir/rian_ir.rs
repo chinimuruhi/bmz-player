@@ -7,21 +7,22 @@ use std::collections::BTreeMap;
 
 use anyhow::{Context, Result, bail};
 use base64::Engine;
+use bmz_chart::model::LongNoteMode;
 use bmz_gameplay::rule::RuleMode;
 use reqwest::Url;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::config::profile_config::IrProviderConfig;
-use crate::ln_policy::{LnPolicySetting, LnScorePolicy};
+use crate::ln_policy::{ChartLnProfile, LnPolicySetting, LnScorePolicy};
 use crate::select_options::DoubleOption;
 
 use super::types::{
-    IrAuthTokens, IrCourseRankingBody, IrCourseRankingCourseRef, IrCourseRankingEntry,
-    IrCourseRankingResult, IrCourseRankingScore, IrJudgePayload, IrJudgeSidePayload, IrPlayerInfo,
-    IrRankingBody, IrRankingChartRef, IrRankingEntry, IrRankingPagination, IrRankingPlayer,
-    IrRankingResult, IrRankingScope, IrRankingScore, IrRankingSelfRef, IrScoreSubmission,
-    IrSubmitResponse,
+    IrAuthTokens, IrChartLnProfile, IrCourseRankingBody, IrCourseRankingCourseRef,
+    IrCourseRankingEntry, IrCourseRankingResult, IrCourseRankingScore, IrJudgePayload,
+    IrJudgeSidePayload, IrPlayerInfo, IrRankingBody, IrRankingChartRef, IrRankingEntry,
+    IrRankingPagination, IrRankingPlayer, IrRankingResult, IrRankingScope, IrRankingScore,
+    IrRankingSelfRef, IrScoreSubmission, IrSubmitResponse,
 };
 
 pub const RIAN_IR_PROVIDER: &str = "rian-ir";
@@ -197,7 +198,7 @@ mod tests {
             chart: IrChartPayload {
                 sha256: "ab".repeat(32),
                 md5: Some("cd".repeat(16)),
-                ln_profile: IrChartLnProfile::default(),
+                ln_profile: IrChartLnProfile { has_defined_cn: true, ..Default::default() },
                 title: "タイトル".to_string(),
                 subtitle: String::new(),
                 genre: "genre".to_string(),
@@ -274,10 +275,11 @@ mod tests {
     }
 
     #[test]
-    fn score_eligibility_rejects_auto_and_battle() {
+    fn score_eligibility_accepts_auto_and_rejects_battle() {
         assert!(score_submission_supported(LnScorePolicy::ForceLn, DoubleOption::Off));
         assert!(score_submission_supported(LnScorePolicy::ForceHcn, DoubleOption::Flip));
-        assert!(!score_submission_supported(LnScorePolicy::AutoLn, DoubleOption::Off));
+        assert!(score_submission_supported(LnScorePolicy::AutoLn, DoubleOption::Off));
+        assert!(score_submission_supported(LnScorePolicy::AutoHcn, DoubleOption::Off));
         assert!(!score_submission_supported(
             LnScorePolicy::ForceCn,
             DoubleOption::BattleAutoScratch
@@ -295,14 +297,15 @@ mod tests {
     }
 
     #[test]
-    fn score_request_maps_force_ln_modes_and_extended_key_modes() {
+    fn score_request_uses_canonical_ln_modes_and_extended_key_modes() {
         let request = score_request(&sample_payload(), "player", "token").unwrap();
         assert_eq!(request["body"], "beatoraja");
         assert!(request.get("rule_mode").is_none());
         assert_eq!(request["client"], "bmz-player");
         assert_eq!(request["play_mode"], "beat-8k");
+        assert_eq!(request["ln_mode_format"], "canonical-v1");
         assert_eq!(request["song_ln_mode"], 2);
-        assert_eq!(request["ln_mode"], 1);
+        assert_eq!(request["ln_mode"], 2);
         assert_eq!(request["arrange_1p"], "f-random");
         assert_eq!(request["arrange_2p"], "mf-random");
         assert_eq!(request["play_seed"], 123456);
@@ -310,6 +313,81 @@ mod tests {
         assert_eq!(request["poor"], 5);
         assert_eq!(request["miss"], 5);
         assert_eq!(request["play_duration"], 120.0);
+    }
+
+    #[test]
+    fn score_request_maps_source_and_played_ln_mode_matrix() {
+        let cases = [
+            (IrChartLnProfile::default(), LnScorePolicy::ForceCn, 0, 0),
+            (
+                IrChartLnProfile { has_undefined_ln: true, ..Default::default() },
+                LnScorePolicy::ForceLn,
+                1,
+                1,
+            ),
+            (
+                IrChartLnProfile { has_undefined_ln: true, ..Default::default() },
+                LnScorePolicy::AutoCn,
+                1,
+                2,
+            ),
+            (
+                IrChartLnProfile { has_defined_cn: true, ..Default::default() },
+                LnScorePolicy::ForceLn,
+                2,
+                1,
+            ),
+            (
+                IrChartLnProfile {
+                    has_defined_ln: true,
+                    has_defined_cn: true,
+                    ..Default::default()
+                },
+                LnScorePolicy::AutoLn,
+                2,
+                2,
+            ),
+            (
+                IrChartLnProfile {
+                    has_undefined_ln: true,
+                    has_defined_cn: true,
+                    ..Default::default()
+                },
+                LnScorePolicy::AutoHcn,
+                2,
+                3,
+            ),
+            (
+                IrChartLnProfile {
+                    has_defined_ln: true,
+                    has_defined_cn: true,
+                    has_defined_hcn: true,
+                    ..Default::default()
+                },
+                LnScorePolicy::AutoLn,
+                3,
+                3,
+            ),
+            (
+                IrChartLnProfile { has_defined_hcn: true, ..Default::default() },
+                LnScorePolicy::ForceLn,
+                3,
+                1,
+            ),
+        ];
+
+        for (profile, policy, expected_song, expected_played) in cases {
+            let mut payload = sample_payload();
+            payload.chart.ln_profile = profile;
+            payload.rule.ln_policy = policy;
+            let request = score_request(&payload, "player", "token").unwrap();
+            assert_eq!(request["ln_mode_format"], "canonical-v1");
+            assert_eq!(request["song_ln_mode"], expected_song, "profile={profile:?}");
+            assert_eq!(
+                request["ln_mode"], expected_played,
+                "profile={profile:?}, policy={policy:?}"
+            );
+        }
     }
 
     #[test]

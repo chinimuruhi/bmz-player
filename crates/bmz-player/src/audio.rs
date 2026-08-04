@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use crate::config::app_config::{
     AudioBackend, AudioBufferSizeMode, AudioConfig, AudioOutputMode, AudioSampleRateMode,
 };
+use crate::ln_policy::ChartLnProfile;
 use crate::screens::play_finish::FinishedPlaySession;
 use crate::screens::play_session::{AppliedArrange, PreparedPlaySession};
 use crate::screens::play_snapshot::{BgaFrameCatalog, PlayRenderSnapshotCache};
@@ -96,6 +97,7 @@ pub struct AudioRuntime {
 
 pub struct RunningPlaySession {
     pub session: GameSession,
+    pub source_ln_profile: ChartLnProfile,
     pub audio: AppAudioOutput,
     pub pending_audio: ScheduledSoundQueue,
     pub pending_keysound_volumes: Vec<(bmz_core::ids::SoundId, f32)>,
@@ -259,6 +261,7 @@ pub fn open_prepared_play_audio(
     RunningPlaySession {
         render_snapshot_cache: prepared.render_snapshot_cache,
         session,
+        source_ln_profile: prepared.source_ln_profile,
         audio,
         pending_audio: ScheduledSoundQueue::new(),
         pending_keysound_volumes: Vec::new(),

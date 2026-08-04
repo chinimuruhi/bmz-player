@@ -49,7 +49,8 @@ use crate::config::profile_config::{
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::ln_policy::{
-    LnPolicySetting, apply_ln_policy_to_chart, force_ln_mode_for_chart, score_ln_policy_for_chart,
+    ChartLnProfile, LnPolicySetting, apply_ln_policy_to_chart, force_ln_mode_for_chart,
+    score_ln_policy_for_chart,
 };
 use crate::random_option_seed::{JavaRandom, RandomOptionSeed, RandomOptionSeeds};
 use crate::screens::practice::{
@@ -159,6 +160,7 @@ impl AppliedArrange {
 
 pub struct PreparedPlaySession {
     pub session: GameSession,
+    pub source_ln_profile: ChartLnProfile,
     pub audio: AudioEngine,
     pub sample_report: Vec<LoadedSampleReport>,
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
@@ -176,6 +178,7 @@ pub struct PreparedPlaySession {
 #[derive(Debug, Clone)]
 pub struct PreparedPlayChart {
     pub chart: Arc<PlayableChart>,
+    pub source_ln_profile: ChartLnProfile,
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
@@ -183,6 +186,7 @@ pub struct PreparedPlayChart {
 
 pub struct PreloadedPlaySession {
     pub chart: Arc<PlayableChart>,
+    pub source_ln_profile: ChartLnProfile,
     pub audio: AudioEngine,
     pub sample_report: Vec<LoadedSampleReport>,
     pub chart_normalization_gain: f32,
@@ -195,6 +199,7 @@ impl PreloadedPlaySession {
     pub fn prepared_chart(&self) -> PreparedPlayChart {
         PreparedPlayChart {
             chart: Arc::clone(&self.chart),
+            source_ln_profile: self.source_ln_profile,
             render_snapshot_cache: self.render_snapshot_cache.clone(),
             applied_arrange: self.applied_arrange.clone(),
             score_key: self.score_key,

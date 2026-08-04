@@ -20,6 +20,7 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
 
     let preloaded = preload_play_session_reloading_audio_with_progress(
         Arc::clone(&chart),
+        crate::ln_policy::ChartLnProfile::default(),
         48_000,
         0.75,
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&chart),

@@ -150,18 +150,21 @@ impl WinitApp {
     ) -> Option<PlayMediaCache> {
         let active = self.play.active_play.as_mut()?;
         let video_bga_decoders = std::mem::take(&mut active.running.video_bga_decoders);
-        let (chart, render_snapshot_cache, applied_arrange, score_key) = match mode {
-            ResultRetryMode::SameArrange => (
-                Some(Arc::clone(&active.running.session.chart)),
-                Some(active.running.render_snapshot_cache.clone()),
-                Some(active.running.applied_arrange.clone()),
-                Some(active.running.score_key),
-            ),
-            ResultRetryMode::DifferentArrange => (None, None, None, None),
-        };
+        let (chart, source_ln_profile, render_snapshot_cache, applied_arrange, score_key) =
+            match mode {
+                ResultRetryMode::SameArrange => (
+                    Some(Arc::clone(&active.running.session.chart)),
+                    Some(active.running.source_ln_profile),
+                    Some(active.running.render_snapshot_cache.clone()),
+                    Some(active.running.applied_arrange.clone()),
+                    Some(active.running.score_key),
+                ),
+                ResultRetryMode::DifferentArrange => (None, None, None, None, None),
+            };
         Some(PlayMediaCache {
             chart_id,
             chart,
+            source_ln_profile,
             render_snapshot_cache,
             chart_normalization_gain: active.running.session.audio_mix.chart_normalization_gain,
             applied_arrange,
@@ -181,6 +184,7 @@ impl WinitApp {
         self.play.play_media_cache = Some(PlayMediaCache {
             chart_id,
             chart: Some(Arc::clone(&running.session.chart)),
+            source_ln_profile: Some(running.source_ln_profile),
             render_snapshot_cache: Some(running.render_snapshot_cache.clone()),
             chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
             applied_arrange: Some(running.applied_arrange.clone()),
@@ -214,6 +218,7 @@ impl WinitApp {
         mut cache: PlayMediaCache,
     ) {
         cache.chart = None;
+        cache.source_ln_profile = None;
         cache.render_snapshot_cache = None;
         cache.applied_arrange = None;
         cache.score_key = None;
@@ -291,6 +296,8 @@ impl WinitApp {
         cache: PlayMediaCache,
     ) {
         let chart = Arc::clone(cache.chart.as_ref().expect("SameArrange cache includes chart"));
+        let source_ln_profile =
+            cache.source_ln_profile.expect("SameArrange cache includes source LN profile");
         let render_snapshot_cache = cache
             .render_snapshot_cache
             .clone()
@@ -317,6 +324,7 @@ impl WinitApp {
         let preview_prepared_chart = Arc::new(OnceLock::new());
         let _ = preview_prepared_chart.set(PreparedPlayChart {
             chart: Arc::clone(&chart),
+            source_ln_profile,
             render_snapshot_cache: render_snapshot_cache.clone(),
             applied_arrange: applied_arrange.clone(),
             score_key,
@@ -329,6 +337,7 @@ impl WinitApp {
                 let preloaded =
                     crate::screens::play_session::preload_play_session_reloading_audio_with_progress(
                         chart,
+                        source_ln_profile,
                         sample_rate,
                         chart_normalization_gain,
                         render_snapshot_cache,
@@ -451,6 +460,7 @@ impl WinitApp {
                     session: &active_play.running.session,
                     played_at: now_unix_seconds(),
                     applied_arrange: &active_play.running.applied_arrange,
+                    source_ln_profile: active_play.running.source_ln_profile,
                     target_ex_score: active_play.running.target_ex_score,
                     target_name: &active_play.running.target,
                     score_key: active_play.running.score_key,

@@ -119,6 +119,7 @@ pub fn advance_play_screen_until_result(
                 session,
                 played_at,
                 applied_arrange,
+                source_ln_profile: crate::ln_policy::ChartLnProfile::from_chart(&session.chart),
                 target_ex_score: None,
                 score_key: crate::storage::score_db::ScoreKey::new(
                     session.chart.identity.file_sha256,
@@ -373,6 +374,7 @@ pub fn advance_running_play_session_until_result(
                 session: &running.session,
                 played_at,
                 applied_arrange: &running.applied_arrange,
+                source_ln_profile: running.source_ln_profile,
                 target_ex_score: running.target_ex_score,
                 target_name: &running.target,
                 score_key: running.score_key,

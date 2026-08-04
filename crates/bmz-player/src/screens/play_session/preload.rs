@@ -164,6 +164,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
             &chart,
         ),
         chart,
+        source_ln_profile: imported.source_ln_profile,
         applied_arrange: imported.applied_arrange,
         score_key: imported.score_key,
     };
@@ -213,6 +214,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
 
     Ok(PreloadedPlaySession {
         chart: prepared_chart.chart,
+        source_ln_profile: prepared_chart.source_ln_profile,
         audio,
         sample_report,
         chart_normalization_gain,
@@ -230,6 +232,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
 /// mixer voices, scheduled sounds, or any other playback state across retries.
 pub fn preload_play_session_reloading_audio_with_progress(
     chart: Arc<PlayableChart>,
+    source_ln_profile: ChartLnProfile,
     sample_rate: u32,
     chart_normalization_gain: f32,
     render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
@@ -252,6 +255,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
     );
     PreloadedPlaySession {
         chart,
+        source_ln_profile,
         audio,
         sample_report,
         chart_normalization_gain,
@@ -263,6 +267,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
 
 pub(super) struct TransformedPlayChart {
     pub(super) chart: PlayableChart,
+    pub(super) source_ln_profile: ChartLnProfile,
     pub(super) applied_arrange: AppliedArrange,
     pub(super) score_key: ScoreKey,
 }
@@ -303,6 +308,7 @@ pub(super) fn load_transformed_chart_for_play(
 ) -> Result<TransformedPlayChart> {
     let import = load_source_chart_import_for_play(library_db, chart_id, options)?;
     let mut chart = import.chart;
+    let source_ln_profile = ChartLnProfile::from_chart(&chart);
     // beatoraja BMSModelUtils.setStartNoteTime(model, 1000) 相当。
     // LN / arrange より前に適用し、practice 切出しもシフト後時刻を使う。
     apply_start_note_margin(&mut chart);
@@ -349,7 +355,7 @@ pub(super) fn load_transformed_chart_for_play(
     applied_arrange.double_option = applied_double_option;
     applied_arrange.bms_random_choices = import.bms_random_choices;
 
-    Ok(TransformedPlayChart { chart, applied_arrange, score_key })
+    Ok(TransformedPlayChart { chart, source_ln_profile, applied_arrange, score_key })
 }
 
 pub(super) fn effective_arrange_seed(
@@ -400,6 +406,7 @@ pub fn build_practice_prepared_from_preloaded(
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&session.chart);
     PreparedPlaySession {
         session,
+        source_ln_profile: preloaded.source_ln_profile,
         audio: preloaded.audio,
         sample_report: preloaded.sample_report,
         render_snapshot_cache,
@@ -427,6 +434,7 @@ pub fn build_prepared_play_session_from_preloaded(
     session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
     PreparedPlaySession {
         session,
+        source_ln_profile: preloaded.source_ln_profile,
         audio: preloaded.audio,
         sample_report: preloaded.sample_report,
         render_snapshot_cache: preloaded.render_snapshot_cache,

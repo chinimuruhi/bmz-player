@@ -1,5 +1,4 @@
 use anyhow::{Result, bail};
-use bmz_chart::model::LongNoteMode;
 use bmz_core::clear::ClearType;
 use bmz_core::input::InputDeviceKind;
 use bmz_gameplay::gauge::GaugeCarryValue;
@@ -10,6 +9,7 @@ use bmz_gameplay::session::{GameSession, PlayState};
 
 use crate::config::profile_config::{IrConfig, ReplayConfig};
 use crate::ir::payload::{IrSubmissionContext, build_score_submission};
+use crate::ln_policy::ChartLnProfile;
 use crate::paths::ProfilePaths;
 use crate::screens::play_session::AppliedArrange;
 use crate::screens::result_model::ResultSummary;
@@ -98,6 +98,7 @@ pub fn store_session_result(
             session,
             played_at,
             applied_arrange,
+            source_ln_profile: ChartLnProfile::from_chart(&session.chart),
             target_ex_score: None,
             score_key,
             practice_mode,
@@ -114,6 +115,7 @@ pub struct FinishSessionResultRequest<'a> {
     pub session: &'a GameSession,
     pub played_at: i64,
     pub applied_arrange: &'a AppliedArrange,
+    pub source_ln_profile: ChartLnProfile,
     pub target_ex_score: Option<u32>,
     pub score_key: ScoreKey,
     pub practice_mode: bool,
@@ -132,6 +134,7 @@ pub fn finish_session_result(
         session,
         played_at,
         applied_arrange,
+        source_ln_profile,
         target_ex_score,
         score_key,
         practice_mode,
@@ -237,6 +240,7 @@ pub fn finish_session_result(
                 played_at,
                 score_key,
                 applied_arrange,
+                source_ln_profile,
                 summary: &mut summary,
                 previous_best: previous_best.as_ref(),
             },
@@ -291,6 +295,7 @@ struct EnqueueIrJobsRequest<'a> {
     played_at: i64,
     score_key: ScoreKey,
     applied_arrange: &'a AppliedArrange,
+    source_ln_profile: ChartLnProfile,
     summary: &'a mut ResultSummary,
     previous_best: Option<&'a crate::storage::score_db::BestScoreSummary>,
 }
@@ -307,6 +312,7 @@ fn enqueue_ir_jobs(
         played_at,
         score_key,
         applied_arrange,
+        source_ln_profile,
         summary,
         previous_best,
     } = request;
@@ -338,7 +344,7 @@ fn enqueue_ir_jobs(
             played_at,
             duration_ms: Some(chart_duration_ms(&session.chart)),
             ln_policy: score_key.ln_policy,
-            effective_ln_mode: effective_ln_mode_from_score_policy(score_key.ln_policy),
+            source_ln_profile,
             gauge_option: result.gauge_type.as_str().to_string(),
             device_type: stored.device_type,
             idempotency_key: format!("bmz-score-{}", stored.score_history_id),
@@ -424,20 +430,6 @@ fn should_send_ir_score(
     }
 }
 
-fn effective_ln_mode_from_score_policy(policy: crate::ln_policy::LnScorePolicy) -> LongNoteMode {
-    match policy {
-        crate::ln_policy::LnScorePolicy::AutoLn | crate::ln_policy::LnScorePolicy::ForceLn => {
-            LongNoteMode::Ln
-        }
-        crate::ln_policy::LnScorePolicy::AutoCn | crate::ln_policy::LnScorePolicy::ForceCn => {
-            LongNoteMode::Cn
-        }
-        crate::ln_policy::LnScorePolicy::AutoHcn | crate::ln_policy::LnScorePolicy::ForceHcn => {
-            LongNoteMode::Hcn
-        }
-    }
-}
-
 pub fn finish_session_result_once(
     cached: &mut Option<FinishedPlaySession>,
     score_db: &mut ScoreDatabase,
@@ -458,6 +450,7 @@ pub fn finish_session_result_once(
             session: request.session,
             played_at: request.played_at,
             applied_arrange: request.applied_arrange,
+            source_ln_profile: request.source_ln_profile,
             target_ex_score: request.target_ex_score,
             score_key: request.score_key,
             practice_mode: request.practice_mode,
@@ -476,6 +469,7 @@ pub struct FinishSessionResultOnceRequest<'a> {
     pub session: &'a GameSession,
     pub played_at: i64,
     pub applied_arrange: &'a AppliedArrange,
+    pub source_ln_profile: ChartLnProfile,
     pub target_ex_score: Option<u32>,
     pub target_name: &'a str,
     pub score_key: ScoreKey,

@@ -112,6 +112,7 @@ impl WinitApp {
                         session: &active_play.running.session,
                         played_at: now_unix_seconds(),
                         applied_arrange: &active_play.running.applied_arrange,
+                        source_ln_profile: active_play.running.source_ln_profile,
                         target_ex_score: active_play.running.target_ex_score,
                         target_name: &active_play.running.target,
                         score_key: active_play.running.score_key,

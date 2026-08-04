@@ -18,6 +18,17 @@ fn local_upload_defaults_use_the_fast_cli_batch_size() {
     assert_eq!(IrLocalUploadOptions::default().limit, 200);
 }
 
+#[test]
+fn rian_ir_local_backfill_target_is_disabled() {
+    let mut provider = IrProviderConfig::rian_ir();
+    provider.enabled = true;
+    provider.provider_key = "rian-ir".to_string();
+    provider.account_id = "player".to_string();
+
+    let error = target_from_provider(&provider).unwrap_err();
+    assert_eq!(error.to_string(), "rianIR local score backfill is disabled");
+}
+
 fn test_row() -> BackfillScoreRow {
     BackfillScoreRow {
         id: 42,
@@ -152,6 +163,21 @@ fn local_backfill_payload_uses_history_counts_and_options() {
     assert_eq!(payload.play_options["source_kind"], "beatoraja");
     assert_eq!(payload.play_options["device_type"], "controller");
     assert_eq!(payload.play_options["assist_mask"], 4);
+}
+
+#[test]
+fn local_backfill_payload_resolves_mixed_auto_mode_from_library_profile() {
+    let mut row = test_row();
+    row.ln_policy = LnScorePolicy::AutoLn;
+    let mut chart = test_chart();
+    chart.ln_profile.has_defined_ln = true;
+
+    let payload = build_local_score_submission(&row, &chart, Some(&test_analysis()), None);
+
+    assert_eq!(payload.rule.ln_policy, LnScorePolicy::AutoLn);
+    assert_eq!(payload.rule.effective_ln_mode, IrEffectiveLnMode::Cn);
+    assert!(payload.chart.ln_profile.has_defined_ln);
+    assert!(payload.chart.ln_profile.has_defined_cn);
 }
 
 #[test]
