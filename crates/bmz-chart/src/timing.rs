@@ -145,9 +145,10 @@ pub fn build_timing_map(initial_bpm: f64, mut events: Vec<TickTimingEvent>) -> T
 
 fn timing_event_priority(kind: TickTimingEventKind) -> u8 {
     match kind {
-        TickTimingEventKind::StopRaw { .. } => 0,
-        TickTimingEventKind::SetBpm(_) => 1,
-        TickTimingEventKind::BmsonStop { .. } => 2,
+        // Match beatoraja/bms-rs: BPM changes take effect before a STOP at
+        // the same position, so the STOP uses the new BPM.
+        TickTimingEventKind::SetBpm(_) => 0,
+        TickTimingEventKind::StopRaw { .. } | TickTimingEventKind::BmsonStop { .. } => 1,
     }
 }
 
@@ -220,8 +221,10 @@ impl TimingMap {
             (
                 e.tick,
                 match e.kind {
-                    Kind::Stop { .. } => 0,
-                    Kind::BpmChange { .. } => 1,
+                    // The duration is already resolved, but the segment at
+                    // the event position must still use the new BPM.
+                    Kind::BpmChange { .. } => 0,
+                    Kind::Stop { .. } => 1,
                 },
             )
         });
@@ -418,6 +421,30 @@ mod tests {
         assert_eq!(
             map.tick_to_time(ChartTick(change_tick + TICKS_PER_BEAT as u64)),
             TimeUs(62_000_000)
+        );
+    }
+
+    #[test]
+    fn build_timing_map_uses_new_bpm_for_same_tick_stop() {
+        let change_tick = TICKS_PER_BEAT as u64 * 4;
+        let events = vec![
+            TickTimingEvent {
+                tick: ChartTick(change_tick),
+                kind: TickTimingEventKind::StopRaw { value: 48 },
+            },
+            TickTimingEvent {
+                tick: ChartTick(change_tick),
+                kind: TickTimingEventKind::SetBpm(240.0),
+            },
+        ];
+
+        let map = build_timing_map(120.0, events);
+
+        // Four beats at 120 BPM = 2 seconds. STOP 48 is one beat, so it is
+        // 250 ms at the new BPM 240, followed by one beat at 240 BPM.
+        assert_eq!(
+            map.tick_to_time(ChartTick(change_tick + TICKS_PER_BEAT as u64)),
+            TimeUs(2_500_000)
         );
     }
 }

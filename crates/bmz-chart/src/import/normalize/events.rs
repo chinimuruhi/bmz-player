@@ -47,9 +47,10 @@ pub(super) fn build_timing_events(
         (
             event.tick,
             match event.kind {
-                TickTimingEventKind::StopRaw { .. } => 0,
-                TickTimingEventKind::SetBpm(_) => 1,
-                TickTimingEventKind::BmsonStop { .. } => 2,
+                // Match beatoraja: BPM changes take effect before a STOP at
+                // the same position, so the STOP uses the new BPM.
+                TickTimingEventKind::SetBpm(_) => 0,
+                TickTimingEventKind::StopRaw { .. } | TickTimingEventKind::BmsonStop { .. } => 1,
             },
         )
     });
