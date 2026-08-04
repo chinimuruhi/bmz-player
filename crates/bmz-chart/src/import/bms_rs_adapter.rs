@@ -62,12 +62,14 @@ use super::intermediate::{
 
 use crate::model::{JudgeRankKind, JudgeRankSpec, LongNoteMode};
 
+mod compat;
 mod metadata;
 mod objects;
 mod random;
 mod sparse;
 mod timing;
 
+use compat::*;
 use metadata::*;
 use objects::*;
 use random::*;
@@ -197,8 +199,13 @@ fn import_with_layout<T: KeyLayoutMapper>(
     } else {
         raw_text.clone()
     };
-    let text =
-        apply_beatoraja_random_control(&layout_text, random_source, bms_random_choices, warnings);
+    let compatible_text = normalize_beatoraja_header_separators(&layout_text);
+    let text = apply_beatoraja_random_control(
+        &compatible_text,
+        random_source,
+        bms_random_choices,
+        warnings,
+    );
     let metadata_text = strip_empty_metadata_commands(&text);
     let lnobj_parse_text = strip_lnobj_commands(&metadata_text);
     let bga_messages = extract_bga_message_lines(&lnobj_parse_text);

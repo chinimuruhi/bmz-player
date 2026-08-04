@@ -516,6 +516,46 @@ fn bms_headers_exclude_base62_channel_commands() {
 }
 
 #[test]
+fn beatoraja_colon_separated_bpm_and_stop_definitions_are_imported() {
+    let (chart, warnings) = import_bms_text_with_warnings(
+        "\
+#TITLE Colon Definitions
+#BPM 120
+#BPM01:240
+#STOP01:192
+#WAV01 key.wav
+#00103:01
+#00109:01
+#00111:01
+",
+    );
+
+    assert_eq!(
+        chart
+            .resources
+            .bpm_table
+            .iter()
+            .find(|definition| definition.key == 1)
+            .map(|definition| definition.bpm),
+        Some(240.0)
+    );
+    assert_eq!(
+        chart
+            .resources
+            .stop_table
+            .iter()
+            .find(|definition| definition.key == 1)
+            .map(|definition| definition.value),
+        Some(192)
+    );
+    assert!(!warnings.iter().any(|warning| matches!(
+        warning,
+        ImportWarning::ParserDiagnostic { code, .. }
+            if code == "ParseSyntaxError" || code == "ParseUndefinedObject"
+    )));
+}
+
+#[test]
 fn empty_trailing_metadata_does_not_clear_previous_values() {
     let (chart, _) = import_bms_text_with_warnings(
         "\
