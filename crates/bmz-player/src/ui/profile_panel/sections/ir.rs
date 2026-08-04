@@ -163,7 +163,8 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                             });
                         }
                     }
-                    if !endpoint_editable && provider_key.is_some() {
+                    let logged_in = provider_key.is_some();
+                    if index >= BUILTIN_IR_PROVIDER_COUNT && !endpoint_editable && logged_in {
                         ui.small(tr!(text, "profile-ir-logout-to-change"));
                     }
                     let row_target = IrProviderUiTarget::new(
@@ -171,54 +172,28 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         provider.base_url.clone(),
                     );
                     let is_rian = crate::ir::rian_ir::is_rian_ir_config(provider);
-                    let provider_key_text = provider_key
-                        .clone()
-                        .unwrap_or_else(|| tr!(text, "profile-ir-key-after-login"));
-                    ui.horizontal(|ui| {
-                        ui.label("Key");
-                        ui.monospace(&provider_key_text);
-                    });
-                    let credentials_ready = {
-                        let form = ir_login.provider_form_mut(index);
+                    if index >= BUILTIN_IR_PROVIDER_COUNT {
+                        let provider_key_text = provider_key
+                            .clone()
+                            .unwrap_or_else(|| tr!(text, "profile-ir-key-after-login"));
                         ui.horizontal(|ui| {
-                            ui.label(if is_rian {
-                                tr!(text, "profile-ir-login-id")
-                            } else {
-                                tr!(text, "profile-ir-email")
-                            });
-                            ui.text_edit_singleline(&mut form.email);
+                            ui.label("Key");
+                            ui.monospace(&provider_key_text);
                         });
-                        ui.horizontal(|ui| {
-                            ui.label(tr!(text, "profile-ir-password"));
-                            ui.add(egui::TextEdit::singleline(&mut form.password).password(true));
-                        });
-                        !form.email.is_empty() && !form.password.is_empty()
-                    };
-                    ui.horizontal(|ui| {
-                        let can_login = !ir_login.busy
-                            && normalized_ir_base_url(&provider.base_url).is_some()
-                            && credentials_ready;
-                        if ui
-                            .add_enabled(
-                                can_login,
-                                egui::Button::new(tr!(text, "profile-ir-login")),
-                            )
-                            .clicked()
-                        {
-                            ir_login.start_login(
-                                index,
-                                profile_root.to_path_buf(),
-                                provider.provider.clone(),
-                                provider.base_url.clone(),
-                            );
-                        }
-                        let login_busy = ir_login.busy_form_index == Some(index)
-                            && ir_login.busy_target.as_ref().is_some_and(|target| {
-                                target.matches(&provider.provider, &provider.base_url)
-                            });
-                        if login_busy {
-                            ui.spinner();
-                        }
+                    }
+                    if logged_in {
+                        let display_name = if !provider.account_display_name.trim().is_empty() {
+                            provider.account_display_name.trim()
+                        } else if !provider.account_id.trim().is_empty() {
+                            provider.account_id.trim()
+                        } else {
+                            provider_key.as_deref().unwrap_or_default()
+                        };
+                        ui.label(tr!(
+                            text,
+                            "profile-ir-logged-in",
+                            "display_name" => display_name,
+                        ));
                         if ui.button(tr!(text, "profile-ir-logout")).clicked() {
                             let result = provider_key
                                 .as_deref()
@@ -255,39 +230,51 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                                 }
                             }
                         }
-                    });
-                    ui.horizontal(|ui| {
-                        let busy = ir_device_key.is_busy_for(
-                            index,
-                            provider_key.as_deref(),
-                            &provider.provider,
-                            &provider.base_url,
-                        );
-                        let can_rotate = !busy
-                            && !provider.base_url.is_empty()
-                            && provider_key.is_some()
-                            && !is_rian;
-                        if ui
-                            .add_enabled(
-                                can_rotate,
-                                egui::Button::new(tr!(text, "profile-ir-device-key-rotate")),
-                            )
-                            .clicked()
-                        {
-                            ir_device_key.start_rotate(
-                                index,
-                                profile_root.to_path_buf(),
-                                provider.provider.clone(),
-                                provider_key.clone().unwrap_or_default(),
-                                provider.base_url.clone(),
-                            );
-                        }
-                        if busy {
-                            ui.spinner();
-                        }
-                    });
+                    } else {
+                        let form = ir_login.provider_form_mut(index);
+                        ui.horizontal(|ui| {
+                            ui.label(if is_rian {
+                                tr!(text, "profile-ir-login-id")
+                            } else {
+                                tr!(text, "profile-ir-email")
+                            });
+                            ui.text_edit_singleline(&mut form.email);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label(tr!(text, "profile-ir-password"));
+                            ui.add(egui::TextEdit::singleline(&mut form.password).password(true));
+                        });
+                        let credentials_ready = !form.email.is_empty() && !form.password.is_empty();
+                        let can_login = !ir_login.busy
+                            && normalized_ir_base_url(&provider.base_url).is_some()
+                            && credentials_ready;
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(
+                                    can_login,
+                                    egui::Button::new(tr!(text, "profile-ir-login")),
+                                )
+                                .clicked()
+                            {
+                                ir_login.start_login(
+                                    index,
+                                    profile_root.to_path_buf(),
+                                    provider.provider.clone(),
+                                    provider.base_url.clone(),
+                                );
+                            }
+                            let login_busy = ir_login.busy_form_index == Some(index)
+                                && ir_login.busy_target.as_ref().is_some_and(|target| {
+                                    target.matches(&provider.provider, &provider.base_url)
+                                });
+                            if login_busy {
+                                ui.spinner();
+                            }
+                        });
+                    }
                     if let Some(message) = &ir_login.message
                         && message.matches(index, &provider.provider, &provider.base_url)
+                        && (!logged_in || !message.ok)
                     {
                         let color = if message.ok {
                             egui::Color32::LIGHT_GREEN
@@ -296,42 +283,74 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         };
                         ui.colored_label(color, message.text.clone());
                     }
-                    if let Some(message) = &ir_device_key.message
-                        && message.matches(index, &provider.provider, &provider.base_url)
-                    {
-                        let color = if message.ok {
-                            egui::Color32::LIGHT_GREEN
-                        } else {
-                            egui::Color32::LIGHT_RED
-                        };
-                        ui.colored_label(color, message.text.clone());
-                    }
-                    egui::ComboBox::new(
-                        ("profile_ir_send_policy", index),
-                        tr!(text, "profile-ir-send-policy"),
-                    )
-                    .selected_text(ir_send_policy_label(provider.send_policy))
-                    .show_ui(ui, |ui| {
-                        for value in [
-                            IrSendPolicyConfig::UpdateScore,
-                            IrSendPolicyConfig::Always,
-                            IrSendPolicyConfig::CompleteSong,
-                        ] {
-                            ui.selectable_value(
-                                &mut provider.send_policy,
-                                value,
-                                ir_send_policy_label(value),
+                    if logged_in {
+                        ui.horizontal(|ui| {
+                            let busy = ir_device_key.is_busy_for(
+                                index,
+                                provider_key.as_deref(),
+                                &provider.provider,
+                                &provider.base_url,
                             );
+                            let can_rotate = !busy
+                                && !provider.base_url.is_empty()
+                                && provider_key.is_some()
+                                && !is_rian;
+                            if ui
+                                .add_enabled(
+                                    can_rotate,
+                                    egui::Button::new(tr!(text, "profile-ir-device-key-rotate")),
+                                )
+                                .clicked()
+                            {
+                                ir_device_key.start_rotate(
+                                    index,
+                                    profile_root.to_path_buf(),
+                                    provider.provider.clone(),
+                                    provider_key.clone().unwrap_or_default(),
+                                    provider.base_url.clone(),
+                                );
+                            }
+                            if busy {
+                                ui.spinner();
+                            }
+                        });
+                        if let Some(message) = &ir_device_key.message
+                            && message.matches(index, &provider.provider, &provider.base_url)
+                        {
+                            let color = if message.ok {
+                                egui::Color32::LIGHT_GREEN
+                            } else {
+                                egui::Color32::LIGHT_RED
+                            };
+                            ui.colored_label(color, message.text.clone());
                         }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(tr!(text, "profile-ir-last-login"));
-                        ui.monospace(format_optional_timestamp(provider.last_login_at));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(tr!(text, "profile-ir-last-success"));
-                        ui.monospace(format_optional_timestamp(provider.last_success_at));
-                    });
+                        egui::ComboBox::new(
+                            ("profile_ir_send_policy", index),
+                            tr!(text, "profile-ir-send-policy"),
+                        )
+                        .selected_text(ir_send_policy_label(provider.send_policy))
+                        .show_ui(ui, |ui| {
+                            for value in [
+                                IrSendPolicyConfig::UpdateScore,
+                                IrSendPolicyConfig::Always,
+                                IrSendPolicyConfig::CompleteSong,
+                            ] {
+                                ui.selectable_value(
+                                    &mut provider.send_policy,
+                                    value,
+                                    ir_send_policy_label(value),
+                                );
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label(tr!(text, "profile-ir-last-login"));
+                            ui.monospace(format_optional_timestamp(provider.last_login_at));
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label(tr!(text, "profile-ir-last-success"));
+                            ui.monospace(format_optional_timestamp(provider.last_success_at));
+                        });
+                    }
                 });
             }
             if logged_out_provider_key

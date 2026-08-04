@@ -402,6 +402,7 @@ profile-ir-email = 電郵
 profile-ir-password = 密碼
 profile-ir-login = 登入
 profile-ir-login-success = 已以 { $display_name } 登入
+profile-ir-logged-in = 已以 { $display_name } 登入
 profile-ir-logout = 登出
 profile-ir-logout-success = 已登出
 profile-ir-device-key-rotate = 重新產生簽署金鑰

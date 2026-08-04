@@ -401,6 +401,7 @@ profile-ir-email = 邮箱
 profile-ir-password = 密码
 profile-ir-login = 登录
 profile-ir-login-success = 已以 { $display_name } 登录
+profile-ir-logged-in = 已以 { $display_name } 登录
 profile-ir-logout = 退出登录
 profile-ir-logout-success = 已退出登录
 profile-ir-device-key-rotate = 重新生成签名密钥

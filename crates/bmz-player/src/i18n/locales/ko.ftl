@@ -401,6 +401,7 @@ profile-ir-email = 이메일
 profile-ir-password = 비밀번호
 profile-ir-login = 로그인
 profile-ir-login-success = { $display_name }(으)로 로그인했습니다
+profile-ir-logged-in = { $display_name }(으)로 로그인됨
 profile-ir-logout = 로그아웃
 profile-ir-logout-success = 로그아웃했습니다
 profile-ir-device-key-rotate = 서명 키 다시 생성

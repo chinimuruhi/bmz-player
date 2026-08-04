@@ -401,6 +401,7 @@ profile-ir-email = メール
 profile-ir-password = パスワード
 profile-ir-login = ログイン
 profile-ir-login-success = { $display_name } としてログインしました
+profile-ir-logged-in = { $display_name }としてログイン済み
 profile-ir-logout = ログアウト
 profile-ir-logout-success = ログアウトしました
 profile-ir-device-key-rotate = 署名鍵を再生成

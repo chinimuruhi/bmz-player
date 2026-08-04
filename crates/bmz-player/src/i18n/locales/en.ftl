@@ -404,6 +404,7 @@ profile-ir-email = Email
 profile-ir-password = Password
 profile-ir-login = Log in
 profile-ir-login-success = Logged in as { $display_name }
+profile-ir-logged-in = Logged in as { $display_name }
 profile-ir-logout = Log out
 profile-ir-logout-success = Logged out
 profile-ir-device-key-rotate = Regenerate signing key
