@@ -1,5 +1,56 @@
 # CHANGELOG
 
+## v0.1.13
+
+### 改善
+
+- rianIR 連携を拡張しました。
+  - rianIR が提供する難易度表、POPULAR、レビュー、Rivals RECENT、コースを選曲画面へ読み込み、起動時・30分間隔・F5 で更新できるようにしました。
+  - 選曲・リザルト skin から global / self and rivals のランキング範囲を切り替えられるようにし、選択中 scope・利用可否・総人数を BMZ 拡張 ref / option `1964..1969`、切り替え操作を click event `-10003..-10005` で公開しました。
+  - リザルトランキングをホイール、方向キー、ゲームパッド、スクラッチでスクロールできるようにしました。
+  - BMZ IR / rianIR を設定画面の固定 provider として表示するようにしました。
+  - F11 から rianIR の譜面ランキングを開けるようにしました。
+  - rianIR スコア送信 API を最新のものに更新しました。
+
+- プレイのセッションモードを4種類に拡張しました。
+  - `NORMAL` / `AUTOPLAY` に加え、2P側をオートプレイ表示する `AUTO BATTLE` と自己ベストを再生する `BATTLE` を追加しました。
+  - 5K / 7K の battle skin、beatoraja 互換の2P側ノート・判定・ゲージ timer、rival ref を接続しました。
+  - 選曲 skin から4モードを区別する BMZ 拡張 ref `1970` を追加しました。
+
+- 選曲画面に設定可能な仮想フォルダを追加しました。
+  - MY BEST、更新履歴、クリア、ランク、密度、譜面特徴、レベル、NEW の組み込みフォルダを追加しました。
+  - プロファイル別の TOML と型付きクエリで、階層、並び順、件数制限、連番・数値範囲をカスタマイズできます。
+
+- BMSON の読み込み互換性を大幅に改善しました。
+  - LN 種別と終端キー音、pulse 単位の STOP、`mode_hint` のレーン配置、Mine の damage と音、継続音源の区間再生、同時発音するキー音・BGA layer を保持するようにしました。
+  - `chart_name`、level、judge rank、TOTAL を beatoraja 互換で扱い、難易度未指定時の自動判定を改善しました。
+  - 長尺共有音源の PCM を区間間で共有し、音源 slice の取り込みを線形化して、ロード時間とメモリ使用量を削減しました。
+
+- Lua / LR2 skin の互換性を改善しました。
+  - Lua skin の entry directory と library root を分離し、兄弟 package、`skin/...` alias、`require`、source・font・audio を同じ安全な規則で解決できるようにしました。
+  - LR2 の明示解像度、LuaJ / Gdx API を使う judge parts、LR2 skin の LIFT 追従、WMII の play state・autoplay graph・次ランク表示に対応しました。
+  - skin が宣言した条件、property、resource ID を優先し、スコア差分、ランク、Notes graph、rhythm timer などの表示を beatoraja に合わせました。
+
+- 描画とプレイ開始時の性能を改善しました。
+  - 状態に依存しない skin destination とテキストレイアウトをキャッシュし、Select / Decide / Play / Result の毎フレーム処理を削減しました。
+  - WAV の読み込み前に譜面情報と描画キャッシュを skin へ渡し、BMS の二重 parse を解消しました。
+  - preload と frame pacing の計測情報を拡充し、present 済みフレームから FPS を算出するようにしました。
+
+### 修正
+
+- 同一位置の BPM 変更と STOP、極端に短い小節、コロン区切りの `#BPMxx` / `#STOPxx` を含む BMS で、時刻や曲長が beatoraja とずれる問題を修正しました。
+- HS の範囲を beatoraja 互換の `0.01..=20.0` に統一し、リプレイ開始時にも選曲中の HS-FIX を維持するようにしました。
+- 読み取れないファイルを含む曲フォルダで scan 全体が停止する問題と、Windows のパス表記差・拡張パス接頭辞によって曲 root や譜面が重複する問題を修正しました。
+- ロード中・READY 中の退出でリザルトやスコアを生成せず、フェード後に選曲画面へ戻るようにしました。
+- 外部 skin の省略 `loop`、検索文字列、Judge offset、ゲージ最大 timer、WMII の score graph / panel、LR2 の autoplay 条件などの描画差を修正しました。
+- macOS の focus 判定と排他フルスクリーンの refresh rate 選択、補助パネルの位置保持、IR メニュー非表示時のランキング更新を修正しました。
+
+### テスト・開発環境
+
+- player、renderer、skin、chart、audio、gameplay、IR Web の大規模 module を責務ごとに分割し、strict lint / formatting を通る構成へ整理しました。
+- rianIR、battle session、仮想フォルダ、BMSON、Lua / LR2 skin、音声共有、BMS timing、frame pacing の回帰テストを追加・更新しました。
+- `README.md`、`docs/controls.md`、`docs/hs.md`、`docs/ir.md`、`docs/rian-ir.md`、`docs/select-folders.md`、`docs/skin.md` を更新しました。
+
 ## v0.1.12
 
 ### 改善
