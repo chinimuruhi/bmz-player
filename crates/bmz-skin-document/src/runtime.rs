@@ -45,6 +45,19 @@ impl ResultJudgeGraphBucket {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ResultNoteGraphBucket {
+    /// beatoraja `SkinNoteDistributionGraph.TYPE_NORMAL` の state 0..6。
+    /// 0/3=LN終点、1/4=LN本体、2=Scratch、5=通常ノート、6=Mine。
+    pub values: [u32; 7],
+}
+
+impl ResultNoteGraphBucket {
+    pub fn total(self) -> u32 {
+        self.values.iter().copied().sum()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ResultEarlyLateGraphBucket {
     /// beatoraja `SkinNoteDistributionGraph.TYPE_EARLYLATE` の state 0..9。
     /// 0=unjudged, 1=PG, 2..5=FAST/EARLY GR..PR, 6..9=SLOW/LATE GR..PR。

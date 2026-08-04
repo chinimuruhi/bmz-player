@@ -101,10 +101,10 @@ pub(super) fn number_padding(value: &SkinValueDef) -> NumberPadding {
     NumberPadding::None
 }
 
-pub(super) fn signed_value_padding(value: &SkinValueDef, padding: NumberPadding) -> NumberPadding {
-    if matches!(value.ref_id, 152 | 153 | 172 | 175 | 178) {
-        return NumberPadding::None;
-    }
+pub(super) fn signed_value_padding(_value: &SkinValueDef, padding: NumberPadding) -> NumberPadding {
+    // beatoraja の SkinNumber は、mimage がある符号付き数値でも
+    // `zeropadding` をそのまま適用する。差分 ref だけ設定を無視すると、
+    // digit 枠の先頭に符号を固定できず、スキンごとの桁レイアウトが崩れる。
     padding
 }
 

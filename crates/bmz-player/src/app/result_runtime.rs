@@ -180,6 +180,7 @@ fn aggregate_course_result_graph(
             }
         }));
         graph.judge_graph_buckets.extend_from_slice(&entry.graph.judge_graph_buckets);
+        graph.note_graph_buckets.extend_from_slice(&entry.graph.note_graph_buckets);
         graph.early_late_graph_buckets.extend_from_slice(&entry.graph.early_late_graph_buckets);
         graph.judge_graph_density.extend_from_slice(&entry.graph.judge_graph_density);
         graph.bpm_graph_segments.extend(entry.graph.bpm_graph_segments.iter().map(|segment| {
@@ -217,11 +218,15 @@ fn result_graph_duration_ms(graph: &bmz_render::snapshot::ResultGraphSnapshot) -
     let early_late_ms = i32::try_from(graph.early_late_graph_buckets.len())
         .unwrap_or(i32::MAX / 1_000)
         .saturating_mul(1_000);
+    let note_ms = i32::try_from(graph.note_graph_buckets.len())
+        .unwrap_or(i32::MAX / 1_000)
+        .saturating_mul(1_000);
     gauge_ms
         .max(timing_ms)
         .max(density_ms.saturating_mul(1_000))
         .max(judge_ms)
         .max(early_late_ms)
+        .max(note_ms)
         .max(1)
 }
 

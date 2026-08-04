@@ -217,6 +217,25 @@ fn skin_draw_options_match_judge_fast_slow_regions() {
 }
 
 #[test]
+fn skin_draw_options_match_live_score_ranks() {
+    let base = SkinDrawState { total_notes: 100, ..SkinDrawState::default() };
+    let aaa = SkinDrawState { ex_score: 178, ..base.clone() };
+    let aa = SkinDrawState { ex_score: 156, ..base.clone() };
+    let a = SkinDrawState { ex_score: 134, ..base.clone() };
+    let f = SkinDrawState { ex_score: 0, ..base };
+
+    assert!(test_skin_op(220, &[], &aaa));
+    assert!(test_skin_op(221, &[], &aaa));
+    assert!(!test_skin_op(220, &[], &aa));
+    assert!(test_skin_op(221, &[], &aa));
+    assert!(test_skin_op(222, &[], &a));
+    assert!(test_skin_op(223, &[], &a));
+    assert!(test_skin_op(227, &[], &f));
+    assert!(!test_skin_op(226, &[], &f));
+    assert!(!test_skin_op(220, &[], &SkinDrawState::default()));
+}
+
+#[test]
 fn skin_document_shifts_judge_combo_numbers_beatoraja_style() {
     let document: SkinDocument = serde_json::from_str(
             r#"

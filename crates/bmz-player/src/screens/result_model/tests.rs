@@ -1,7 +1,7 @@
 use bmz_core::clear::{ClearType, GaugeType};
 use bmz_core::judge::{Judge, TimingSide};
 use bmz_core::lane::Lane;
-use bmz_core::time::TimeUs;
+use bmz_core::time::{ChartTick, TimeUs};
 use bmz_gameplay::gauge::GaugeState;
 use bmz_gameplay::judge::model::JudgementEvent;
 use bmz_gameplay::score::ScoreState;
@@ -329,8 +329,18 @@ fn result_graph_failed_tail_appends_zero_samples_until_chart_end() {
 fn result_graph_collector_builds_beatoraja_result_buckets_from_session_judgements() {
     let mut chart = chart();
     chart.end_time = TimeUs(2_000_000);
-    chart.total_notes = 3;
+    chart.total_notes = 4;
     chart.lane_notes[Lane::Key1.index()] = vec![note(1, 0), note(2, 1_000_000), note(3, 1_000_000)];
+    chart.lane_notes[Lane::Scratch.index()].push(NoteEvent {
+        id: NoteId(4),
+        lane: Lane::Scratch,
+        kind: NoteKind::Tap,
+        tick: ChartTick(0),
+        time: TimeUs(1_000_000),
+        sound: None,
+        layered_sounds: Vec::new(),
+        damage: None,
+    });
     let mut judgements = std::collections::HashMap::new();
     judgements.insert(
         bmz_core::ids::NoteId(1),
@@ -355,11 +365,13 @@ fn result_graph_collector_builds_beatoraja_result_buckets_from_session_judgement
     populate_result_note_graphs(&mut graph, &chart, &judgements);
 
     assert_eq!(graph.judge_graph_buckets[0].values[2], 1);
+    assert_eq!(graph.note_graph_buckets[0].values[5], 1);
+    assert_eq!(graph.note_graph_buckets[1].values[2], 1);
     assert_eq!(graph.early_late_graph_buckets[0].values[2], 1);
     assert_eq!(graph.judge_graph_buckets[1].values[4], 1);
-    assert_eq!(graph.judge_graph_buckets[1].values[0], 1);
+    assert_eq!(graph.judge_graph_buckets[1].values[0], 2);
     assert_eq!(graph.early_late_graph_buckets[1].values[8], 1);
-    assert_eq!(graph.early_late_graph_buckets[1].values[0], 1);
+    assert_eq!(graph.early_late_graph_buckets[1].values[0], 2);
     assert_eq!(
         graph.timing_points.iter().map(|point| point.delta_us).collect::<Vec<_>>(),
         vec![12_000, -45_000]

@@ -104,6 +104,38 @@ macro_rules! skin_document_render_graph_judge_methods {
         ) -> Vec<SkinRenderItem> {
             let graph_type = graph.graph_type();
             let pms_colors = state.key_mode == KeyMode::K9;
+            if graph_type == 0 && !runtime_graphs.result_note_graph_buckets.is_empty() {
+                let key = result_note_graph_cache_key(
+                    destination_index,
+                    ResultRectBatchKind::Notes,
+                    runtime_graphs.result_note_graph_buckets,
+                    graph,
+                    frame,
+                    state,
+                    elapsed_ms,
+                );
+                let build = || {
+                    stacked_result_note_graph_rect_batch(
+                        runtime_graphs.result_note_graph_buckets,
+                        &note_distribution_colors(frame.a as f32 / 255.0),
+                        graph,
+                        destination,
+                        frame,
+                        self.w,
+                        self.h,
+                        elapsed_ms,
+                    )
+                };
+                let rects = if let Some(cache) = cache {
+                    cache.cached_rect_batch(key, build)
+                } else {
+                    build()
+                };
+                return rect_batch_render_items(
+                    rects,
+                    result_note_graph_rect_batch_cache(key, graph, frame, self.w, self.h),
+                );
+            }
             if graph_type == 1 && !runtime_graphs.result_judge_graph_buckets.is_empty() {
                 let key = result_note_graph_cache_key(
                     destination_index,

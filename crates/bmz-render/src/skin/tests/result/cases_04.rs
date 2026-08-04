@@ -80,6 +80,49 @@ fn result_judgegraphs_render_beatoraja_judge_and_early_late_series() {
 }
 
 #[test]
+fn result_notes_graph_renders_note_distribution_colors() {
+    let mut document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 7,
+                "w": 100,
+                "h": 100,
+                "judgegraph": [
+                    { "id": "note_graph", "type": 0, "backTexOff": 1, "noGap": 1, "noGapX": 1 }
+                ],
+                "destination": [
+                    { "id": "note_graph", "timer": 0, "dst": [{ "x": 0, "y": 0, "w": 50, "h": 20, "a": 255 }] }
+                ]
+            }
+            "#,
+    )
+    .unwrap();
+    document.result_note_graph_buckets =
+        vec![crate::snapshot::ResultNoteGraphBucket { values: [1, 1, 1, 1, 1, 1, 1] }];
+
+    let items = document.static_image_render_items(&HashMap::new(), &SkinDrawState::default());
+    let colors = [
+        (0.27, 1.0, 0.27),
+        (0.13, 0.53, 0.13),
+        (1.0, 0.27, 0.27),
+        (0.27, 0.27, 1.0),
+        (0.13, 0.13, 0.53),
+        (0.80, 0.80, 0.80),
+        (0.53, 0.0, 0.0),
+    ];
+    for (r, g, b) in colors {
+        assert!(items.iter().any(|item| {
+            skin_render_item_has_rect_color(
+                item,
+                |Color { r: actual_r, g: actual_g, b: actual_b, .. }| {
+                    approx_eq(*actual_r, r) && approx_eq(*actual_g, g) && approx_eq(*actual_b, b)
+                },
+            )
+        }));
+    }
+}
+
+#[test]
 fn result_click_hit_uses_runtime_panel_visibility() {
     let document: SkinDocument = serde_json::from_str(
             r#"

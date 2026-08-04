@@ -122,6 +122,7 @@ impl SkinContext {
             document.result_gauge_graph_points = graph.gauge_points.clone();
             document.result_timing_points = graph.timing_points.clone();
             document.result_judge_graph_buckets = graph.judge_graph_buckets.clone();
+            document.result_note_graph_buckets = graph.note_graph_buckets.clone();
             document.result_early_late_graph_buckets = graph.early_late_graph_buckets.clone();
             document.result_timing_distribution = graph.timing_distribution.clone();
         }

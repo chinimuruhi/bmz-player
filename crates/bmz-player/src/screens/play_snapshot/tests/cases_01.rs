@@ -10,14 +10,14 @@ fn rhythm_timer_resets_at_bar_lines_and_integrates_bpm_and_stops() {
         BarLine { measure: 1, tick: ChartTick(3_840), time: TimeUs(2_000_000) },
     ];
     assert_eq!(rhythm_timer_elapsed_ms(&constant, &bars, TimeUs(-1)), None);
-    assert_eq!(rhythm_timer_elapsed_ms(&constant, &bars, TimeUs(1_000_000)), Some(2_000));
-    assert_eq!(rhythm_timer_elapsed_ms(&constant, &bars, TimeUs(2_500_000)), Some(1_000));
+    assert_eq!(rhythm_timer_elapsed_ms(&constant, &bars, TimeUs(1_000_000)), Some(20));
+    assert_eq!(rhythm_timer_elapsed_ms(&constant, &bars, TimeUs(2_500_000)), Some(10));
 
     let bpm_change = build_timing_map(
         120.0,
         vec![TickTimingEvent { tick: ChartTick(960), kind: TickTimingEventKind::SetBpm(60.0) }],
     );
-    assert_eq!(rhythm_timer_elapsed_ms(&bpm_change, &[], TimeUs(1_500_000)), Some(2_000));
+    assert_eq!(rhythm_timer_elapsed_ms(&bpm_change, &[], TimeUs(1_500_000)), Some(20));
 
     let with_stop = build_timing_map(
         120.0,
@@ -26,7 +26,7 @@ fn rhythm_timer_resets_at_bar_lines_and_integrates_bpm_and_stops() {
             kind: TickTimingEventKind::StopRaw { value: 96 },
         }],
     );
-    assert_eq!(rhythm_timer_elapsed_ms(&with_stop, &[], TimeUs(1_500_000)), Some(3_000));
+    assert_eq!(rhythm_timer_elapsed_ms(&with_stop, &[], TimeUs(1_500_000)), Some(30));
 }
 
 #[test]

@@ -142,29 +142,38 @@ pub(super) fn result_early_late_graph_colors(alpha: f32, pms: bool) -> [Color; 1
     ]
 }
 
-pub(super) trait ResultNoteGraphBucket<const N: usize> {
+pub(super) trait ResultNoteGraphBucketValues<const N: usize> {
     fn values(&self) -> [u32; N];
 }
 
-impl<const N: usize> ResultNoteGraphBucket<N> for [u32; N] {
+impl<const N: usize> ResultNoteGraphBucketValues<N> for [u32; N] {
     fn values(&self) -> [u32; N] {
         *self
     }
 }
 
-impl ResultNoteGraphBucket<6> for crate::snapshot::ResultJudgeGraphBucket {
+impl ResultNoteGraphBucketValues<6> for crate::snapshot::ResultJudgeGraphBucket {
     fn values(&self) -> [u32; 6] {
         self.values
     }
 }
 
-impl ResultNoteGraphBucket<10> for crate::snapshot::ResultEarlyLateGraphBucket {
+impl ResultNoteGraphBucketValues<7> for crate::snapshot::ResultNoteGraphBucket {
+    fn values(&self) -> [u32; 7] {
+        self.values
+    }
+}
+
+impl ResultNoteGraphBucketValues<10> for crate::snapshot::ResultEarlyLateGraphBucket {
     fn values(&self) -> [u32; 10] {
         self.values
     }
 }
 
-pub(super) fn stacked_result_note_graph_rect_batch<const N: usize, B: ResultNoteGraphBucket<N>>(
+pub(super) fn stacked_result_note_graph_rect_batch<
+    const N: usize,
+    B: ResultNoteGraphBucketValues<N>,
+>(
     buckets: &[B],
     colors: &[Color; N],
     graph: &SkinJudgeGraphDef,
@@ -260,7 +269,7 @@ pub(super) fn rect_batch_render_items(
     if rects.is_empty() { Vec::new() } else { vec![SkinRenderItem::RectBatch { rects, cache }] }
 }
 
-pub(super) fn result_note_graph_cache_key<const N: usize, B: ResultNoteGraphBucket<N>>(
+pub(super) fn result_note_graph_cache_key<const N: usize, B: ResultNoteGraphBucketValues<N>>(
     destination_index: usize,
     kind: ResultRectBatchKind,
     buckets: &[B],
@@ -321,7 +330,7 @@ pub(super) fn result_gauge_graph_rect_batch_cache(
     Some(RectBatchCache { key: RectBatchCacheKey(hasher.finish()), bounds })
 }
 
-pub(super) fn result_note_graph_data_hash<const N: usize, B: ResultNoteGraphBucket<N>>(
+pub(super) fn result_note_graph_data_hash<const N: usize, B: ResultNoteGraphBucketValues<N>>(
     buckets: &[B],
     graph: &SkinJudgeGraphDef,
 ) -> u64 {

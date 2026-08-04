@@ -14,7 +14,7 @@ pub const DEFAULT_PLAY_FADEOUT_DURATION_MS: i32 = 500;
 
 pub use bmz_skin_document::{
     ResultEarlyLateGraphBucket, ResultGaugeGraphPoint, ResultJudgeGraphBucket,
-    ResultTimingDistribution, ResultTimingPoint,
+    ResultNoteGraphBucket, ResultTimingDistribution, ResultTimingPoint,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -46,6 +46,7 @@ pub struct ResultGraphSnapshot {
     pub timing_distribution: ResultTimingDistribution,
     pub timing_metrics: ResultTimingMetrics,
     pub judge_graph_buckets: Vec<ResultJudgeGraphBucket>,
+    pub note_graph_buckets: Vec<ResultNoteGraphBucket>,
     pub early_late_graph_buckets: Vec<ResultEarlyLateGraphBucket>,
     pub judge_graph_density: Vec<u8>,
     pub bpm_graph_segments: Vec<BpmGraphSegment>,

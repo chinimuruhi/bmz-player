@@ -11,7 +11,7 @@ use bmz_gameplay::score::JudgeCounts;
 use bmz_gameplay::session::{FrameOutput, GameSession, ResultJudgementDetail};
 use bmz_render::snapshot::{
     RenderSnapshot, ResultEarlyLateGraphBucket, ResultGaugeGraphPoint, ResultGraphSnapshot,
-    ResultJudgeGraphBucket, ResultTimingDistribution, ResultTimingPoint,
+    ResultJudgeGraphBucket, ResultNoteGraphBucket, ResultTimingDistribution, ResultTimingPoint,
 };
 
 use crate::storage::play_result::StoredPlayResult;
@@ -316,6 +316,7 @@ fn populate_result_note_graphs(
 ) {
     let seconds = result_graph_seconds(chart).max(graph.judge_graph_density.len()).max(1);
     let mut judge_buckets = vec![ResultJudgeGraphBucket::default(); seconds];
+    let mut note_buckets = vec![ResultNoteGraphBucket::default(); seconds];
     let mut early_late_buckets = vec![ResultEarlyLateGraphBucket::default(); seconds];
     let mut timing_points = Vec::new();
 
@@ -323,12 +324,16 @@ fn populate_result_note_graphs(
         .lane_notes
         .iter()
         .flatten()
-        .filter(|note| result_graph_includes_note(chart, note))
+        .filter(|note| !matches!(note.kind, NoteKind::Invisible))
         .collect();
     notes.sort_by_key(|note| (note.time.0, note.lane.index(), note.id.0));
 
     for note in notes {
         let second = clamp_note_second(note, seconds);
+        populate_result_note_graph_bucket(&mut note_buckets, second, chart, note);
+        if !result_graph_includes_note(chart, note) {
+            continue;
+        }
         let Some(detail) = judgements.get(&note.id) else {
             judge_buckets[second].values[0] = judge_buckets[second].values[0].saturating_add(1);
             early_late_buckets[second].values[0] =
@@ -351,6 +356,7 @@ fn populate_result_note_graphs(
     }
 
     graph.judge_graph_buckets = judge_buckets;
+    graph.note_graph_buckets = note_buckets;
     graph.early_late_graph_buckets = early_late_buckets;
     graph.timing_points = timing_points;
     graph.timing_distribution = timing_distribution_from_points(&graph.timing_points);
@@ -360,6 +366,69 @@ fn populate_result_note_graphs(
             .iter()
             .map(|bucket| bucket.total().min(u8::MAX as u32) as u8)
             .collect();
+    }
+}
+
+fn populate_result_note_graph_bucket(
+    buckets: &mut [ResultNoteGraphBucket],
+    second: usize,
+    chart: &PlayableChart,
+    note: &NoteEvent,
+) {
+    let is_scratch =
+        matches!(note.lane, bmz_core::lane::Lane::Scratch | bmz_core::lane::Lane::Scratch2);
+    let body_index = if is_scratch { 1 } else { 4 };
+    match note.kind {
+        NoteKind::Tap => {
+            let index = if is_scratch { 2 } else { 5 };
+            if let Some(bucket) = buckets.get_mut(second) {
+                bucket.values[index] = bucket.values[index].saturating_add(1);
+            }
+        }
+        NoteKind::LongStart => {
+            if let Some(bucket) = buckets.get_mut(second) {
+                bucket.values[body_index] = bucket.values[body_index].saturating_add(1);
+            }
+            let Some(pair) = chart.long_notes.iter().find(|pair| pair.start_note_id == note.id)
+            else {
+                return;
+            };
+            let end_second = clamp_note_second(
+                &NoteEvent {
+                    id: pair.end_note_id,
+                    lane: pair.lane,
+                    kind: NoteKind::LongEnd,
+                    tick: pair.end_tick,
+                    time: pair.end_time,
+                    sound: pair.sound,
+                    layered_sounds: Vec::new(),
+                    damage: None,
+                },
+                buckets.len(),
+            );
+            for bucket in buckets.iter_mut().take(end_second.saturating_add(1)).skip(second) {
+                bucket.values[body_index] = bucket.values[body_index].saturating_add(1);
+            }
+            if let Some(bucket) = buckets.get_mut(second) {
+                bucket.values[body_index] = bucket.values[body_index].saturating_sub(1);
+            }
+        }
+        NoteKind::LongEnd => {
+            let end_index = if is_scratch { 0 } else { 3 };
+            if let Some(bucket) = buckets.get_mut(second) {
+                bucket.values[end_index] = bucket.values[end_index].saturating_add(1);
+                if is_ignored_long_end(chart, note.id) {
+                    // beatoraja's LN mode changes the final body cell to the LN-end color.
+                    bucket.values[body_index] = bucket.values[body_index].saturating_sub(1);
+                }
+            }
+        }
+        NoteKind::Mine => {
+            if let Some(bucket) = buckets.get_mut(second) {
+                bucket.values[6] = bucket.values[6].saturating_add(1);
+            }
+        }
+        NoteKind::Invisible => {}
     }
 }
 

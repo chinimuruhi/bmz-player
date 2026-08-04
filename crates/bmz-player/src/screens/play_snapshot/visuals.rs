@@ -46,8 +46,30 @@ pub(super) fn rhythm_timer_elapsed_ms(
         .checked_sub(1)
         .map(|index| bar_lines[index].time)
         .unwrap_or(TimeUs(0));
-    let elapsed_us = bpm_normalized_elapsed_us(timing_map, section_start, now);
+    let elapsed_us = rhythm_timer_elapsed_us(timing_map, section_start, now);
     Some((elapsed_us / 1_000.0).floor().clamp(0.0, i32::MAX as f64) as i32)
+}
+
+/// beatoraja `RhythmTimerProcessor` の TIMER_RHYTHM 更新式を、フレーム刻み
+/// ではなく区間積分で再現する。
+///
+/// beatoraja は timer の基準値を `deltatime * (100 - bpm / 60) / 100`
+/// だけ進めるため、timer の経過値は実時間の `bpm / 6000` 倍になる。
+/// `bpm_normalized_elapsed_us` の 60 BPM 換算とは用途が異なる。
+pub(super) fn rhythm_timer_elapsed_us(timing_map: &TimingMap, start: TimeUs, end: TimeUs) -> f64 {
+    let mut cursor = start.0.max(0).min(end.0);
+    let end = end.0.max(cursor);
+    let mut elapsed_us = 0.0;
+    while cursor < end {
+        let segment = timing_map.find_segment_by_time(TimeUs(cursor));
+        let boundary =
+            if segment.start_time.0 > cursor { segment.start_time.0 } else { segment.end_time.0 };
+        let next = end.min(boundary.max(cursor.saturating_add(1)));
+        let bpm = if segment.bpm.is_finite() && segment.bpm > 0.0 { segment.bpm } else { 1.0 };
+        elapsed_us += (next - cursor) as f64 * bpm / 6_000.0;
+        cursor = next;
+    }
+    elapsed_us
 }
 
 pub(super) fn quarter_note_elapsed_ms(

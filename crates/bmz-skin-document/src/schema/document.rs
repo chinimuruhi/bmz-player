@@ -152,6 +152,9 @@ pub struct SkinDocument {
     /// リザルト描画時のみ plan 側が設定する judgegraph(type=1) 用の秒別 state 集計。
     #[serde(skip, default)]
     pub result_judge_graph_buckets: Vec<ResultJudgeGraphBucket>,
+    /// リザルト描画時のみ judgegraph(type=0) 用のノーツ種別別集計。
+    #[serde(skip, default)]
+    pub result_note_graph_buckets: Vec<ResultNoteGraphBucket>,
     /// リザルト描画時のみ plan 側が設定する judgegraph(type=2) 用の FAST/SLOW 秒別集計。
     #[serde(skip, default)]
     pub result_early_late_graph_buckets: Vec<ResultEarlyLateGraphBucket>,

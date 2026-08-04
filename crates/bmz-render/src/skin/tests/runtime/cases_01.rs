@@ -755,8 +755,8 @@ fn display_signed_number_digits_uses_sign_cell_and_row_offset() {
     };
     let score_diff_padding = number_padding(&score_diff_value);
     assert!(score_diff_padding.is_zero_padding());
-    assert_eq!(signed_value_padding(&score_diff_value, score_diff_padding), NumberPadding::None);
-    assert_eq!(display_signed_number_digits(16, 5, NumberPadding::None, 12), vec![11, 1, 6]);
+    assert_eq!(signed_value_padding(&score_diff_value, score_diff_padding), NumberPadding::Zero);
+    assert_eq!(display_signed_number_digits(16, 5, NumberPadding::Zero, 12), vec![11, 0, 0, 1, 6]);
 
     let select_detail =
         SkinDrawState { select_screen: true, select_option_panel: 3, ..Default::default() };

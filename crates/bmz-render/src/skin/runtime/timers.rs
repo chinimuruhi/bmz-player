@@ -283,6 +283,7 @@ pub(in crate::skin) struct SkinRuntimeGraphs<'a> {
     pub(in crate::skin) result_gauge_graph_points: &'a [crate::snapshot::ResultGaugeGraphPoint],
     pub(in crate::skin) result_timing_points: &'a [crate::snapshot::ResultTimingPoint],
     pub(in crate::skin) result_judge_graph_buckets: &'a [crate::snapshot::ResultJudgeGraphBucket],
+    pub(in crate::skin) result_note_graph_buckets: &'a [crate::snapshot::ResultNoteGraphBucket],
     pub(in crate::skin) result_early_late_graph_buckets:
         &'a [crate::snapshot::ResultEarlyLateGraphBucket],
     pub(in crate::skin) result_timing_distribution: &'a crate::snapshot::ResultTimingDistribution,
@@ -296,6 +297,7 @@ impl<'a> SkinRuntimeGraphs<'a> {
             result_gauge_graph_points: &document.result_gauge_graph_points,
             result_timing_points: &document.result_timing_points,
             result_judge_graph_buckets: &document.result_judge_graph_buckets,
+            result_note_graph_buckets: &document.result_note_graph_buckets,
             result_early_late_graph_buckets: &document.result_early_late_graph_buckets,
             result_timing_distribution: &document.result_timing_distribution,
         }
@@ -312,6 +314,7 @@ impl<'a> SkinRuntimeGraphs<'a> {
             result_gauge_graph_points: &document.result_gauge_graph_points,
             result_timing_points: &document.result_timing_points,
             result_judge_graph_buckets: &document.result_judge_graph_buckets,
+            result_note_graph_buckets: &document.result_note_graph_buckets,
             result_early_late_graph_buckets: &document.result_early_late_graph_buckets,
             result_timing_distribution: &document.result_timing_distribution,
         }
@@ -326,6 +329,7 @@ impl<'a> SkinRuntimeGraphs<'a> {
             result_gauge_graph_points: &graph.gauge_points,
             result_timing_points: &graph.timing_points,
             result_judge_graph_buckets: &graph.judge_graph_buckets,
+            result_note_graph_buckets: &graph.note_graph_buckets,
             result_early_late_graph_buckets: &graph.early_late_graph_buckets,
             result_timing_distribution: &graph.timing_distribution,
         }

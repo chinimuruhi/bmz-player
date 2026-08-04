@@ -377,6 +377,7 @@ pub(in crate::skin) struct ResultRectBatchCacheKey {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::skin) enum ResultRectBatchKind {
+    Notes,
     Judge,
     EarlyLate,
 }

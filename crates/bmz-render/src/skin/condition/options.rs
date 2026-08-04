@@ -139,6 +139,9 @@ pub(in crate::skin) fn test_skin_op(
         }
         196 | 197 | 198 | 1196..=1208 => select_replay_op_matches(op, state),
         200..=207 => select_rank_op_matches(op, state),
+        // OPTION_AAA..OPTION_F (220..227)。beatoraja の ScoreDataProperty.rank
+        // と同じく、現在の EX スコアが譜面全体の 27 段階閾値に到達したかを返す。
+        220..=227 => play_rank_option_matches(op, state),
         300..=318 if state.result_failed.is_some() => result_rank_op_matches(op, state),
         300..=307 => select_small_rank_op_matches(op, state),
         320..=327 => best_rank_op_matches(op, state),
@@ -282,6 +285,15 @@ pub(in crate::skin) fn test_skin_op(
         291..=293 => false,
         value => test_json_option_number(value, enabled_options),
     }
+}
+
+fn play_rank_option_matches(op: i32, state: &SkinDrawState) -> bool {
+    if state.total_notes == 0 {
+        return false;
+    }
+    let rank_index = if op == 227 { 0 } else { 24_i64.saturating_sub(i64::from(op - 220) * 3) };
+    let threshold_numerator = rank_index.max(0);
+    i64::from(state.ex_score) * 27 >= i64::from(state.total_notes) * 2 * threshold_numerator
 }
 
 pub(in crate::skin) fn gauge_range_option_matches(op: i32, state: &SkinDrawState) -> bool {
