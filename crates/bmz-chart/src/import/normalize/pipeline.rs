@@ -12,8 +12,11 @@ pub fn normalize_chart(
     let bga_table = build_bga_table(source_path, &intermediate, warnings, check_resource_existence);
     let tick_objects = materialize_tick_objects(&intermediate)?;
     let tick_timing_events = collect_timing_events(&intermediate, warnings)?;
-    let timing_map =
-        build_timing_map(intermediate.metadata.initial_bpm.max(1.0), tick_timing_events.clone());
+    let timing_map = build_timing_map_with_tick_scale(
+        intermediate.metadata.initial_bpm.max(1.0),
+        tick_timing_events.clone(),
+        IMPORT_TICK_SCALE,
+    );
 
     let mut draft = PlayableChartDraft::new(
         intermediate.identity.clone(),
@@ -72,6 +75,8 @@ pub fn normalize_chart(
     } else {
         build_bar_lines(&intermediate.measures, &timing_map)
     };
+
+    compress_import_ticks(&mut draft);
 
     Ok(finalize_playable_chart(draft))
 }

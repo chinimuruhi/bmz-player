@@ -1,4 +1,5 @@
 use super::*;
+use crate::timing::{IMPORT_TICK_SCALE, TICKS_PER_MEASURE};
 
 pub(super) fn track_of(time: ObjTime) -> u32 {
     u32::try_from(time.track().0).unwrap_or(u32::MAX)
@@ -29,23 +30,33 @@ pub(super) fn build_measures(max_measure: u32, bms: &Bms) -> Vec<MeasureInfo> {
     let mut measures = Vec::with_capacity(max_measure as usize + 1);
     let mut start_tick = 0_u64;
     for index in 0..=max_measure {
-        let (num, den) = bms
+        let length = bms
             .section_len
             .section_len_changes
             .get(&bms_rs::bms::command::time::Track(index as u64))
-            .map(|change| fin_f64_to_ratio(change.length.get()))
-            .unwrap_or((1, 1));
-        let tick_len = TICKS_PER_MEASURE as u64 * num as u64 / den.max(1) as u64;
+            .map_or(1.0, |change| sanitize_measure_length(change.length.get()));
+        let (num, den) = fin_f64_to_ratio(length);
+        let tick_len = scaled_measure_ticks(length);
         measures.push(MeasureInfo {
             index,
+            length,
             length_ratio_num: num,
             length_ratio_den: den.max(1),
             start_tick: ChartTick(start_tick),
             tick_len,
         });
-        start_tick += tick_len;
+        start_tick = start_tick.saturating_add(tick_len);
     }
     measures
+}
+
+fn sanitize_measure_length(value: f64) -> f64 {
+    if value.is_finite() && value > 0.0 { value } else { 1.0 }
+}
+
+fn scaled_measure_ticks(length: f64) -> u64 {
+    let ticks = TICKS_PER_MEASURE as f64 * length * IMPORT_TICK_SCALE as f64;
+    ticks.round().max(1.0) as u64
 }
 
 pub(super) fn fin_f64_to_ratio(value: f64) -> (u32, u32) {

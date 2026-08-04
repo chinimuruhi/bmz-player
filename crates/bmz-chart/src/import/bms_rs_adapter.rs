@@ -50,7 +50,6 @@ use bmz_core::lane::{ChartKeyLayout, KeyMode, Lane, PmsKeyLayout};
 use bmz_core::time::ChartTick;
 
 use crate::hash::compute_chart_identity;
-use crate::timing::TICKS_PER_MEASURE;
 
 use super::BmsRandomSource;
 use super::decode::decode_bms_text;

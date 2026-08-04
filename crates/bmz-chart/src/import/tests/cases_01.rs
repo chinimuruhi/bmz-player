@@ -55,16 +55,44 @@ fn imports_basic_7k_bms_into_playable_chart() {
         event.kind,
         TimingEventKind::BpmChange { bpm } if bpm == 180.0
     )));
-    // STOP 値 192 (1 measure) を BPM 120 で適用 → 2_000_000us (beatoraja 準拠)。
+    // 同じ位置のBPM変更が先に適用されるため、STOPはBPM 180で計算する。
     assert!(result.chart.timing_events.iter().any(|event| matches!(
         event.kind,
-        TimingEventKind::Stop { duration_us } if duration_us == 2_000_000
+        TimingEventKind::Stop { duration_us } if duration_us == 1_333_333
     )));
 
     std::fs::remove_file(&path).unwrap();
     std::fs::remove_file(base_dir.join("key.wav")).unwrap();
     std::fs::remove_file(base_dir.join("bgm.wav")).unwrap();
     std::fs::remove_file(base_dir.join("bga.png")).unwrap();
+}
+
+#[test]
+fn preserves_fractional_measure_time_before_tick_compression() {
+    let text = "\
+#TITLE Fractional Measure Timing
+#BPM 120
+#BPM01 1
+#STOP01 1
+#WAV01 key.wav
+#00102:0.000001875
+#00108:01
+#00109:0001
+#00211:01
+";
+    let path = write_temp_bms(text);
+    let result = import_bms_chart(&path, None, false).unwrap();
+
+    let note = &result.chart.notes_for_lane(Lane::Key1)[0];
+    assert_eq!(note.tick, bmz_core::time::ChartTick(3_840));
+    // Measure 1 contributes 450us at BPM 1. The STOP starts 225us into it and lasts 1.25s.
+    assert_eq!(note.time, bmz_core::time::TimeUs(3_250_450));
+    assert!(result.chart.timing_events.iter().any(|event| {
+        matches!(event.kind, TimingEventKind::Stop { duration_us: 1_250_000 })
+            && event.time == bmz_core::time::TimeUs(2_000_225)
+    }));
+
+    std::fs::remove_file(&path).unwrap();
 }
 
 #[test]

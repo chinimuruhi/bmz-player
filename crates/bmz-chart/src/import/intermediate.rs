@@ -116,8 +116,11 @@ pub struct StopDef {
 #[derive(Debug, Clone, Copy)]
 pub struct MeasureInfo {
     pub index: u32,
+    /// BMSの小節長。`#02` を丸めず、インポート中の時間計算に使う。
+    pub length: f64,
     pub length_ratio_num: u32,
     pub length_ratio_den: u32,
+    /// インポート中だけ使う高精度tick。最終チャート化時に通常tickへ戻す。
     pub start_tick: ChartTick,
     pub tick_len: u64,
 }

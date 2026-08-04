@@ -13,7 +13,10 @@ use crate::model::{
     SwBgaDefinition, TimingEvent, TimingEventKind,
 };
 use crate::sound_asset::sound_asset_exists;
-use crate::timing::{TickTimingEvent, TickTimingEventKind, TimingMap, build_timing_map};
+use crate::timing::{
+    IMPORT_TICK_SCALE, TickTimingEvent, TickTimingEventKind, TimingMap,
+    build_timing_map_with_tick_scale,
+};
 
 use super::error::{ImportError, ImportWarning};
 use super::intermediate::{

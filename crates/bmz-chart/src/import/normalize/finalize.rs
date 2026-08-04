@@ -1,5 +1,61 @@
 use super::*;
 use crate::model::LongNoteMode;
+use bmz_core::time::ChartTick;
+
+fn compress_import_tick(tick: ChartTick) -> ChartTick {
+    ChartTick(tick.0 / crate::timing::IMPORT_TICK_SCALE)
+}
+
+pub(super) fn compress_import_ticks(draft: &mut PlayableChartDraft) {
+    for notes in &mut draft.lane_notes {
+        for note in notes {
+            note.tick = compress_import_tick(note.tick);
+        }
+    }
+    for pair in &mut draft.long_notes {
+        pair.start_tick = compress_import_tick(pair.start_tick);
+        pair.end_tick = compress_import_tick(pair.end_tick);
+    }
+    for event in &mut draft.bgm_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.bga_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.timing_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.scroll_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.speed_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.judge_rank_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.bgm_volume_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.key_volume_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.text_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.bga_opacity_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.bga_argb_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for event in &mut draft.bga_keybound_events {
+        event.tick = compress_import_tick(event.tick);
+    }
+    for line in &mut draft.bar_lines {
+        line.tick = compress_import_tick(line.tick);
+    }
+}
 
 pub(super) fn finalize_playable_chart(mut draft: PlayableChartDraft) -> PlayableChart {
     for lane_notes in &mut draft.lane_notes {

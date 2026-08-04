@@ -4,10 +4,17 @@ pub const TICKS_PER_BEAT: u32 = 960;
 pub const BEATS_PER_MEASURE: u32 = 4;
 pub const TICKS_PER_MEASURE: u32 = TICKS_PER_BEAT * BEATS_PER_MEASURE;
 
+/// 譜面インポート中だけ使う高精度tickの倍率。
+///
+/// 公開される `ChartTick` の単位は従来どおりだが、BMS の極端に短い `#02` 小節を
+/// 整数tickへ丸める前に、十分な精度で時間を計算するために使う。
+pub const IMPORT_TICK_SCALE: u64 = 1_000_000;
+
 #[derive(Debug, Clone)]
 pub struct TimingMap {
     pub initial_bpm: f64,
     pub segments: Vec<TimingSegment>,
+    tick_scale: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,15 +46,26 @@ pub struct TickTimingEvent {
 }
 
 pub fn ticks_to_us(delta_ticks: u64, bpm: f64) -> i64 {
+    ticks_to_us_scaled(delta_ticks, bpm, 1)
+}
+
+pub fn ticks_to_us_scaled(delta_ticks: u64, bpm: f64, tick_scale: u64) -> i64 {
     let bpm = sanitize_bpm(bpm);
-    let beats = delta_ticks as f64 / TICKS_PER_BEAT as f64;
+    let ticks_per_beat = TICKS_PER_BEAT as f64 * tick_scale.max(1) as f64;
+    let beats = delta_ticks as f64 / ticks_per_beat;
     let us = beats * 60.0 * 1_000_000.0 / bpm;
     us.round() as i64
 }
 
 pub fn us_to_ticks(delta_us: i64, bpm: f64) -> u64 {
+    us_to_ticks_scaled(delta_us, bpm, 1)
+}
+
+pub fn us_to_ticks_scaled(delta_us: i64, bpm: f64, tick_scale: u64) -> u64 {
     let bpm = sanitize_bpm(bpm);
-    let ticks = delta_us as f64 * bpm * TICKS_PER_BEAT as f64 / 60.0 / 1_000_000.0;
+    let ticks = delta_us as f64 * bpm * TICKS_PER_BEAT as f64 * tick_scale.max(1) as f64
+        / 60.0
+        / 1_000_000.0;
     ticks.floor().max(0.0) as u64
 }
 
@@ -77,7 +95,16 @@ fn add_time_us(time: TimeUs, delta_us: i64) -> TimeUs {
     TimeUs(time.0.saturating_add(delta_us))
 }
 
-pub fn build_timing_map(initial_bpm: f64, mut events: Vec<TickTimingEvent>) -> TimingMap {
+pub fn build_timing_map(initial_bpm: f64, events: Vec<TickTimingEvent>) -> TimingMap {
+    build_timing_map_with_tick_scale(initial_bpm, events, 1)
+}
+
+pub fn build_timing_map_with_tick_scale(
+    initial_bpm: f64,
+    mut events: Vec<TickTimingEvent>,
+    tick_scale: u64,
+) -> TimingMap {
+    let tick_scale = tick_scale.max(1);
     events.sort_by_key(|event| (event.tick.0, timing_event_priority(event.kind)));
 
     let mut segments = Vec::new();
@@ -87,8 +114,10 @@ pub fn build_timing_map(initial_bpm: f64, mut events: Vec<TickTimingEvent>) -> T
 
     for event in events {
         if event.tick > current_tick {
-            let end_time =
-                add_time_us(current_time, ticks_to_us(event.tick.0 - current_tick.0, current_bpm));
+            let end_time = add_time_us(
+                current_time,
+                ticks_to_us_scaled(event.tick.0 - current_tick.0, current_bpm, tick_scale),
+            );
 
             segments.push(TimingSegment {
                 start_tick: current_tick,
@@ -140,7 +169,7 @@ pub fn build_timing_map(initial_bpm: f64, mut events: Vec<TickTimingEvent>) -> T
         bpm: current_bpm,
     });
 
-    TimingMap::new(initial_bpm, segments)
+    TimingMap::new_with_tick_scale(initial_bpm, segments, tick_scale)
 }
 
 fn timing_event_priority(kind: TickTimingEventKind) -> u8 {
@@ -154,8 +183,16 @@ fn timing_event_priority(kind: TickTimingEventKind) -> u8 {
 
 impl TimingMap {
     pub fn new(initial_bpm: f64, segments: Vec<TimingSegment>) -> Self {
+        Self::new_with_tick_scale(initial_bpm, segments, 1)
+    }
+
+    pub fn new_with_tick_scale(
+        initial_bpm: f64,
+        segments: Vec<TimingSegment>,
+        tick_scale: u64,
+    ) -> Self {
         debug_assert!(!segments.is_empty());
-        Self { initial_bpm, segments }
+        Self { initial_bpm, segments, tick_scale: tick_scale.max(1) }
     }
 
     pub fn tick_to_time(&self, tick: ChartTick) -> TimeUs {
@@ -165,13 +202,13 @@ impl TimingMap {
 
         let seg = self.find_segment_by_tick(tick);
         let delta = tick.0.saturating_sub(seg.start_tick.0);
-        add_time_us(seg.start_time, ticks_to_us(delta, seg.bpm))
+        add_time_us(seg.start_time, ticks_to_us_scaled(delta, seg.bpm, self.tick_scale))
     }
 
     pub fn time_to_tick(&self, time: TimeUs) -> ChartTick {
         let seg = self.find_segment_by_time(time);
         let delta_us = time.0.saturating_sub(seg.start_time.0);
-        let delta_ticks = us_to_ticks(delta_us, seg.bpm);
+        let delta_ticks = us_to_ticks_scaled(delta_us, seg.bpm, self.tick_scale);
         ChartTick(seg.start_tick.0.saturating_add(delta_ticks))
     }
 
@@ -203,7 +240,9 @@ impl TimingMap {
     pub fn time_to_tick_f64(&self, time: TimeUs) -> f64 {
         let seg = self.find_segment_by_time(time);
         let delta_us = (time.0 - seg.start_time.0).max(0);
-        let delta_ticks = delta_us as f64 * seg.bpm * TICKS_PER_BEAT as f64 / 60_000_000.0;
+        let delta_ticks =
+            delta_us as f64 * seg.bpm * TICKS_PER_BEAT as f64 * self.tick_scale as f64
+                / 60_000_000.0;
         seg.start_tick.0 as f64 + delta_ticks
     }
 
@@ -216,18 +255,16 @@ impl TimingMap {
         use crate::model::TimingEventKind as Kind;
 
         let initial_bpm = initial_bpm.max(1.0);
+        // Imported charts record the precise event time before their temporary high-resolution
+        // ticks are compressed back to the public ChartTick unit. Hand-built legacy charts often
+        // leave this field at zero, so retain the old tick-derived path for those charts.
+        let use_recorded_times = events.iter().any(|event| event.time.0 != 0);
         let mut sorted: Vec<_> = events.to_vec();
-        sorted.sort_by_key(|e| {
-            (
-                e.tick,
-                match e.kind {
-                    // The duration is already resolved, but the segment at
-                    // the event position must still use the new BPM.
-                    Kind::BpmChange { .. } => 0,
-                    Kind::Stop { .. } => 1,
-                },
-            )
-        });
+        if use_recorded_times {
+            sorted.sort_by_key(|e| (e.time, timing_event_priority_from_chart_kind(e.kind)));
+        } else {
+            sorted.sort_by_key(|e| (e.tick, timing_event_priority_from_chart_kind(e.kind)));
+        }
 
         let mut segments = Vec::new();
         let mut current_tick = ChartTick(0);
@@ -235,20 +272,35 @@ impl TimingMap {
         let mut current_bpm = initial_bpm;
 
         for event in sorted {
-            if event.tick > current_tick {
-                let end_time = add_time_us(
+            let event_time = if use_recorded_times {
+                TimeUs(event.time.0.max(current_time.0))
+            } else {
+                add_time_us(
                     current_time,
-                    ticks_to_us(event.tick.0 - current_tick.0, current_bpm),
-                );
+                    ticks_to_us(event.tick.0.saturating_sub(current_tick.0), current_bpm),
+                )
+            };
+            if event.tick > current_tick {
                 segments.push(TimingSegment {
                     start_tick: current_tick,
                     end_tick: event.tick,
                     start_time: current_time,
-                    end_time,
+                    end_time: event_time,
                     bpm: current_bpm,
                 });
-                current_time = end_time;
+                current_time = event_time;
                 current_tick = event.tick;
+            } else if use_recorded_times && event_time > current_time {
+                // Different BMS positions can intentionally share one public ChartTick after
+                // compression. Preserve their elapsed time for time-based queries.
+                segments.push(TimingSegment {
+                    start_tick: current_tick,
+                    end_tick: current_tick,
+                    start_time: current_time,
+                    end_time: event_time,
+                    bpm: current_bpm,
+                });
+                current_time = event_time;
             }
 
             match event.kind {
@@ -277,6 +329,13 @@ impl TimingMap {
         });
 
         TimingMap::new(initial_bpm, segments)
+    }
+}
+
+fn timing_event_priority_from_chart_kind(kind: crate::model::TimingEventKind) -> u8 {
+    match kind {
+        crate::model::TimingEventKind::BpmChange { .. } => 0,
+        crate::model::TimingEventKind::Stop { .. } => 1,
     }
 }
 
@@ -320,6 +379,28 @@ mod tests {
         assert_eq!(map.tick_to_time(ChartTick(ticks * 2)), TimeUs(3_000_000));
         assert_eq!(map.bpm_at_tick(ChartTick(ticks - 1)), 120.0);
         assert_eq!(map.bpm_at_tick(ChartTick(ticks)), 240.0);
+    }
+
+    #[test]
+    fn from_chart_events_uses_recorded_times_after_tick_compression() {
+        let tick = TICKS_PER_MEASURE as u64;
+        let events = vec![
+            TimingEvent {
+                tick: ChartTick(tick),
+                time: TimeUs(2_000_000),
+                kind: TimingEventKind::BpmChange { bpm: 1.0 },
+            },
+            TimingEvent {
+                tick: ChartTick(tick),
+                time: TimeUs(2_000_225),
+                kind: TimingEventKind::Stop { duration_us: 1_250_000 },
+            },
+        ];
+
+        let map = TimingMap::from_chart_timing_events(120.0, &events);
+
+        assert_eq!(map.bpm_at_time(TimeUs(2_000_100)), 1.0);
+        assert!((map.time_to_tick_f64(TimeUs(3_750_225)) - (tick + 8) as f64).abs() < 1e-6);
     }
 
     #[test]
