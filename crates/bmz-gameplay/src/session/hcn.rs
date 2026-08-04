@@ -1,5 +1,5 @@
 /// HCN passing 中レーンの表示タイマー状態。
-use super::judgement::update_gauge_increase_timer;
+use super::judgement::{update_gauge_increase_timer, update_gauge_increase_timer_state};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HcnLaneTimer {
@@ -118,9 +118,14 @@ pub fn apply_hcn_gauge(session: &mut GameSession, audio_now: TimeUs) {
                     if let Some(gauge) = &mut session.opponent_gauge {
                         let previous_gauge = gauge.current().value;
                         gauge.apply_hcn_hold();
-                        if gauge.current().value > previous_gauge + f32::EPSILON {
-                            session.opponent_gauge_increase_started_at = Some(audio_now);
-                        }
+                        let current = gauge.current();
+                        update_gauge_increase_timer_state(
+                            &mut session.opponent_gauge_increase_started_at,
+                            previous_gauge,
+                            current.value,
+                            current.definition.max,
+                            audio_now,
+                        );
                     }
                 } else {
                     let previous_gauge = session.gauge.current().value;

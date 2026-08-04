@@ -13,10 +13,14 @@ pub fn apply_judge_outcome(
                 if let Some(gauge) = &mut session.opponent_gauge {
                     let previous_gauge = gauge.current().value;
                     gauge.apply_judge(event.judge, 1.0);
-                    if gauge.current().value > previous_gauge + f32::EPSILON {
-                        session.opponent_gauge_increase_started_at =
-                            Some(TimeUs(event.time.0.max(0)));
-                    }
+                    let current = gauge.current();
+                    update_gauge_increase_timer_state(
+                        &mut session.opponent_gauge_increase_started_at,
+                        previous_gauge,
+                        current.value,
+                        current.definition.max,
+                        event.time,
+                    );
                 }
             }
             event.affects_score = false;
@@ -130,15 +134,34 @@ pub(super) fn update_gauge_increase_timer(
     previous_value: f32,
     now: TimeUs,
 ) {
-    let current_value = session.gauge.current().value;
+    let current = session.gauge.current();
+    update_gauge_increase_timer_state(
+        &mut session.gauge_increase_started_at,
+        previous_value,
+        current.value,
+        current.definition.max,
+        now,
+    );
+}
+
+pub(super) fn update_gauge_increase_timer_state(
+    started_at: &mut Option<TimeUs>,
+    previous_value: f32,
+    current_value: f32,
+    max_value: f32,
+    now: TimeUs,
+) {
     if current_value > previous_value + f32::EPSILON {
-        session.gauge_increase_started_at = Some(TimeUs(now.0.max(0)));
+        *started_at = (current_value < max_value.max(1.0)).then_some(TimeUs(now.0.max(0)));
     }
 }
 
 pub(super) fn update_gauge_max_timer(session: &mut GameSession, now: TimeUs) {
     let current = session.gauge.current();
     let is_max = current.value >= current.definition.max.max(1.0);
+    if is_max {
+        session.gauge_increase_started_at = None;
+    }
     match (is_max, session.gauge_max_started_at) {
         (true, None) => session.gauge_max_started_at = Some(TimeUs(now.0.max(0))),
         (false, Some(_)) => session.gauge_max_started_at = None,
@@ -147,6 +170,9 @@ pub(super) fn update_gauge_max_timer(session: &mut GameSession, now: TimeUs) {
     if let Some(opponent_gauge) = &session.opponent_gauge {
         let is_max =
             opponent_gauge.current().value >= opponent_gauge.current().definition.max.max(1.0);
+        if is_max {
+            session.opponent_gauge_increase_started_at = None;
+        }
         match (is_max, session.opponent_gauge_max_started_at) {
             (true, None) => session.opponent_gauge_max_started_at = Some(TimeUs(now.0.max(0))),
             (false, Some(_)) => session.opponent_gauge_max_started_at = None,

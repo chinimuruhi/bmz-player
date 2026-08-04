@@ -59,6 +59,7 @@ fn display_only_opponent_judgement_does_not_change_primary_score_or_gauge() {
 #[test]
 fn display_only_opponent_hcn_updates_only_opponent_gauge() {
     let mut session = session_with_autoplay(chart_with_keysound());
+    session.gauge = GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 200);
     session.gauge.set_initial_value(50.0);
     session.opponent_gauge = Some(session.gauge.clone());
     session.display_only_lane_mask[Lane::Key8.index()] = true;

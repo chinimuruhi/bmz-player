@@ -76,6 +76,7 @@ fn hard_gauge_zero_moves_session_to_failed() {
 #[test]
 fn gauge_increase_timer_starts_when_judge_raises_gauge() {
     let mut session = session_with_autoplay(chart_with_keysound());
+    session.gauge = GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 200);
     session.gauge.set_initial_value(50.0);
 
     apply_judge_outcome(
@@ -90,6 +91,19 @@ fn gauge_increase_timer_starts_when_judge_raises_gauge() {
     );
 
     assert_eq!(session.gauge_increase_started_at, Some(TimeUs(123_000)));
+}
+
+#[test]
+fn gauge_increase_timer_stops_when_gauge_reaches_max() {
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.gauge_increase_started_at = Some(TimeUs(10_000));
+    session.gauge.set_initial_value(100.0);
+
+    update_gauge_increase_timer(&mut session, 99.0, TimeUs(123_000));
+    assert_eq!(session.gauge_increase_started_at, None);
+
+    update_gauge_max_timer(&mut session, TimeUs(123_000));
+    assert_eq!(session.gauge_max_started_at, Some(TimeUs(123_000)));
 }
 
 #[test]
