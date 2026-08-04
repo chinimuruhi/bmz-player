@@ -618,9 +618,8 @@ impl WinitApp {
             return;
         }
         let Some(window) = self.window.as_ref() else { return };
-        let Some(document) = self.renderer.select_skin_document() else { return };
-        let Some((x_norm, y_norm, w_norm, h_norm)) = document.text_destination_rect_for_ref(30)
-        else {
+        let snapshot = self.select_snapshot();
+        let Some(rect) = self.renderer.select_skin_search_input_rect(&snapshot) else {
             return;
         };
         // egui_winit と同じ規約で物理ピクセル top-left を渡す。winit 側で各
@@ -628,10 +627,10 @@ impl WinitApp {
         let size = window.inner_size();
         let width = size.width as f32;
         let height = size.height as f32;
-        let x = (x_norm * width).round() as i32;
-        let y = (y_norm * height).round() as i32;
-        let w = (w_norm * width).round().max(1.0) as u32;
-        let h = (h_norm * height).round().max(1.0) as u32;
+        let x = (rect.x * width).round() as i32;
+        let y = (rect.y * height).round() as i32;
+        let w = (rect.width * width).round().max(1.0) as u32;
+        let h = (rect.height * height).round().max(1.0) as u32;
         window.set_ime_cursor_area(
             winit::dpi::PhysicalPosition::new(x, y),
             winit::dpi::PhysicalSize::new(w, h),

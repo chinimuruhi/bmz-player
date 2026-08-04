@@ -176,6 +176,12 @@ pub trait SkinDocumentRenderExt {
         dynamic_timers: Option<&mut DynamicTimerRuntime>,
     ) -> (SkinDrawState, Option<&'a SelectRowSnapshot>);
 
+    fn select_search_input_rect(
+        &self,
+        snapshot: &SelectSnapshot,
+        settings_dest_index: &crate::select_settings_dest::SelectSettingsDestIndex,
+    ) -> Option<Rect>;
+
     fn select_click_hit(
         &self,
         sources: &HashMap<String, SkinDocumentTexture>,

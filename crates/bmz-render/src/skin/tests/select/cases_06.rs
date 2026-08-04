@@ -181,3 +181,111 @@ fn skin_state_text_formats_select_option_fields() {
     assert_eq!(skin_state_text(&make_text("bmz_select_bga"), &state), "AUTO");
     assert_eq!(skin_state_text(&make_text("bmz_select_judge_timing_auto_adjust"), &state), "ON");
 }
+
+#[test]
+fn select_search_input_overlay_does_not_repeat_the_skin_text_fade() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 5,
+                "w": 100,
+                "h": 100,
+                "font": [{ "id": "skin-font", "path": "search.fnt" }],
+                "text": [
+                    { "id": "search", "font": "skin-font", "size": 24, "ref": 30 },
+                    { "id": "blink", "constantText": "blink", "size": 10 },
+                    { "id": "after", "constantText": "after", "size": 10 }
+                ],
+                "destination": [
+                    { "id": "search", "dst": [
+                        { "time": 400, "x": 10, "y": 20, "w": 50, "h": 20,
+                          "a": 0, "r": 200, "g": 210, "b": 220 },
+                        { "time": 550, "a": 255 }
+                    ]},
+                    { "id": "blink", "dst": [
+                        { "time": 400, "x": 0, "y": 0, "w": 10, "h": 10, "a": 0 },
+                        { "time": 550, "a": 255 }
+                    ]},
+                    { "id": "after", "dst": [
+                        { "x": 0, "y": 0, "w": 10, "h": 10 }
+                    ]}
+                ]
+            }
+            "#,
+    )
+    .unwrap();
+    let snapshot = SelectSnapshot {
+        time: TimeUs(600_000),
+        search_word: "query".to_string(),
+        search_word_alpha: 0.8,
+        search_caret_byte_index: Some(2),
+        ..SelectSnapshot::default()
+    };
+
+    let items = document.select_render_items(&HashMap::new(), &snapshot);
+    let texts = items
+        .iter()
+        .filter_map(|item| match item {
+            SkinRenderItem::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    // The ordinary omitted-loop text has restarted before its first frame,
+    // while the search input is held at the settled destination and appended
+    // after all skin objects.
+    assert_eq!(texts, vec!["after", "query"]);
+    let search = items.last().expect("search input overlay");
+    match search {
+        SkinRenderItem::Text { style, caret: Some(caret), .. } => {
+            assert_eq!(style.font_id, None);
+            assert_eq!(style.bitmap_size, None);
+            assert_eq!(style.align, TextAlign::Left);
+            assert!(approx_eq(style.size, 0.2));
+            assert!(approx_eq(style.color.a, 0.8));
+            assert_eq!(caret.byte_index, 2);
+            assert_eq!(caret.color, Color::rgb(1.0, 1.0, 1.0));
+        }
+        other => panic!("expected search input text with caret, got {other:?}"),
+    }
+
+    let rect = document
+        .select_search_input_rect(
+            &snapshot,
+            &crate::select_settings_dest::SelectSettingsDestIndex::default(),
+        )
+        .expect("search input rect");
+    assert!(approx_eq(rect.x, 0.1));
+    assert!(approx_eq(rect.y, 0.6));
+    assert!(approx_eq(rect.width, 0.5));
+    assert!(approx_eq(rect.height, 0.2));
+}
+
+#[test]
+fn select_search_input_overlay_keeps_empty_text_when_the_caret_is_visible() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"{
+            "type": 5,
+            "w": 100,
+            "h": 100,
+            "text": [{ "id": "search", "size": 10, "ref": 30 }],
+            "destination": [{ "id": "search", "dst": [
+                { "x": 10, "y": 20, "w": 50, "h": 10 }
+            ]}]
+        }"#,
+    )
+    .unwrap();
+    let snapshot = SelectSnapshot {
+        search_word: String::new(),
+        search_caret_byte_index: Some(0),
+        ..SelectSnapshot::default()
+    };
+
+    let items = document.select_render_items(&HashMap::new(), &snapshot);
+
+    assert!(matches!(
+        items.as_slice(),
+        [SkinRenderItem::Text { text, caret: Some(TextCaret { byte_index: 0, .. }), .. }]
+            if text.is_empty()
+    ));
+}

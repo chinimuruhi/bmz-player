@@ -137,6 +137,14 @@ macro_rules! skin_document_render_select_render_methods {
                 || nearest_f_diff_rank_destination_available(&destinations),
                 |planning| planning.has_nearest_f_diff_rank_destination,
             );
+            let search_input_anchors = select::select_search_input_anchors(
+                self,
+                snapshot,
+                settings_dest_index,
+                &state,
+                selected_row,
+                enabled_options,
+            );
             let mut items = Vec::new();
             for destination_index in 0..destination_count {
                 let Some(destination) = planning
@@ -157,6 +165,13 @@ macro_rules! skin_document_render_select_render_methods {
                         enabled_options,
                         &state,
                     ));
+                    continue;
+                }
+                // beatoraja keeps STRING_SEARCHWORD empty in the regular
+                // SkinText pass. Editing text and its caret are a separate
+                // TextField actor drawn after the skin. Its visibility was
+                // already evaluated while collecting `search_input_anchors`.
+                if self.text.iter().any(|text| text.ref_id == 30 && text.id == destination.id) {
                     continue;
                 }
                 if !crate::select_settings_dest::test_select_destination_visible(
@@ -266,7 +281,49 @@ macro_rules! skin_document_render_select_render_methods {
                     items.extend(resolved);
                 }
             }
+            for anchor in search_input_anchors {
+                let Some(mut item) = self.text_render_item_with_draw_state(
+                    anchor.text,
+                    anchor.frame,
+                    Some(&state),
+                    &text,
+                ) else {
+                    continue;
+                };
+                if let SkinRenderItem::Text { style, caret, .. } = &mut item {
+                    // SkinTextInput uses the configured system font at the
+                    // destination height, independently of the skin text font.
+                    style.font_id = None;
+                    style.bitmap_size = None;
+                    style.size = anchor.frame.h.abs().max(1) as f32 / self.h.max(1) as f32;
+                    style.align = TextAlign::Left;
+                    if let Some(caret) = caret {
+                        caret.color = Color::rgb(1.0, 1.0, 1.0);
+                    }
+                }
+                items.push(item);
+            }
             items
+        }
+
+        fn select_search_input_rect(
+            &self,
+            snapshot: &SelectSnapshot,
+            settings_dest_index: &crate::select_settings_dest::SelectSettingsDestIndex,
+        ) -> Option<Rect> {
+            let (state, selected_row) = self.select_draw_state(snapshot, None);
+            let enabled_options = self.enabled_options();
+            let anchor = select::select_search_input_anchors(
+                self,
+                snapshot,
+                settings_dest_index,
+                &state,
+                selected_row,
+                &enabled_options,
+            )
+            .into_iter()
+            .next_back()?;
+            Some(normalize_skin_frame_rect(anchor.frame, self.w, self.h))
         }
 
         fn select_draw_state<'a>(

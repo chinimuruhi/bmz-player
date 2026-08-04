@@ -226,6 +226,21 @@ impl Renderer {
         self.select_skin_context.select_click_hit(snapshot, x, y)
     }
 
+    /// Search input bounds in normalized surface coordinates, including the
+    /// select skin canvas viewport and letterboxing.
+    pub fn select_skin_search_input_rect(
+        &self,
+        snapshot: &crate::scene::SelectSnapshot,
+    ) -> Option<Rect> {
+        let rect = self.select_skin_context.select_search_input_rect(snapshot)?;
+        let Some(surface) = self.gpu.as_ref().map(WgpuRenderer::surface_size) else {
+            return Some(rect);
+        };
+        let viewport =
+            CanvasViewport::from_policy(surface, self.select_skin_canvas_render_policy());
+        Some(viewport.transform_rect(rect))
+    }
+
     pub fn result_skin_click_hit(
         &self,
         snapshot: &crate::scene::ResultSnapshot,

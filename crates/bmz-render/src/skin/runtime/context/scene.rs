@@ -258,6 +258,10 @@ impl SkinContext {
         )
     }
 
+    pub fn select_search_input_rect(&self, snapshot: &SelectSnapshot) -> Option<Rect> {
+        self.document.as_ref()?.select_search_input_rect(snapshot, &self.select_settings_dest_index)
+    }
+
     pub fn result_click_hit(&self, state: &SkinDrawState, x: f32, y: f32) -> Option<SkinClickHit> {
         self.document.as_ref()?.result_click_hit(state, x, y)
     }

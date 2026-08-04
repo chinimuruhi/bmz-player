@@ -173,14 +173,11 @@ impl WinitApp {
     }
 
     pub(super) fn select_search_word_hit(&self, x: f32, y: f32) -> bool {
-        let Some(document) = self.renderer.select_skin_document() else {
+        let snapshot = self.select_snapshot();
+        let Some(rect) = self.renderer.select_skin_search_input_rect(&snapshot) else {
             return false;
         };
-        let Some((rect_x, rect_y, rect_w, rect_h)) = document.text_destination_rect_for_ref(30)
-        else {
-            return false;
-        };
-        x >= rect_x && x <= rect_x + rect_w && y >= rect_y && y <= rect_y + rect_h
+        x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height
     }
 
     pub(super) fn search_cursor_to_end(&mut self) {

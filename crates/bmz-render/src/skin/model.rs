@@ -85,8 +85,8 @@ pub struct SkinTextState<'a> {
     pub table_text_fallback: &'a str,
     pub course_stage: Option<CourseStageMarker>,
     pub course_titles: [&'a str; 10],
-    /// beatoraja `SkinProperty.STRING_SEARCHWORD` (`ref=30`). Current song search
-    /// query as typed by the user.
+    /// beatoraja `SkinProperty.STRING_SEARCHWORD` (`ref=30`) input overlay.
+    /// Current song search query as typed by the user.
     pub search_word: &'a str,
     /// Multiplier applied to the rendered alpha of the `ref=30` text element.
     /// `1.0` keeps the skin-defined alpha unchanged; values < 1.0 are used for

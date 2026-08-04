@@ -338,8 +338,9 @@ impl SkinDocument {
     /// 描画対象の `SkinDestinationDef` の参照リストを返す。
     /// Returns the first dst frame of any text element whose `ref_id` equals
     /// `ref_id`, normalized into the `0.0..=1.0` rendered viewport coordinate
-    /// space (top-left origin). Used by bmz-player to position the IME candidate
-    /// window over the search input region without touching the skin.
+    /// space (top-left origin). This is a static document-inspection helper;
+    /// runtime input bounds use bmz-render's resolved destination frame so skin
+    /// options, offsets, and the canvas viewport are included.
     ///
     /// Beatoraja skin sources use top-down y growing from the canvas top, but
     /// `normalize_skin_frame_rect` flips that to a bottom-up rect before paint,

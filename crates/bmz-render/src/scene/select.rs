@@ -87,7 +87,8 @@ pub struct SelectSnapshot {
     pub in_settings: bool,
     /// 設定項目の編集モード中。
     pub settings_editing: bool,
-    /// 楽曲検索バー (beatoraja `STRING_SEARCHWORD`, ref=30) に表示する文字列。
+    /// 楽曲検索バー (beatoraja `STRING_SEARCHWORD`, ref=30) の入力オーバーレイに
+    /// 表示する文字列。
     /// 検索モード中は入力中クエリ、非モード中は空 or 直前のメッセージ
     /// ("no song found" 等)。
     pub search_word: String,

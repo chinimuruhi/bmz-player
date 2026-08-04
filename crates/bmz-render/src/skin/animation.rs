@@ -479,6 +479,26 @@ pub(super) fn resolve_single_destination_frame(
     (frame.time <= elapsed_ms).then_some(frame)
 }
 
+/// Returns the fully inherited terminal frame without applying destination
+/// loop-back. Editable text actors in beatoraja use the skin destination as an
+/// input anchor, while the entered text itself is drawn by a separate
+/// `TextField`. The input overlay therefore needs the settled destination
+/// geometry rather than the repeating animation time.
+pub(super) fn resolve_destination_terminal_frame(
+    destination: &SkinDestinationDef,
+    enabled_options: &[i32],
+    state: &SkinDrawState,
+) -> Option<ResolvedSkinFrame> {
+    let animations = flatten_dst_entries(&destination.dst, enabled_options);
+    let mut frame = ResolvedSkinFrame::default();
+    let mut resolved = false;
+    for animation in animations {
+        apply_skin_animation(&mut frame, &animation, state);
+        resolved = true;
+    }
+    resolved.then_some(frame)
+}
+
 pub(super) fn resolve_destination_frame_until_end(
     destination: &SkinDestinationDef,
     elapsed_ms: i32,
