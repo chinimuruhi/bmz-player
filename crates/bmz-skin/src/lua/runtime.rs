@@ -134,6 +134,7 @@ impl LuaSkinRuntime {
             const FIELDS: &[&str] = &[
                 "option",
                 "number",
+                "exscore",
                 "float",
                 "float_number",
                 "text",
@@ -151,6 +152,7 @@ impl LuaSkinRuntime {
 
             main_state.set("option", scope.create_function(|_, id: i32| Ok(state.option(id)))?)?;
             main_state.set("number", scope.create_function(|_, id: i32| Ok(state.number(id)))?)?;
+            main_state.set("exscore", scope.create_function(|_, ()| Ok(state.exscore()))?)?;
             let float = scope.create_function(|_, id: i32| Ok(state.float(id)))?;
             main_state.set("float", float.clone())?;
             main_state.set("float_number", float)?;

@@ -107,6 +107,9 @@ pub(in crate::skin) fn skin_builtin_value_i64(expr: &str, state: &SkinDrawState)
     if expr.trim() == "bmz:nearest_rank_diff_abs" {
         return nearest_grade_diff(state).map(|diff| diff.value.abs());
     }
+    if expr.trim() == "bmz:wmii_next_rank_diff" {
+        return wmii_next_rank_diff(state);
+    }
     let number = skin_builtin_value_f32(expr, state)?;
     Some(match expr.trim() {
         SKIN_EXPR_DEFAULT_CHART_TOTAL_COUNT | SKIN_EXPR_DEFAULT_CHART_GAUGE => {

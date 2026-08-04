@@ -513,6 +513,72 @@ fn rm_skin_play7_convert_warnings_baseline() {
 }
 
 #[test]
+fn wmii_fhd_play_lua_features_when_available() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/WMII_FHD/play");
+    let runtime_state = LuaLoadRuntimeState {
+        option_values: BTreeMap::from([
+            (32, true),
+            (33, false),
+            (82, true),
+            (84, false),
+            (1080, false),
+        ]),
+        ..LuaLoadRuntimeState::default()
+    };
+
+    for name in [
+        "play5ac.luaskin",
+        "play5wide.luaskin",
+        "play7ac.luaskin",
+        "play7wide.luaskin",
+        "play10ac.luaskin",
+        "play10wide.luaskin",
+        "play14ac.luaskin",
+        "play14wide.luaskin",
+    ] {
+        let path = root.join(name);
+        if !path.is_file() {
+            continue;
+        }
+        let loaded = load_lua_skin_with_runtime_state(
+            &path,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &runtime_state,
+        )
+        .unwrap();
+        let destinations = loaded.document.destination.iter().filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination) => Some(destination),
+            bmz_skin_document::DestinationListEntry::Conditional { .. } => None,
+        });
+        let stages = destinations
+            .filter(|destination| matches!(destination.id.as_str(), "extrastage" | "practice"))
+            .map(|destination| (destination.id.as_str(), destination.draw.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            stages,
+            vec![("extrastage", "!option(1080)"), ("practice", "option(1080)"),],
+            "stage predicates for {name}"
+        );
+        let next_rank = loaded
+            .document
+            .value
+            .iter()
+            .find(|value| value.id == "diff_rank")
+            .unwrap_or_else(|| panic!("diff_rank is missing for {name}"));
+        assert_eq!(next_rank.value_expr, "bmz:wmii_next_rank_diff", "diff_rank for {name}");
+        assert!(
+            !loaded.warnings.iter().any(|warning| {
+                warning.message.contains("unsupported draw function")
+                    || warning.message.contains("unsupported value function")
+            }),
+            "unsupported WMII draw/value function for {name}: {:?}",
+            loaded.warnings
+        );
+    }
+}
+
+#[test]
 fn wmii_fhd_result_lua_skin_decodes_when_available() {
     let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/WMII_FHD/result/result.luaskin");

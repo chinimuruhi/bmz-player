@@ -138,6 +138,14 @@ impl LuaLoadRuntimeState {
 pub trait LuaMainState {
     fn option(&self, id: i32) -> bool;
     fn number(&self, id: i32) -> i64;
+    /// Returns the current EX score used by Lua skins.
+    ///
+    /// beatoraja exposes this as `main_state.exscore()`, while the numeric
+    /// state reference is 71. Keep the default so existing runtime adapters
+    /// remain source-compatible.
+    fn exscore(&self) -> i64 {
+        self.number(71)
+    }
     fn float(&self, id: i32) -> f64;
     fn text(&self, id: i32) -> String;
     fn timer(&self, id: i32) -> Option<i32>;

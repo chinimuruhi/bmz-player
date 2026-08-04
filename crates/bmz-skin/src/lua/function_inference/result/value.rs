@@ -105,6 +105,8 @@ pub(in crate::lua) fn infer_nearest_rank_diff_value_expr(
     if !supported {
         return None;
     }
+    let mut matches_nearest = true;
+    let mut matches_wmii = object_id == Some("diff_rank");
     for total_notes in [9, 10, 37] {
         for ex_score in 0..=total_notes * 2 {
             let values = refs
@@ -127,11 +129,39 @@ pub(in crate::lua) fn infer_nearest_rank_diff_value_expr(
                 _ => wmii_nearest_rank(ex_score, total_notes)?.2 as f64,
             };
             if !approx_float_eq(actual, expected) {
-                return None;
+                matches_nearest = false;
+            }
+            if matches_wmii
+                && !approx_float_eq(actual, wmii_next_rank_diff(ex_score, total_notes)? as f64)
+            {
+                matches_wmii = false;
             }
         }
     }
-    Some("bmz:nearest_rank_diff_abs".to_string())
+    if matches_wmii {
+        Some("bmz:wmii_next_rank_diff".to_string())
+    } else if matches_nearest {
+        Some("bmz:nearest_rank_diff_abs".to_string())
+    } else {
+        None
+    }
+}
+
+fn wmii_next_rank_diff(ex_score: i32, total_notes: i32) -> Option<i32> {
+    let max_score = total_notes.checked_mul(2)?;
+    if max_score <= 0 {
+        return None;
+    }
+    let ex_score = ex_score.clamp(0, max_score);
+    for (numerator, denominator) in
+        [(6, 27), (9, 27), (12, 27), (15, 27), (18, 27), (21, 27), (24, 27), (17, 18), (1, 1)]
+    {
+        let threshold = (max_score * numerator + denominator - 1) / denominator;
+        if ex_score < threshold {
+            return Some(threshold - ex_score);
+        }
+    }
+    Some(0)
 }
 
 pub(in crate::lua) fn luxe_flat_nearest_rank_diff(ex_score: i32, total_notes: i32) -> Option<i32> {

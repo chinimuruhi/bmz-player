@@ -30,6 +30,16 @@ pub(super) fn create_main_state_stub(
                 .number(ref_id))
         })?,
     )?;
+    let probe_for_exscore = probe.clone();
+    table.set(
+        "exscore",
+        lua.create_function(move |_, ()| {
+            Ok(probe_for_exscore
+                .lock()
+                .map_err(|_| mlua::Error::external("main_state probe lock poisoned"))?
+                .number(71))
+        })?,
+    )?;
     let probe_for_judge = probe.clone();
     table.set(
         "judge",

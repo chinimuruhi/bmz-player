@@ -491,3 +491,11 @@ fn wmii_nearest_rank_diff_value_uses_absolute_runtime_difference() {
         SkinValueDef { value_expr: "bmz:nearest_rank_diff_abs".to_string(), ..Default::default() };
     assert_eq!(skin_value_number(&value, &state), Some(1));
 }
+
+#[test]
+fn wmii_next_rank_diff_value_uses_forward_lua_boundary() {
+    let state = SkinDrawState { ex_score: 160, total_notes: 100, ..Default::default() };
+    let value =
+        SkinValueDef { value_expr: "bmz:wmii_next_rank_diff".to_string(), ..Default::default() };
+    assert_eq!(skin_value_number(&value, &state), Some(18));
+}

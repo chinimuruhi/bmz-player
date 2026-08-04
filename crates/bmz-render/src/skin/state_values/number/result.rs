@@ -86,6 +86,36 @@ pub(in crate::skin) fn next_rank_diff(state: &SkinDrawState) -> Option<i64> {
     Some(ex_score - max_score)
 }
 
+/// Computes the forward difference used by WMII PLAY's Lua `next_rank_info`.
+/// It differs from BMZ's generic nearest-rank display because WMII always
+/// targets the next higher boundary and has a separate MAX- boundary.
+pub(in crate::skin) fn wmii_next_rank_diff(state: &SkinDrawState) -> Option<i64> {
+    let ex_score = i64::from(state.ex_score);
+    let total_notes = i64::from(state.total_notes);
+    let max_score = total_notes.checked_mul(2)?;
+    if max_score <= 0 {
+        return None;
+    }
+    let ex_score = ex_score.clamp(0, max_score);
+    for (numerator, denominator) in [
+        (6_i64, 27_i64),
+        (9, 27),
+        (12, 27),
+        (15, 27),
+        (18, 27),
+        (21, 27),
+        (24, 27),
+        (17, 18),
+        (1, 1),
+    ] {
+        let threshold = div_ceil(max_score * numerator, denominator);
+        if ex_score < threshold {
+            return Some(threshold - ex_score);
+        }
+    }
+    Some(0)
+}
+
 pub(in crate::skin) fn next_rank_grade(state: &SkinDrawState) -> Option<&'static str> {
     let ex_score = state.select_ex_score.unwrap_or(state.ex_score) as i64;
     let total_notes = state.select_total_notes.max(state.total_notes) as i64;
