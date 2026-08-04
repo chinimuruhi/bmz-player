@@ -6,7 +6,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
-        self.result.last_play_was_autoplay = options.autoplay;
+        self.result.last_play_session_mode = options.session_mode;
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
@@ -244,12 +244,6 @@ impl WinitApp {
         chart_id: i64,
         mut active_play: StartedInputPlaySession,
     ) {
-        self.result.last_play_was_autoplay = active_play
-            .running
-            .session
-            .autoplay
-            .as_ref()
-            .is_some_and(|autoplay| autoplay.is_full());
         if let Some(pending) =
             self.play.pending_play_start.as_ref().filter(|pending| pending.chart_id == chart_id)
         {

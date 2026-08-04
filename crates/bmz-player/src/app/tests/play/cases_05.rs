@@ -1,4 +1,13 @@
 use super::*;
+use crate::app::scene_state::session_mode_overlay_suffix;
+
+#[test]
+fn session_mode_overlay_suffix_distinguishes_all_modes() {
+    assert_eq!(session_mode_overlay_suffix(SessionMode::Normal), None);
+    assert_eq!(session_mode_overlay_suffix(SessionMode::Autoplay), Some("autoplay"));
+    assert_eq!(session_mode_overlay_suffix(SessionMode::AutoplayBattle), Some("auto battle"));
+    assert_eq!(session_mode_overlay_suffix(SessionMode::GhostBattle), Some("battle"));
+}
 
 #[test]
 fn session_mode_profile_migrates_legacy_autoplay_and_persists_battle() {

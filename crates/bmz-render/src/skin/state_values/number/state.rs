@@ -140,6 +140,7 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         SKIN_REF_BMZ_SELECT_SETTINGS_ROW_KIND => {
             Some(i64::from(select_settings_row_kind_index(state.select_row_kind)))
         }
+        SKIN_REF_BMZ_SELECT_SESSION_MODE => Some(state.select_session_mode_index as i64),
         1930 => Some(player_stat_u64(state.player_stats.daily.play_count)),
         1931 => Some(player_stat_u64(state.player_stats.daily.clear_count)),
         1932 => Some(player_stat_u64(state.player_stats.daily.pgreat)),

@@ -87,6 +87,17 @@ fn select_hs_fix_index_maps_beatoraja_order() {
 }
 
 #[test]
+fn select_session_mode_keeps_legacy_assist_binary_and_exposes_exact_bmz_index() {
+    let cases =
+        [("NORMAL", 0, 0), ("AUTOPLAY", 1, 1), ("AUTOPLAY BATTLE", 1, 2), ("GHOST BATTLE", 0, 3)];
+
+    for (mode, assist_index, session_mode_index) in cases {
+        assert_eq!(select_assist_index(mode), assist_index);
+        assert_eq!(select_session_mode_index(mode), session_mode_index);
+    }
+}
+
+#[test]
 fn skin_image_ref_number_maps_extended_select_arrange() {
     let state = SkinDrawState {
         select_screen: true,
@@ -100,6 +111,7 @@ fn skin_image_ref_number_maps_extended_select_arrange() {
         select_hs_fix_index: 3,
         select_bga_index: 2,
         select_assist_index: 1,
+        select_session_mode_index: 3,
         judge_timing_auto_adjust: true,
         select_gauge_auto_shift_index: 3,
         select_ln_mode_index: 2,
@@ -128,6 +140,7 @@ fn skin_image_ref_number_maps_extended_select_arrange() {
     assert_eq!(skin_state_number(345, &state), Some(10));
     assert_eq!(skin_state_number(54, &state), Some(2));
     assert_eq!(skin_state_number(55, &state), Some(3));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SELECT_SESSION_MODE, &state), Some(3));
     assert_eq!(skin_state_number(340, &state), Some(3));
     assert_eq!(skin_state_event_index(40, &state), 4);
     assert_eq!(skin_state_event_index(41, &state), 10);
@@ -139,6 +152,7 @@ fn skin_image_ref_number_maps_extended_select_arrange() {
     assert_eq!(skin_state_event_index(55, &state), 3);
     assert_eq!(skin_state_event_index(72, &state), 2);
     assert_eq!(skin_state_event_index(73, &state), 1);
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_SELECT_SESSION_MODE, &state), 3);
     assert_eq!(skin_state_event_index(75, &state), 1);
     assert_eq!(skin_state_event_index(78, &state), 3);
     assert_eq!(skin_state_event_index(308, &state), 2);

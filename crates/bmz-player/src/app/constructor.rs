@@ -246,7 +246,7 @@ impl WinitApp {
                 finished_play: None,
                 result_favorite_chart: false,
                 result_ir: None,
-                last_play_was_autoplay: false,
+                last_play_session_mode: SessionMode::Normal,
                 result_scene_started_at: now,
                 result_skin_audio: None,
                 result_exit: None,

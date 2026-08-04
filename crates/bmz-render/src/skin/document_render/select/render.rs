@@ -325,6 +325,7 @@ macro_rules! skin_document_render_select_render_methods {
                 hispeed_auto_adjust: snapshot.hispeed_auto_adjust,
                 player_stats: snapshot.player_stats.clone(),
                 select_assist_index: select_assist_index(&snapshot.assist),
+                select_session_mode_index: select_session_mode_index(&snapshot.assist),
                 select_mode_index: select_mode_index(&snapshot.select_mode),
                 select_sort_index: select_sort_index(&snapshot.select_sort),
                 select_ln_mode_index: select_ln_mode_index(&snapshot.select_ln_mode),

@@ -43,6 +43,36 @@ fn bundled_default_json_skin_documents_decode() {
 }
 
 #[test]
+fn bundled_default_select_displays_all_session_modes() {
+    let app_paths = test_app_paths();
+    let path = default_skin_document_path_from_paths(&app_paths, SkinKind::Select);
+    let decoded = decode_beatoraja_skin(&path, SkinKind::Select)
+        .unwrap_or_else(|error| panic!("failed to decode {}: {error:#}", path.display()));
+
+    for (id, label) in [
+        ("option_assist_0", "NORMAL"),
+        ("option_assist_1", "AUTOPLAY"),
+        ("option_assist_2", "AUTO BATTLE"),
+        ("option_assist_3", "BATTLE"),
+    ] {
+        assert!(
+            decoded.document.text.iter().any(|text| text.id == id && text.constant_text == label),
+            "{} should decode {id} text",
+            path.display()
+        );
+    }
+
+    for index in 0..4 {
+        let draw = format!("event_index({SKIN_REF_BMZ_SELECT_SESSION_MODE}) == {index}");
+        assert!(decoded.document.destination.iter().any(|entry| matches!(
+            entry,
+            DestinationListEntry::Single(destination)
+                if destination.id == "panel_img" && destination.draw == draw
+        )));
+    }
+}
+
+#[test]
 fn bundled_default_play_and_result_display_extended_arrange_labels() {
     let app_paths = test_app_paths();
     for (path, kind, ids) in [

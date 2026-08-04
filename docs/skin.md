@@ -105,6 +105,17 @@ extended index は beatoraja 互換値 `0=NORMAL`, `1=MIRROR`, `2=RANDOM`, `3=R-
 `4=S-RANDOM`, `5=SPIRAL`, `6=H-RANDOM`, `7=ALL-SCR`, `8=RANDOM-EX`,
 `9=S-RANDOM-EX` に加えて、`10=F-RANDOM`, `11=MF-RANDOM` を返す。
 
+### BMZ Select Session Mode Ref
+
+beatoraja 互換の assist `ref` / `event_index` `73` は従来どおり 2 値を返す。
+`NORMAL` / `GHOST BATTLE` は `0`、`AUTOPLAY` / `AUTOPLAY BATTLE` は `1` とし、
+既存 skin の 2 行 option panel を崩さない。
+
+BMZ 対応 select skin で4種類を区別する場合は、BMZ 拡張 ref `1970` を使う。
+`number(1970)` / `event_index(1970)` は `0=NORMAL`, `1=AUTOPLAY`,
+`2=AUTO BATTLE`, `3=BATTLE` を返す。BMZ デフォルトスキンの play mode panel も
+この ref を使用する。
+
 ### BMZ Dynamic Select Option Panels
 
 選曲オプションの現在値は、状態ごとの画像セルを用意せず `text.id` から直接描画できる。

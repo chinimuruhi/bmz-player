@@ -65,6 +65,9 @@ pub const SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL_SUPPORTED: i32 = 1967;
 pub const SKIN_OPTION_BMZ_IR_SCOPE_RIVAL_SUPPORTED: i32 = 1968;
 /// BMZ extension: number of players in the displayed IR scope.
 pub const SKIN_REF_BMZ_IR_SCOPE_TOTAL: i32 = 1969;
+/// BMZ extension: select session mode (`0=NORMAL`, `1=AUTOPLAY`,
+/// `2=AUTO BATTLE`, `3=BATTLE`).
+pub const SKIN_REF_BMZ_SELECT_SESSION_MODE: i32 = 1970;
 /// Backward-compatible Rust aliases for the initial Result-only names.
 pub const SKIN_REF_BMZ_RESULT_IR_SCOPE: i32 = SKIN_REF_BMZ_IR_SCOPE;
 pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL: i32 = SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL;

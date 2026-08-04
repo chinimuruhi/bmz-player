@@ -372,7 +372,7 @@ impl WinitApp {
         if !ending.failed
             || self.play.active_course.is_some()
             || self.play.practice_session.is_some()
-            || self.result.last_play_was_autoplay
+            || self.result.last_play_session_mode.primary_autoplay()
         {
             return false;
         }

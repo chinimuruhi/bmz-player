@@ -251,6 +251,15 @@ pub(super) fn select_assist_index(assist: &str) -> usize {
     }
 }
 
+pub(super) fn select_session_mode_index(assist: &str) -> usize {
+    match assist {
+        "AUTOPLAY" => 1,
+        "AUTOPLAY BATTLE" => 2,
+        "GHOST BATTLE" => 3,
+        _ => 0,
+    }
+}
+
 pub(super) fn select_mode_index(mode: &str) -> usize {
     match mode {
         "5K" => 1,

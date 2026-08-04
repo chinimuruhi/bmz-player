@@ -8,8 +8,9 @@ use bmz_render::plan::{DrawCommand, DrawPlan};
 use bmz_render::renderer::Renderer;
 use bmz_render::scene::{AppSceneSnapshot, SelectRowSnapshot, SelectSnapshot};
 use bmz_render::skin::{
-    DestinationListEntry, DynamicTimerRuntime, SkinContext, SkinDocumentRenderExt,
-    SkinDocumentTexture, SkinDrawState, SkinImageSize, SkinManifest, SkinRenderItem, SkinTextState,
+    DestinationListEntry, DynamicTimerRuntime, SKIN_REF_BMZ_SELECT_SESSION_MODE, SkinContext,
+    SkinDocumentRenderExt, SkinDocumentTexture, SkinDrawState, SkinImageSize, SkinManifest,
+    SkinRenderItem, SkinTextState,
 };
 
 fn test_app_paths() -> AppPaths {

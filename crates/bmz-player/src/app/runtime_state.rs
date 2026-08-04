@@ -143,8 +143,8 @@ pub(super) struct ResultRuntimeState {
     /// リザルト画面の IR 送信・ランキング表示状態。
     /// 通常プレイでは play ending 中に早期起動し、Result 画面まで保持する。
     pub(super) result_ir: Option<crate::screens::result_ir::ResultIrState>,
-    /// 直近のプレイがオートプレイだったか。Result 画面の常時表示に使う。
-    pub(super) last_play_was_autoplay: bool,
+    /// 直近に開始したプレイのsession mode。Play / Resultの常時表示に使う。
+    pub(super) last_play_session_mode: SessionMode,
     pub(super) result_scene_started_at: Instant,
     /// 現在インストール済みの Result skin が宣言した BGM / SE ランタイム。
     pub(super) result_skin_audio: Option<crate::skin_audio::SkinAudioRuntime>,

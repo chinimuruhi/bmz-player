@@ -294,10 +294,9 @@ impl WinitApp {
     pub(super) fn always_overlay_text(&self) -> String {
         let player_name = env!("CARGO_PKG_NAME");
         let player_version = env!("CARGO_PKG_VERSION");
-        if self.is_autoplay_for_overlay() {
-            format!("{player_name} {player_version} autoplay")
-        } else {
-            format!("{player_name} {player_version}")
+        match session_mode_overlay_suffix(self.session_mode_for_overlay()) {
+            Some(suffix) => format!("{player_name} {player_version} {suffix}"),
+            None => format!("{player_name} {player_version}"),
         }
     }
 
@@ -308,31 +307,22 @@ impl WinitApp {
         )
     }
 
-    pub(super) fn is_autoplay_for_overlay(&self) -> bool {
+    pub(super) fn session_mode_for_overlay(&self) -> SessionMode {
         match self.view_state() {
-            AppViewState::Result => self.result.last_play_was_autoplay,
+            AppViewState::Result => self.result.last_play_session_mode,
             AppViewState::Play => self
                 .play
-                .active_play
+                .pending_play_start
                 .as_ref()
-                .map(|active| {
-                    active
-                        .running
-                        .session
-                        .autoplay
-                        .as_ref()
-                        .is_some_and(|autoplay| autoplay.is_full())
-                })
-                .or_else(|| {
-                    self.play
-                        .pending_play_start
-                        .as_ref()
-                        .map(|_| self.select.session_mode.primary_autoplay())
-                })
-                .unwrap_or(self.result.last_play_was_autoplay),
-            AppViewState::Select | AppViewState::Decide => {
-                self.select.session_mode.primary_autoplay()
-            }
+                .map(|pending| pending.options.session_mode)
+                .unwrap_or(self.result.last_play_session_mode),
+            AppViewState::Decide => self
+                .play
+                .pending_decide
+                .as_ref()
+                .map(|pending| pending.options.session_mode)
+                .unwrap_or(self.select.session_mode),
+            AppViewState::Select => self.select.session_mode,
         }
     }
 
@@ -453,5 +443,14 @@ impl WinitApp {
         snapshot.table_text_primary = self.play.play_table_text_primary.clone();
         snapshot.table_text_secondary = self.play.play_table_text_secondary.clone();
         snapshot.table_text_fallback = self.play.play_table_text_fallback.clone();
+    }
+}
+
+pub(super) const fn session_mode_overlay_suffix(mode: SessionMode) -> Option<&'static str> {
+    match mode {
+        SessionMode::Normal => None,
+        SessionMode::Autoplay => Some("autoplay"),
+        SessionMode::AutoplayBattle => Some("auto battle"),
+        SessionMode::GhostBattle => Some("battle"),
     }
 }
