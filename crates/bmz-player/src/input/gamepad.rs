@@ -70,6 +70,23 @@ pub fn gamepad_device_id_from_stable_id(stable_id: &str) -> DeviceId {
     DeviceId(STABLE_GAMEPAD_DEVICE_ID_MASK | (hash & !STABLE_GAMEPAD_DEVICE_ID_MASK))
 }
 
+fn resolve_gamepad_device_id_from_stable_id(
+    stable_id: &str,
+    use_gilrs_backend_ids: bool,
+    known_gamepads: &[ConnectedGamepad],
+) -> DeviceId {
+    if let Some(gamepad) = known_gamepads.iter().find(|gamepad| gamepad.stable_id == stable_id) {
+        return gamepad.device_id;
+    }
+    if use_gilrs_backend_ids
+        && let Some(index) =
+            stable_id.strip_prefix("gilrs:").and_then(|value| value.parse::<u32>().ok())
+    {
+        return gamepad_device_id_from_backend_index(index);
+    }
+    gamepad_device_id_from_stable_id(stable_id)
+}
+
 pub fn resolve_gamepad_slot_device_ids(
     mut configured: [Option<DeviceId>; 2],
     connected_device_ids: impl IntoIterator<Item = DeviceId>,
@@ -90,17 +107,21 @@ pub fn resolve_gamepad_slot_device_ids(
 pub fn resolve_gamepad_slot_assignments(
     stable_ids: [Option<&str>; 2],
     legacy_backend_ids: [Option<u32>; 2],
-    use_legacy_backend_ids: bool,
+    using_gilrs: bool,
     include_known_disconnected: bool,
     connected: &[ConnectedGamepad],
 ) -> [Option<DeviceId>; 2] {
     let configured = std::array::from_fn(|slot| {
-        stable_ids[slot].map(gamepad_device_id_from_stable_id).or_else(|| {
-            use_legacy_backend_ids
-                .then_some(legacy_backend_ids[slot])
-                .flatten()
-                .map(gamepad_device_id_from_backend_index)
-        })
+        stable_ids[slot]
+            .map(|stable_id| {
+                resolve_gamepad_device_id_from_stable_id(stable_id, using_gilrs, connected)
+            })
+            .or_else(|| {
+                using_gilrs
+                    .then_some(legacy_backend_ids[slot])
+                    .flatten()
+                    .map(gamepad_device_id_from_backend_index)
+            })
     });
     resolve_gamepad_slot_device_ids(
         configured,
@@ -483,6 +504,79 @@ mod tests {
         assert_eq!(first, second);
         assert_ne!(first, gamepad_device_id_from_backend_index(0));
         assert_ne!(first, gamepad_device_id_from_stable_id("gameinput:controller-b"));
+    }
+
+    #[test]
+    fn gilrs_stable_slots_use_connected_device_ids() {
+        let connected = [
+            ConnectedGamepad {
+                stable_id: "gilrs:0".to_string(),
+                backend_id: 0,
+                device_id: DeviceId(16),
+                name: "1P controller".to_string(),
+                is_connected: true,
+            },
+            ConnectedGamepad {
+                stable_id: "gilrs:1".to_string(),
+                backend_id: 1,
+                device_id: DeviceId(17),
+                name: "2P controller".to_string(),
+                is_connected: true,
+            },
+        ];
+
+        let slots = resolve_gamepad_slot_assignments(
+            [Some("gilrs:0"), Some("gilrs:1")],
+            [None, None],
+            true,
+            false,
+            &connected,
+        );
+
+        assert_eq!(slots, [Some(DeviceId(16)), Some(DeviceId(17))]);
+    }
+
+    #[test]
+    fn gilrs_stable_slots_support_swapped_assignments() {
+        let connected = [
+            ConnectedGamepad {
+                stable_id: "gilrs:0".to_string(),
+                backend_id: 0,
+                device_id: DeviceId(16),
+                name: "1P controller".to_string(),
+                is_connected: true,
+            },
+            ConnectedGamepad {
+                stable_id: "gilrs:1".to_string(),
+                backend_id: 1,
+                device_id: DeviceId(17),
+                name: "2P controller".to_string(),
+                is_connected: true,
+            },
+        ];
+
+        let slots = resolve_gamepad_slot_assignments(
+            [Some("gilrs:1"), Some("gilrs:0")],
+            [None, None],
+            true,
+            false,
+            &connected,
+        );
+
+        assert_eq!(slots, [Some(DeviceId(17)), Some(DeviceId(16))]);
+    }
+
+    #[test]
+    fn gilrs_stable_slots_fall_back_to_backend_indexes_when_not_discovered() {
+        let slots = resolve_gamepad_slot_assignments(
+            [Some("gilrs:0"), Some("gilrs:1")],
+            [None, None],
+            true,
+            false,
+            &[],
+        );
+
+        assert_eq!(slots, [Some(DeviceId(16)), Some(DeviceId(17))]);
     }
 
     #[test]
