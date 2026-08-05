@@ -40,6 +40,20 @@ pub enum TableFetchOutcome {
     Failed(TableFetchFailure),
 }
 
+/// App側のmaintenance workerが取得だけを済ませ、Selectへ戻ってからDBへ保存するための結果。
+///
+/// CLIは従来どおり取得直後に保存する。リアルタイム描画を持つAppだけがこの中間結果を使い、
+/// Play中に`library.db`のwriter transactionを発生させない。
+pub(crate) enum TableFetchDownloadOutcome {
+    Succeeded(crate::difficulty_table::FetchedDifficultyTable),
+    Failed(TableFetchFailure),
+}
+
+pub(crate) struct TableFetchDownloadBatchResult {
+    pub(crate) requested: usize,
+    pub(crate) remaining_urls: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TableFetchReport {
     pub requested: usize,
@@ -224,6 +238,65 @@ where
     Ok(TableFetchReport { requested, outcomes })
 }
 
+/// 難易度表を並行取得するが、DBには保存せず取得結果を順次呼び出し元へ渡す。
+///
+/// Appはこの関数をbackground workerで実行し、結果をSelect画面で受信したときだけ
+/// [`store_fetched_table`]を呼ぶ。これにより、Selectで開始した取得がPlayへまたがっても
+/// SQLite書き込みはPlay終了後まで保留される。
+pub(crate) async fn download_table_urls_with_progress<F>(
+    urls: Vec<String>,
+    mut maintenance_allowed: tokio::sync::watch::Receiver<bool>,
+    mut on_outcome: F,
+) -> Result<TableFetchDownloadBatchResult>
+where
+    F: FnMut(TableFetchDownloadOutcome),
+{
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let urls = unique_table_urls(urls);
+    let requested = urls.len();
+    let mut remaining_urls = urls.clone();
+    let client = crate::difficulty_table::build_difficulty_table_client()?;
+    let mut pending = pending_table_fetches(urls, move |url| {
+        let client = client.clone();
+        async move {
+            crate::difficulty_table::fetch_difficulty_table_with_client(&client, &url, now).await
+        }
+    });
+
+    loop {
+        if !*maintenance_allowed.borrow() {
+            break;
+        }
+        let next = tokio::select! {
+            biased;
+            changed = maintenance_allowed.changed() => {
+                if changed.is_err() || !*maintenance_allowed.borrow() {
+                    break;
+                }
+                continue;
+            }
+            next = pending.next() => next,
+        };
+        let Some((url, fetched)) = next else {
+            break;
+        };
+        remaining_urls.retain(|remaining| remaining != &url);
+        let outcome = match fetched {
+            Ok(table) => TableFetchDownloadOutcome::Succeeded(table),
+            Err(error) => TableFetchDownloadOutcome::Failed(TableFetchFailure {
+                url,
+                error: format!("failed to fetch difficulty table: {error:#}"),
+            }),
+        };
+        on_outcome(outcome);
+    }
+
+    Ok(TableFetchDownloadBatchResult { requested, remaining_urls })
+}
+
 fn unique_table_urls(urls: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
     urls.into_iter().filter(|url| seen.insert(url.clone())).collect()
@@ -321,6 +394,34 @@ mod tests {
 
         assert_eq!(report.succeeded_count(), 1);
         assert_eq!(report.failed_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn app_table_download_keeps_urls_queued_while_maintenance_is_paused() {
+        let (_maintenance_tx, maintenance_rx) = tokio::sync::watch::channel(false);
+        let mut outcome_count = 0;
+
+        let result = download_table_urls_with_progress(
+            vec![
+                "https://example.invalid/a.json".to_string(),
+                "https://example.invalid/a.json".to_string(),
+                "https://example.invalid/b.json".to_string(),
+            ],
+            maintenance_rx,
+            |_| outcome_count += 1,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.requested, 2);
+        assert_eq!(
+            result.remaining_urls,
+            vec![
+                "https://example.invalid/a.json".to_string(),
+                "https://example.invalid/b.json".to_string(),
+            ]
+        );
+        assert_eq!(outcome_count, 0);
     }
 
     #[tokio::test]

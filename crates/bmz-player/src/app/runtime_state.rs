@@ -177,14 +177,20 @@ pub(super) struct AppJobs {
     /// 通常表・rianIR表の取得channel、queue、progress、世代状態。
     pub(super) table_fetch: TableFetchRuntime,
     pub(super) pending_song_scan: Option<PendingSongScan>,
+    /// Select外で要求されたscanを開始せず、次のSelectまでFIFOで保持する。
+    pub(super) queued_song_scans: VecDeque<(Vec<PathEntry>, bool, String)>,
     pub(super) pending_chart_download: Option<Receiver<Result<ChartDownloadResult>>>,
     pub(super) queued_download_scan: Option<(PathBuf, String)>,
     pub(super) song_scan_progress: Option<ScanProgress>,
-    pub(super) pending_update_check: Option<Receiver<Result<Option<UpdateCandidate>>>>,
+    pub(super) pending_update_check: Option<Receiver<UpdateCheckWorkerResult>>,
     pub(super) pending_update_check_reports_up_to_date: bool,
+    /// 自動・手動update checkをSelectまで保留する。手動要求を優先して結果を表示する。
+    pub(super) queued_update_check: Option<(&'static str, bool)>,
     pub(super) pending_update_download: Option<Receiver<Result<DownloadedUpdate>>>,
     pub(super) update_prompt: Option<UpdatePrompt>,
     pub(super) update_dismissed_session_version: Option<String>,
+    /// worker群へ、Selectかつ直接起動待ちでない期間だけ実行許可を通知する。
+    pub(super) maintenance_select_tx: tokio::sync::watch::Sender<bool>,
 }
 
 pub(super) struct IntegrationRuntimeState {

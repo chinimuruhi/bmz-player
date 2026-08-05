@@ -2,6 +2,9 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn update_window_title_for_scene(&mut self, scene_kind: AppSceneKind) {
+        // maintenance workerをscene遷移と同じframeで止める。titleが変わらないframeでも
+        // deferred boot解消などでmaintenance可否が変わるため、early returnより前に同期する。
+        self.sync_select_maintenance_gate();
         let scene_changed = self.integrations.last_scene_kind != Some(scene_kind);
         self.notify_obs_scene(scene_kind);
         if !scene_changed {

@@ -215,13 +215,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.poll_chart_bga_texture_load();
                 self.poll_play_preload();
                 self.refresh_play_target_from_source();
-                self.poll_pending_table_fetch();
-                self.poll_pending_rian_table_fetch();
-                self.maybe_start_periodic_rian_table_fetch();
-                self.poll_pending_chart_download();
-                self.poll_pending_song_scan();
-                self.poll_pending_update_check();
-                self.poll_pending_update_download();
+                self.poll_select_maintenance();
                 let background_us = instant_elapsed_us_u64(background_start);
                 let transition_start = Instant::now();
                 self.advance_decide_transition();
@@ -244,8 +238,8 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let post_scene_start = Instant::now();
                 if !self.first_frame_startup_completed {
                     self.first_frame_startup_completed = true;
-                    self.start_startup_table_fetch_after_first_frame();
                     self.start_deferred_boot();
+                    self.sync_select_maintenance_gate();
                     if self.current_scene_kind() == AppSceneKind::Result {
                         self.ensure_result_skin_ready(self.current_result_skin_slot());
                     }
@@ -350,8 +344,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 );
             }
             AppUserEvent::TableFetchReady => {
-                self.poll_pending_table_fetch();
-                self.poll_pending_rian_table_fetch();
+                self.poll_select_maintenance();
                 self.request_redraw();
             }
         }

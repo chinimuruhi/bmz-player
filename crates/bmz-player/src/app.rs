@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -198,6 +198,7 @@ mod frame_runtime;
 mod input_runtime;
 mod integration_support;
 mod integrations;
+mod maintenance;
 mod pending_state;
 mod play_control;
 #[path = "app/play_flow/audio.rs"]
@@ -332,8 +333,8 @@ use skin_pipeline::SkinPipelineRuntime;
 use skin_video::*;
 use skin_workers::*;
 use table_fetch_runtime::{
-    RianTableFetchWorkerResult, TableFetchProgress, TableFetchRuntime, TableFetchWorkerEvent,
-    startup_difficulty_table_fetch_urls_for_boot,
+    RianTableFetchOutcome, RianTableFetchWorkerResult, TableFetchProgress, TableFetchRuntime,
+    TableFetchWorkerEvent, startup_difficulty_table_fetch_urls_for_boot,
 };
 
 #[cfg(test)]
@@ -392,7 +393,8 @@ pub async fn run_with_options_and_log_buffer(
         }
     }
 
-    spawn_ir_sync_worker(&boot);
+    let (maintenance_select_tx, maintenance_select_rx) = tokio::sync::watch::channel(false);
+    spawn_ir_sync_worker(&boot, maintenance_select_rx);
 
     let mut app = Box::new(WinitApp::new(
         boot,
@@ -402,6 +404,7 @@ pub async fn run_with_options_and_log_buffer(
         shutdown_requested,
         event_proxy,
         log_buffer,
+        maintenance_select_tx,
     )?);
     tracing::info!("starting winit event loop");
     event_loop.run_app(app.as_mut()).context("winit event loop failed")
@@ -411,7 +414,10 @@ pub async fn run_with_options_and_log_buffer(
 ///
 /// メインスレッドの DB connection とは別 connection を開く (DB は WAL)。
 /// IR が未設定なら何もしない。
-fn spawn_ir_sync_worker(boot: &bootstrap::BootstrappedApp) {
+fn spawn_ir_sync_worker(
+    boot: &bootstrap::BootstrappedApp,
+    mut select_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let ir_config = boot.profile_config.ir.clone();
     if !ir_config.providers.iter().any(|provider| provider.enabled && !provider.base_url.is_empty())
     {
@@ -422,51 +428,97 @@ fn spawn_ir_sync_worker(boot: &bootstrap::BootstrappedApp) {
     let score_db_path = boot.profile_paths.score_db.clone();
     let network_db_path = boot.profile_paths.network_db.clone();
     tokio::spawn(async move {
+        let interval = std::time::Duration::from_secs(crate::ir::sync::IR_SYNC_LOOP_INTERVAL_SECS);
+        let mut next_run_at = tokio::time::Instant::now();
         loop {
+            while !*select_rx.borrow() {
+                if select_rx.changed().await.is_err() {
+                    return;
+                }
+            }
+            if tokio::time::Instant::now() < next_run_at {
+                tokio::select! {
+                    _ = tokio::time::sleep_until(next_run_at) => {}
+                    changed = select_rx.changed() => {
+                        if changed.is_err() {
+                            return;
+                        }
+                        continue;
+                    }
+                }
+            }
+            if !*select_rx.borrow() {
+                continue;
+            }
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
             if let Err(error) = migrate_network_db(&network_db_path) {
                 tracing::warn!(%error, "failed to migrate network db for IR sync");
-                tokio::time::sleep(std::time::Duration::from_secs(
-                    crate::ir::sync::IR_SYNC_LOOP_INTERVAL_SECS,
-                ))
-                .await;
+                next_run_at = tokio::time::Instant::now() + interval;
                 continue;
             }
             match crate::storage::network_db::NetworkDatabase::open(&network_db_path) {
                 Ok(mut network_db) => {
-                    match crate::ir::sync::sync_pending_ir_jobs(
-                        &mut network_db,
-                        &score_db_path,
-                        &profile_root,
-                        &logs_dir,
-                        &ir_config,
-                        now,
-                        crate::ir::sync::IR_SYNC_BATCH_LIMIT,
-                        false,
-                        crate::ir::sync::IrSyncThrottle::rate_limited(),
-                    )
-                    .await
-                    {
-                        Ok(report) if report.submitted > 0 || report.failed > 0 => {
-                            tracing::info!(
-                                submitted = report.submitted,
-                                failed = report.failed,
-                                "IR score sync finished"
-                            );
+                    let mut submitted = 0_u32;
+                    let mut failed = 0_u32;
+                    for index in 0..crate::ir::sync::IR_SYNC_BATCH_LIMIT {
+                        if !*select_rx.borrow() {
+                            break;
                         }
-                        Ok(_) => {}
-                        Err(error) => tracing::warn!(%error, "IR score sync failed"),
+                        let job_now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(now);
+                        match crate::ir::sync::sync_pending_ir_jobs(
+                            &mut network_db,
+                            &score_db_path,
+                            &profile_root,
+                            &logs_dir,
+                            &ir_config,
+                            job_now,
+                            1,
+                            false,
+                            crate::ir::sync::IrSyncThrottle::none(),
+                        )
+                        .await
+                        {
+                            Ok(report) => {
+                                submitted = submitted.saturating_add(report.submitted);
+                                failed = failed.saturating_add(report.failed);
+                                if report.submitted == 0 && report.failed == 0 {
+                                    break;
+                                }
+                            }
+                            Err(error) => {
+                                tracing::warn!(%error, "IR score sync failed");
+                                break;
+                            }
+                        }
+                        if index + 1 < crate::ir::sync::IR_SYNC_BATCH_LIMIT {
+                            tokio::select! {
+                                _ = tokio::time::sleep(std::time::Duration::from_millis(
+                                    crate::ir::sync::IR_SYNC_JOB_SPACING_MS,
+                                )) => {}
+                                changed = select_rx.changed() => {
+                                    if changed.is_err() {
+                                        return;
+                                    }
+                                    if !*select_rx.borrow() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if submitted > 0 || failed > 0 {
+                        tracing::info!(submitted, failed, "IR score sync finished");
                     }
                 }
                 Err(error) => tracing::warn!(%error, "failed to open network db for IR sync"),
             }
-            tokio::time::sleep(std::time::Duration::from_secs(
-                crate::ir::sync::IR_SYNC_LOOP_INTERVAL_SECS,
-            ))
-            .await;
+            next_run_at = tokio::time::Instant::now() + interval;
         }
     });
 }

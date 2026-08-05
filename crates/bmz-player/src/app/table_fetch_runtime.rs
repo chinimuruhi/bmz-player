@@ -7,12 +7,13 @@ use anyhow::Result;
 use crate::bootstrap::BootstrappedApp;
 use crate::config::app_config::AppConfig;
 use crate::ir::table::RianTableIdentity;
-use crate::table_cmd::{TableFetchOutcome, TableFetchReport};
+use crate::table_cmd::{
+    TableFetchDownloadBatchResult, TableFetchDownloadOutcome, TableFetchOutcome,
+};
 
-#[derive(Debug)]
 pub(super) enum TableFetchWorkerEvent {
-    Outcome(TableFetchOutcome),
-    Finished(Result<TableFetchReport>),
+    Downloaded(TableFetchDownloadOutcome),
+    Finished(Result<TableFetchDownloadBatchResult>),
 }
 
 pub(super) struct TableFetchProgress {
@@ -21,12 +22,18 @@ pub(super) struct TableFetchProgress {
     pub(super) completed: usize,
     pub(super) succeeded: usize,
     pub(super) failed: usize,
+    pub(super) outcomes: Vec<TableFetchOutcome>,
 }
 
 pub(super) struct RianTableFetchWorkerResult {
     pub(super) generation: u64,
     pub(super) identity: RianTableIdentity,
-    pub(super) result: Result<Vec<crate::difficulty_table::FetchedDifficultyTable>>,
+    pub(super) result: RianTableFetchOutcome,
+}
+
+pub(super) enum RianTableFetchOutcome {
+    Completed(Result<Vec<crate::difficulty_table::FetchedDifficultyTable>>),
+    Paused,
 }
 
 /// 通常の難易度表と rianIR 表を取得する background worker のライフサイクル。
@@ -44,6 +51,10 @@ pub(super) struct TableFetchRuntime {
     pub(super) pending_rian: Option<Receiver<RianTableFetchWorkerResult>>,
     pub(super) rian_last_started_at: Option<Instant>,
     pub(super) rian_next_refresh_at: Option<Instant>,
+    /// Play/Decide/Result中に要求されたrefreshを次のSelectまで保持する。
+    pub(super) rian_refresh_queued: bool,
+    /// queued refreshに手動要求が1件でも含まれる場合は短いcooldownを適用する。
+    pub(super) rian_refresh_manual: bool,
 }
 
 impl TableFetchRuntime {
@@ -59,6 +70,8 @@ impl TableFetchRuntime {
             pending_rian: None,
             rian_last_started_at: None,
             rian_next_refresh_at: None,
+            rian_refresh_queued: false,
+            rian_refresh_manual: false,
         }
     }
 

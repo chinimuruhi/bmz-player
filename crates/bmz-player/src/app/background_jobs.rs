@@ -112,8 +112,13 @@ impl WinitApp {
     }
 
     pub(super) fn spawn_song_scan(&mut self, roots: Vec<PathEntry>, force: bool, label: String) {
-        if self.jobs.pending_song_scan.is_some() {
-            tracing::debug!(%label, "song scan already in progress");
+        if !self.select_maintenance_allowed() || self.jobs.pending_song_scan.is_some() {
+            self.jobs.queued_song_scans.push_back((roots, force, label.clone()));
+            tracing::debug!(
+                %label,
+                queued = self.jobs.queued_song_scans.len(),
+                "queued song scan until Select maintenance is available"
+            );
             return;
         }
         let library_db_path = self.boot.app_paths.library_db.clone();
@@ -224,6 +229,9 @@ impl WinitApp {
 
     /// 起動直後の初回描画が完了してから、未取得の有効な表を取得する。
     pub(super) fn start_startup_table_fetch_after_first_frame(&mut self) {
+        if !self.select_maintenance_allowed() {
+            return;
+        }
         let Some(urls) = self.jobs.table_fetch.startup_urls.take() else {
             return;
         };
@@ -232,6 +240,12 @@ impl WinitApp {
     }
 
     pub(super) fn spawn_rian_table_fetch(&mut self, manual: bool) {
+        if !self.select_maintenance_allowed() {
+            self.jobs.table_fetch.rian_refresh_queued = true;
+            self.jobs.table_fetch.rian_refresh_manual |= manual;
+            tracing::debug!(manual, "queued rianIR table refresh until Select");
+            return;
+        }
         let Some(identity) = self.jobs.table_fetch.rian_identity.clone() else {
             return;
         };
@@ -256,18 +270,31 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let event_proxy = self.event_proxy.clone();
         let worker_identity = identity.clone();
+        let mut maintenance_allowed = self.jobs.maintenance_select_tx.subscribe();
         thread::Builder::new()
             .name("rian-table-fetch".to_string())
             .spawn(move || {
-                let result =
-                    (|| -> Result<Vec<crate::difficulty_table::FetchedDifficultyTable>> {
-                        let runtime = tokio::runtime::Runtime::new()
-                            .context("failed to create tokio runtime")?;
-                        runtime.block_on(crate::ir::table::fetch_account_tables(
-                            &worker_identity,
-                            fetched_at,
-                        ))
-                    })();
+                let result = match tokio::runtime::Runtime::new()
+                    .context("failed to create tokio runtime")
+                {
+                    Err(error) => RianTableFetchOutcome::Completed(Err(error)),
+                    Ok(runtime) => runtime.block_on(async {
+                        tokio::select! {
+                            biased;
+                            _ = async {
+                                while *maintenance_allowed.borrow() {
+                                    if maintenance_allowed.changed().await.is_err() {
+                                        break;
+                                    }
+                                }
+                            } => RianTableFetchOutcome::Paused,
+                            result = crate::ir::table::fetch_account_tables(
+                                &worker_identity,
+                                fetched_at,
+                            ) => RianTableFetchOutcome::Completed(result),
+                        }
+                    }),
+                };
                 let _ = tx.send(RianTableFetchWorkerResult {
                     generation,
                     identity: worker_identity,
@@ -311,7 +338,7 @@ impl WinitApp {
         }
 
         match result.result {
-            Ok(tables) => {
+            RianTableFetchOutcome::Completed(Ok(tables)) => {
                 match crate::ir::table::store_account_tables(
                     &mut self.boot.library_db,
                     &result.identity,
@@ -334,15 +361,24 @@ impl WinitApp {
                     }
                 }
             }
-            Err(error) => {
+            RianTableFetchOutcome::Completed(Err(error)) => {
                 // stale-while-revalidate: 既存キャッシュは消さず、そのまま選曲に残す。
                 tracing::warn!(%error, "failed to fetch rianIR tables; keeping cached tables");
                 self.show_left_overlay_toast("rianIR TABLE: fetch failed (using cache)");
+            }
+            RianTableFetchOutcome::Paused => {
+                self.jobs.table_fetch.rian_last_started_at = None;
+                self.jobs.table_fetch.rian_next_refresh_at = None;
+                self.jobs.table_fetch.rian_refresh_queued = true;
+                tracing::debug!("paused rianIR table fetch outside Select");
             }
         }
     }
 
     pub(super) fn maybe_start_periodic_rian_table_fetch(&mut self) {
+        if !self.select_maintenance_allowed() {
+            return;
+        }
         if self.jobs.table_fetch.pending_rian.is_some() {
             return;
         }
@@ -356,9 +392,24 @@ impl WinitApp {
         }
     }
 
+    pub(super) fn start_queued_rian_table_fetch_if_idle(&mut self) {
+        if self.jobs.table_fetch.pending_rian.is_some()
+            || !self.jobs.table_fetch.rian_refresh_queued
+        {
+            return;
+        }
+        let manual = std::mem::take(&mut self.jobs.table_fetch.rian_refresh_manual);
+        self.jobs.table_fetch.rian_refresh_queued = false;
+        self.spawn_rian_table_fetch(manual);
+    }
+
     pub(super) fn reconcile_rian_table_identity(&mut self) {
         let next = RianTableIdentity::from_ir_config(&self.boot.profile_config.ir);
         if next == self.jobs.table_fetch.rian_identity {
+            return;
+        }
+        if !self.select_maintenance_allowed() {
+            self.jobs.table_fetch.rian_refresh_queued = true;
             return;
         }
 
@@ -368,6 +419,8 @@ impl WinitApp {
         self.jobs.table_fetch.pending_rian = None;
         self.jobs.table_fetch.rian_last_started_at = None;
         self.jobs.table_fetch.rian_next_refresh_at = None;
+        self.jobs.table_fetch.rian_refresh_queued = false;
+        self.jobs.table_fetch.rian_refresh_manual = false;
 
         if let Some(previous) = &previous {
             match self
@@ -415,34 +468,31 @@ impl WinitApp {
         if urls.is_empty() {
             return;
         }
-        if self.jobs.table_fetch.pending.is_some() {
+        if !self.select_maintenance_allowed() || self.jobs.table_fetch.pending.is_some() {
             self.jobs.table_fetch.queued_urls.extend(urls);
             tracing::debug!(
                 queued = self.jobs.table_fetch.queued_urls.len(),
                 %label,
-                "queued table fetch while another batch is in progress"
+                "queued table fetch until Select maintenance is available"
             );
             return;
         }
-        let library_db_path = self.boot.app_paths.library_db.clone();
         let (tx, rx) = mpsc::channel();
         let fetch_urls = urls.clone();
         let progress_tx = tx.clone();
         let event_proxy = self.event_proxy.clone();
+        let maintenance_allowed = self.jobs.maintenance_select_tx.subscribe();
         thread::Builder::new()
             .name("table-fetch".to_string())
             .spawn(move || {
-                let result = (|| -> Result<TableFetchReport> {
-                    migrate_library_db(&library_db_path)?;
-                    let mut library_db = LibraryDatabase::open(&library_db_path)?;
+                let result = (|| -> Result<crate::table_cmd::TableFetchDownloadBatchResult> {
                     let rt =
                         tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-                    rt.block_on(crate::table_cmd::fetch_table_urls_with_progress(
+                    rt.block_on(crate::table_cmd::download_table_urls_with_progress(
                         fetch_urls,
-                        &mut library_db,
+                        maintenance_allowed,
                         |outcome| {
-                            let _ =
-                                progress_tx.send(TableFetchWorkerEvent::Outcome(outcome.clone()));
+                            let _ = progress_tx.send(TableFetchWorkerEvent::Downloaded(outcome));
                             let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
                         },
                     ))
@@ -458,6 +508,7 @@ impl WinitApp {
             completed: 0,
             succeeded: 0,
             failed: 0,
+            outcomes: Vec::with_capacity(urls.len()),
         });
         self.jobs.table_fetch.pending = Some(rx);
         tracing::info!(count = urls.len(), %label, "started table fetch");
@@ -470,16 +521,38 @@ impl WinitApp {
         let mut keep_pending = true;
         loop {
             match rx.try_recv() {
-                Ok(TableFetchWorkerEvent::Outcome(outcome)) => {
+                Ok(TableFetchWorkerEvent::Downloaded(downloaded)) => {
+                    let outcome = match downloaded {
+                        crate::table_cmd::TableFetchDownloadOutcome::Succeeded(table) => {
+                            match crate::table_cmd::store_fetched_table(
+                                &mut self.boot.library_db,
+                                &table,
+                            ) {
+                                Ok(success) => TableFetchOutcome::Succeeded(success),
+                                Err(error) => {
+                                    TableFetchOutcome::Failed(crate::table_cmd::TableFetchFailure {
+                                        url: table.source_url,
+                                        error: format!(
+                                            "failed to store difficulty table: {error:#}"
+                                        ),
+                                    })
+                                }
+                            }
+                        }
+                        crate::table_cmd::TableFetchDownloadOutcome::Failed(failure) => {
+                            TableFetchOutcome::Failed(failure)
+                        }
+                    };
                     if let Some(progress) = &mut self.jobs.table_fetch.progress {
                         progress.completed =
                             progress.completed.saturating_add(1).min(progress.total);
-                        match outcome {
+                        match &outcome {
                             TableFetchOutcome::Succeeded(_) => progress.succeeded += 1,
                             TableFetchOutcome::Failed(_) => progress.failed += 1,
                         }
+                        progress.outcomes.push(outcome.clone());
                     }
-                    match outcome {
+                    match &outcome {
                         TableFetchOutcome::Succeeded(success) => tracing::info!(
                             url = %success.url,
                             name = %success.name,
@@ -494,9 +567,29 @@ impl WinitApp {
                         ),
                     }
                 }
-                Ok(TableFetchWorkerEvent::Finished(Ok(report))) => {
+                Ok(TableFetchWorkerEvent::Finished(Ok(batch))) => {
                     keep_pending = false;
-                    self.finish_table_fetch(report);
+                    let outcomes = self
+                        .jobs
+                        .table_fetch
+                        .progress
+                        .as_mut()
+                        .map(|progress| std::mem::take(&mut progress.outcomes))
+                        .unwrap_or_default();
+                    let completed = batch.requested.saturating_sub(batch.remaining_urls.len());
+                    if completed > 0 {
+                        self.finish_table_fetch(TableFetchReport {
+                            requested: completed,
+                            outcomes,
+                        });
+                    }
+                    if !batch.remaining_urls.is_empty() {
+                        tracing::debug!(
+                            remaining = batch.remaining_urls.len(),
+                            "paused table fetch outside Select"
+                        );
+                        self.jobs.table_fetch.queued_urls.extend(batch.remaining_urls);
+                    }
                     break;
                 }
                 Ok(TableFetchWorkerEvent::Finished(Err(error))) => {
@@ -528,10 +621,18 @@ impl WinitApp {
 
         self.jobs.table_fetch.pending_urls.clear();
         self.jobs.table_fetch.progress = None;
-        if !self.jobs.table_fetch.queued_urls.is_empty() {
-            let queued = std::mem::take(&mut self.jobs.table_fetch.queued_urls);
-            self.spawn_table_fetches(queued, "queued table fetch".to_string());
+        self.start_queued_table_fetch_if_idle();
+    }
+
+    pub(super) fn start_queued_table_fetch_if_idle(&mut self) {
+        if self.jobs.table_fetch.pending.is_some()
+            || self.jobs.table_fetch.queued_urls.is_empty()
+            || !self.select_maintenance_allowed()
+        {
+            return;
         }
+        let queued = std::mem::take(&mut self.jobs.table_fetch.queued_urls);
+        self.spawn_table_fetches(queued, "queued table fetch".to_string());
     }
 
     pub(super) fn finish_table_fetch(&mut self, report: TableFetchReport) {
@@ -553,20 +654,55 @@ impl WinitApp {
     }
 
     pub(super) fn spawn_update_check(&mut self, label: &'static str, report_up_to_date: bool) {
+        if !self.select_maintenance_allowed() {
+            match &mut self.jobs.queued_update_check {
+                Some((queued_label, queued_report)) => {
+                    if report_up_to_date {
+                        *queued_label = label;
+                    }
+                    *queued_report |= report_up_to_date;
+                }
+                None => self.jobs.queued_update_check = Some((label, report_up_to_date)),
+            }
+            tracing::debug!(label, "queued update check until Select");
+            return;
+        }
         if self.jobs.pending_update_check.is_some() {
             tracing::debug!(label, "update check already in progress");
             return;
         }
         let channel = self.boot.app_config.updates.channel;
         let (tx, rx) = mpsc::channel();
+        let mut maintenance_allowed = self.jobs.maintenance_select_tx.subscribe();
         thread::Builder::new()
             .name("update-check".to_string())
             .spawn(move || {
-                let result = (|| -> Result<Option<UpdateCandidate>> {
-                    let rt =
-                        tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-                    rt.block_on(crate::update::check_for_update(channel))
-                })();
+                let result = match tokio::runtime::Runtime::new()
+                    .context("failed to create tokio runtime")
+                {
+                    Err(error) => UpdateCheckWorkerResult::Failed(error),
+                    Ok(runtime) => runtime.block_on(async {
+                        tokio::select! {
+                            biased;
+                            _ = async {
+                                while *maintenance_allowed.borrow() {
+                                    if maintenance_allowed.changed().await.is_err() {
+                                        break;
+                                    }
+                                }
+                            } => UpdateCheckWorkerResult::Paused,
+                            result = crate::update::check_for_update(channel) => {
+                                match result {
+                                    Ok(Some(candidate)) => {
+                                        UpdateCheckWorkerResult::Available(Box::new(candidate))
+                                    }
+                                    Ok(None) => UpdateCheckWorkerResult::UpToDate,
+                                    Err(error) => UpdateCheckWorkerResult::Failed(error),
+                                }
+                            }
+                        }
+                    }),
+                };
                 let _ = tx.send(result);
             })
             .expect("failed to spawn update check thread");
@@ -580,7 +716,8 @@ impl WinitApp {
             return;
         };
         match rx.try_recv() {
-            Ok(Ok(Some(candidate))) => {
+            Ok(UpdateCheckWorkerResult::Available(candidate)) => {
+                let candidate = *candidate;
                 tracing::info!(version = %candidate.version, "update available");
                 self.jobs.pending_update_check = None;
                 self.jobs.pending_update_check_reports_up_to_date = false;
@@ -590,7 +727,7 @@ impl WinitApp {
                 self.jobs.update_prompt = Some(UpdatePrompt::Available(candidate));
                 self.request_redraw();
             }
-            Ok(Ok(None)) => {
+            Ok(UpdateCheckWorkerResult::UpToDate) => {
                 tracing::info!("no update available");
                 self.jobs.pending_update_check = None;
                 if self.jobs.pending_update_check_reports_up_to_date {
@@ -599,7 +736,7 @@ impl WinitApp {
                 }
                 self.jobs.pending_update_check_reports_up_to_date = false;
             }
-            Ok(Err(error)) => {
+            Ok(UpdateCheckWorkerResult::Failed(error)) => {
                 tracing::warn!(%error, "update check failed");
                 let report_error = self.jobs.pending_update_check_reports_up_to_date;
                 self.jobs.pending_update_check = None;
@@ -611,6 +748,13 @@ impl WinitApp {
                     });
                     self.request_redraw();
                 }
+            }
+            Ok(UpdateCheckWorkerResult::Paused) => {
+                let report_up_to_date = self.jobs.pending_update_check_reports_up_to_date;
+                self.jobs.pending_update_check = None;
+                self.jobs.pending_update_check_reports_up_to_date = false;
+                self.jobs.queued_update_check = Some(("resumed update check", report_up_to_date));
+                tracing::debug!("paused update check outside Select");
             }
             Err(mpsc::TryRecvError::Empty) => {}
             Err(mpsc::TryRecvError::Disconnected) => {

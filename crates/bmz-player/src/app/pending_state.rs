@@ -5,6 +5,13 @@ pub(super) struct PendingSongScan {
     pub(super) progress: Arc<AtomicU64>,
 }
 
+pub(super) enum UpdateCheckWorkerResult {
+    Available(Box<UpdateCandidate>),
+    UpToDate,
+    Failed(anyhow::Error),
+    Paused,
+}
+
 pub(super) struct PracticeChartDefaults {
     pub(super) property: crate::screens::practice::PracticeProperty,
     pub(super) title: String,

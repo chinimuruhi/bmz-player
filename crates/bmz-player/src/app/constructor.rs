@@ -9,6 +9,7 @@ impl WinitApp {
         shutdown_requested: Arc<AtomicBool>,
         event_proxy: EventLoopProxy<AppUserEvent>,
         log_buffer: LogBuffer,
+        maintenance_select_tx: tokio::sync::watch::Sender<bool>,
     ) -> Result<Self> {
         let mut boot = boot;
         if let Some(cli_renderer) = options.renderer.clone() {
@@ -141,6 +142,9 @@ impl WinitApp {
         )?;
         let rian_table_identity = RianTableIdentity::from_ir_config(&boot.profile_config.ir);
         let table_fetch = TableFetchRuntime::new(startup_table_fetch_urls, rian_table_identity);
+        let queued_update_check = (boot.app_config.updates.enabled
+            && boot.app_config.updates.check_on_startup)
+            .then_some(("startup update check", false));
 
         let mut app = Self {
             boot,
@@ -259,14 +263,17 @@ impl WinitApp {
             jobs: AppJobs {
                 table_fetch,
                 pending_song_scan: None,
+                queued_song_scans: VecDeque::new(),
                 pending_chart_download: None,
                 queued_download_scan: None,
                 song_scan_progress: None,
                 pending_update_check: None,
                 pending_update_check_reports_up_to_date: false,
+                queued_update_check,
                 pending_update_download: None,
                 update_prompt: None,
                 update_dismissed_session_version: None,
+                maintenance_select_tx,
             },
             integrations: IntegrationRuntimeState {
                 obs_controller,
@@ -332,10 +339,6 @@ impl WinitApp {
             app.result.result_scene_started_at = Instant::now();
         }
         app.sync_discord_presence_config();
-        if app.boot.app_config.updates.enabled && app.boot.app_config.updates.check_on_startup {
-            app.spawn_update_check("startup update check", false);
-        }
-
         Ok(app)
     }
 }
