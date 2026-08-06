@@ -135,12 +135,12 @@ fn imported_score_reconciliation_updates_history_and_its_best_device() {
     corrected.played_at += 60;
     corrected.device_type = InputDeviceKind::Controller;
     assert_eq!(
-        db.reconcile_imported_score_device_type(&corrected).unwrap(),
+        db.reconcile_imported_score(&corrected).unwrap(),
         ImportedScoreReconciliation::Corrected
     );
     assert!(db.has_same_score_from_source(&corrected).unwrap());
     assert_eq!(
-        db.reconcile_imported_score_device_type(&corrected).unwrap(),
+        db.reconcile_imported_score(&corrected).unwrap(),
         ImportedScoreReconciliation::Unchanged
     );
 
@@ -164,6 +164,93 @@ fn imported_score_reconciliation_updates_history_and_its_best_device() {
 }
 
 #[test]
+fn imported_score_reconciliation_backfills_missing_best_ghost() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut db = ScoreDatabase { conn };
+
+    let mut imported = record(20, ClearType::Normal);
+    imported.source_kind = ScoreSourceKind::Beatoraja;
+    let history_id = db.insert_score(&imported).unwrap();
+    db.conn_mut().execute("UPDATE score_best SET ghost = ''", []).unwrap();
+
+    let mut reimported = imported.clone();
+    reimported.played_at += 60;
+    assert_eq!(
+        db.reconcile_imported_score(&reimported).unwrap(),
+        ImportedScoreReconciliation::Corrected
+    );
+    assert_eq!(db.best_ghost(key([7; 32]), 10).unwrap(), Some(vec![0; 10]));
+    assert_eq!(
+        db.reconcile_imported_score(&reimported).unwrap(),
+        ImportedScoreReconciliation::Unchanged
+    );
+
+    let history_ids: Vec<i64> = db
+        .conn()
+        .prepare("SELECT id FROM score_history ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<std::result::Result<_, _>>()
+        .unwrap();
+    assert_eq!(history_ids, vec![history_id]);
+}
+
+#[test]
+fn imported_score_reconciliation_prefers_matching_best_history_for_ghost_backfill() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut db = ScoreDatabase { conn };
+
+    let mut imported = record(20, ClearType::Normal);
+    imported.source_kind = ScoreSourceKind::Beatoraja;
+    db.insert_score(&imported).unwrap();
+    let current_best_history_id = db.insert_score(&imported).unwrap();
+    db.conn_mut()
+        .execute(
+            "UPDATE score_best SET best_score_history_id = ?1, ghost = ''",
+            params![current_best_history_id],
+        )
+        .unwrap();
+
+    assert_eq!(
+        db.reconcile_imported_score(&imported).unwrap(),
+        ImportedScoreReconciliation::Corrected
+    );
+    assert_eq!(db.best_ghost(key([7; 32]), 10).unwrap(), Some(vec![0; 10]));
+}
+
+#[test]
+fn imported_score_reconciliation_does_not_backfill_another_best_history() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut db = ScoreDatabase { conn };
+
+    let mut imported = record(20, ClearType::Normal);
+    imported.source_kind = ScoreSourceKind::Beatoraja;
+    db.insert_score(&imported).unwrap();
+
+    let local = record(40, ClearType::Normal);
+    let local_history_id = db.insert_score(&local).unwrap();
+    db.conn_mut().execute("UPDATE score_best SET ghost = ''", []).unwrap();
+
+    assert_eq!(
+        db.reconcile_imported_score(&imported).unwrap(),
+        ImportedScoreReconciliation::Unchanged
+    );
+    assert_eq!(db.best_ghost(key([7; 32]), 20).unwrap(), None);
+    let best_history_id: i64 = db
+        .conn()
+        .query_row("SELECT best_score_history_id FROM score_best", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(best_history_id, local_history_id);
+}
+
+#[test]
 fn imported_score_reconciliation_does_not_change_local_best_device() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();
@@ -180,7 +267,7 @@ fn imported_score_reconciliation_does_not_change_local_best_device() {
     let mut corrected = imported.clone();
     corrected.device_type = InputDeviceKind::Controller;
     assert_eq!(
-        db.reconcile_imported_score_device_type(&corrected).unwrap(),
+        db.reconcile_imported_score(&corrected).unwrap(),
         ImportedScoreReconciliation::Corrected
     );
 

@@ -58,9 +58,12 @@ impl ScoreDatabase {
             .is_some_and(|existing| existing.device_type == record.device_type))
     }
 
-    /// 同一出所の既存履歴が入力デバイスだけ異なる場合に、その自己申告値を補正する。
-    /// 集計のdevice_typeは、その履歴がEXスコアの出所である場合だけ更新する。
-    pub fn reconcile_imported_score_device_type(
+    /// 同一出所の既存履歴へ、再インポートで得られた補完可能な値を反映する。
+    ///
+    /// 入力デバイスは履歴を常に補正し、集計側はその履歴がEXスコアの出所である場合だけ
+    /// 更新する。ghost は現在のMYBESTに紐づく履歴かつ保存値が空の場合だけ補完し、
+    /// 既存ghostや別履歴由来のMYBESTは上書きしない。
+    pub fn reconcile_imported_score(
         &mut self,
         record: &ScoreRecord,
     ) -> Result<ImportedScoreReconciliation> {
@@ -70,24 +73,57 @@ impl ScoreDatabase {
         let Some(existing) = source_score_history_match(&self.conn, record)? else {
             return Ok(ImportedScoreReconciliation::Missing);
         };
-        if existing.device_type == record.device_type {
+        let device_changed = existing.device_type != record.device_type;
+        let ghost_needs_backfill = !record.score.ghost.is_empty()
+            && self.conn.query_row(
+                "SELECT EXISTS (
+                    SELECT 1 FROM score_best
+                    WHERE best_score_history_id = ?1 AND ghost = ''
+                )",
+                params![existing.history_id],
+                |row| row.get(0),
+            )?;
+        if !device_changed && !ghost_needs_backfill {
             return Ok(ImportedScoreReconciliation::Unchanged);
         }
+        let ghost = ghost_needs_backfill
+            .then(|| encode_beatoraja_ghost(&record.score.ghost))
+            .transpose()?;
 
         let tx = self.conn.transaction()?;
-        tx.execute(
-            "UPDATE score_history
-             SET device_type = ?1
-             WHERE id = ?2 AND device_type = ?3",
-            params![
-                record.device_type.as_str(),
+        let mut corrected = false;
+        if device_changed {
+            tx.execute(
+                "UPDATE score_history
+                 SET device_type = ?1
+                 WHERE id = ?2 AND device_type = ?3",
+                params![
+                    record.device_type.as_str(),
+                    existing.history_id,
+                    existing.device_type.as_str()
+                ],
+            )?;
+            update_score_best_device_type_from_history(
+                &tx,
                 existing.history_id,
-                existing.device_type.as_str()
-            ],
-        )?;
-        update_score_best_device_type_from_history(&tx, existing.history_id, record.device_type)?;
+                record.device_type,
+            )?;
+            corrected = true;
+        }
+        if let Some(ghost) = ghost {
+            corrected |= tx.execute(
+                "UPDATE score_best
+                 SET ghost = ?1
+                 WHERE best_score_history_id = ?2 AND ghost = ''",
+                params![ghost, existing.history_id],
+            )? > 0;
+        }
         tx.commit()?;
-        Ok(ImportedScoreReconciliation::Corrected)
+        Ok(if corrected {
+            ImportedScoreReconciliation::Corrected
+        } else {
+            ImportedScoreReconciliation::Unchanged
+        })
     }
 
     /// source_kind 導入前に Local として保存された beatoraja import 候補を調べる。

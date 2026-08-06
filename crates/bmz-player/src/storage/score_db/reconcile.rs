@@ -41,7 +41,12 @@ pub(super) fn source_score_history_match(
            AND autoplay = ?31
            AND applied_double_option = ?32
            AND seed_scheme = ?33
-         ORDER BY id ASC
+         ORDER BY EXISTS (
+            SELECT 1
+            FROM score_best
+            WHERE score_best.best_score_history_id = score_history.id
+         ) DESC,
+         id ASC
          LIMIT 1",
         params![
             record.source_kind.as_str(),

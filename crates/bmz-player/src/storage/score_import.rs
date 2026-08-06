@@ -290,7 +290,7 @@ fn import_lr2_scores_with_device_type(
         record.applied_double_option = options.applied_double_option;
         record.double_option = options.applied_double_option.score_bucket();
         record.device_type = device_type;
-        match score_db.reconcile_imported_score_device_type(&record)? {
+        match score_db.reconcile_imported_score(&record)? {
             ImportedScoreReconciliation::Missing => {}
             ImportedScoreReconciliation::Unchanged => {
                 report.skipped += 1;
@@ -457,7 +457,7 @@ fn import_beatoraja_scores_with_device_type(
             record.seed_scheme = crate::storage::replay::SEED_SCHEME_BEATORAJA_24BIT_V1.to_string();
         }
         record.device_type = device_type;
-        match score_db.reconcile_imported_score_device_type(&record)? {
+        match score_db.reconcile_imported_score(&record)? {
             ImportedScoreReconciliation::Missing => {}
             ImportedScoreReconciliation::Unchanged => {
                 report.skipped += 1;

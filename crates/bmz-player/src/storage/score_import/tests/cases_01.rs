@@ -277,6 +277,52 @@ fn beatoraja_reimport_corrects_device_type_without_adding_history() {
 }
 
 #[test]
+fn beatoraja_reimport_backfills_missing_best_ghost_without_adding_history() {
+    let (library_db, mut score_db, sha256, _) = open_test_databases();
+    let source = Connection::open_in_memory().unwrap();
+    create_beatoraja_source(&source, &sha256, 1_700_000_001_000, 0);
+    let mut ghost = vec![0; 110];
+    ghost.extend(vec![1; 8]);
+    ghost.extend(vec![2; 3]);
+    ghost.extend(vec![3; 3]);
+    ghost.extend(vec![4; 4]);
+    let encoded = crate::storage::score_db::encode_beatoraja_ghost(&ghost).unwrap();
+    source.execute("UPDATE score SET ghost = ?1", params![encoded]).unwrap();
+
+    let first = import_beatoraja_scores(
+        &source,
+        ScoreImportKind::Beatoraja,
+        &library_db,
+        &mut score_db,
+        1_700_000_000,
+    )
+    .unwrap();
+    assert_eq!(first.imported, 1);
+    score_db.conn_mut().execute("UPDATE score_best SET ghost = ''", []).unwrap();
+
+    let backfilled = import_beatoraja_scores(
+        &source,
+        ScoreImportKind::Beatoraja,
+        &library_db,
+        &mut score_db,
+        1_700_000_000,
+    )
+    .unwrap();
+    assert_eq!(backfilled.imported, 0);
+    assert_eq!(backfilled.corrected, 1);
+    assert_eq!(backfilled.skipped, 0);
+    assert_eq!(
+        score_db.best_ghost(ScoreKey::new(sha256, LnScorePolicy::ForceLn), 128).unwrap(),
+        Some(ghost)
+    );
+    let history_count: u32 = score_db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM score_history", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(history_count, 1);
+}
+
+#[test]
 fn lr2oraja_dx_import_sets_dx_rule_mode() {
     let (library_db, mut score_db, sha256, _) = open_test_databases();
     let source = Connection::open_in_memory().unwrap();
