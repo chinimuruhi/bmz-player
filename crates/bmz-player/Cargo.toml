@@ -17,6 +17,9 @@ default = ["asio", "pulseaudio"]
 asio = ["bmz-audio/asio"]
 pulseaudio = ["bmz-audio/pulseaudio"]
 pipewire = ["bmz-audio/pipewire"]
+# GameInputRedist 3.4.218 / 3.5.262が一部HID入力でプロセスごと落ちるため、
+# 通常ビルドではコンパイル対象外にする。実機再検証時だけ明示的に有効化する。
+experimental-gameinput = []
 
 [dependencies]
 anyhow.workspace = true
@@ -70,5 +73,4 @@ windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
-    "Win32_UI_Input",
 ] }

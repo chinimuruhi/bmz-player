@@ -24,7 +24,7 @@ impl WinitApp {
                 log_gamepad_key_config_raw_event(backend_name, event);
             }
         }
-        #[cfg(windows)]
+        #[cfg(all(windows, feature = "experimental-gameinput"))]
         if let Some(diagnostics) = gamepad.gameinput_diagnostics()
             && diagnostics.reading_count > 0
         {

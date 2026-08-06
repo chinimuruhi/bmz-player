@@ -128,6 +128,7 @@ pub(super) fn build_integration_settings_sections(
                         GamepadBackendKind::Gilrs,
                         gamepad_backend_label(&GamepadBackendKind::Gilrs, text),
                     );
+                    #[cfg(all(windows, feature = "experimental-gameinput"))]
                     ui.selectable_value(
                         &mut config.input.gamepad_backend,
                         GamepadBackendKind::GameInput,

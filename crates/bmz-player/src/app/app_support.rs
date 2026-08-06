@@ -165,32 +165,25 @@ pub(super) fn initialize_gamepad_backend(
     scratch_threshold: u32,
 ) -> Option<Box<crate::input::gamepad::GamepadBackend>> {
     match kind {
-        GamepadBackendKind::Auto => {
-            if let Some(backend) = initialize_gilrs_backend(sensitivity, scratch_threshold) {
-                return Some(backend);
-            }
-            #[cfg(windows)]
-            return initialize_gameinput_backend(sensitivity, scratch_threshold);
-            #[cfg(not(windows))]
-            None
-        }
+        GamepadBackendKind::Auto => initialize_gilrs_backend(sensitivity, scratch_threshold),
         GamepadBackendKind::Gilrs => initialize_gilrs_backend(sensitivity, scratch_threshold),
         GamepadBackendKind::GameInput => {
-            #[cfg(windows)]
+            #[cfg(all(windows, feature = "experimental-gameinput"))]
             {
                 if let Some(backend) = initialize_gameinput_backend(sensitivity, scratch_threshold)
                 {
                     return Some(backend);
                 }
+                tracing::warn!("GameInput initialization failed; falling back to gilrs");
             }
-            #[cfg(not(windows))]
-            tracing::warn!("GameInput is only available on Windows, falling back to gilrs");
+            #[cfg(not(all(windows, feature = "experimental-gameinput")))]
+            tracing::warn!("GameInput backend is disabled; falling back to gilrs");
             initialize_gilrs_backend(sensitivity, scratch_threshold)
         }
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "experimental-gameinput"))]
 pub(super) fn initialize_gameinput_backend(
     sensitivity: f32,
     scratch_threshold: u32,

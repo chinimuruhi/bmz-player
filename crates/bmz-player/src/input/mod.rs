@@ -1,4 +1,4 @@
-#[cfg(windows)]
+#[cfg(all(windows, feature = "experimental-gameinput"))]
 pub mod gameinput;
 pub mod gamepad;
 pub mod gilrs;

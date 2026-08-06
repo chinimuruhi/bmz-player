@@ -23,10 +23,6 @@
 #define IconFile "..\..\assets\app-icon\bmz-player.ico"
 #endif
 
-#if FileExists(SourceDir + "\resources\redist\GameInputRedist.msi")
-#define HasGameInputRedist
-#endif
-
 [Setup]
 AppId={#AppId}
 AppName={#AppName}
@@ -51,10 +47,7 @@ SetupLogging=yes
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "resources\redist\GameInputRedist.msi"; Flags: ignoreversion recursesubdirs createallsubdirs
-#ifdef HasGameInputRedist
-Source: "{#SourceDir}\resources\redist\GameInputRedist.msi"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall
-#endif
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 Type: filesandordirs; Name: "{app}\resources"
@@ -64,7 +57,4 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\resources\bmz-player.ico"; Tasks: desktopicon
 
 [Run]
-#ifdef HasGameInputRedist
-Filename: "{sys}\msiexec.exe"; Parameters: "/i ""{tmp}\GameInputRedist.msi"" /quiet /norestart"; Verb: "runas"; StatusMsg: "Installing Microsoft GameInput runtime..."; Flags: shellexec waituntilterminated
-#endif
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent

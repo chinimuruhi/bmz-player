@@ -2,6 +2,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
+#[cfg(not(all(windows, feature = "experimental-gameinput")))]
+use super::app_config::GamepadBackendKind;
 use super::app_config::{
     AppConfig, ensure_default_difficulty_table_sources, normalize_song_root_paths,
 };
@@ -17,6 +19,11 @@ fn parse_app_config(text: &str) -> Result<AppConfig> {
     let mut config: AppConfig = toml::from_str(text)?;
     normalize_song_root_paths(&mut config.songs.roots);
     ensure_default_difficulty_table_sources(&mut config);
+    #[cfg(not(all(windows, feature = "experimental-gameinput")))]
+    if config.input.gamepad_backend == GamepadBackendKind::GameInput {
+        tracing::warn!("GameInput backend is disabled; migrating configuration to gilrs");
+        config.input.gamepad_backend = GamepadBackendKind::Gilrs;
+    }
     Ok(config)
 }
 
@@ -54,6 +61,17 @@ mod tests {
         assert_eq!(loaded.songs.roots[0].path, "G:/BMS");
         assert!(!loaded.songs.roots[0].enabled);
         assert!(!loaded.songs.roots[0].recursive);
+    }
+
+    #[cfg(not(all(windows, feature = "experimental-gameinput")))]
+    #[test]
+    fn parse_app_config_migrates_disabled_gameinput_to_gilrs() {
+        let mut config = AppConfig::default();
+        config.input.gamepad_backend = GamepadBackendKind::GameInput;
+
+        let loaded = parse_app_config(&toml::to_string(&config).unwrap()).unwrap();
+
+        assert_eq!(loaded.input.gamepad_backend, GamepadBackendKind::Gilrs);
     }
 
     #[test]
