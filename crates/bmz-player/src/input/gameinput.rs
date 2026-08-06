@@ -8,6 +8,9 @@ use anyhow::{Context, Result, bail};
 use bmz_gameplay::input::backend::{DeviceId, DeviceTimestamp, monotonic_timestamp_ns};
 use windows_sys::Win32::Foundation::{APP_LOCAL_DEVICE_ID, FreeLibrary, HMODULE};
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+use windows_sys::Win32::UI::Input::{
+    GetRawInputDeviceInfoW, GetRawInputDeviceList, RAWINPUTDEVICELIST, RIDI_DEVICENAME, RIM_TYPEHID,
+};
 
 use super::gamepad::{
     AnalogGamepadProcessor, ConnectedGamepad, GamepadButtonEvent, GamepadPollOutput,
@@ -19,6 +22,10 @@ const GAME_INPUT_KIND_CONTROLLER: u32 = 0x0000_000e;
 const GAME_INPUT_DEVICE_CONNECTED: u32 = 0x0000_0001;
 const MAX_CONTROLLER_AXES: usize = 64;
 const MAX_CONTROLLER_BUTTONS: usize = 256;
+// These HID controllers reproducibly fault inside GameInputRedist on their first input report.
+// They remain usable through the gilrs fallback selected by the app when initialization fails.
+const GAMEINPUT_CRASH_DEVICE_IDS: [(&str, &str); 2] =
+    [("VID_0573&PID_9A9B", "0573:9A9B"), ("VID_1CCF&PID_8048", "1CCF:8048")];
 
 type HResult = i32;
 type GameInputCreate = unsafe extern "system" fn(*mut *mut IGameInput) -> HResult;
@@ -164,6 +171,12 @@ pub struct GameInputBackend {
 
 impl GameInputBackend {
     pub fn new(sensitivity: f32, scratch_threshold: u32) -> Result<Self> {
+        if let Some(device) = connected_gameinput_crash_device()? {
+            bail!(
+                "GameInput is disabled for connected HID controller {device} because GameInputRedist 3.4.218 and 3.5.262 crash while processing its input"
+            );
+        }
+
         let library_name: Vec<u16> = "GameInput.dll".encode_utf16().chain(Some(0)).collect();
         // SAFETY: library_name is nul-terminated and remains alive for the call.
         let module = unsafe { LoadLibraryW(library_name.as_ptr()) };
@@ -524,6 +537,84 @@ struct DeviceIdentity {
     name: String,
 }
 
+fn connected_gameinput_crash_device() -> Result<Option<&'static str>> {
+    Ok(known_gameinput_crash_device(raw_input_device_names()?))
+}
+
+fn known_gameinput_crash_device(
+    device_names: impl IntoIterator<Item = String>,
+) -> Option<&'static str> {
+    for name in device_names {
+        let name = name.to_ascii_uppercase();
+        if let Some((_, label)) =
+            GAMEINPUT_CRASH_DEVICE_IDS.iter().find(|(id, _)| name.contains(id))
+        {
+            return Some(*label);
+        }
+    }
+    None
+}
+
+fn raw_input_device_names() -> Result<Vec<String>> {
+    let item_size = std::mem::size_of::<RAWINPUTDEVICELIST>() as u32;
+    let mut devices = None;
+    for _ in 0..3 {
+        let mut count = 0;
+        // SAFETY: the first call only writes the attached-device count.
+        if unsafe { GetRawInputDeviceList(ptr::null_mut(), &mut count, item_size) } == u32::MAX {
+            bail!("failed to query the Raw Input device count before GameInput initialization");
+        }
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut current = vec![RAWINPUTDEVICELIST::default(); count as usize];
+        // SAFETY: current has capacity for count entries and count remains writable for the API.
+        let result = unsafe { GetRawInputDeviceList(current.as_mut_ptr(), &mut count, item_size) };
+        if result != u32::MAX {
+            current.truncate((result as usize).min(current.len()));
+            devices = Some(current);
+            break;
+        }
+    }
+    let devices = devices
+        .context("Raw Input device list kept changing while checking GameInput compatibility")?;
+
+    Ok(devices
+        .into_iter()
+        .filter(|device| device.dwType == RIM_TYPEHID)
+        .filter_map(raw_input_device_name)
+        .collect())
+}
+
+fn raw_input_device_name(device: RAWINPUTDEVICELIST) -> Option<String> {
+    let mut name_len = 0;
+    // SAFETY: the size-query call only writes name_len for a live Raw Input device handle.
+    let result = unsafe {
+        GetRawInputDeviceInfoW(device.hDevice, RIDI_DEVICENAME, ptr::null_mut(), &mut name_len)
+    };
+    if result == u32::MAX || name_len == 0 {
+        return None;
+    }
+
+    let mut name = vec![0u16; name_len as usize + 1];
+    // SAFETY: name is writable for name_len UTF-16 code units and the handle came from the
+    // current Raw Input device list.
+    let result = unsafe {
+        GetRawInputDeviceInfoW(
+            device.hDevice,
+            RIDI_DEVICENAME,
+            name.as_mut_ptr().cast(),
+            &mut name_len,
+        )
+    };
+    if result == u32::MAX {
+        return None;
+    }
+    let end = name.iter().position(|code| *code == 0).unwrap_or(name_len as usize);
+    Some(String::from_utf16_lossy(&name[..end]))
+}
+
 fn load_create_function(module: HMODULE) -> Result<GameInputCreate> {
     // SAFETY: module is live and the static export name is nul-terminated.
     let function = unsafe { GetProcAddress(module, c"GameInputCreate".as_ptr().cast::<u8>()) }
@@ -640,6 +731,24 @@ mod tests {
         assert_eq!(
             map_gameinput_timestamp(10_250, 10_000, 2_000_000),
             DeviceTimestamp::MonotonicNs(2_250_000)
+        );
+    }
+
+    #[test]
+    fn detects_gameinput_crash_devices_from_raw_input_paths() {
+        assert_eq!(
+            known_gameinput_crash_device([r"\\?\HID#VID_0573&PID_9A9B#controller".to_owned()]),
+            Some("0573:9A9B")
+        );
+        assert_eq!(
+            known_gameinput_crash_device(
+                [r"\\?\hid#vid_1ccf&pid_8048&mi_01#controller".to_owned()]
+            ),
+            Some("1CCF:8048")
+        );
+        assert_eq!(
+            known_gameinput_crash_device([r"\\?\HID#VID_045E&PID_0B13#controller".to_owned()]),
+            None
         );
     }
 
