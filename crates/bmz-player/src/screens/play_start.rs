@@ -65,8 +65,9 @@ pub struct PlayStartOptions {
     /// Course judge constraint (e.g. NoGood / NoGreat).  Forwarded to the
     /// JudgeEngine via PlaySessionOptions::judge_constraint.
     pub judge_constraint: CourseJudgeConstraint,
-    /// Override the LN mode for this chart (Ln/Cn/Hcn).  None preserves the
-    /// chart's own declaration.  Used by course `ln`/`cn`/`hcn` constraints.
+    /// Course fallback for undefined long notes (Ln/Cn/Hcn). AUTO settings use
+    /// this instead of their configured fallback while preserving explicitly
+    /// typed notes. FORCE settings ignore it and convert every long note.
     pub ln_mode_override: Option<LongNoteMode>,
     /// Course-forced gauge override (CLASS / EXCLASS / EXHARDCLASS).
     /// `apply_course_constraints` populates this for course play so the user's
@@ -328,8 +329,9 @@ pub fn apply_course_constraints(options: &mut PlayStartOptions, constraints: &Co
     // the judge window inside play_session_options_from_start.
     options.judge_constraint = constraints.judge;
 
-    // LN constraints force the chart's long-note mode regardless of the chart's
-    // own declaration; applied in preload_play_session_for_chart.
+    // In beatoraja, LN constraints replace PlayerConfig.lnmode for the course.
+    // BMZ applies that as the undefined-LN fallback for AUTO; FORCE remains the
+    // stronger explicit player choice and ignores this value.
     options.ln_mode_override = match constraints.ln {
         CourseLnConstraint::Default => None,
         CourseLnConstraint::Ln => Some(LongNoteMode::Ln),

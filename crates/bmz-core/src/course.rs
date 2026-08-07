@@ -118,9 +118,15 @@ impl CourseConstraints {
                 "gauge_7k" => constraints.gauge = CourseGaugeConstraint::Keys7,
                 "gauge_9k" => constraints.gauge = CourseGaugeConstraint::Keys9,
                 "gauge_24k" => constraints.gauge = CourseGaugeConstraint::Keys24,
-                "ln" => constraints.ln = CourseLnConstraint::Ln,
-                "cn" => constraints.ln = CourseLnConstraint::Cn,
-                "hcn" => constraints.ln = CourseLnConstraint::Hcn,
+                "ln" if constraints.ln == CourseLnConstraint::Default => {
+                    constraints.ln = CourseLnConstraint::Ln;
+                }
+                "cn" if constraints.ln == CourseLnConstraint::Default => {
+                    constraints.ln = CourseLnConstraint::Cn;
+                }
+                "hcn" if constraints.ln == CourseLnConstraint::Default => {
+                    constraints.ln = CourseLnConstraint::Hcn;
+                }
                 _ => {}
             }
         }
@@ -159,5 +165,13 @@ mod tests {
         assert_eq!(constraints.ln, CourseLnConstraint::Cn);
         assert_eq!(constraints.source_constraints.len(), 5);
         assert!(constraints.is_dan());
+    }
+
+    #[test]
+    fn first_beatoraja_ln_constraint_wins() {
+        let constraints = CourseConstraints::from_beatoraja_names(["cn", "hcn", "ln"]);
+
+        assert_eq!(constraints.ln, CourseLnConstraint::Cn);
+        assert_eq!(constraints.source_constraints, ["cn", "hcn", "ln"]);
     }
 }

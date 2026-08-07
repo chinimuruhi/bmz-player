@@ -34,11 +34,10 @@ pub fn score_duration_plausible(
 }
 
 pub fn course_submission_supported(
-    ln_setting: LnPolicySetting,
+    _ln_setting: LnPolicySetting,
     double_option: DoubleOption,
 ) -> bool {
-    ln_setting.is_force()
-        && !matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
+    !matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
 }
 
 pub fn body_for_rule_mode(rule_mode: RuleMode) -> &'static str {
@@ -179,9 +178,14 @@ pub(super) fn course_request(payload: &Value, player_id: &str, api_token: &str) 
         .or_else(|| result.get("max_ex_score").and_then(Value::as_u64).map(|v| v / 2))
         .unwrap_or(0);
     let ln_policy = required_str(rule, "ln_policy")?;
-    if !matches!(ln_policy, "ForceLn" | "ForceCn" | "ForceHcn") {
-        bail!("rianIR sends only FORCE LN/CN/HCN course scores");
+    if !matches!(ln_policy, "AutoLn" | "AutoCn" | "AutoHcn" | "ForceLn" | "ForceCn" | "ForceHcn") {
+        bail!("unsupported rianIR course LN policy '{ln_policy}'");
     }
+    let ln_mode = match rule.get("effective_ln_mode").and_then(Value::as_u64) {
+        Some(mode @ 0..=3) => mode as u8,
+        Some(mode) => bail!("unsupported rianIR course effective LN mode '{mode}'"),
+        None => effective_ln_mode_id_from_name(ln_policy)?,
+    };
     let arrange =
         normalized_arrange(play_options.get("option").and_then(Value::as_str).unwrap_or("normal"));
     let mut request = json!({
@@ -213,7 +217,7 @@ pub(super) fn course_request(payload: &Value, player_id: &str, api_token: &str) 
         "play_assist": 0,
         "play_gauge": gauge_type_id(required_str(rule, "gauge")?)?,
         "total_notes": total_notes,
-        "ln_mode": effective_ln_mode_id_from_name(ln_policy)?,
+        "ln_mode": ln_mode,
         "body": body,
         "constraint": constraint_names(course.get("constraints").unwrap_or(&Value::Null)),
         // BMZ の course queue は stage の hash だけを保持しており、曲名などを
@@ -221,6 +225,7 @@ pub(super) fn course_request(payload: &Value, player_id: &str, api_token: &str) 
         // 初期版では任意フィールドの tracks を空にする。
         "tracks": [],
     });
+    request["ln_mode_format"] = Value::String("canonical-v1".to_string());
     request["signature"] = Value::String(signature(
         api_token,
         &[

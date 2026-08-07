@@ -9,7 +9,7 @@ use bmz_audio::loudness::{analyze_chart_loudness, play_normalization_gain_for_lo
 use bmz_chart::import::{
     BmsRandomSource, ImportResult, import_bms_chart, import_bms_chart_with_random_source,
 };
-use bmz_chart::model::{NoteEvent, NoteKind, PlayableChart, TimingEventKind};
+use bmz_chart::model::{LongNoteMode, NoteEvent, NoteKind, PlayableChart, TimingEventKind};
 use bmz_chart::start_margin::apply_start_note_margin;
 use bmz_core::clear::GaugeType;
 use bmz_core::ids::NoteId;
@@ -49,8 +49,8 @@ use crate::config::profile_config::{
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::ln_policy::{
-    ChartLnProfile, LnPolicySetting, apply_ln_policy_to_chart, force_ln_mode_for_chart,
-    score_ln_policy_for_chart,
+    ChartLnProfile, LnPolicySetting, apply_score_ln_policy_to_chart, course_score_ln_policy,
+    played_ln_mode,
 };
 use crate::random_option_seed::{JavaRandom, RandomOptionSeed, RandomOptionSeeds};
 use crate::screens::practice::{
@@ -263,13 +263,14 @@ pub use build::{
     apply_placeholder_session_visuals, build_game_session, build_game_session_with_input_backend,
 };
 pub use preload::{
-    build_audio_engine_for_chart, build_practice_prepared_from_preloaded,
+    ScoredChartMetrics, build_audio_engine_for_chart, build_practice_prepared_from_preloaded,
     build_prepared_play_session_from_preloaded, load_game_session_for_chart,
     load_game_session_for_chart_with_input_backend, load_prepared_play_session_for_chart,
     load_prepared_play_session_for_chart_with_input_backend, load_source_chart_for_chart,
     preload_play_session_for_chart, preload_play_session_for_chart_with_callbacks,
     preload_play_session_for_chart_with_progress,
-    preload_play_session_reloading_audio_with_progress, scored_note_count_for_chart,
+    preload_play_session_reloading_audio_with_progress, scored_chart_metrics_for_chart,
+    scored_note_count_for_chart,
 };
 
 use arrange_algorithm::*;

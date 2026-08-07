@@ -178,6 +178,7 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
         // Failed course results keep the full course notes as the rank/rate
         // denominator even when only a subset of entries produced summaries.
         total_notes: 400,
+        course_ln_mode: Some(bmz_chart::model::LongNoteMode::Cn),
         bp: 37,
         final_clear_type: ClearType::Hard,
         final_gauge_type: GaugeType::ExClass,

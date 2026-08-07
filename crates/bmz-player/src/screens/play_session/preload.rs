@@ -326,18 +326,18 @@ pub(super) fn load_transformed_chart_for_play(
     } else {
         options.double_option.normalize_for_key_mode(source_key_mode)
     };
+    let ln_policy = course_score_ln_policy(
+        options.ln_policy_setting,
+        options.ln_mode_override,
+        source_ln_profile,
+    );
     let score_key = ScoreKey::with_options(
         chart.identity.file_sha256,
-        score_ln_policy_for_chart(options.ln_policy_setting, &chart),
+        ln_policy,
         applied_double_option.score_bucket(),
         options.rule_mode,
     );
-    apply_ln_policy_to_chart(options.ln_policy_setting, &mut chart);
-    // Course constraint may force a specific LN mode (Ln/Cn/Hcn) regardless of
-    // what the chart declared. Mirrors beatoraja PlayerConfig.setLnmode().
-    if let Some(ln_mode) = options.ln_mode_override {
-        force_ln_mode_for_chart(ln_mode, &mut chart);
-    }
+    apply_score_ln_policy_to_chart(ln_policy, &mut chart);
     apply_double_option(&mut chart, applied_double_option);
     if options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7) {
         apply_battle_double_option(&mut chart);
@@ -383,8 +383,25 @@ pub fn scored_note_count_for_chart(
     chart_id: i64,
     options: &PlaySessionOptions,
 ) -> Result<u32> {
+    Ok(scored_chart_metrics_for_chart(library_db, chart_id, options)?.total_notes)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScoredChartMetrics {
+    pub total_notes: u32,
+    pub ln_mode: Option<LongNoteMode>,
+}
+
+pub fn scored_chart_metrics_for_chart(
+    library_db: &LibraryDatabase,
+    chart_id: i64,
+    options: &PlaySessionOptions,
+) -> Result<ScoredChartMetrics> {
     let imported = load_transformed_chart_for_play(library_db, chart_id, options)?;
-    Ok(scored_note_count(&imported.chart))
+    Ok(ScoredChartMetrics {
+        total_notes: scored_note_count(&imported.chart),
+        ln_mode: played_ln_mode(imported.source_ln_profile, imported.score_key.ln_policy),
+    })
 }
 
 pub fn build_practice_prepared_from_preloaded(

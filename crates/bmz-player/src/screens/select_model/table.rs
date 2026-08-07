@@ -202,12 +202,13 @@ pub(super) fn course_chart_total_notes(
     setting: LnPolicySetting,
     constraint: CourseLnConstraint,
 ) -> u32 {
-    let policy = match constraint {
-        CourseLnConstraint::Default => return chart.scored_total_notes_for_setting(setting),
-        CourseLnConstraint::Ln => LnScorePolicy::ForceLn,
-        CourseLnConstraint::Cn => LnScorePolicy::ForceCn,
-        CourseLnConstraint::Hcn => LnScorePolicy::ForceHcn,
+    let course_fallback = match constraint {
+        CourseLnConstraint::Default => None,
+        CourseLnConstraint::Ln => Some(bmz_chart::model::LongNoteMode::Ln),
+        CourseLnConstraint::Cn => Some(bmz_chart::model::LongNoteMode::Cn),
+        CourseLnConstraint::Hcn => Some(bmz_chart::model::LongNoteMode::Hcn),
     };
+    let policy = course_score_ln_policy(setting, course_fallback, chart.ln_profile);
     chart.scored_total_notes(policy)
 }
 

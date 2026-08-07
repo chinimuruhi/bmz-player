@@ -402,15 +402,22 @@ fn load_game_session_counts_cn_ends_from_source_chart() {
         2,
         "course pre-count must ignore stale library totals"
     );
-    let force_ln = PlaySessionOptions {
+    let course_ln_fallback = PlaySessionOptions {
         ln_mode_override: Some(bmz_chart::model::LongNoteMode::Ln),
         ..Default::default()
     };
-    assert_eq!(scored_note_count_for_chart(&library_db, chart_id, &force_ln).unwrap(), 1);
-    let force_ln_setting =
-        PlaySessionOptions { ln_policy_setting: LnPolicySetting::ForceLn, ..Default::default() };
+    let fallback_metrics =
+        scored_chart_metrics_for_chart(&library_db, chart_id, &course_ln_fallback).unwrap();
+    assert_eq!(fallback_metrics.total_notes, 2);
+    assert_eq!(fallback_metrics.ln_mode, Some(bmz_chart::model::LongNoteMode::Cn));
+    let force_ln_setting = PlaySessionOptions {
+        ln_policy_setting: LnPolicySetting::ForceLn,
+        ln_mode_override: Some(bmz_chart::model::LongNoteMode::Hcn),
+        ..Default::default()
+    };
     let transformed =
         load_transformed_chart_for_play(&library_db, chart_id, &force_ln_setting).unwrap();
+    assert_eq!(transformed.score_key.ln_policy, crate::ln_policy::LnScorePolicy::ForceLn);
     assert!(transformed.source_ln_profile.has_defined_cn);
     assert!(!transformed.source_ln_profile.has_defined_ln);
     assert!(

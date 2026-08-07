@@ -6,7 +6,7 @@ use bmz_gameplay::rule::RuleMode;
 use bmz_render::scene::SelectRowKind;
 
 use crate::i18n::{AppLocale, FluentArgs, Localizer};
-use crate::ln_policy::{LnPolicySetting, LnScorePolicy, score_ln_policy};
+use crate::ln_policy::{LnPolicySetting, LnScorePolicy, course_score_ln_policy, score_ln_policy};
 use crate::screens::settings_model::{ConfigSelectRow, KeyBindingSelectRow};
 use crate::song_download::ChartDownloadMetadata;
 use crate::storage::collection_db::{CollectionDatabase, FavoriteChartRecord, FavoriteSongRecord};

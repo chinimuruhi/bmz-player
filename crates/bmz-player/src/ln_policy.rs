@@ -139,6 +139,18 @@ pub const fn source_ln_mode(profile: ChartLnProfile) -> Option<LongNoteMode> {
     }
 }
 
+pub const fn max_long_note_mode(
+    left: Option<LongNoteMode>,
+    right: Option<LongNoteMode>,
+) -> Option<LongNoteMode> {
+    match (left, right) {
+        (Some(LongNoteMode::Hcn), _) | (_, Some(LongNoteMode::Hcn)) => Some(LongNoteMode::Hcn),
+        (Some(LongNoteMode::Cn), _) | (_, Some(LongNoteMode::Cn)) => Some(LongNoteMode::Cn),
+        (Some(LongNoteMode::Ln), _) | (_, Some(LongNoteMode::Ln)) => Some(LongNoteMode::Ln),
+        (None, None) => None,
+    }
+}
+
 /// 実際に降らせたLN種別。AUTOは定義済み種別を維持し、未定義LNへ
 /// 適用したfallbackとの上位種を返す。FORCEは全LNを指定種別へ変換する。
 pub fn played_ln_mode(profile: ChartLnProfile, policy: LnScorePolicy) -> Option<LongNoteMode> {
@@ -172,14 +184,7 @@ pub fn played_ln_mode(profile: ChartLnProfile, policy: LnScorePolicy) -> Option<
             } else {
                 None
             };
-            match (defined, undefined) {
-                (Some(LongNoteMode::Hcn), _) | (_, Some(LongNoteMode::Hcn)) => {
-                    Some(LongNoteMode::Hcn)
-                }
-                (Some(LongNoteMode::Cn), _) | (_, Some(LongNoteMode::Cn)) => Some(LongNoteMode::Cn),
-                (Some(LongNoteMode::Ln), _) | (_, Some(LongNoteMode::Ln)) => Some(LongNoteMode::Ln),
-                (None, None) => None,
-            }
+            max_long_note_mode(defined, undefined)
         }
     }
 }
@@ -197,6 +202,14 @@ impl LnPolicySetting {
             Self::AutoLn | Self::ForceLn => LongNoteMode::Ln,
             Self::AutoCn | Self::ForceCn => LongNoteMode::Cn,
             Self::AutoHcn | Self::ForceHcn => LongNoteMode::Hcn,
+        }
+    }
+
+    pub const fn auto(mode: LongNoteMode) -> Self {
+        match mode {
+            LongNoteMode::Ln => Self::AutoLn,
+            LongNoteMode::Cn => Self::AutoCn,
+            LongNoteMode::Hcn => Self::AutoHcn,
         }
     }
 
@@ -305,24 +318,45 @@ pub fn score_ln_policy(setting: LnPolicySetting, profile: ChartLnProfile) -> LnS
     LnScorePolicy::auto(setting.mode())
 }
 
+/// Resolve the score policy used by a course chart.
+///
+/// BMZ's FORCE settings have the highest priority and convert every long note,
+/// ignoring the course constraint. AUTO settings preserve explicitly typed
+/// LN/CN/HCN notes; an explicit course constraint only replaces the fallback
+/// used by undefined long notes, matching beatoraja's course behavior.
+pub fn course_score_ln_policy(
+    setting: LnPolicySetting,
+    course_fallback: Option<LongNoteMode>,
+    profile: ChartLnProfile,
+) -> LnScorePolicy {
+    if setting.is_force() {
+        return score_ln_policy(setting, profile);
+    }
+
+    let fallback = course_fallback.unwrap_or_else(|| setting.mode());
+    score_ln_policy(LnPolicySetting::auto(fallback), profile)
+}
+
 pub fn score_ln_policy_for_chart(setting: LnPolicySetting, chart: &PlayableChart) -> LnScorePolicy {
     score_ln_policy(setting, ChartLnProfile::from_chart(chart))
 }
 
 pub fn apply_ln_policy_to_chart(setting: LnPolicySetting, chart: &mut PlayableChart) {
-    let effective_mode = effective_ln_mode(setting, ChartLnProfile::from_chart(chart));
-    chart.metadata.long_note_mode = effective_mode;
-    if setting.is_force() {
-        for pair in &mut chart.long_notes {
-            pair.mode = Some(effective_mode);
-        }
-    }
+    let policy = score_ln_policy(setting, ChartLnProfile::from_chart(chart));
+    apply_score_ln_policy_to_chart(policy, chart);
 }
 
-pub fn force_ln_mode_for_chart(mode: LongNoteMode, chart: &mut PlayableChart) {
-    chart.metadata.long_note_mode = mode;
-    for pair in &mut chart.long_notes {
-        pair.mode = Some(mode);
+pub fn apply_score_ln_policy_to_chart(policy: LnScorePolicy, chart: &mut PlayableChart) {
+    let fallback_mode = match policy {
+        LnScorePolicy::AutoLn | LnScorePolicy::ForceLn => LongNoteMode::Ln,
+        LnScorePolicy::AutoCn | LnScorePolicy::ForceCn => LongNoteMode::Cn,
+        LnScorePolicy::AutoHcn | LnScorePolicy::ForceHcn => LongNoteMode::Hcn,
+    };
+    chart.metadata.long_note_mode = fallback_mode;
+    if matches!(policy, LnScorePolicy::ForceLn | LnScorePolicy::ForceCn | LnScorePolicy::ForceHcn) {
+        for pair in &mut chart.long_notes {
+            pair.mode = Some(fallback_mode);
+        }
     }
 }
 
@@ -458,6 +492,76 @@ mod tests {
         assert_eq!(
             score_ln_policy(LnPolicySetting::ForceHcn, DEFINED_CN_ONLY),
             LnScorePolicy::ForceHcn
+        );
+    }
+
+    #[test]
+    fn course_constraint_replaces_only_auto_fallback() {
+        assert_eq!(
+            course_score_ln_policy(
+                LnPolicySetting::AutoLn,
+                Some(LongNoteMode::Cn),
+                UNDEFINED_AND_DEFINED,
+            ),
+            LnScorePolicy::AutoCn
+        );
+        assert_eq!(
+            course_score_ln_policy(
+                LnPolicySetting::AutoLn,
+                Some(LongNoteMode::Hcn),
+                DEFINED_CN_ONLY,
+            ),
+            LnScorePolicy::ForceCn
+        );
+    }
+
+    #[test]
+    fn force_setting_ignores_course_constraint() {
+        assert_eq!(
+            course_score_ln_policy(
+                LnPolicySetting::ForceLn,
+                Some(LongNoteMode::Hcn),
+                UNDEFINED_AND_DEFINED,
+            ),
+            LnScorePolicy::ForceLn
+        );
+
+        let mut chart = chart_with_long_modes(&[None, Some(LongNoteMode::Hcn)]);
+        let policy = course_score_ln_policy(
+            LnPolicySetting::ForceLn,
+            Some(LongNoteMode::Cn),
+            ChartLnProfile::from_chart(&chart),
+        );
+        apply_score_ln_policy_to_chart(policy, &mut chart);
+        assert!(chart.long_notes.iter().all(|pair| pair.mode == Some(LongNoteMode::Ln)));
+    }
+
+    #[test]
+    fn auto_course_fallback_preserves_defined_modes() {
+        let mut chart = chart_with_long_modes(&[None, Some(LongNoteMode::Hcn)]);
+        let source_profile = ChartLnProfile::from_chart(&chart);
+        let policy =
+            course_score_ln_policy(LnPolicySetting::AutoLn, Some(LongNoteMode::Cn), source_profile);
+
+        apply_score_ln_policy_to_chart(policy, &mut chart);
+
+        assert_eq!(policy, LnScorePolicy::AutoCn);
+        assert_eq!(chart.metadata.long_note_mode, LongNoteMode::Cn);
+        assert_eq!(chart.long_notes[0].mode, None);
+        assert_eq!(chart.long_notes[1].mode, Some(LongNoteMode::Hcn));
+        assert_eq!(played_ln_mode(source_profile, policy), Some(LongNoteMode::Hcn));
+    }
+
+    #[test]
+    fn max_long_note_mode_uses_canonical_priority() {
+        assert_eq!(max_long_note_mode(None, None), None);
+        assert_eq!(
+            max_long_note_mode(Some(LongNoteMode::Ln), Some(LongNoteMode::Cn)),
+            Some(LongNoteMode::Cn)
+        );
+        assert_eq!(
+            max_long_note_mode(Some(LongNoteMode::Hcn), Some(LongNoteMode::Cn)),
+            Some(LongNoteMode::Hcn)
         );
     }
 

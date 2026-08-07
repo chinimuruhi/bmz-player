@@ -30,27 +30,17 @@ impl WinitApp {
         mut snapshot: RenderSnapshot,
         title_override: Option<DecideTitleOverride>,
     ) {
-        // Pre-import placeholder only: account for course LN overrides and
-        // Battle here. The running session replaces this with a count derived
-        // from the imported source chart after preload.
+        // Pre-import placeholder only: resolve the same AUTO fallback / FORCE
+        // priority as preload and account for Battle here. The running session
+        // replaces this with a count derived from the imported source chart.
         if let Ok(charts) = self.boot.library_db.list_charts_by_ids(&[chart_id])
             && let Some(chart) = charts.first()
         {
-            let policy = match options.ln_mode_override {
-                Some(bmz_chart::model::LongNoteMode::Ln) => {
-                    crate::ln_policy::LnScorePolicy::ForceLn
-                }
-                Some(bmz_chart::model::LongNoteMode::Cn) => {
-                    crate::ln_policy::LnScorePolicy::ForceCn
-                }
-                Some(bmz_chart::model::LongNoteMode::Hcn) => {
-                    crate::ln_policy::LnScorePolicy::ForceHcn
-                }
-                None => crate::ln_policy::score_ln_policy(
-                    self.boot.profile_config.play.ln_mode_policy,
-                    chart.ln_profile,
-                ),
-            };
+            let policy = crate::ln_policy::course_score_ln_policy(
+                self.boot.profile_config.play.ln_mode_policy,
+                options.ln_mode_override,
+                chart.ln_profile,
+            );
             let multiplier = match options
                 .double_option
                 .normalize_for_key_mode(KeyMode::from_str_opt(&chart.mode).unwrap_or_default())

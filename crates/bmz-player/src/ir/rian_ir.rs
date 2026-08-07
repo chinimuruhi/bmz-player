@@ -286,7 +286,8 @@ mod tests {
             DoubleOption::BattleAutoScratch
         ));
         assert!(course_submission_supported(LnPolicySetting::ForceLn, DoubleOption::Off));
-        assert!(!course_submission_supported(LnPolicySetting::AutoLn, DoubleOption::Off));
+        assert!(course_submission_supported(LnPolicySetting::AutoLn, DoubleOption::Off));
+        assert!(course_submission_supported(LnPolicySetting::AutoHcn, DoubleOption::Flip));
         assert!(!course_submission_supported(LnPolicySetting::ForceHcn, DoubleOption::Battle));
     }
 
@@ -456,6 +457,7 @@ mod tests {
             "rule": {
                 "gauge": "Class",
                 "ln_policy": "ForceHcn",
+                "effective_ln_mode": 3,
                 "rule_mode": "Dx",
             },
             "result": {
@@ -502,11 +504,42 @@ mod tests {
         assert_eq!(request["body"], "DX MODE");
         assert!(request.get("rule_mode").is_none());
         assert_eq!(request["ln_mode"], 3);
+        assert_eq!(request["ln_mode_format"], "canonical-v1");
         assert_eq!(request["arrange_1p"], "all-scratch");
         assert_eq!(request["play_seed"], 281_474_976_710_655_i64);
         assert_eq!(request["constraint"], json!(["grade"]));
         assert!(request["tracks"].as_array().unwrap().is_empty());
         assert_eq!(request["miss"], 6);
+    }
+
+    #[test]
+    fn course_request_accepts_auto_with_canonical_effective_mode() {
+        let payload = json!({
+            "course": {
+                "title": "Course",
+                "charts": ["ab".repeat(32)],
+                "constraints": { "ln": "cn" },
+            },
+            "rule": {
+                "gauge": "Class",
+                "ln_policy": "AutoLn",
+                "effective_ln_mode": 3,
+                "rule_mode": "Beatoraja",
+            },
+            "result": {
+                "clear": "Normal",
+                "ex_score": 100,
+                "max_ex_score": 200,
+                "total_notes": 100,
+                "max_combo": 50,
+                "bp": 1,
+                "played_at": 1_700_000_001_i64,
+            },
+        });
+
+        let request = course_request(&payload, "player", "token").unwrap();
+        assert_eq!(request["ln_mode"], 3);
+        assert_eq!(request["ln_mode_format"], "canonical-v1");
     }
 
     #[test]

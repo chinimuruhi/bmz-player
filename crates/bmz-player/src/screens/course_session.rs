@@ -13,6 +13,9 @@ pub struct ActiveCourseSession {
     /// Total notes imported from every source chart with the entry's actual
     /// play options. This remains course-wide when a Failed chart aborts early.
     pub course_total_notes: u32,
+    /// Effective course-wide LN kind after AUTO/FORCE and course fallback
+    /// resolution. None means the course contains no long notes.
+    pub course_ln_mode: Option<bmz_chart::model::LongNoteMode>,
     pub current_index: usize,
     pub entry_results: Vec<CourseEntryResult>,
     /// コース開始時に全エントリ分を確定した開始条件。source chart の事前集計と
@@ -45,6 +48,8 @@ pub struct CourseResultSummary {
     pub total_ex_score: u32,
     pub max_ex_score: u32,
     pub total_notes: u32,
+    /// Effective course-wide LN kind after applying the attempt's settings.
+    pub course_ln_mode: Option<bmz_chart::model::LongNoteMode>,
     /// Course-wide BP including unprocessed notes in a failed chart and every
     /// note in the remaining unplayed charts, matching beatoraja course results.
     pub bp: u32,
@@ -176,6 +181,7 @@ impl ActiveCourseSession {
             total_ex_score,
             max_ex_score,
             total_notes,
+            course_ln_mode: self.course_ln_mode,
             bp,
             final_clear_type,
             final_gauge_type,
@@ -373,6 +379,7 @@ mod tests {
                 release: true,
             },
             course_total_notes,
+            course_ln_mode: Some(bmz_chart::model::LongNoteMode::Ln),
             current_index: 0,
             entry_results,
             entry_start_options: Vec::new(),
@@ -393,6 +400,7 @@ mod tests {
         assert_eq!(result.course_max_combo, 200);
         assert_eq!(result.judge_counts.pgreat, 200);
         assert_eq!(result.bp, 0);
+        assert_eq!(result.course_ln_mode, Some(bmz_chart::model::LongNoteMode::Ln));
     }
 
     #[test]
@@ -493,6 +501,7 @@ mod tests {
                 release: true,
             },
             course_total_notes,
+            course_ln_mode: None,
             current_index: 0,
             entry_results,
             entry_start_options: Vec::new(),

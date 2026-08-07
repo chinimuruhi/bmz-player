@@ -15,14 +15,20 @@ pub(super) fn select_ir_cache_context(
     )
 }
 
-pub(super) fn course_total_notes_for_definition(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct CoursePlayMetrics {
+    pub(super) total_notes: u32,
+    pub(super) ln_mode: Option<bmz_chart::model::LongNoteMode>,
+}
+
+pub(super) fn course_play_metrics_for_definition(
     library_db: &LibraryDatabase,
     definition: &bmz_core::course::CourseDefinition,
     app_config: &AppConfig,
     ln_policy_setting: crate::ln_policy::LnPolicySetting,
     rule_mode: bmz_gameplay::rule::RuleMode,
     entry_start_options: &[PlayStartOptions],
-) -> Result<u32> {
+) -> Result<CoursePlayMetrics> {
     anyhow::ensure!(
         definition.entries.len() == entry_start_options.len(),
         "course entry option count mismatch: entries={}, options={}",
@@ -30,6 +36,7 @@ pub(super) fn course_total_notes_for_definition(
         entry_start_options.len()
     );
     let mut total_notes = 0u32;
+    let mut ln_mode = None;
     for (index, (entry, start_options)) in
         definition.entries.iter().zip(entry_start_options).enumerate()
     {
@@ -40,15 +47,16 @@ pub(super) fn course_total_notes_for_definition(
             play_session_options_from_start(app_config, start_options.clone());
         session_options.ln_policy_setting = ln_policy_setting;
         session_options.rule_mode = rule_mode;
-        let notes = crate::screens::play_session::scored_note_count_for_chart(
+        let metrics = crate::screens::play_session::scored_chart_metrics_for_chart(
             library_db,
             chart_id,
             &session_options,
         )
         .with_context(|| format!("failed to count course entry {} from source", index + 1))?;
-        total_notes = total_notes.saturating_add(notes);
+        total_notes = total_notes.saturating_add(metrics.total_notes);
+        ln_mode = crate::ln_policy::max_long_note_mode(ln_mode, metrics.ln_mode);
     }
-    Ok(total_notes)
+    Ok(CoursePlayMetrics { total_notes, ln_mode })
 }
 
 pub(super) fn hydrate_course_entry_title_hints(

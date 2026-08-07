@@ -116,7 +116,7 @@ impl WinitApp {
         let options = entry_start_options[0].clone();
         let course_title = definition.title.clone();
         let app_config = self.play_session_app_config();
-        let course_total_notes = match course_total_notes_for_definition(
+        let course_metrics = match course_play_metrics_for_definition(
             &self.boot.library_db,
             &definition,
             &app_config,
@@ -124,7 +124,7 @@ impl WinitApp {
             self.boot.profile_config.play.rule_mode,
             &entry_start_options,
         ) {
-            Ok(total_notes) => total_notes,
+            Ok(metrics) => metrics,
             Err(error) => {
                 tracing::error!(%error, course_id, "failed to count course notes from source");
                 return;
@@ -133,7 +133,8 @@ impl WinitApp {
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
-            course_total_notes,
+            course_total_notes: course_metrics.total_notes,
+            course_ln_mode: course_metrics.ln_mode,
             current_index: 0,
             entry_results: Vec::new(),
             entry_start_options,
@@ -253,7 +254,7 @@ impl WinitApp {
         let options = entry_start_options[0].clone();
         let course_title = definition.title.clone();
         let app_config = self.play_session_app_config();
-        let course_total_notes = match course_total_notes_for_definition(
+        let course_metrics = match course_play_metrics_for_definition(
             &self.boot.library_db,
             &definition,
             &app_config,
@@ -261,7 +262,7 @@ impl WinitApp {
             self.boot.profile_config.play.rule_mode,
             &entry_start_options,
         ) {
-            Ok(total_notes) => total_notes,
+            Ok(metrics) => metrics,
             Err(error) => {
                 tracing::error!(%error, course_id, "failed to count replay course notes from source");
                 return;
@@ -270,7 +271,8 @@ impl WinitApp {
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
-            course_total_notes,
+            course_total_notes: course_metrics.total_notes,
+            course_ln_mode: course_metrics.ln_mode,
             current_index: 0,
             entry_results: Vec::new(),
             entry_start_options,

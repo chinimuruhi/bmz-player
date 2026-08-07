@@ -150,10 +150,10 @@ impl WinitApp {
             .first()
             .and_then(|sha| crate::storage::common::hex_to_hash::<32>(sha).ok())
             .unwrap_or([0; 32]);
-        let ln_policy = crate::ln_policy::score_ln_policy(
-            self.boot.profile_config.play.ln_mode_policy,
-            crate::ln_policy::ChartLnProfile::default(),
-        );
+        let ln_policy = course_result
+            .course_ln_mode
+            .map(crate::ln_policy::LnScorePolicy::force)
+            .unwrap_or(crate::ln_policy::LnScorePolicy::ForceLn);
         for provider in enabled {
             let Some(provider_key) = crate::ir::provider_key::configured_provider_key(&provider)
             else {

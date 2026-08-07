@@ -96,6 +96,31 @@ fn undefined_ln_pair() -> LongNotePair {
     }
 }
 
+#[test]
+fn course_note_preview_uses_auto_fallback_and_force_priority() {
+    let (mut library_db, _) = open_in_memory_dbs();
+    let mut source = chart("course ln preview");
+    let mut pair = undefined_ln_pair();
+    pair.mode = Some(bmz_chart::model::LongNoteMode::Ln);
+    source.long_notes.push(pair);
+    source.total_notes = 1;
+    library_db
+        .upsert_chart_import(&record_for_chart("/songs/course-ln-preview.bms", &source))
+        .unwrap();
+    let stored = library_db.list_all_charts().unwrap().pop().unwrap();
+
+    assert_eq!(
+        course_chart_total_notes(&stored, LnPolicySetting::AutoLn, CourseLnConstraint::Cn,),
+        1,
+        "AUTO must preserve the chart's explicitly typed LN",
+    );
+    assert_eq!(
+        course_chart_total_notes(&stored, LnPolicySetting::ForceHcn, CourseLnConstraint::Ln,),
+        2,
+        "FORCE(HCN) must ignore the course LN constraint",
+    );
+}
+
 fn difficulty_table_for_md5(
     md5: &[u8; 16],
     symbol: &str,

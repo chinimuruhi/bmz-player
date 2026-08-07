@@ -189,6 +189,7 @@ pub fn build_course_submission(
         "rule": {
             "gauge": context.gauge,
             "ln_policy": context.ln_policy_setting,
+            "effective_ln_mode": course_ln_mode_id(result.course_ln_mode),
             "rule_mode": context.rule_mode,
             "scoring": "bms_ex_score_v1",
         },
@@ -218,6 +219,15 @@ pub fn build_course_submission(
         "play_options": play_options,
         "idempotency_key": context.idempotency_key,
     })
+}
+
+const fn course_ln_mode_id(mode: Option<bmz_chart::model::LongNoteMode>) -> u8 {
+    match mode {
+        None => 0,
+        Some(bmz_chart::model::LongNoteMode::Ln) => 1,
+        Some(bmz_chart::model::LongNoteMode::Cn) => 2,
+        Some(bmz_chart::model::LongNoteMode::Hcn) => 3,
+    }
 }
 
 fn arrange_option_ir_from_persistent(value: &str) -> String {
@@ -376,6 +386,7 @@ mod tests {
             total_ex_score: 0,
             max_ex_score: 0,
             total_notes: 0,
+            course_ln_mode: Some(bmz_chart::model::LongNoteMode::Hcn),
             bp: 0,
             final_clear_type: bmz_core::clear::ClearType::NoPlay,
             final_gauge_type: bmz_core::clear::GaugeType::Class,
@@ -408,6 +419,7 @@ mod tests {
         );
 
         assert_eq!(payload["rule"]["ln_policy"], "ForceHcn");
+        assert_eq!(payload["rule"]["effective_ln_mode"], 3);
         assert_eq!(payload["rule"]["rule_mode"], "Dx");
         assert_eq!(payload["result"]["max_combo"], json!(123));
         assert_eq!(payload["result"]["clear"], json!("NoPlay"));
@@ -434,6 +446,7 @@ mod tests {
             total_ex_score: 1234,
             max_ex_score: 2000,
             total_notes: 1000,
+            course_ln_mode: None,
             bp: 0,
             final_clear_type: ClearType::Hard,
             final_gauge_type: GaugeType::ExClass,
@@ -469,6 +482,7 @@ mod tests {
         assert_eq!(payload["result"]["clear"], json!("Hard"));
         assert_eq!(payload["result"]["gauge_value"], json!(66));
         assert_eq!(payload["result"]["entries"][0]["clear"], json!("NoPlay"));
+        assert_eq!(payload["rule"]["effective_ln_mode"], 0);
     }
 
     #[test]
@@ -495,6 +509,7 @@ mod tests {
             total_ex_score: 1234,
             max_ex_score: 2000,
             total_notes: 1000,
+            course_ln_mode: None,
             bp: 0,
             final_clear_type: ClearType::NoPlay,
             final_gauge_type: GaugeType::Hard,
@@ -554,6 +569,7 @@ mod tests {
             total_ex_score: 1234,
             max_ex_score: 2000,
             total_notes: 1000,
+            course_ln_mode: None,
             bp: 789,
             final_clear_type: ClearType::NoPlay,
             final_gauge_type: GaugeType::ExHardClass,
