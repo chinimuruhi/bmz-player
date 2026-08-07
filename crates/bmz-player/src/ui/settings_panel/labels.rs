@@ -123,8 +123,8 @@ pub(in crate::ui) fn input_backend_label(backend: &InputBackendKind, text: Local
         InputBackendKind::Auto => tr!(text, "common-auto-select"),
         InputBackendKind::Winit => "winit".to_owned(),
         InputBackendKind::RawInput => tr!(text, "settings-input-raw-input"),
-        InputBackendKind::Hid => tr!(text, "settings-input-hid-unimplemented"),
-        InputBackendKind::Midi => tr!(text, "settings-input-midi-unimplemented"),
+        // load時にAutoへ移行する旧config互換variant。
+        InputBackendKind::Hid | InputBackendKind::Midi => tr!(text, "common-auto-select"),
     }
 }
 

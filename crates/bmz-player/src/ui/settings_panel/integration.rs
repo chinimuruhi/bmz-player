@@ -86,7 +86,7 @@ pub(super) fn build_integration_settings_sections(
     egui::CollapsingHeader::new(tr!(text, "settings-input-title")).id_salt("settings_input").show(
         ui,
         |ui| {
-            egui::ComboBox::new("input_backend", tr!(text, "settings-backend"))
+            egui::ComboBox::new("input_backend", tr!(text, "settings-input-keyboard-backend"))
                 .selected_text(input_backend_label(&config.input.backend, text))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
@@ -103,16 +103,6 @@ pub(super) fn build_integration_settings_sections(
                         &mut config.input.backend,
                         InputBackendKind::RawInput,
                         input_backend_label(&InputBackendKind::RawInput, text),
-                    );
-                    ui.selectable_value(
-                        &mut config.input.backend,
-                        InputBackendKind::Hid,
-                        input_backend_label(&InputBackendKind::Hid, text),
-                    );
-                    ui.selectable_value(
-                        &mut config.input.backend,
-                        InputBackendKind::Midi,
-                        input_backend_label(&InputBackendKind::Midi, text),
                     );
                 });
             egui::ComboBox::new("gamepad_backend", tr!(text, "settings-input-gamepad-backend"))
@@ -143,10 +133,6 @@ pub(super) fn build_integration_settings_sections(
                 });
             ui.checkbox(&mut config.input.keyboard_enabled, tr!(text, "settings-input-keyboard"));
             ui.checkbox(&mut config.input.gamepad_enabled, tr!(text, "settings-input-gamepad"));
-            ui.checkbox(
-                &mut config.input.midi_enabled,
-                tr!(text, "settings-input-midi-unimplemented"),
-            );
             ui.label(tr!(text, "settings-input-backend-help"));
             ui.separator();
             ui.label(tr!(text, "settings-input-controller-assignment"));

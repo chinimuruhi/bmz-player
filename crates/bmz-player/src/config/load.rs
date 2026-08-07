@@ -5,7 +5,7 @@ use anyhow::Result;
 #[cfg(not(all(windows, feature = "experimental-gameinput")))]
 use super::app_config::GamepadBackendKind;
 use super::app_config::{
-    AppConfig, ensure_default_difficulty_table_sources, normalize_song_root_paths,
+    AppConfig, InputBackendKind, ensure_default_difficulty_table_sources, normalize_song_root_paths,
 };
 use super::play_input::{normalize_profile_input, validate_play_inherit_config};
 use super::profile_config::ProfileConfig;
@@ -19,6 +19,13 @@ fn parse_app_config(text: &str) -> Result<AppConfig> {
     let mut config: AppConfig = toml::from_str(text)?;
     normalize_song_root_paths(&mut config.songs.roots);
     ensure_default_difficulty_table_sources(&mut config);
+    if matches!(config.input.backend, InputBackendKind::Hid | InputBackendKind::Midi) {
+        tracing::warn!(
+            backend = ?config.input.backend,
+            "unsupported input backend removed; migrating configuration to auto"
+        );
+        config.input.backend = InputBackendKind::Auto;
+    }
     #[cfg(not(all(windows, feature = "experimental-gameinput")))]
     if config.input.gamepad_backend == GamepadBackendKind::GameInput {
         tracing::warn!("GameInput backend is disabled; migrating configuration to gilrs");
@@ -61,6 +68,18 @@ mod tests {
         assert_eq!(loaded.songs.roots[0].path, "G:/BMS");
         assert!(!loaded.songs.roots[0].enabled);
         assert!(!loaded.songs.roots[0].recursive);
+    }
+
+    #[test]
+    fn parse_app_config_migrates_removed_input_backends_to_auto() {
+        for backend in [InputBackendKind::Hid, InputBackendKind::Midi] {
+            let mut config = AppConfig::default();
+            config.input.backend = backend;
+
+            let loaded = parse_app_config(&toml::to_string(&config).unwrap()).unwrap();
+
+            assert_eq!(loaded.input.backend, InputBackendKind::Auto);
+        }
     }
 
     #[cfg(not(all(windows, feature = "experimental-gameinput")))]

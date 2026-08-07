@@ -312,7 +312,6 @@ pub struct GlobalInputConfig {
     pub gamepad_backend: GamepadBackendKind,
     pub keyboard_enabled: bool,
     pub gamepad_enabled: bool,
-    pub midi_enabled: bool,
     /// 論理スロット `gamepad1` / `gamepad2` に割り当てるbackend非依存のデバイスID。
     #[serde(default, skip_serializing_if = "gamepad_stable_slots_unassigned")]
     pub gamepad_slot_device_ids: [Option<String>; 2],
@@ -356,7 +355,9 @@ pub enum InputBackendKind {
     Auto,
     Winit,
     RawInput,
+    /// 旧configの読み込み互換用。load時にAutoへ移行する。
     Hid,
+    /// 旧configの読み込み互換用。load時にAutoへ移行する。
     Midi,
 }
 
@@ -577,7 +578,6 @@ impl Default for AppConfig {
                 gamepad_backend: GamepadBackendKind::Gilrs,
                 keyboard_enabled: true,
                 gamepad_enabled: true,
-                midi_enabled: false,
                 gamepad_slot_device_ids: [None, None],
                 gamepad_slot_gilrs_ids: default_gamepad_slot_gilrs_ids(),
                 gamepad_slot_runtime_device_ids: [None, None],
