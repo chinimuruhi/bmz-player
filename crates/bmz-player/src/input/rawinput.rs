@@ -20,10 +20,10 @@ mod windows {
     use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPROP_TYPE_GUID};
     use windows_sys::Win32::Foundation::{GetLastError, HANDLE, HWND};
     use windows_sys::Win32::UI::Input::{
-        GetRawInputData, GetRawInputDeviceInfoW, GetRawInputDeviceList, RAWINPUT, RAWINPUTDEVICE,
-        RAWINPUTDEVICELIST, RAWINPUTHEADER, RID_DEVICE_INFO, RID_DEVICE_INFO_HID, RID_INPUT,
-        RIDEV_DEVNOTIFY, RIDEV_REMOVE, RIDI_DEVICEINFO, RIDI_DEVICENAME, RIDI_PREPARSEDDATA,
-        RIM_TYPEHID, RegisterRawInputDevices,
+        GetRawInputData, GetRawInputDeviceInfoW, GetRawInputDeviceList, RAWHID, RAWINPUT,
+        RAWINPUTDEVICE, RAWINPUTDEVICELIST, RAWINPUTHEADER, RID_DEVICE_INFO, RID_DEVICE_INFO_HID,
+        RID_INPUT, RIDEV_DEVNOTIFY, RIDEV_REMOVE, RIDI_DEVICEINFO, RIDI_DEVICENAME,
+        RIDI_PREPARSEDDATA, RIM_TYPEHID, RegisterRawInputDevices,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GIDC_ARRIVAL, GIDC_REMOVAL, MSG, WM_INPUT, WM_INPUT_DEVICE_CHANGE,
@@ -325,7 +325,16 @@ mod windows {
             let mut decoded = Vec::new();
             for report in reports {
                 match device.decode_report(report, timestamp) {
-                    Ok(events) => decoded.extend(events),
+                    Ok(events) => {
+                        if !events.is_empty() {
+                            tracing::trace!(
+                                device = %device.stable_id,
+                                decoded_events = events.len(),
+                                "Raw Input HID report decoded"
+                            );
+                        }
+                        decoded.extend(events);
+                    }
                     Err(error) => tracing::warn!(
                         device = %device.stable_id,
                         %error,
@@ -726,7 +735,7 @@ mod windows {
         let size_result = unsafe {
             GetRawInputData(raw_input, RID_INPUT, std::ptr::null_mut(), &mut byte_len, header_size)
         };
-        if size_result == RAW_INPUT_ERROR || byte_len < size_of::<RAWINPUT>() as u32 {
+        if size_result == RAW_INPUT_ERROR || byte_len < raw_hid_data_offset() as u32 {
             return None;
         }
         let mut buffer = AlignedBuffer::new(byte_len as usize);
@@ -742,30 +751,35 @@ mod windows {
             )
         };
         if read == RAW_INPUT_ERROR
-            || read < size_of::<RAWINPUT>() as u32
+            || read < raw_hid_data_offset() as u32
             || read > buffer.byte_len as u32
         {
             return None;
         }
-        // SAFETY: GetRawInputData initialized a complete RAWINPUT at the aligned buffer start.
-        let raw = unsafe { &*buffer.words.as_ptr().cast::<RAWINPUT>() };
-        // SAFETY: dwType was checked as RIM_TYPEHID, making the hid union member active.
-        let hid = unsafe { raw.data.hid };
-        let report_size = hid.dwSizeHid as usize;
-        let report_count = hid.dwCount as usize;
+        // SAFETY: GetRawInputData wrote `read` bytes into the aligned allocation.
+        let packet =
+            unsafe { slice::from_raw_parts(buffer.words.as_ptr().cast::<u8>(), read as usize) };
+        Some((header.hDevice, split_raw_hid_reports(packet)?))
+    }
+
+    fn split_raw_hid_reports(packet: &[u8]) -> Option<Vec<Vec<u8>>> {
+        let hid_offset = std::mem::offset_of!(RAWINPUT, data);
+        let report_size =
+            read_packet_u32(packet, hid_offset + std::mem::offset_of!(RAWHID, dwSizeHid))? as usize;
+        let report_count =
+            read_packet_u32(packet, hid_offset + std::mem::offset_of!(RAWHID, dwCount))? as usize;
+        let data_offset = raw_hid_data_offset();
         let data_len = report_size.checked_mul(report_count)?;
-        let packet_end = read as usize;
-        // SAFETY: the active RAWHID contains bRawData followed by dwSizeHid * dwCount bytes.
-        let data_ptr = unsafe { std::ptr::addr_of!(raw.data.hid.bRawData).cast::<u8>() };
-        let packet_start = buffer.words.as_ptr() as usize;
-        let data_offset = data_ptr as usize - packet_start;
-        if report_size == 0 || data_offset.checked_add(data_len)? > packet_end {
-            return None;
-        }
-        // SAFETY: the bounds above prove the variable-length RAWHID data lies in the packet.
-        let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
-        let reports = data.chunks_exact(report_size).map(<[u8]>::to_vec).collect();
-        Some((raw.header.hDevice, reports))
+        let data = packet.get(data_offset..data_offset.checked_add(data_len)?)?;
+        (report_size != 0).then(|| data.chunks_exact(report_size).map(<[u8]>::to_vec).collect())
+    }
+
+    fn raw_hid_data_offset() -> usize {
+        std::mem::offset_of!(RAWINPUT, data) + std::mem::offset_of!(RAWHID, bRawData)
+    }
+
+    fn read_packet_u32(packet: &[u8], offset: usize) -> Option<u32> {
+        Some(u32::from_ne_bytes(packet.get(offset..offset.checked_add(4)?)?.try_into().ok()?))
     }
 
     fn raw_input_device_info(handle: HANDLE) -> Result<RID_DEVICE_INFO_HID> {
@@ -1104,6 +1118,33 @@ mod windows {
                 stable_id_for_device(r"\\?\HID#VID_1234", 1, 4, None),
                 stable_id_for_device(r"\\?\hid#vid_1234", 1, 4, None)
             );
+        }
+
+        #[test]
+        fn splits_variable_length_raw_hid_packet() {
+            let hid_offset = std::mem::offset_of!(RAWINPUT, data);
+            let size_offset = hid_offset + std::mem::offset_of!(RAWHID, dwSizeHid);
+            let count_offset = hid_offset + std::mem::offset_of!(RAWHID, dwCount);
+            let data_offset = raw_hid_data_offset();
+            let mut packet = vec![0; data_offset + 6];
+            packet[size_offset..size_offset + 4].copy_from_slice(&3u32.to_ne_bytes());
+            packet[count_offset..count_offset + 4].copy_from_slice(&2u32.to_ne_bytes());
+            packet[data_offset..].copy_from_slice(&[1, 2, 3, 4, 5, 6]);
+
+            assert_eq!(split_raw_hid_reports(&packet), Some(vec![vec![1, 2, 3], vec![4, 5, 6]]));
+        }
+
+        #[test]
+        fn rejects_truncated_raw_hid_packet() {
+            let hid_offset = std::mem::offset_of!(RAWINPUT, data);
+            let size_offset = hid_offset + std::mem::offset_of!(RAWHID, dwSizeHid);
+            let count_offset = hid_offset + std::mem::offset_of!(RAWHID, dwCount);
+            let data_offset = raw_hid_data_offset();
+            let mut packet = vec![0; data_offset + 5];
+            packet[size_offset..size_offset + 4].copy_from_slice(&3u32.to_ne_bytes());
+            packet[count_offset..count_offset + 4].copy_from_slice(&2u32.to_ne_bytes());
+
+            assert_eq!(split_raw_hid_reports(&packet), None);
         }
     }
 }
