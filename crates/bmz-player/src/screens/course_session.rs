@@ -91,6 +91,26 @@ impl ActiveCourseSession {
         self.definition.entries.get(self.current_index)
     }
 
+    /// 中間リザルト後に開始する次ステージの確定済み開始条件を返す。
+    ///
+    /// コース開始時に固定した arrange/replay 条件へ、直前ステージの gauge と
+    /// combo を一度だけ重ねる。Failed 後や未解決 entry では先読みしない。
+    pub fn next_stage_start(&self) -> Option<(usize, i64, PlayStartOptions)> {
+        let previous = self.entry_results.last();
+        if previous.is_some_and(|previous| previous.finished.result.clear_type == ClearType::Failed)
+        {
+            return None;
+        }
+        let entry_index = self.current_index;
+        let chart_id = self.definition.entries.get(entry_index)?.chart_id?;
+        let mut options = self.entry_start_options.get(entry_index)?.clone();
+        if let Some(previous) = previous {
+            options.initial_gauge_values = Some(previous.finished.gauge_carry.clone());
+            options.initial_course_combo = Some(previous.finished.course_combo);
+        }
+        Some((entry_index, chart_id, options))
+    }
+
     pub fn into_result(self) -> CourseResultSummary {
         let played_total_notes = self
             .entry_results
@@ -528,6 +548,56 @@ mod tests {
         assert_eq!(result.total_entries, 4);
         // Trophies are blocked when course_failed even if numeric thresholds pass.
         assert!(!result.trophy_results[0].achieved);
+    }
+
+    #[test]
+    fn next_stage_start_carries_fixed_options_gauges_and_combo() {
+        use bmz_core::clear::{ClearType, GaugeType};
+        use bmz_gameplay::gauge::GaugeCarryValue;
+
+        let mut session =
+            make_partial_session(2, vec![(make_score(100, 0), 100, ClearType::Normal)]);
+        session.current_index = 1;
+        session.entry_start_options = vec![PlayStartOptions::default(); 2];
+        session.entry_start_options[1].arrange_seed = Some(42);
+        session.entry_results[0].finished.gauge_carry =
+            vec![GaugeCarryValue { gauge_type: GaugeType::Class, value: 63.5 }];
+        session.entry_results[0].finished.course_combo = 87;
+
+        let (entry_index, chart_id, options) = session.next_stage_start().unwrap();
+
+        assert_eq!(entry_index, 1);
+        assert_eq!(chart_id, 2);
+        assert_eq!(options.arrange_seed, Some(42));
+        assert_eq!(
+            options.initial_gauge_values,
+            Some(vec![GaugeCarryValue { gauge_type: GaugeType::Class, value: 63.5 }])
+        );
+        assert_eq!(options.initial_course_combo, Some(87));
+    }
+
+    #[test]
+    fn next_stage_start_rejects_failed_or_unresolved_entries() {
+        use bmz_core::clear::ClearType;
+
+        let mut failed =
+            make_partial_session(2, vec![(make_score(0, 100), 100, ClearType::Failed)]);
+        failed.current_index = 1;
+        failed.entry_start_options = vec![PlayStartOptions::default(); 2];
+        assert!(failed.next_stage_start().is_none());
+
+        let mut unresolved =
+            make_partial_session(2, vec![(make_score(100, 0), 100, ClearType::Normal)]);
+        unresolved.current_index = 1;
+        unresolved.entry_start_options = vec![PlayStartOptions::default(); 2];
+        unresolved.definition.entries[1].chart_id = None;
+        assert!(unresolved.next_stage_start().is_none());
+
+        let mut finished =
+            make_partial_session(1, vec![(make_score(100, 0), 100, ClearType::Normal)]);
+        finished.current_index = 1;
+        finished.entry_start_options = vec![PlayStartOptions::default()];
+        assert!(finished.next_stage_start().is_none());
     }
 
     #[test]

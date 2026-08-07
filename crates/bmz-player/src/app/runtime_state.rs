@@ -88,6 +88,8 @@ pub(super) struct PlayRuntimeState {
     pub(super) pending_decide: Option<DecideTransition>,
     pub(super) pending_play_start: Option<PendingPlayStart>,
     pub(super) pending_play_preload: Option<PendingPlayPreload>,
+    /// 中間リザルト表示中に開始した次コース譜面の先読み要求。
+    pub(super) pending_course_stage_launch: Option<PendingCourseStageLaunch>,
     /// Decide 演出中に preload worker から受け取った結果を退避し、
     /// `start_chart_with_options` で再利用するためのバッファ。
     /// 既に裏で完了している譜面/音源ロードを main で再度同期実行するのを避ける。

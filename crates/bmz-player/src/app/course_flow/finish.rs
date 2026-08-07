@@ -3,6 +3,9 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn finish_active_course(&mut self) {
+        if self.play.pending_course_stage_launch.is_some() {
+            self.invalidate_play_preload();
+        }
         let Some(course) = self.play.active_course.take() else {
             return;
         };

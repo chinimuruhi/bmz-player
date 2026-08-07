@@ -15,6 +15,25 @@ pub(super) struct PlayPreloadResult {
     pub(super) result: std::result::Result<PreloadedInputPlaySession, String>,
 }
 
+/// 中間リザルト中に先読みしている次のコース譜面。
+///
+/// preload に渡した開始条件をそのまま Play 入場へ引き継ぎ、曲間で
+/// gauge/combo/arrange 条件を作り直して食い違わせないために保持する。
+pub(super) struct PendingCourseStageLaunch {
+    pub(super) course_id: i64,
+    pub(super) entry_index: usize,
+    pub(super) chart_id: i64,
+    pub(super) options: PlayStartOptions,
+    pub(super) preload_generation: u64,
+    pub(super) preload_error: Option<String>,
+}
+
+impl PendingCourseStageLaunch {
+    pub(super) fn matches(&self, course_id: i64, entry_index: usize, chart_id: i64) -> bool {
+        self.course_id == course_id && self.entry_index == entry_index && self.chart_id == chart_id
+    }
+}
+
 /// Media kept across same-song retry (beatoraja `BMSResource` style).
 /// Cleared when leaving result back to select, or when starting an unrelated chart.
 pub(super) struct PlayMediaCache {

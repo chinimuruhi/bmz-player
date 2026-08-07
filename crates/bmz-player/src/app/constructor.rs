@@ -212,6 +212,7 @@ impl WinitApp {
                 pending_decide: None,
                 pending_play_start: None,
                 pending_play_preload: None,
+                pending_course_stage_launch: None,
                 preloaded_play_session: None,
                 play_preload_generation: 0,
                 play_media_cache: None,

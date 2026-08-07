@@ -27,44 +27,17 @@ impl WinitApp {
                         options.clone(),
                         cache,
                     );
-                    self.begin_result_retry_play_scene(chart_id, options);
+                    self.begin_preloaded_play_scene(chart_id, options);
                     return;
                 }
                 RetryPreloadKind::ReimportedChartWithFreshAudio => {
                     self.start_play_preload_reusing_bga(chart_id, options.clone(), cache);
-                    self.begin_result_retry_play_scene(chart_id, options);
+                    self.begin_preloaded_play_scene(chart_id, options);
                     return;
                 }
             }
         }
         self.start_chart_with_options(chart_id, options);
-    }
-
-    pub(super) fn begin_result_retry_play_scene(
-        &mut self,
-        chart_id: i64,
-        options: PlayStartOptions,
-    ) {
-        self.ensure_skin_ready(SkinKind::Decide);
-        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
-        let play_skin_runtime_state = lua_runtime_state_for_play(
-            &options,
-            self.boot.profile_config.play.auto_play,
-            play_skin_key_mode,
-            &self.boot.profile_config.display_name,
-        );
-        self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
-        self.ensure_skin_ready(SkinKind::Play);
-        self.play.play_ending = None;
-        self.result.result_exit = None;
-        self.result.result_key5_held = false;
-        self.result.result_key7_held = false;
-        self.play.play_ready_sound_started_at = None;
-        self.play.play_ready_last_control_hold_at = None;
-        self.play.decide_sound_stopped_for_chart_start = false;
-        self.audio.draining_audio = None;
-        self.enter_play_scene(chart_id, options, self.decide_snapshot_for_chart(chart_id));
-        self.poll_play_preload();
     }
 
     pub(super) fn retry_course_same_arrange(&mut self) {

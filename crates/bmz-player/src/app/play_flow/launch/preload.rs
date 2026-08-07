@@ -56,7 +56,7 @@ impl WinitApp {
         // Play の最初の snapshot から同じ runtime image 100 / 101 を使えるようにする。
         self.prepare_play_meta_image_textures(chart_id);
         // Play スキンは裏で decode+upload を進めるが、Decide 入場では待たない。
-        // 実際の Play 入場 (`start_chart_with_options`) で `ensure_skin_ready` が保険として残る。
+        // 実際の Play 入場で `ensure_skin_ready` が保険として残る。
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
@@ -78,7 +78,10 @@ impl WinitApp {
         });
     }
 
-    pub(super) fn start_play_preload(&mut self, chart_id: i64, options: PlayStartOptions) {
+    pub(super) fn start_play_preload(&mut self, chart_id: i64, options: PlayStartOptions) -> u64 {
+        // 通常開始・practice・retry は、残っているコース次曲先読みを置き換える。
+        // コース側は worker 開始後に同じ generation の launch 情報を設定し直す。
+        self.play.pending_course_stage_launch = None;
         self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
         let generation = self.play.play_preload_generation;
         self.play.preloaded_play_session = None;
@@ -144,11 +147,13 @@ impl WinitApp {
         // ここでは対象だけを予約し、従来の BGA worker による BMS 二重 parse は行わない。
         self.play.bga_preload.begin_unresolved(chart_id);
         tracing::info!(chart_id, generation, "play preload started");
+        generation
     }
 
     pub(super) fn invalidate_play_preload(&mut self) {
         self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
         self.play.pending_play_preload = None;
+        self.play.pending_course_stage_launch = None;
         // 裏で完成して退避していた結果も無効化する (decide キャンセル / 譜面差し替え)。
         self.play.preloaded_play_session = None;
         self.invalidate_chart_bga_texture_preload();

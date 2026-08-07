@@ -45,13 +45,23 @@ impl WinitApp {
                             Err(error) => {
                                 // preload 全体の失敗は譜面パース不能など再生不能なケースのみ
                                 // (個別音源の欠落は load_chart_samples が warning で続行する)。
-                                // Play 画面へ入場済みなら選曲へ戻す。course モード等の
-                                // start_chart_with_options 経路は同期 fallback で再試行される。
+                                // Play 画面へ入場済みなら選曲へ戻す。中間リザルト中の
+                                // course 次曲先読みは失敗を保持し、退出時に安全に中断する。
                                 tracing::error!(
                                     chart_id = result.chart_id,
-                                    error,
+                                    error = %error,
                                     "play preload failed"
                                 );
+                                if let Some(launch) =
+                                    self.play.pending_course_stage_launch.as_mut().filter(
+                                        |launch| {
+                                            launch.chart_id == result.chart_id
+                                                && launch.preload_generation == result.generation
+                                        },
+                                    )
+                                {
+                                    launch.preload_error = Some(error.clone());
+                                }
                                 if self.play.pending_play_start.is_some() {
                                     self.abort_pending_play_start();
                                     return;
@@ -62,12 +72,22 @@ impl WinitApp {
                 }
                 Err(mpsc::TryRecvError::Empty) => {}
                 Err(mpsc::TryRecvError::Disconnected) => {
+                    let pending_chart_id = pending.chart_id;
+                    let pending_generation = pending.generation;
                     tracing::warn!(
-                        chart_id = pending.chart_id,
-                        generation = pending.generation,
+                        chart_id = pending_chart_id,
+                        generation = pending_generation,
                         "play preload worker disconnected"
                     );
                     self.play.pending_play_preload = None;
+                    if let Some(launch) =
+                        self.play.pending_course_stage_launch.as_mut().filter(|launch| {
+                            launch.chart_id == pending_chart_id
+                                && launch.preload_generation == pending_generation
+                        })
+                    {
+                        launch.preload_error = Some("play preload worker disconnected".to_string());
+                    }
                     if self.play.pending_play_start.is_some() {
                         self.abort_pending_play_start();
                         return;
@@ -95,7 +115,18 @@ impl WinitApp {
         };
         let chart_id = play_start.chart_id;
         let start_options = play_start.options.clone();
-        let opened = if preloaded_matches_start(&prepared, chart_id, &start_options) {
+        let preload_matches = preloaded_matches_start(&prepared, chart_id, &start_options);
+        if !preload_matches
+            && self.play.pending_course_stage_launch.as_ref().is_some_and(|launch| {
+                launch.chart_id == chart_id
+                    && launch.preload_generation == self.play.play_preload_generation
+            })
+        {
+            tracing::error!(chart_id, "discarding mismatched course next-stage preload");
+            self.abort_pending_play_start();
+            return;
+        }
+        let opened = if preload_matches {
             let prepared =
                 prepare_winit_play_session_from_preloaded(&self.boot.profile_config, prepared);
             self.open_prepared_winit_play_session(prepared)
@@ -115,6 +146,12 @@ impl WinitApp {
             Ok(active_play) => {
                 tracing::info!(chart_id, "play preload installed");
                 self.install_active_play(chart_id, active_play);
+                if self.play.pending_course_stage_launch.as_ref().is_some_and(|launch| {
+                    launch.chart_id == chart_id
+                        && launch.preload_generation == self.play.play_preload_generation
+                }) {
+                    self.play.pending_course_stage_launch = None;
+                }
                 // スキン宣言のロード演出時間を既に超えていれば、同一フレーム内で
                 // READY を開始して op 80→81 切り替えと timer 40 発火を揃える
                 // (次フレームの advance_active_play まで待つと 1 フレーム
@@ -235,6 +272,9 @@ impl WinitApp {
     /// summary.  Call from any path that returns to the select screen
     /// without completing the course naturally.
     pub(super) fn clear_active_course_state(&mut self) {
+        if self.play.pending_course_stage_launch.is_some() {
+            self.invalidate_play_preload();
+        }
         if self.play.active_course.is_some() || self.result.finished_course.is_some() {
             tracing::info!(
                 had_active = self.play.active_course.is_some(),

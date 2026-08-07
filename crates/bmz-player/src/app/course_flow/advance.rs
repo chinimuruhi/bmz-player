@@ -1,6 +1,56 @@
 use super::*;
 
 impl WinitApp {
+    fn next_course_stage_start(&self) -> Option<(i64, usize, i64, PlayStartOptions)> {
+        let course = self.play.active_course.as_ref()?;
+        let (entry_index, chart_id, options) = course.next_stage_start()?;
+        Some((course.course_id, entry_index, chart_id, options))
+    }
+
+    /// 中間リザルト表示中に次曲の譜面/WAV/BGA と Play skin を先読みする。
+    fn begin_next_course_chart_preload(&mut self) {
+        let Some((course_id, entry_index, chart_id, options)) = self.next_course_stage_start()
+        else {
+            return;
+        };
+        if self.play.pending_course_stage_launch.as_ref().is_some_and(|launch| {
+            launch.matches(course_id, entry_index, chart_id)
+                && launch.preload_generation == self.play.play_preload_generation
+        }) {
+            return;
+        }
+
+        if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
+            self.play.play_media_cache = None;
+        }
+        // 先に楽曲 worker を起動し、その後の Play/Result skin 準備時間とも重ねる。
+        let preload_generation = self.start_play_preload(chart_id, options.clone());
+        self.play.pending_course_stage_launch = Some(PendingCourseStageLaunch {
+            course_id,
+            entry_index,
+            chart_id,
+            options: options.clone(),
+            preload_generation,
+            preload_error: None,
+        });
+
+        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let play_skin_runtime_state = lua_runtime_state_for_play(
+            &options,
+            self.boot.profile_config.play.auto_play,
+            play_skin_key_mode,
+            &self.boot.profile_config.display_name,
+        );
+        self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
+        tracing::info!(
+            course_id,
+            entry_index,
+            chart_id,
+            preload_generation,
+            "course next-stage preload started during intermediate result"
+        );
+    }
+
     /// コース曲間の中間リザルト状態かどうか。active_course を保持したまま
     /// finished_play だけが立ち、finished_course はまだ無い状態を指す。
     pub(super) fn is_course_intermediate_result(&self) -> bool {
@@ -92,26 +142,38 @@ impl WinitApp {
     /// コースの (current_index が指す) 次の曲を開始する。ゲージ持ち越しや
     /// replay / 同配置 arrange の適用は元の advance_course_after_finish と同じ。
     pub(super) fn start_next_course_chart(&mut self) {
-        let Some(course) = &self.play.active_course else {
+        let Some((course_id, entry_index, chart_id, _)) = self.next_course_stage_start() else {
             return;
         };
-        let next_index = course.current_index;
-        let Some(next_chart_id) =
-            course.definition.entries.get(next_index).and_then(|e| e.chart_id)
-        else {
+        let launch_matches = self.play.pending_course_stage_launch.as_ref().is_some_and(|launch| {
+            launch.matches(course_id, entry_index, chart_id)
+                && launch.preload_generation == self.play.play_preload_generation
+        });
+        if !launch_matches {
+            tracing::warn!(
+                course_id,
+                entry_index,
+                chart_id,
+                "course next-stage preload was unavailable; starting it at Play transition"
+            );
+            self.begin_next_course_chart_preload();
+        }
+
+        let Some(launch) = self.play.pending_course_stage_launch.as_ref().filter(|launch| {
+            launch.matches(course_id, entry_index, chart_id)
+                && launch.preload_generation == self.play.play_preload_generation
+        }) else {
+            tracing::error!(course_id, entry_index, chart_id, "failed to start course preload");
             return;
         };
-        // Carry each gauge independently so auto-shift gauges that already
-        // reached zero do not recover on the next chart.
-        let carried_gauges = course.entry_results.last().map(|r| r.finished.gauge_carry.clone());
-        let carried_combo = course.entry_results.last().map(|r| r.finished.course_combo);
-        let Some(mut options) = course.entry_start_options.get(next_index).cloned() else {
-            tracing::error!(next_index, "course entry start options are missing");
+        if let Some(error) = launch.preload_error.as_deref() {
+            tracing::error!(course_id, entry_index, chart_id, error, "course preload failed");
+            self.result.finished_play = None;
+            self.abort_pending_play_start();
             return;
-        };
-        options.initial_gauge_values = carried_gauges;
-        options.initial_course_combo = carried_combo;
-        self.start_chart_with_options(next_chart_id, options);
+        }
+        let options = launch.options.clone();
+        self.begin_preloaded_play_scene(chart_id, options);
     }
 
     pub(super) fn course_intermediate_exit_action(&self) -> ResultExitAction {
@@ -207,6 +269,9 @@ impl WinitApp {
             // view_state は Result を返し、入力は中間リザルト分岐へ入る。実際の次曲
             // 開始 (ゲージ持ち越し / replay / 同配置 arrange の適用を含む) は、結果画面
             // を閉じたとき advance_to_next_course_chart まで遅延する。
+            if !failed && next_chart_id.is_some() {
+                self.begin_next_course_chart_preload();
+            }
             self.show_course_intermediate_result();
             return;
         }
