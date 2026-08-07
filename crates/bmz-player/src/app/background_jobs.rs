@@ -2,6 +2,9 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn reload_select_items(&mut self) {
+        if self.select.score_refresh.take_dirty() {
+            self.invalidate_select_folder_summaries();
+        }
         self.select.select_folder_summaries.sync_view(&self.select.folder_stack);
         let previous_selected_key =
             self.select.select_items.get(self.select.selected_index).map(select_item_key);

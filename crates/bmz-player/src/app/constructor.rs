@@ -161,6 +161,7 @@ impl WinitApp {
                 autoplay_folder: None,
                 select_ir: crate::screens::select_ir::SelectIrRanking::default(),
                 player_stats,
+                score_refresh: SelectScoreRefreshState::default(),
                 select_items,
                 select_distribution_cache: RefCell::new(HashMap::new()),
                 difficulty_tables,

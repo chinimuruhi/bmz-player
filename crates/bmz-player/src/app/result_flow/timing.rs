@@ -2,11 +2,9 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn leave_result(&mut self) {
-        let score_changed = self
-            .result
-            .finished_play
-            .as_ref()
-            .is_some_and(|finished| finished.stored.score_history_id > 0);
+        if let Some(finished) = &self.result.finished_play {
+            self.select.score_refresh.mark_stored_result(finished.stored.score_history_id);
+        }
         if let Some(audio) = &self.result.result_skin_audio {
             audio.stop_all();
         }
@@ -23,9 +21,6 @@ impl WinitApp {
         self.audio.draining_audio = None;
         self.play.play_media_cache = None;
         self.play.last_play_snapshot = None;
-        if score_changed {
-            self.invalidate_select_folder_summaries();
-        }
         self.reload_select_items();
         self.sync_select_holds_from_pressed_controls();
         let now = Instant::now();

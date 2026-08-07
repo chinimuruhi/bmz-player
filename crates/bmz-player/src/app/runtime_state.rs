@@ -1,5 +1,20 @@
 use super::*;
 
+#[derive(Default)]
+pub(super) struct SelectScoreRefreshState {
+    dirty: bool,
+}
+
+impl SelectScoreRefreshState {
+    pub(super) fn mark_stored_result(&mut self, score_history_id: i64) {
+        self.dirty |= score_history_id > 0;
+    }
+
+    pub(super) fn take_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.dirty)
+    }
+}
+
 pub(super) struct SelectRuntimeState {
     /// 選曲画面の F10 で開始したフォルダ内 Autoplay。
     pub(super) autoplay_folder: Option<AutoplayFolderSession>,
@@ -7,6 +22,9 @@ pub(super) struct SelectRuntimeState {
     pub(super) select_ir: crate::screens::select_ir::SelectIrRanking,
     /// profile 全体の player statistics。Select / Result skin の NUMBER_TOTAL* 系に渡す。
     pub(super) player_stats: PlayerStatsSnapshot,
+    /// Result 保存後、選曲リストが score DB を再取得するまで保持する。
+    /// Retry で `finished_play` が破棄されても更新必要性を失わないための状態。
+    pub(super) score_refresh: SelectScoreRefreshState,
     pub(super) select_items: Vec<SelectItem>,
     pub(super) select_distribution_cache: RefCell<HashMap<i64, Vec<ChartDistributionSecond>>>,
     pub(super) difficulty_tables: Vec<DifficultyTableRecord>,

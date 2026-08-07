@@ -83,6 +83,20 @@ fn pre_play_abort_starts_fadeout_and_returns_to_select_without_result() {
 }
 
 #[test]
+fn stored_result_keeps_select_score_refresh_pending_until_reload() {
+    let mut refresh = SelectScoreRefreshState::default();
+
+    refresh.mark_stored_result(0);
+    assert!(!refresh.take_dirty(), "unsaved autoplay/replay results must not dirty select scores");
+
+    refresh.mark_stored_result(42);
+    refresh.mark_stored_result(0);
+    // Result -> Retry does not consume this state. The next Select reload does.
+    assert!(refresh.take_dirty());
+    assert!(!refresh.take_dirty(), "a completed Select reload must consume the dirty state");
+}
+
+#[test]
 fn debug_boot_result_summary_has_stat_graph_data() {
     let finished = debug_boot_finished_play_session();
     let summary = &finished.summary;
