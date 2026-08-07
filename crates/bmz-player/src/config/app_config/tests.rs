@@ -76,6 +76,17 @@ fn app_config_defaults_gamepad_backend_to_gilrs() {
 }
 
 #[test]
+fn app_config_round_trips_raw_input_gamepad_backend() {
+    let mut config = AppConfig::default();
+    config.input.gamepad_backend = GamepadBackendKind::RawInput;
+
+    let toml = toml::to_string(&config).unwrap();
+    let loaded: AppConfig = toml::from_str(&toml).unwrap();
+
+    assert_eq!(loaded.input.gamepad_backend, GamepadBackendKind::RawInput);
+}
+
+#[test]
 fn app_config_defaults_audio_output_to_standard_shared_mode() {
     let config = AppConfig::default();
 

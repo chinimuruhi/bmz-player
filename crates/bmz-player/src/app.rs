@@ -372,9 +372,21 @@ pub async fn run_with_options_and_log_buffer(
 ) -> Result<()> {
     let boot = bootstrap::bootstrap()?;
 
-    let event_loop = EventLoop::<AppUserEvent>::with_user_event()
-        .build()
-        .context("failed to create event loop")?;
+    let raw_input_bridge = (cfg!(windows)
+        && boot.app_config.input.gamepad_enabled
+        && boot.app_config.input.gamepad_backend == GamepadBackendKind::RawInput)
+        .then(crate::input::rawinput::RawInputBridge::new);
+    let mut event_loop_builder = EventLoop::<AppUserEvent>::with_user_event();
+    #[cfg(windows)]
+    if let Some(bridge) = raw_input_bridge.clone() {
+        use winit::platform::windows::EventLoopBuilderExtWindows;
+
+        event_loop_builder.with_msg_hook(move |message| {
+            bridge.handle_message(message);
+            false
+        });
+    }
+    let event_loop = event_loop_builder.build().context("failed to create event loop")?;
     // 描画間隔は `FramePacer` の deadline を `WaitUntil` へ渡して制御する。
     // event loop thread 自体を sleep させず、フレーム待機中も入力イベントを処理する。
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -405,6 +417,7 @@ pub async fn run_with_options_and_log_buffer(
         event_proxy,
         log_buffer,
         maintenance_select_tx,
+        raw_input_bridge,
     )?);
     tracing::info!("starting winit event loop");
     event_loop.run_app(app.as_mut()).context("winit event loop failed")
@@ -533,7 +546,7 @@ struct WinitApp {
     renderer: Box<Renderer>,
     /// device共通の押下集合とkeyboard bounce状態。
     input: AppInputRuntime,
-    gamepad: Option<Box<crate::input::gamepad::GamepadBackend>>,
+    gamepad: Option<crate::input::gamepad::GamepadBackend>,
     /// worker 完了時に main thread の redraw を起こすための winit user event proxy。
     event_proxy: EventLoopProxy<AppUserEvent>,
     /// frame pacing、確定FPS、scene別profile集計をまとめた描画runtime。

@@ -2,5 +2,6 @@
 pub mod gameinput;
 pub mod gamepad;
 pub mod gilrs;
+pub mod rawinput;
 pub mod shared;
 pub mod winit;

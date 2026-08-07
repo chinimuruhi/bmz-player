@@ -171,10 +171,31 @@ pub(super) fn initialize_gamepad_backend(
     kind: GamepadBackendKind,
     sensitivity: f32,
     scratch_threshold: u32,
-) -> Option<Box<crate::input::gamepad::GamepadBackend>> {
+    raw_input_bridge: Option<crate::input::rawinput::RawInputBridge>,
+) -> Option<crate::input::gamepad::GamepadBackend> {
     match kind {
         GamepadBackendKind::Auto => initialize_gilrs_backend(sensitivity, scratch_threshold),
         GamepadBackendKind::Gilrs => initialize_gilrs_backend(sensitivity, scratch_threshold),
+        GamepadBackendKind::RawInput => {
+            #[cfg(windows)]
+            if let Some(bridge) = raw_input_bridge {
+                tracing::info!("Raw Input gamepad backend initialized; awaiting window attachment");
+                return Some(crate::input::gamepad::GamepadBackend::RawInput(Box::new(
+                    crate::input::rawinput::RawInputBackend::new(
+                        bridge,
+                        sensitivity,
+                        scratch_threshold,
+                    ),
+                )));
+            }
+            #[cfg(windows)]
+            tracing::warn!("Raw Input message bridge is unavailable; falling back to gilrs");
+            #[cfg(not(windows))]
+            tracing::warn!(
+                "Raw Input gamepad backend is only available on Windows; falling back to gilrs"
+            );
+            initialize_gilrs_backend(sensitivity, scratch_threshold)
+        }
         GamepadBackendKind::GameInput => {
             #[cfg(all(windows, feature = "experimental-gameinput"))]
             {
@@ -195,11 +216,11 @@ pub(super) fn initialize_gamepad_backend(
 pub(super) fn initialize_gameinput_backend(
     sensitivity: f32,
     scratch_threshold: u32,
-) -> Option<Box<crate::input::gamepad::GamepadBackend>> {
+) -> Option<crate::input::gamepad::GamepadBackend> {
     match crate::input::gameinput::GameInputBackend::new(sensitivity, scratch_threshold) {
         Ok(backend) => {
             tracing::info!("GameInput initialized on main thread");
-            Some(Box::new(crate::input::gamepad::GamepadBackend::GameInput(backend)))
+            Some(crate::input::gamepad::GamepadBackend::GameInput(Box::new(backend)))
         }
         Err(error) => {
             tracing::warn!(%error, "GameInput init failed");
@@ -211,11 +232,11 @@ pub(super) fn initialize_gameinput_backend(
 pub(super) fn initialize_gilrs_backend(
     sensitivity: f32,
     scratch_threshold: u32,
-) -> Option<Box<crate::input::gamepad::GamepadBackend>> {
+) -> Option<crate::input::gamepad::GamepadBackend> {
     match crate::input::gilrs::GilrsBackend::new(sensitivity, scratch_threshold) {
         Ok(backend) => {
             tracing::info!("gilrs initialized");
-            Some(Box::new(crate::input::gamepad::GamepadBackend::Gilrs(backend)))
+            Some(crate::input::gamepad::GamepadBackend::Gilrs(Box::new(backend)))
         }
         Err(error) => {
             tracing::warn!(%error, "gilrs init failed");

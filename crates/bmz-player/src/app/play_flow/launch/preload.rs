@@ -216,7 +216,7 @@ impl WinitApp {
         let mut app_config = self.boot.app_config.clone();
         app_config.audio.sample_rate = self.play_output_sample_rate();
         app_config.input.gamepad_slot_runtime_device_ids =
-            resolve_gamepad_runtime_slots(&app_config.input, self.gamepad.as_deref())
+            resolve_gamepad_runtime_slots(&app_config.input, self.gamepad.as_ref())
                 .map(|id| id.map(|id| id.0));
         app_config
     }
