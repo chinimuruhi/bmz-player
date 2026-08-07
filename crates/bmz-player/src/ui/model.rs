@@ -258,7 +258,7 @@ pub struct EguiRunContext<'a, 'practice> {
     pub difficulty_tables: &'a [DifficultyTableRecord],
     pub update_dialog: Option<UpdateDialog<'a>>,
     pub obs_connection_status: &'a crate::obs::ObsConnectionStatus,
-    /// 接続中ゲームパッド一覧 (gilrs)。未初期化時は空。
+    /// 現在の backend が認識しているゲームパッド一覧。未初期化時は空。
     pub connected_gamepads: &'a [crate::input::gamepad::ConnectedGamepad],
 }
 

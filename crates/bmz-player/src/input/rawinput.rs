@@ -81,6 +81,9 @@ mod windows {
         }
 
         fn handle_raw_input(&self, raw_input: *mut c_void) {
+            if !self.shared.lock().is_ok_and(|shared| shared.registered) {
+                return;
+            }
             let Some((handle, reports)) = read_raw_input_reports(raw_input) else { return };
             let timestamp = current_device_timestamp();
             let Ok(mut shared) = self.shared.lock() else {
@@ -95,6 +98,9 @@ mod windows {
                 tracing::error!("Raw Input state lock is poisoned");
                 return;
             };
+            if !shared.registered {
+                return;
+            }
             match change {
                 GIDC_ARRIVAL => shared.ensure_device(handle),
                 GIDC_REMOVAL => shared.remove_device(handle, current_device_timestamp()),
@@ -137,7 +143,7 @@ mod windows {
                 tracing::warn!(%error, "failed to unregister Raw Input gamepad usages");
             }
             if let Ok(mut shared) = self.shared.lock() {
-                shared.registered = false;
+                shared.deactivate();
             }
         }
 
@@ -267,6 +273,16 @@ mod windows {
     }
 
     impl RawInputState {
+        fn deactivate(&mut self) {
+            self.registered = false;
+            self.devices.clear();
+            self.rejected_handles.clear();
+            self.events.clear();
+            for device in self.known_devices.values_mut() {
+                device.is_connected = false;
+            }
+        }
+
         fn ensure_device(&mut self, handle: HANDLE) {
             let key = handle as usize;
             if self.devices.contains_key(&key) || self.rejected_handles.contains(&key) {

@@ -88,7 +88,7 @@ impl WinitApp {
                 boot.app_config.input.gamepad_backend,
                 sensitivity,
                 threshold,
-                raw_input_bridge,
+                raw_input_bridge.clone(),
             )
         } else {
             None
@@ -155,6 +155,7 @@ impl WinitApp {
             shutdown_requested,
             renderer,
             input: AppInputRuntime::default(),
+            raw_input_bridge,
             gamepad,
             event_proxy,
             frame: FrameRuntime::new(now),
@@ -324,6 +325,7 @@ impl WinitApp {
                 egui: None,
                 log_buffer,
                 applied_window_mode: initial_window_mode,
+                device_events_reconfigure_pending: false,
                 focused: true,
                 last_cursor_action_at: now,
                 cursor_visible: true,

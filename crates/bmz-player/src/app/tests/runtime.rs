@@ -1,4 +1,7 @@
 use super::*;
+use crate::app::input_lifecycle::{
+    gamepad_runtime_config_changed, keyboard_runtime_config_changed,
+};
 
 #[test]
 fn winit_app_stack_size_stays_bounded() {
@@ -160,6 +163,35 @@ fn keyboard_input_backend_uses_raw_input_on_windows_auto() {
 
     config.input.keyboard_enabled = false;
     assert_eq!(keyboard_input_backend_for_config(&config), None);
+}
+
+#[test]
+fn runtime_input_change_detection_separates_keyboard_and_gamepad() {
+    let before = AppConfig::default().input;
+    let mut after = before.clone();
+    assert!(!keyboard_runtime_config_changed(&before, &after));
+    assert!(!gamepad_runtime_config_changed(&before, &after));
+
+    after.backend = InputBackendKind::RawInput;
+    assert!(keyboard_runtime_config_changed(&before, &after));
+    assert!(!gamepad_runtime_config_changed(&before, &after));
+
+    after = before.clone();
+    after.gamepad_backend = GamepadBackendKind::RawInput;
+    assert!(!keyboard_runtime_config_changed(&before, &after));
+    assert!(gamepad_runtime_config_changed(&before, &after));
+}
+
+#[test]
+fn runtime_input_change_detection_reacts_to_enable_flags() {
+    let before = AppConfig::default().input;
+    let mut after = before.clone();
+    after.keyboard_enabled = !before.keyboard_enabled;
+    assert!(keyboard_runtime_config_changed(&before, &after));
+
+    after = before.clone();
+    after.gamepad_enabled = !before.gamepad_enabled;
+    assert!(gamepad_runtime_config_changed(&before, &after));
 }
 
 #[test]

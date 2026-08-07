@@ -372,10 +372,9 @@ pub async fn run_with_options_and_log_buffer(
 ) -> Result<()> {
     let boot = bootstrap::bootstrap()?;
 
-    let raw_input_bridge = (cfg!(windows)
-        && boot.app_config.input.gamepad_enabled
-        && boot.app_config.input.gamepad_backend == GamepadBackendKind::RawInput)
-        .then(crate::input::rawinput::RawInputBridge::new);
+    // Raw Input へ実行中に切り替えられるよう、Windows message hook は起動時から
+    // 常設する。デバイス usage の登録は RawInputBackend の attach 時まで行わない。
+    let raw_input_bridge = cfg!(windows).then(crate::input::rawinput::RawInputBridge::new);
     let mut event_loop_builder = EventLoop::<AppUserEvent>::with_user_event();
     #[cfg(windows)]
     if let Some(bridge) = raw_input_bridge.clone() {
@@ -546,6 +545,8 @@ struct WinitApp {
     renderer: Box<Renderer>,
     /// device共通の押下集合とkeyboard bounce状態。
     input: AppInputRuntime,
+    /// 実行中に Raw Input backend を生成し直すための常設 message bridge。
+    raw_input_bridge: Option<crate::input::rawinput::RawInputBridge>,
     gamepad: Option<crate::input::gamepad::GamepadBackend>,
     /// worker 完了時に main thread の redraw を起こすための winit user event proxy。
     event_proxy: EventLoopProxy<AppUserEvent>,

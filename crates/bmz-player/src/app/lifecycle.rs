@@ -351,6 +351,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if std::mem::take(&mut self.ui.device_events_reconfigure_pending) {
+            self.configure_device_events(event_loop);
+        }
         let pending_before = self.has_pending_skin_reload();
         if pending_before {
             let drain_start = Instant::now();

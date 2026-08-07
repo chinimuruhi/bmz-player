@@ -4,6 +4,7 @@ use crate::screens::select_model::SelectCourseRow;
 mod render;
 
 struct EguiProfileBefore {
+    app_input: GlobalInputConfig,
     locale: crate::i18n::AppLocale,
     play: PlayDefaultsConfig,
     lane: LaneViewConfig,
@@ -140,6 +141,7 @@ impl WinitApp {
             return;
         };
         let profile_before = EguiProfileBefore {
+            app_input: self.boot.app_config.input.clone(),
             locale: self.boot.profile_config.ui.locale(),
             play: self.boot.profile_config.play.clone(),
             lane: self.boot.profile_config.lane.clone(),
@@ -414,6 +416,7 @@ impl WinitApp {
     ) {
         self.reconcile_rian_table_identity();
         self.apply_egui_profile_changes(&profile_before);
+        self.apply_egui_input_config(window, &profile_before.app_input);
         self.renderer.set_egui_frame(output.frame);
         if output.practice_leave {
             self.leave_practice();

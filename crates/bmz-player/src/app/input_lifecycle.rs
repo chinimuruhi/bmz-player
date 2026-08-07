@@ -36,6 +36,76 @@ impl WinitApp {
         event_loop.listen_device_events(device_events);
     }
 
+    pub(super) fn apply_egui_input_config(&mut self, window: &Window, before: &GlobalInputConfig) {
+        let keyboard_changed = keyboard_runtime_config_changed(before, &self.boot.app_config.input);
+        let gamepad_changed = gamepad_runtime_config_changed(before, &self.boot.app_config.input);
+        if !keyboard_changed && !gamepad_changed {
+            return;
+        }
+
+        // backend 境界をまたいで押下状態を持ち越さない。設定パネルはプレイ中に
+        // 編集できないため、ここでは focus loss と同じリセットで安全に揃えられる。
+        let releases = self.input.handle_focus_lost();
+        for event in releases.raw_keyboard {
+            self.route_play_device_input(event);
+        }
+        for event in releases.window_keyboard {
+            self.route_play_device_input(event);
+        }
+        self.sync_select_holds_from_pressed_controls();
+        self.clear_select_hold();
+        self.reset_select_analog_scroll();
+        self.reset_play_analog_scroll();
+        self.clear_result_ir_scroll_input();
+        self.clear_play_control_holds();
+
+        if keyboard_changed {
+            self.ui.device_events_reconfigure_pending = true;
+            tracing::info!(
+                backend = ?self.boot.app_config.input.backend,
+                enabled = self.boot.app_config.input.keyboard_enabled,
+                "keyboard input backend configuration updated"
+            );
+        }
+        if gamepad_changed {
+            self.reinitialize_gamepad_backend(window);
+        }
+    }
+
+    fn reinitialize_gamepad_backend(&mut self, window: &Window) {
+        let input = &mut self.boot.app_config.input;
+        input.gamepad_slot_runtime_device_ids = [None; 2];
+        let enabled = input.gamepad_enabled;
+        let requested = input.gamepad_backend;
+        let sensitivity = self.boot.profile_config.input.analog_scratch_sensitivity;
+        let threshold = self.boot.profile_config.input.analog_scratch_threshold;
+
+        // RawInputBackend の Drop で usage 登録を解除してから新 backend を作る。
+        self.gamepad = None;
+        if !enabled {
+            tracing::info!("gamepad input disabled immediately");
+            return;
+        }
+
+        let mut gamepad = initialize_gamepad_backend(
+            requested,
+            sensitivity,
+            threshold,
+            self.raw_input_bridge.clone(),
+        );
+        let attach_error = gamepad.as_mut().and_then(|backend| backend.attach_window(window).err());
+        if let Some(error) = attach_error {
+            tracing::warn!(%error, ?requested, "gamepad backend could not attach to the window; falling back to gilrs");
+            gamepad = initialize_gilrs_backend(sensitivity, threshold);
+        }
+        tracing::info!(
+            ?requested,
+            active = gamepad.as_ref().map(crate::input::gamepad::GamepadBackend::name),
+            "gamepad input backend configuration applied immediately"
+        );
+        self.gamepad = gamepad;
+    }
+
     pub(super) fn raw_input_gameplay_blocked(&self) -> bool {
         let practice_overlay = self
             .play
@@ -246,4 +316,19 @@ impl WinitApp {
             }
         }
     }
+}
+
+pub(super) fn keyboard_runtime_config_changed(
+    before: &GlobalInputConfig,
+    after: &GlobalInputConfig,
+) -> bool {
+    before.backend != after.backend || before.keyboard_enabled != after.keyboard_enabled
+}
+
+pub(super) fn gamepad_runtime_config_changed(
+    before: &GlobalInputConfig,
+    after: &GlobalInputConfig,
+) -> bool {
+    before.gamepad_backend != after.gamepad_backend
+        || before.gamepad_enabled != after.gamepad_enabled
 }

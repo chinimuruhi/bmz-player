@@ -175,6 +175,10 @@ impl AppInputRuntime {
         self.discard_gamepad_output_until_resynced = true;
         self.pressed_controls.clear();
         self.pressed_play_inputs.clear();
+        self.release_keyboard_inputs()
+    }
+
+    pub(super) fn release_keyboard_inputs(&mut self) -> InputReleaseBatch {
         InputReleaseBatch {
             raw_keyboard: self.take_raw_keyboard_releases(),
             window_keyboard: self.take_window_keyboard_releases(),

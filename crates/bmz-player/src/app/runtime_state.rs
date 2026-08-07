@@ -280,6 +280,9 @@ pub(super) struct UiRuntimeState {
     /// 現在ウィンドウへ適用済みのウィンドウモード。
     /// config 側との差分検出でライブ反映の要否を判定する。
     pub(super) applied_window_mode: WindowMode,
+    /// キーボード backend 変更後、次の about_to_wait で winit の
+    /// DeviceEvent 購読を更新する。
+    pub(super) device_events_reconfigure_pending: bool,
     /// ウィンドウがフォーカスを持っているか。フレームレート上限の切替に使う。
     pub(super) focused: bool,
     /// 直近のマウスカーソル移動 / 操作時刻。カーソル非表示判定に使う。
