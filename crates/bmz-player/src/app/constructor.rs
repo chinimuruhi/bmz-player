@@ -10,6 +10,7 @@ impl WinitApp {
         event_proxy: EventLoopProxy<AppUserEvent>,
         log_buffer: LogBuffer,
         maintenance_select_tx: tokio::sync::watch::Sender<bool>,
+        raw_input_bridge: Option<crate::input::rawinput::RawInputBridge>,
     ) -> Result<Self> {
         let mut boot = boot;
         if let Some(cli_renderer) = options.renderer.clone() {
@@ -87,6 +88,7 @@ impl WinitApp {
                 boot.app_config.input.gamepad_backend,
                 sensitivity,
                 threshold,
+                raw_input_bridge,
             )
         } else {
             None

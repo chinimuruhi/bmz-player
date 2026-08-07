@@ -135,6 +135,7 @@ pub(in crate::ui) fn gamepad_backend_label(
     match backend {
         GamepadBackendKind::Auto => tr!(text, "common-auto-select"),
         GamepadBackendKind::Gilrs => "gilrs".to_owned(),
+        GamepadBackendKind::RawInput => tr!(text, "settings-input-raw-input"),
         GamepadBackendKind::GameInput => tr!(text, "settings-input-gameinput"),
     }
 }

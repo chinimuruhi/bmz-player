@@ -345,6 +345,7 @@ pub enum GamepadBackendKind {
     Auto,
     #[default]
     Gilrs,
+    RawInput,
     /// 既存configの読み込み互換と実験ビルド用にのみ保持する。
     GameInput,
 }

@@ -190,15 +190,21 @@ pub struct GamepadPollOutput {
 }
 
 pub enum GamepadBackend {
-    Gilrs(super::gilrs::GilrsBackend),
+    Gilrs(Box<super::gilrs::GilrsBackend>),
+    #[cfg(windows)]
+    RawInput(Box<super::rawinput::RawInputBackend>),
     #[cfg(all(windows, feature = "experimental-gameinput"))]
-    GameInput(super::gameinput::GameInputBackend),
+    GameInput(Box<super::gameinput::GameInputBackend>),
 }
 
 impl GamepadBackend {
     pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
         match self {
             Self::Gilrs(backend) => backend.set_analog_config(sensitivity, scratch_threshold),
+            #[cfg(windows)]
+            Self::RawInput(backend) => {
+                backend.set_analog_config(sensitivity, scratch_threshold);
+            }
             #[cfg(all(windows, feature = "experimental-gameinput"))]
             Self::GameInput(backend) => {
                 backend.set_analog_config(sensitivity, scratch_threshold);
@@ -209,6 +215,8 @@ impl GamepadBackend {
     pub fn poll(&mut self) -> GamepadPollOutput {
         match self {
             Self::Gilrs(backend) => backend.poll(),
+            #[cfg(windows)]
+            Self::RawInput(backend) => backend.poll(),
             #[cfg(all(windows, feature = "experimental-gameinput"))]
             Self::GameInput(backend) => backend.poll(),
         }
@@ -217,6 +225,8 @@ impl GamepadBackend {
     pub fn connected_gamepads(&self) -> Vec<ConnectedGamepad> {
         match self {
             Self::Gilrs(backend) => backend.connected_gamepads(),
+            #[cfg(windows)]
+            Self::RawInput(backend) => backend.connected_gamepads(),
             #[cfg(all(windows, feature = "experimental-gameinput"))]
             Self::GameInput(backend) => backend.connected_gamepads(),
         }
@@ -225,6 +235,8 @@ impl GamepadBackend {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Gilrs(_) => "gilrs",
+            #[cfg(windows)]
+            Self::RawInput(_) => "Raw Input",
             #[cfg(all(windows, feature = "experimental-gameinput"))]
             Self::GameInput(_) => "GameInput",
         }
@@ -234,10 +246,21 @@ impl GamepadBackend {
         matches!(self, Self::Gilrs(_))
     }
 
+    pub fn attach_window(&mut self, window: &winit::window::Window) -> anyhow::Result<()> {
+        match self {
+            Self::Gilrs(_) => Ok(()),
+            #[cfg(windows)]
+            Self::RawInput(backend) => backend.attach_window(window),
+            #[cfg(all(windows, feature = "experimental-gameinput"))]
+            Self::GameInput(_) => Ok(()),
+        }
+    }
+
     #[cfg(all(windows, feature = "experimental-gameinput"))]
     pub fn gameinput_diagnostics(&self) -> Option<super::gameinput::GameInputPollDiagnostics> {
         match self {
             Self::Gilrs(_) => None,
+            Self::RawInput(_) => None,
             Self::GameInput(backend) => Some(backend.diagnostics()),
         }
     }

@@ -157,6 +157,15 @@ impl WinitApp {
                 // decode 結果はそれまで skin_decode_rx にバッファされ、起動後にドレインされる。
                 self.start_skin_upload_worker();
                 self.configure_device_events(event_loop);
+                let raw_input_attach_error =
+                    self.gamepad.as_mut().and_then(|backend| backend.attach_window(&window).err());
+                if let Some(error) = raw_input_attach_error {
+                    tracing::warn!(%error, "gamepad backend could not attach to the window; falling back to gilrs");
+                    self.gamepad = initialize_gilrs_backend(
+                        self.boot.profile_config.input.analog_scratch_sensitivity,
+                        self.boot.profile_config.input.analog_scratch_threshold,
+                    );
+                }
                 window.request_redraw();
                 self.ui.egui = Some(EguiLayer::new(
                     &window,
