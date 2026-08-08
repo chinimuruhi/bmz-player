@@ -6,6 +6,7 @@ use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::PhysicalKey;
 
 use crate::config::profile_config::InputActionConfig;
+use crate::input::gamepad::GamepadPressedButton;
 use crate::input::winit::{
     W_KEYBOARD_DEVICE_ID, physical_key_to_control, physical_key_to_device_input,
 };
@@ -63,6 +64,7 @@ pub(super) struct AppInputRuntime {
     pub(super) select_held: bool,
     pub(super) select_e_action_holds: HashSet<InputActionConfig>,
     pub(super) pressed_controls: HashSet<String>,
+    pressed_control_sources: HashSet<(DeviceId, String)>,
     pub(super) pressed_play_inputs: HashSet<(DeviceId, PhysicalControl)>,
     raw_input_pressed_keys: HashSet<PhysicalKey>,
     window_input_pressed_keys: HashSet<PhysicalKey>,
@@ -80,9 +82,13 @@ impl AppInputRuntime {
     pub(super) fn track_control(&mut self, event: &ControlInputEvent) {
         if let Some(name) = event.name.as_deref() {
             if event.pressed {
+                self.pressed_control_sources.insert((event.device, name.to_string()));
                 self.pressed_controls.insert(name.to_string());
             } else {
-                self.pressed_controls.remove(name);
+                self.pressed_control_sources.remove(&(event.device, name.to_string()));
+                if !self.pressed_control_sources.iter().any(|(_, pressed)| pressed == name) {
+                    self.pressed_controls.remove(name);
+                }
             }
         }
         if let Some(physical) = event.physical.as_ref() {
@@ -93,6 +99,22 @@ impl AppInputRuntime {
                 self.pressed_play_inputs.remove(&input);
             }
         }
+    }
+
+    pub(super) fn replace_gamepad_pressed_controls(
+        &mut self,
+        pressed_buttons: &[GamepadPressedButton],
+    ) {
+        self.pressed_control_sources.retain(|(device, _)| *device == W_KEYBOARD_DEVICE_ID);
+        self.pressed_play_inputs
+            .retain(|(_, control)| matches!(control, PhysicalControl::KeyboardKey(_)));
+        for button in pressed_buttons {
+            self.pressed_control_sources.insert((button.device_id, button.name.clone()));
+            self.pressed_play_inputs
+                .insert((button.device_id, PhysicalControl::GamepadButton(button.name.clone())));
+        }
+        self.pressed_controls =
+            self.pressed_control_sources.iter().map(|(_, name)| name.clone()).collect();
     }
 
     pub(super) fn select_e_action_held(&self) -> bool {
@@ -174,6 +196,7 @@ impl AppInputRuntime {
     pub(super) fn handle_focus_lost(&mut self) -> InputReleaseBatch {
         self.discard_gamepad_output_until_resynced = true;
         self.pressed_controls.clear();
+        self.pressed_control_sources.clear();
         self.pressed_play_inputs.clear();
         self.release_keyboard_inputs()
     }
@@ -221,9 +244,38 @@ fn release_events(pressed_keys: &mut HashSet<PhysicalKey>) -> Vec<DeviceInputEve
 #[cfg(test)]
 mod tests {
     use bmz_core::input::InputKind;
+    use bmz_gameplay::input::backend::DeviceTimestamp;
     use winit::keyboard::KeyCode;
 
     use super::*;
+
+    fn gamepad_button(
+        device_id: DeviceId,
+        name: &str,
+        pressed: bool,
+        timestamp_ns: u128,
+    ) -> crate::input::gamepad::GamepadButtonEvent {
+        crate::input::gamepad::GamepadButtonEvent {
+            name: name.to_string(),
+            device_id,
+            pressed,
+            timestamp: DeviceTimestamp::MonotonicNs(timestamp_ns),
+            synthesized_analog_axis: false,
+        }
+    }
+
+    fn track_and_filter_gamepad(
+        runtime: &mut AppInputRuntime,
+        config: InputBounceConfig,
+        event: &crate::input::gamepad::GamepadButtonEvent,
+    ) -> Option<DeviceInputEvent> {
+        runtime.track_control(&ControlInputEvent::gamepad(
+            event.device_id,
+            &event.name,
+            event.pressed,
+        ));
+        runtime.accept_app_event(config, crate::input::gamepad::to_device_input_event(event))
+    }
 
     #[test]
     fn tracks_control_press_and_release_in_shared_state() {
@@ -242,6 +294,75 @@ mod tests {
         runtime.track_control(&released);
         assert!(!runtime.pressed_controls.contains("ButtonSouth"));
         assert!(runtime.pressed_play_inputs.is_empty());
+    }
+
+    #[test]
+    fn physical_gamepad_hold_survives_suppressed_bounce_press() {
+        let config =
+            InputBounceConfig { keyboard_threshold_us: 0, controller_threshold_us: 17_000 };
+        for control in ["Button9", "Button10"] {
+            let mut runtime = AppInputRuntime::default();
+            let device = DeviceId(2);
+            let sequence = [
+                gamepad_button(device, control, true, 0),
+                gamepad_button(device, control, false, 1_000_000),
+                gamepad_button(device, control, true, 2_000_000),
+            ];
+            let accepted_press_count = sequence
+                .iter()
+                .filter_map(|event| track_and_filter_gamepad(&mut runtime, config, event))
+                .filter(|event| event.kind == InputKind::Press)
+                .count();
+
+            assert_eq!(accepted_press_count, 1, "{control}の再Pressは単発操作へ渡さない");
+            assert!(runtime.pressed_controls.contains(control));
+            assert!(
+                runtime
+                    .pressed_play_inputs
+                    .contains(&(device, PhysicalControl::GamepadButton(control.to_string())))
+            );
+        }
+    }
+
+    #[test]
+    fn releasing_one_gamepad_keeps_same_named_button_held_by_another() {
+        let mut runtime = AppInputRuntime::default();
+        runtime.track_control(&ControlInputEvent::gamepad(DeviceId(2), "Button9", true));
+        runtime.track_control(&ControlInputEvent::gamepad(DeviceId(3), "Button9", true));
+
+        runtime.track_control(&ControlInputEvent::gamepad(DeviceId(2), "Button9", false));
+
+        assert!(runtime.pressed_controls.contains("Button9"));
+        assert!(
+            runtime
+                .pressed_play_inputs
+                .contains(&(DeviceId(3), PhysicalControl::GamepadButton("Button9".to_string())))
+        );
+    }
+
+    #[test]
+    fn gamepad_snapshot_resync_preserves_keyboard_and_replaces_gamepad_state() {
+        let mut runtime = AppInputRuntime::default();
+        runtime.track_control(&ControlInputEvent::keyboard_parts(
+            PhysicalKey::Code(KeyCode::KeyQ),
+            ElementState::Pressed,
+            false,
+        ));
+        runtime.track_control(&ControlInputEvent::gamepad(DeviceId(2), "Button9", true));
+
+        runtime.replace_gamepad_pressed_controls(&[GamepadPressedButton {
+            name: "Button10".to_string(),
+            device_id: DeviceId(3),
+        }]);
+
+        assert!(runtime.pressed_controls.contains("Q"));
+        assert!(!runtime.pressed_controls.contains("Button9"));
+        assert!(runtime.pressed_controls.contains("Button10"));
+        assert!(
+            runtime
+                .pressed_play_inputs
+                .contains(&(DeviceId(3), PhysicalControl::GamepadButton("Button10".to_string())))
+        );
     }
 
     #[test]
@@ -316,6 +437,7 @@ mod tests {
             )
             .unwrap();
         runtime.track_window_keyboard(window_key, ElementState::Pressed, false, true, true);
+        runtime.track_control(&ControlInputEvent::gamepad(DeviceId(2), "Button9", true));
 
         let releases = runtime.handle_focus_lost();
 
@@ -328,5 +450,16 @@ mod tests {
         assert!(!runtime.should_discard_gamepad_output(true));
         assert!(!should_route_gamepad_event_while_discarding(true));
         assert!(should_route_gamepad_event_while_discarding(false));
+
+        runtime.replace_gamepad_pressed_controls(&[GamepadPressedButton {
+            name: "Button9".to_string(),
+            device_id: DeviceId(2),
+        }]);
+        assert!(runtime.pressed_controls.contains("Button9"));
+        assert!(
+            runtime
+                .pressed_play_inputs
+                .contains(&(DeviceId(2), PhysicalControl::GamepadButton("Button9".to_string())))
+        );
     }
 }

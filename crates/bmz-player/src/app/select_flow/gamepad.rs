@@ -14,6 +14,11 @@ impl WinitApp {
             {
                 self.route_gamepad_button_event(event);
             }
+            if self.ui.focused
+                && let Some(pressed_buttons) = output.pressed_buttons.as_deref()
+            {
+                self.resync_gamepad_pressed_controls(pressed_buttons);
+            }
             self.reset_select_analog_scroll();
             self.reset_play_analog_scroll();
             self.clear_result_ir_scroll_input();
@@ -37,6 +42,11 @@ impl WinitApp {
         for event in &output.buttons {
             self.route_gamepad_button_event(event);
         }
+        if self.ui.focused
+            && let Some(pressed_buttons) = output.pressed_buttons.as_deref()
+        {
+            self.resync_gamepad_pressed_controls(pressed_buttons);
+        }
         for tick in &output.axis_ticks {
             // キーコンフィグ待ち受け中は合成 Press を待たず、生 tick から直接捕捉する。
             // 軸が active のままでも (押しっぱなし扱いで Press が出なくても) 確実に拾える。
@@ -53,6 +63,11 @@ impl WinitApp {
         &mut self,
         event: &crate::input::gamepad::GamepadButtonEvent,
     ) {
+        let control_event = ControlInputEvent::gamepad(event.device_id, &event.name, event.pressed);
+        self.input.track_control(&control_event);
+        // holdは物理状態を正とする。2回押しなどの単発操作はこの後のフィルターを通す。
+        self.sync_select_holds_from_pressed_controls();
+        self.sync_play_control_holds_from_pressed_controls();
         let mut device_event = crate::input::gamepad::to_device_input_event(event);
         if should_bypass_analog_scratch_bounce(
             event,
@@ -65,6 +80,15 @@ impl WinitApp {
         };
         self.route_play_device_input(device_event);
         self.route_gamepad_button(event.device_id, &event.name, event.pressed);
+    }
+
+    fn resync_gamepad_pressed_controls(
+        &mut self,
+        pressed_buttons: &[crate::input::gamepad::GamepadPressedButton],
+    ) {
+        self.input.replace_gamepad_pressed_controls(pressed_buttons);
+        self.sync_select_holds_from_pressed_controls();
+        self.sync_play_control_holds_from_pressed_controls();
     }
 
     pub(super) fn should_log_gamepad_key_config_raw_input(&self) -> bool {
@@ -291,7 +315,6 @@ impl WinitApp {
 
     pub(super) fn route_gamepad_button(&mut self, device: DeviceId, button: &str, pressed: bool) {
         let control_event = ControlInputEvent::gamepad(device, button, pressed);
-        self.input.track_control(&control_event);
         let physical_control =
             control_event.physical.as_ref().expect("gamepad control always has a physical value");
         let has_play_control_context =

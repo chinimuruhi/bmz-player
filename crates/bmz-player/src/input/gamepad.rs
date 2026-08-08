@@ -182,11 +182,21 @@ pub struct GamepadAxisTickEvent {
     pub ticks: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GamepadPressedButton {
+    pub name: String,
+    pub device_id: DeviceId,
+}
+
 #[derive(Default)]
 pub struct GamepadPollOutput {
     pub buttons: Vec<GamepadButtonEvent>,
     pub axis_ticks: Vec<GamepadAxisTickEvent>,
     pub raw_events: Vec<RawInputEvent>,
+    /// バックエンドが把握している現在の物理押下状態。
+    ///
+    /// `None` はスナップショット非対応、`Some([])` は全ボタン解放を表す。
+    pub pressed_buttons: Option<Vec<GamepadPressedButton>>,
 }
 
 pub enum GamepadBackend {
@@ -366,6 +376,26 @@ impl AnalogGamepadProcessor {
             }
         }
         self.axis_prev.retain(|(state_device_id, _), _| *state_device_id != device_id);
+    }
+
+    pub fn pressed_buttons(&self) -> Vec<GamepadPressedButton> {
+        self.scratch_state
+            .iter()
+            .filter_map(|((device_id, _axis), state)| {
+                if !state.active {
+                    return None;
+                }
+                let axis_name = state.control_name.as_deref()?;
+                Some(GamepadPressedButton {
+                    name: format!(
+                        "{}{}",
+                        axis_name,
+                        if state.positive_direction { "+" } else { "-" }
+                    ),
+                    device_id: *device_id,
+                })
+            })
+            .collect()
     }
 }
 

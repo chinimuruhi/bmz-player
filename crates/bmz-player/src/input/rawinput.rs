@@ -34,8 +34,8 @@ mod windows {
 
     use super::super::gamepad::{
         AnalogGamepadProcessor, ConnectedGamepad, GamepadButtonEvent, GamepadPollOutput,
-        RawControlCode, RawInputEvent, RawInputEventKind, current_device_timestamp,
-        gamepad_device_id_from_stable_id,
+        GamepadPressedButton, RawControlCode, RawInputEvent, RawInputEventKind,
+        current_device_timestamp, gamepad_device_id_from_stable_id,
     };
 
     const GENERIC_DESKTOP_USAGE_PAGE: u16 = 0x01;
@@ -147,12 +147,21 @@ mod windows {
             }
         }
 
-        fn drain_events(&self) -> Vec<QueuedHidEvent> {
+        fn drain_poll_state(&self) -> (Vec<QueuedHidEvent>, Vec<GamepadPressedButton>) {
             let Ok(mut shared) = self.shared.lock() else {
                 tracing::error!("Raw Input state lock is poisoned");
-                return Vec::new();
+                return (Vec::new(), Vec::new());
             };
-            shared.events.drain(..).collect()
+            let events = shared.events.drain(..).collect();
+            let mut pressed_buttons = shared
+                .devices
+                .values()
+                .flat_map(HidDeviceState::pressed_button_snapshot)
+                .collect::<Vec<_>>();
+            pressed_buttons.sort_by(|left, right| {
+                left.device_id.0.cmp(&right.device_id.0).then_with(|| left.name.cmp(&right.name))
+            });
+            (events, pressed_buttons)
         }
 
         fn connected_gamepads(&self) -> Vec<ConnectedGamepad> {
@@ -195,7 +204,8 @@ mod windows {
         pub fn poll(&mut self) -> GamepadPollOutput {
             let mut output = GamepadPollOutput::default();
             self.analog.check_timeouts(Instant::now(), &mut output.buttons);
-            for event in self.bridge.drain_events() {
+            let (events, mut pressed_buttons) = self.bridge.drain_poll_state();
+            for event in events {
                 match event {
                     QueuedHidEvent::Button {
                         device_id,
@@ -247,6 +257,12 @@ mod windows {
                 }
             }
             self.analog.check_timeouts(Instant::now(), &mut output.buttons);
+            pressed_buttons.extend(self.analog.pressed_buttons());
+            pressed_buttons.sort_by(|left, right| {
+                left.device_id.0.cmp(&right.device_id.0).then_with(|| left.name.cmp(&right.name))
+            });
+            pressed_buttons.dedup();
+            output.pressed_buttons = Some(pressed_buttons);
             output
         }
 
@@ -563,6 +579,17 @@ mod windows {
                 .into_iter()
                 .filter_map(|data_index| self.controls.get(&data_index))
                 .map(|control| control.button_event(self.device_id, false, timestamp))
+                .collect()
+        }
+
+        fn pressed_button_snapshot(&self) -> Vec<GamepadPressedButton> {
+            self.pressed_buttons
+                .iter()
+                .filter_map(|data_index| self.controls.get(data_index))
+                .map(|control| GamepadPressedButton {
+                    name: control.name.clone(),
+                    device_id: self.device_id,
+                })
                 .collect()
         }
     }
@@ -1133,6 +1160,39 @@ mod windows {
             assert_eq!(
                 stable_id_for_device(r"\\?\HID#VID_1234", 1, 4, None),
                 stable_id_for_device(r"\\?\hid#vid_1234", 1, 4, None)
+            );
+        }
+
+        #[test]
+        fn poll_exposes_current_pressed_button_snapshot() {
+            let bridge = RawInputBridge::new();
+            let mut button = button_descriptor(7, 0, 0x09, 0x09);
+            button.name = "Button9".to_string();
+            let mut controls = BTreeMap::new();
+            controls.insert(7, button);
+            let device_id = DeviceId(42);
+            bridge.shared.lock().unwrap().devices.insert(
+                1,
+                HidDeviceState {
+                    stable_id: "rawinput:test".to_string(),
+                    device_path: "test".to_string(),
+                    device_id,
+                    name: "test controller".to_string(),
+                    preparsed_data: AlignedBuffer::new(0),
+                    controls,
+                    pressed_buttons: HashSet::from([7]),
+                    axis_values: HashMap::new(),
+                    input_data_count: 1,
+                    uses_report_ids: false,
+                    button_count: 1,
+                    axis_count: 0,
+                },
+            );
+            let mut backend = RawInputBackend::new(bridge, 1.0, 100);
+
+            assert_eq!(
+                backend.poll().pressed_buttons,
+                Some(vec![GamepadPressedButton { name: "Button9".to_string(), device_id }])
             );
         }
 

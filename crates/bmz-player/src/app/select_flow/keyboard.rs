@@ -2,14 +2,19 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn route_keyboard_input(&mut self, event: &winit::event::KeyEvent) {
+        let control_event = ControlInputEvent::keyboard(event);
+        self.input.track_control(&control_event);
+        if !event.repeat {
+            // holdは物理状態を正とし、単発操作とゲーム入力だけをチャタリング抑制する。
+            self.sync_select_holds_from_pressed_controls();
+            self.sync_play_control_holds_from_pressed_controls();
+        }
         if !event.repeat
             && let Some(device_event) = key_event_to_device_input(event)
             && self.filter_app_input_bounce(device_event).is_none()
         {
             return;
         }
-        let control_event = ControlInputEvent::keyboard(event);
-        self.input.track_control(&control_event);
         let play_control = control_event.name.as_deref();
         let play_physical_control = control_event.physical.as_ref();
         let has_play_control_context =
