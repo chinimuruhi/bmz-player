@@ -146,10 +146,31 @@ macro_rules! skin_document_render_play_lane_methods {
             let offset_w = offset.w as f32 / canvas_w;
             let offset_h = offset.h as f32 / canvas_h;
             Rect {
-                x: rect.x + offset.x as f32 / canvas_w - offset_w / 2.0,
-                y: rect.y - offset.y as f32 / canvas_h - offset_h / 2.0,
+                // beatoraja `LaneRenderer.drawLane` はノートの左下を固定したまま
+                // `dstw = width + offsetW`, `dsth = scale + offsetH` とする。
+                x: rect.x + offset.x as f32 / canvas_w,
+                y: rect.y - offset.y as f32 / canvas_h - offset_h,
                 width: rect.width + offset_w,
                 height: rect.height + offset_h,
+            }
+        }
+
+        fn apply_notes_offset_to_long_body_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect {
+            let Some(offset) = state.skin_offsets.get(OFFSET_NOTES_1P) else {
+                return rect;
+            };
+            let canvas_w = self.w.max(1) as f32;
+            let canvas_h = self.h.max(1) as f32;
+            let offset_w = offset.w as f32 / canvas_w;
+            let offset_h = offset.h as f32 / canvas_h;
+            Rect {
+                // beatoraja `drawLongNote` の BODY 高は `height - scale`。
+                // キャップ高 `scale` に offsetH を加えた分だけ BODY を短くし、
+                // キャップとの共有境界を維持する。
+                x: rect.x + offset.x as f32 / canvas_w,
+                y: rect.y - offset.y as f32 / canvas_h,
+                width: rect.width + offset_w,
+                height: rect.height - offset_h,
             }
         }
     };

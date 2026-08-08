@@ -313,7 +313,7 @@ impl SkinContext {
         // 胴体は tail キャップの下端から head キャップの上端まで、キャップと重ならない。
         let top = head_bottom.min(tail_bottom);
         let bottom = head_bottom.max(tail_bottom) - note_height;
-        Some(document.apply_notes_offset_to_rect(
+        Some(document.apply_notes_offset_to_long_body_rect(
             Rect { x: area.x, y: top, width: area.width, height: bottom - top },
             state,
         ))

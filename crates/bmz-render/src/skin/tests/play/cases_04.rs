@@ -186,6 +186,47 @@ fn note_body_rect_shifts_with_lift() {
 }
 
 #[test]
+fn notes_offset_keeps_long_note_caps_joined_to_body() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "w": 100, "h": 100,
+                "note": {
+                    "id": "notes",
+                    "note": ["n1"],
+                    "size": [10],
+                    "dst": [{ "time": 0, "x": 10, "y": 20, "w": 30, "h": 60 }]
+                }
+            }
+            "#,
+    )
+    .unwrap();
+    let skin = SkinContext::from_manifest_and_document(default_skin_manifest(), document, []);
+    let note_height = skin.document_note_height(Lane::Key1, KeyMode::K7).unwrap();
+
+    for offset_h in [-4, 6] {
+        let mut offsets = SkinOffsetValues::default();
+        offsets.set(
+            OFFSET_NOTES_1P,
+            crate::skin_offset::SkinOffsetValue { h: offset_h, ..Default::default() },
+        );
+        let state = SkinDrawState { skin_offsets: offsets, ..SkinDrawState::default() };
+        let head =
+            skin.note_rect_for_progress(Lane::Key1, KeyMode::K7, 0.0, note_height, &state).unwrap();
+        let tail =
+            skin.note_rect_for_progress(Lane::Key1, KeyMode::K7, 0.5, note_height, &state).unwrap();
+        let body = skin.note_body_rect(Lane::Key1, KeyMode::K7, 0.0, 0.5, &state).unwrap();
+
+        assert!(approx_eq(body.y, tail.y + tail.height));
+        assert!(approx_eq(body.y + body.height, head.y));
+        assert!(approx_eq(head.y + head.height, 0.8));
+        assert!(approx_eq(tail.y + tail.height, 0.5));
+        assert!(approx_eq(head.height, note_height + offset_h as f32 / 100.0));
+        assert!(approx_eq(body.height, 0.2 - offset_h as f32 / 100.0));
+    }
+}
+
+#[test]
 fn skin_state_number_bpm_lanecover_duration_timing() {
     let state = SkinDrawState {
         now_bpm: 148.7,

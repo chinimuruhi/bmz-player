@@ -395,7 +395,7 @@ fn all_offset_transforms_play_skin_render_item() {
 }
 
 #[test]
-fn notes_offset_adjusts_note_rect() {
+fn notes_offset_resizes_note_from_beatoraja_bottom_anchor() {
     let document: SkinDocument = serde_json::from_str(
         r#"
             {
@@ -412,16 +412,20 @@ fn notes_offset_adjusts_note_rect() {
     let mut offsets = SkinOffsetValues::default();
     offsets.set(
         OFFSET_NOTES_1P,
-        crate::skin_offset::SkinOffsetValue { x: 0, y: 0, w: 0, h: 20, r: 0, a: 0 },
+        crate::skin_offset::SkinOffsetValue { x: 10, y: 20, w: 5, h: 20, r: 0, a: 0 },
     );
 
     let area = document.note_lane_area(Lane::Key1, KeyMode::K7, &[]).unwrap();
     let center_y = area.y + area.height * 0.5;
+    let original = Rect { x: area.x, y: center_y - 0.05, width: area.width, height: 0.1 };
     let rect = document.apply_notes_offset_to_rect(
-        Rect { x: area.x, y: center_y - 0.05, width: area.width, height: 0.1 },
+        original,
         &SkinDrawState { skin_offsets: offsets, ..SkinDrawState::default() },
     );
 
-    assert!(approx_eq(rect.y, 0.45));
+    assert!(approx_eq(rect.x, original.x + 0.1));
+    assert!(approx_eq(rect.y, original.y - 0.4));
+    assert!(approx_eq(rect.width, original.width + 0.05));
     assert!(approx_eq(rect.height, 0.3));
+    assert!(approx_eq(rect.y + rect.height, original.y + original.height - 0.2));
 }

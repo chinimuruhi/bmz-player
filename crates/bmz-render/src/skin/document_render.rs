@@ -423,6 +423,8 @@ pub trait SkinDocumentRenderExt {
 
     fn apply_notes_offset_to_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect;
 
+    fn apply_notes_offset_to_long_body_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect;
+
     fn gauge_render_items(
         &self,
         gauge: f32,
