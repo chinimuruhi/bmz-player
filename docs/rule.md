@@ -306,7 +306,7 @@ recovery = base * pop_total / total_notes
 `RuleMode::Lr2Oraja` / `RuleMode::Dx` は suffix を付ける。
 コースリザルトも同じ course hash で Beatoraja / LR2oraja / DX を別スコアとして保存する。
 コースの集計キーは `(course_hash, ln_policy, rule_mode)` とし、`ln_policy` には
-コース開始時の `LnPolicySetting` を保存する。
+全譜面の `ChartLnProfile` とコース LN constraint から正規化した `LnScorePolicy` を保存する。
 
 ## Known Notes
 

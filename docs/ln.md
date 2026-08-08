@@ -137,9 +137,13 @@ LN policy は profile 内のスコア・リプレイをさらに分けるキー�
 - `course_scores` の検索キー: `(course_hash, ln_policy, rule_mode)`
 - `course_replay_slots`: `(course_hash, ln_policy, rule_mode, slot)`
 
-単曲の `ln_policy` は譜面ごとに正規化した `LnScorePolicy` を保存する。コースの
-`ln_policy` は複数譜面で解決結果が異なり得るため、コース開始時に選択した
-`LnPolicySetting` (`AutoLn` / `ForceCn` など) をそのまま保存する。
+単曲の `ln_policy` は譜面ごとに正規化した `LnScorePolicy` を保存する。コースも
+全譜面の `ChartLnProfile` flags を論理和で集約し、コース LN constraint による
+undefined LN fallback を反映してから、同じ `score_ln_policy` 規則で正規化した
+`LnScorePolicy` を保存する。したがって、全譜面に LN が無いコースは設定にかかわらず
+`ForceLn`、単一の defined 種別だけを含むコースの AUTO はその `Force*`、defined
+種別が混在するコースの AUTO は `AutoLn` になる。undefined と defined が混在する
+場合だけ fallback に応じた `AutoLn` / `AutoCn` / `AutoHcn` を区別する。
 既存のコーススコアは設定値を一意に復元できないため、migration では
 `ForceLn` bucket へ移す。
 

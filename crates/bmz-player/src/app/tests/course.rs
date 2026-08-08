@@ -153,7 +153,7 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
         course_id: 1,
         course_score_id: None,
         course_played_at: None,
-        ln_policy: crate::ln_policy::LnPolicySetting::ForceLn,
+        ln_policy: crate::ln_policy::LnScorePolicy::ForceLn,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         title: "Course Title".to_string(),
         kind: bmz_core::course::CourseKind::Dan,
@@ -200,7 +200,7 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
         best_score: Some(crate::storage::score_db::CourseBestScore {
             course_score_id: 22,
             course_hash: "course-hash".to_string(),
-            ln_policy: crate::ln_policy::LnPolicySetting::ForceLn,
+            ln_policy: crate::ln_policy::LnScorePolicy::ForceLn,
             rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
             ex_score: 340,
             max_ex_score: 800,
@@ -221,7 +221,7 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
         previous_best_score: Some(crate::storage::score_db::CourseBestScore {
             course_score_id: 21,
             course_hash: "course-hash".to_string(),
-            ln_policy: crate::ln_policy::LnPolicySetting::ForceLn,
+            ln_policy: crate::ln_policy::LnScorePolicy::ForceLn,
             rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
             ex_score: 300,
             max_ex_score: 800,

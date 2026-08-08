@@ -390,6 +390,7 @@ pub fn scored_note_count_for_chart(
 pub struct ScoredChartMetrics {
     pub total_notes: u32,
     pub ln_mode: Option<LongNoteMode>,
+    pub source_ln_profile: ChartLnProfile,
 }
 
 pub fn scored_chart_metrics_for_chart(
@@ -401,6 +402,7 @@ pub fn scored_chart_metrics_for_chart(
     Ok(ScoredChartMetrics {
         total_notes: scored_note_count(&imported.chart),
         ln_mode: played_ln_mode(imported.source_ln_profile, imported.score_key.ln_policy),
+        source_ln_profile: imported.source_ln_profile,
     })
 }
 

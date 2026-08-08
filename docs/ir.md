@@ -2019,11 +2019,11 @@ course_hash = SHA256(canonical_json({
 
 - タイトルや出典 URL は identity に含めない (表示 metadata)。
 - score identity (best / ranking の分離キー) は
-  `course_hash + gauge + ln_policy_setting + rule_mode + scoring`。
+  `course_hash + gauge + ln_policy + rule_mode + scoring`。
   - `gauge`: 段位 (class 系 constraint) では constraint で固定されるが、
     通常コースではユーザー選択なので key に含める。
-  - `ln_policy_setting`: コースは譜面ごとに LN 解決が変わるため、
-    解決後の policy ではなく設定値 (`AutoLn` / `ForceCn` など) を使う。
+  - `ln_policy`: コース内全譜面の `ChartLnProfile` を集約し、コース LN constraint
+    を反映して単曲と同じ規則で正規化した `LnScorePolicy` を使う。
   - `rule_mode`: 単曲スコアと同じく `Beatoraja` / `Lr2Oraja` / `Dx` を
     別ランキングとして扱う。
 
@@ -2063,7 +2063,7 @@ create table public.course_scores (
   platform text not null,
 
   gauge text not null,                          -- Class / ExClass / Normal ...
-  ln_policy text not null,                      -- LnPolicySetting 値
+  ln_policy text not null,                      -- 正規化済み LnScorePolicy 値
   rule_mode text not null,                      -- Beatoraja / Lr2Oraja / Dx
   scoring text not null,                        -- 'bms_ex_score_v1'
 

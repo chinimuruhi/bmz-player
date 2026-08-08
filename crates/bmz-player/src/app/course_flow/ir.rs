@@ -49,7 +49,7 @@ impl WinitApp {
         let course_hash = self.result.finished_course_hash.clone()?;
         let rian_course_hash_v1 = self.result.finished_course_rian_hash_v1.clone()?;
         let gauge = course.final_gauge_type.as_str().to_string();
-        let ln_policy = course.ln_policy.as_ir_str().to_string();
+        let ln_policy = course.ln_policy.as_str().to_string();
         Some((course_hash, rian_course_hash_v1, gauge, ln_policy, course.rule_mode))
     }
 
@@ -121,13 +121,13 @@ impl WinitApp {
             return;
         };
         let definition = &identity.definition;
-        let ln_setting = course_result.ln_policy.as_ir_str().to_string();
+        let ln_policy = course_result.ln_policy.as_str().to_string();
         let payload = crate::ir::course_payload::build_course_submission(
             definition,
             course_result,
             &crate::ir::course_payload::IrCourseSubmissionContext {
                 played_at,
-                ln_policy_setting: ln_setting.clone(),
+                ln_policy: ln_policy.clone(),
                 rule_mode: rule_mode.as_str().to_string(),
                 gauge: gauge.to_string(),
                 device_type: device_type.unwrap_or(bmz_core::input::InputDeviceKind::Keyboard),
@@ -144,10 +144,7 @@ impl WinitApp {
             .first()
             .and_then(|sha| crate::storage::common::hex_to_hash::<32>(sha).ok())
             .unwrap_or([0; 32]);
-        let ln_policy = course_result
-            .course_ln_mode
-            .map(crate::ln_policy::LnScorePolicy::force)
-            .unwrap_or(crate::ln_policy::LnScorePolicy::ForceLn);
+        let ln_policy = course_result.ln_policy;
         for provider in enabled {
             let Some(provider_key) = crate::ir::provider_key::configured_provider_key(&provider)
             else {
@@ -177,7 +174,7 @@ impl WinitApp {
     pub(super) fn update_course_replay_slots(
         &mut self,
         course_hash: &str,
-        ln_policy: crate::ln_policy::LnPolicySetting,
+        ln_policy: crate::ln_policy::LnScorePolicy,
         rule_mode: bmz_gameplay::rule::RuleMode,
         course_score_id: i64,
         played_at: i64,

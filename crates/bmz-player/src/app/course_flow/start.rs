@@ -116,13 +116,13 @@ impl WinitApp {
         let options = entry_start_options[0].clone();
         let course_title = definition.title.clone();
         let app_config = self.play_session_app_config();
-        let ln_policy = self.boot.profile_config.play.ln_mode_policy;
+        let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
         let course_metrics = match course_play_metrics_for_definition(
             &self.boot.library_db,
             &definition,
             &app_config,
-            ln_policy,
+            ln_policy_setting,
             rule_mode,
             &entry_start_options,
         ) {
@@ -135,7 +135,8 @@ impl WinitApp {
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
-            ln_policy,
+            ln_policy_setting,
+            ln_policy: course_metrics.ln_policy,
             rule_mode,
             course_total_notes: course_metrics.total_notes,
             course_ln_mode: course_metrics.ln_mode,
@@ -276,12 +277,13 @@ impl WinitApp {
         let course_title = definition.title.clone();
         let app_config = self.play_session_app_config();
         let ln_policy = score_entry.ln_policy;
+        let ln_policy_setting = ln_policy.as_setting();
         let rule_mode = score_entry.rule_mode;
         let course_metrics = match course_play_metrics_for_definition(
             &self.boot.library_db,
             &definition,
             &app_config,
-            ln_policy,
+            ln_policy_setting,
             rule_mode,
             &entry_start_options,
         ) {
@@ -294,6 +296,7 @@ impl WinitApp {
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
+            ln_policy_setting,
             ln_policy,
             rule_mode,
             course_total_notes: course_metrics.total_notes,

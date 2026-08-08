@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::*;
 use crate::storage::migration::{SCORE_MIGRATIONS, run_migrations};
 
-const LN_POLICY: LnPolicySetting = LnPolicySetting::ForceLn;
+const LN_POLICY: LnScorePolicy = LnScorePolicy::ForceLn;
 
 fn open_conn() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -223,17 +223,17 @@ fn course_scores_are_separate_per_ln_policy() {
     let force_ln_id =
         insert_course_score(&mut conn, &sample_score("course-a", 400, "Hard", 10)).unwrap();
     let mut force_cn = sample_score("course-a", 900, "Normal", 20);
-    force_cn.ln_policy = LnPolicySetting::ForceCn;
+    force_cn.ln_policy = LnScorePolicy::ForceCn;
     force_cn.trophies_json = r#"["silver"]"#.to_string();
     force_cn.achieved_trophies = vec!["silver".to_string()];
     let force_cn_id = insert_course_score(&mut conn, &force_cn).unwrap();
 
     let force_ln =
-        best_course_score(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja)
+        best_course_score(&conn, "course-a", LnScorePolicy::ForceLn, RuleMode::Beatoraja)
             .unwrap()
             .unwrap();
     let force_cn =
-        best_course_score(&conn, "course-a", LnPolicySetting::ForceCn, RuleMode::Beatoraja)
+        best_course_score(&conn, "course-a", LnScorePolicy::ForceCn, RuleMode::Beatoraja)
             .unwrap()
             .unwrap();
 
@@ -246,15 +246,14 @@ fn course_scores_are_separate_per_ln_policy() {
     assert_eq!(force_cn.play_count, 1);
     assert_eq!(force_cn.clear_count, 1);
     assert_eq!(
-        best_course_clear(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja,)
-            .unwrap(),
+        best_course_clear(&conn, "course-a", LnScorePolicy::ForceLn, RuleMode::Beatoraja,).unwrap(),
         Some(ClearType::Hard)
     );
     assert_eq!(
         achieved_trophy_names_for_course(
             &conn,
             "course-a",
-            LnPolicySetting::ForceLn,
+            LnScorePolicy::ForceLn,
             RuleMode::Beatoraja,
         )
         .unwrap(),
@@ -264,21 +263,21 @@ fn course_scores_are_separate_per_ln_policy() {
         achieved_trophy_names_for_course(
             &conn,
             "course-a",
-            LnPolicySetting::ForceCn,
+            LnScorePolicy::ForceCn,
             RuleMode::Beatoraja,
         )
         .unwrap(),
         vec!["silver".to_string()]
     );
     assert_eq!(
-        latest_course_score_id(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja,)
+        latest_course_score_id(&conn, "course-a", LnScorePolicy::ForceLn, RuleMode::Beatoraja,)
             .unwrap(),
         Some(force_ln_id)
     );
     let history = list_recent_course_scores(
         &conn,
         "course-a",
-        LnPolicySetting::ForceCn,
+        LnScorePolicy::ForceCn,
         RuleMode::Beatoraja,
         10,
         0,
@@ -286,7 +285,7 @@ fn course_scores_are_separate_per_ln_policy() {
     .unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].course_score_id, force_cn_id);
-    assert_eq!(history[0].ln_policy, LnPolicySetting::ForceCn);
+    assert_eq!(history[0].ln_policy, LnScorePolicy::ForceCn);
 }
 
 #[test]
@@ -295,20 +294,20 @@ fn course_replay_slots_are_separate_per_ln_policy() {
     let force_ln_id =
         insert_course_score(&mut conn, &sample_score("course-a", 500, "Normal", 10)).unwrap();
     let mut force_cn = sample_score("course-a", 700, "Normal", 20);
-    force_cn.ln_policy = LnPolicySetting::ForceCn;
+    force_cn.ln_policy = LnScorePolicy::ForceCn;
     let force_cn_id = insert_course_score(&mut conn, &force_cn).unwrap();
 
     upsert_course_replay_slot(&mut conn, &sample_slot("course-a", 0, force_ln_id, 500)).unwrap();
     let mut force_cn_slot = sample_slot("course-a", 0, force_cn_id, 700);
-    force_cn_slot.ln_policy = LnPolicySetting::ForceCn;
+    force_cn_slot.ln_policy = LnScorePolicy::ForceCn;
     upsert_course_replay_slot(&mut conn, &force_cn_slot).unwrap();
 
     let force_ln =
-        course_replay_slot(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja, 0)
+        course_replay_slot(&conn, "course-a", LnScorePolicy::ForceLn, RuleMode::Beatoraja, 0)
             .unwrap()
             .unwrap();
     let force_cn =
-        course_replay_slot(&conn, "course-a", LnPolicySetting::ForceCn, RuleMode::Beatoraja, 0)
+        course_replay_slot(&conn, "course-a", LnScorePolicy::ForceCn, RuleMode::Beatoraja, 0)
             .unwrap()
             .unwrap();
 
@@ -318,7 +317,7 @@ fn course_replay_slots_are_separate_per_ln_policy() {
         course_replay_slot_presence(
             &conn,
             "course-a",
-            LnPolicySetting::ForceLn,
+            LnScorePolicy::ForceLn,
             RuleMode::Beatoraja,
         )
         .unwrap(),
@@ -328,7 +327,7 @@ fn course_replay_slots_are_separate_per_ln_policy() {
         course_replay_slot_presence(
             &conn,
             "course-a",
-            LnPolicySetting::ForceCn,
+            LnScorePolicy::ForceCn,
             RuleMode::Beatoraja,
         )
         .unwrap(),

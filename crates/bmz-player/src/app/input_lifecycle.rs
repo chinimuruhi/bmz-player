@@ -278,14 +278,25 @@ impl WinitApp {
                 }
             }
             DeferredBoot::CourseReplay { course_id } => {
-                let Some(identity) = self.ir_course_identity(course_id) else {
+                let Some((stored, identity)) = self.course_identity_with_stored(course_id) else {
                     tracing::warn!(
                         course_id,
                         "course identity unavailable; --boot-course-replay has nothing to replay"
                     );
                     return;
                 };
-                let ln_policy = self.boot.profile_config.play.ln_mode_policy;
+                let ln_policy =
+                    match crate::screens::select_model::normalized_course_ln_policy_for_definition(
+                        &self.boot.library_db,
+                        &stored.definition,
+                        self.boot.profile_config.play.ln_mode_policy,
+                    ) {
+                        Ok(policy) => policy,
+                        Err(error) => {
+                            tracing::warn!(%error, course_id, "course LN policy unavailable for replay");
+                            return;
+                        }
+                    };
                 let rule_mode = self.boot.profile_config.play.rule_mode;
                 match self.boot.score_db.latest_course_score_id(
                     &identity.course_hash,

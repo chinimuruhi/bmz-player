@@ -121,6 +121,125 @@ fn course_note_preview_uses_auto_fallback_and_force_priority() {
     );
 }
 
+#[test]
+fn course_ln_policy_uses_same_library_profile_normalization_as_chart_scores() {
+    let (mut library_db, _) = open_in_memory_dbs();
+    let no_ln = chart("course no ln");
+    let no_ln_id = library_db
+        .upsert_chart_import(&record_for_chart("/songs/course-no-ln.bms", &no_ln))
+        .unwrap();
+    let mut defined_cn = chart("course defined cn");
+    let mut pair = undefined_ln_pair();
+    pair.mode = Some(bmz_chart::model::LongNoteMode::Cn);
+    defined_cn.long_notes.push(pair);
+    defined_cn.total_notes = 1;
+    let defined_cn_id = library_db
+        .upsert_chart_import(&record_for_chart("/songs/course-defined-cn.bms", &defined_cn))
+        .unwrap();
+
+    let definition = |chart_id| bmz_core::course::CourseDefinition {
+        key: "normalize#0".to_string(),
+        title: "Normalize".to_string(),
+        kind: bmz_core::course::CourseKind::Course,
+        entries: vec![bmz_core::course::CourseEntry {
+            title_hint: String::new(),
+            md5: None,
+            sha256: None,
+            chart_id: Some(chart_id),
+        }],
+        constraints: bmz_core::course::CourseConstraints::default(),
+        trophies: Vec::new(),
+        release: true,
+    };
+
+    assert_eq!(
+        normalized_course_ln_policy_for_definition(
+            &library_db,
+            &definition(no_ln_id),
+            LnPolicySetting::ForceHcn,
+        )
+        .unwrap(),
+        LnScorePolicy::ForceLn,
+    );
+    assert_eq!(
+        normalized_course_ln_policy_for_definition(
+            &library_db,
+            &definition(defined_cn_id),
+            LnPolicySetting::AutoLn,
+        )
+        .unwrap(),
+        LnScorePolicy::ForceCn,
+    );
+}
+
+#[test]
+fn course_row_looks_up_best_score_with_normalized_ln_policy() {
+    let (mut library_db, mut score_db) = open_in_memory_dbs();
+    let no_ln = chart("course normalized lookup");
+    library_db
+        .upsert_chart_import(&record_for_chart("/songs/course-normalized-lookup.bms", &no_ln))
+        .unwrap();
+    let definition = bmz_core::course::CourseDefinition {
+        key: "normalize-lookup#0".to_string(),
+        title: "Normalize Lookup".to_string(),
+        kind: bmz_core::course::CourseKind::Course,
+        entries: vec![bmz_core::course::CourseEntry {
+            title_hint: no_ln.metadata.title.clone(),
+            md5: None,
+            sha256: Some(hash_to_hex(&no_ln.identity.file_sha256)),
+            chart_id: None,
+        }],
+        constraints: bmz_core::course::CourseConstraints::default(),
+        trophies: Vec::new(),
+        release: true,
+    };
+    library_db.upsert_course("manual:test", &definition, 0, 1).unwrap();
+    let stored = library_db.list_courses().unwrap().pop().unwrap();
+    let identity =
+        crate::ir::course_payload::course_identity_from_stored(&library_db, &stored).unwrap();
+    score_db
+        .insert_course_score(&crate::storage::score_db::CourseScoreInsert {
+            course_hash: identity.course_hash,
+            ln_policy: LnScorePolicy::ForceLn,
+            rule_mode: RuleMode::Beatoraja,
+            source: stored.source,
+            course_key: stored.definition.key,
+            title: stored.definition.title,
+            kind: "course".to_string(),
+            constraints_json: identity.constraints_json,
+            chart_sha256s_json: identity.chart_sha256s_json,
+            ex_score: 100,
+            max_ex_score: 200,
+            clear_type: ClearType::Normal.as_str().to_string(),
+            gauge_type: GaugeType::Normal.as_str().to_string(),
+            gauge_value: 80.0,
+            max_combo: 50,
+            bp: 0,
+            course_failed: false,
+            course_clear: true,
+            arrange: "Normal".to_string(),
+            trophies_json: "[]".to_string(),
+            played_at: 1,
+            charts: Vec::new(),
+            replays: Vec::new(),
+            achieved_trophies: Vec::new(),
+        })
+        .unwrap();
+
+    let items = load_select_items_for_courses(
+        &library_db,
+        &score_db,
+        LnPolicySetting::ForceHcn,
+        RuleMode::Beatoraja,
+    )
+    .unwrap();
+    let SelectItem::Course(row) = &items[0] else {
+        panic!("expected course row");
+    };
+    assert_eq!(row.ln_policy, LnScorePolicy::ForceLn);
+    assert_eq!(row.best_score.as_ref().map(|score| score.ex_score), Some(100));
+}
+
 fn difficulty_table_for_md5(
     md5: &[u8; 16],
     symbol: &str,

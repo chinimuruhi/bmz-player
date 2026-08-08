@@ -92,7 +92,7 @@ impl WinitApp {
             .play
             .active_course
             .as_ref()
-            .map(|course| (course.ln_policy, course.rule_mode))
+            .map(|course| (course.ln_policy_setting, course.rule_mode))
             .unwrap_or((
                 self.boot.profile_config.play.ln_mode_policy,
                 self.boot.profile_config.play.rule_mode,

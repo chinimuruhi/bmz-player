@@ -1087,8 +1087,8 @@ pub const SCORE_MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 27,
-        // Course scores are keyed by the configured LN policy, not by each
-        // chart's resolved score policy. Historical rows predate that context
+        // Course scores use one normalized LN policy derived from the merged
+        // profiles of all course charts. Historical rows predate that context
         // and remain in the ForceLn compatibility bucket.
         statements: &[
             "ALTER TABLE course_scores

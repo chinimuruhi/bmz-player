@@ -2,7 +2,7 @@ use bmz_core::clear::{ClearType, GaugeType};
 use bmz_core::course::{CourseDefinition, CourseEntry, CourseKind};
 use bmz_gameplay::rule::RuleMode;
 
-use crate::ln_policy::LnPolicySetting;
+use crate::ln_policy::{LnPolicySetting, LnScorePolicy};
 use crate::screens::play_finish::FinishedPlaySession;
 use crate::screens::play_session::AppliedArrange;
 use crate::screens::play_start::PlayStartOptions;
@@ -11,8 +11,10 @@ use crate::screens::result_model::{ResultJudgeCounts, ResultSummary};
 pub struct ActiveCourseSession {
     pub course_id: i64,
     pub definition: CourseDefinition,
-    /// Configured course-wide LN policy captured when this attempt starts.
-    pub ln_policy: LnPolicySetting,
+    /// Runtime profile setting captured when this attempt starts.
+    pub ln_policy_setting: LnPolicySetting,
+    /// Course-wide normalized score key derived from every entry's LN profile.
+    pub ln_policy: LnScorePolicy,
     pub rule_mode: RuleMode,
     /// Total notes imported from every source chart with the entry's actual
     /// play options. This remains course-wide when a Failed chart aborts early.
@@ -41,7 +43,7 @@ pub struct CourseResultSummary {
     pub course_id: i64,
     pub course_score_id: Option<i64>,
     pub course_played_at: Option<i64>,
-    pub ln_policy: LnPolicySetting,
+    pub ln_policy: LnScorePolicy,
     pub rule_mode: RuleMode,
     pub title: String,
     pub kind: CourseKind,
@@ -402,7 +404,8 @@ mod tests {
                 ],
                 release: true,
             },
-            ln_policy: LnPolicySetting::ForceLn,
+            ln_policy_setting: LnPolicySetting::ForceLn,
+            ln_policy: LnScorePolicy::ForceLn,
             rule_mode: RuleMode::Beatoraja,
             course_total_notes,
             course_ln_mode: Some(bmz_chart::model::LongNoteMode::Ln),
@@ -417,7 +420,7 @@ mod tests {
     fn into_result_aggregates_scores() {
         let mut session =
             make_session(1, vec![(make_score(100, 0), 100), (make_score(100, 0), 100)]);
-        session.ln_policy = LnPolicySetting::ForceCn;
+        session.ln_policy = LnScorePolicy::ForceCn;
         session.entry_results[0].finished.course_max_combo = 100;
         session.entry_results[1].finished.course_max_combo = 200;
         let result = session.into_result();
@@ -427,7 +430,7 @@ mod tests {
         assert_eq!(result.course_max_combo, 200);
         assert_eq!(result.judge_counts.pgreat, 200);
         assert_eq!(result.bp, 0);
-        assert_eq!(result.ln_policy, LnPolicySetting::ForceCn);
+        assert_eq!(result.ln_policy, LnScorePolicy::ForceCn);
         assert_eq!(result.course_ln_mode, Some(bmz_chart::model::LongNoteMode::Ln));
     }
 
@@ -528,7 +531,8 @@ mod tests {
                 }],
                 release: true,
             },
-            ln_policy: LnPolicySetting::ForceLn,
+            ln_policy_setting: LnPolicySetting::ForceLn,
+            ln_policy: LnScorePolicy::ForceLn,
             rule_mode: RuleMode::Beatoraja,
             course_total_notes,
             course_ln_mode: None,

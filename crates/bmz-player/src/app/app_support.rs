@@ -19,6 +19,7 @@ pub(super) fn select_ir_cache_context(
 pub(super) struct CoursePlayMetrics {
     pub(super) total_notes: u32,
     pub(super) ln_mode: Option<bmz_chart::model::LongNoteMode>,
+    pub(super) ln_policy: crate::ln_policy::LnScorePolicy,
 }
 
 pub(super) fn course_play_metrics_for_definition(
@@ -37,6 +38,7 @@ pub(super) fn course_play_metrics_for_definition(
     );
     let mut total_notes = 0u32;
     let mut ln_mode = None;
+    let mut source_ln_profile = crate::ln_policy::ChartLnProfile::default();
     for (index, (entry, start_options)) in
         definition.entries.iter().zip(entry_start_options).enumerate()
     {
@@ -55,8 +57,15 @@ pub(super) fn course_play_metrics_for_definition(
         .with_context(|| format!("failed to count course entry {} from source", index + 1))?;
         total_notes = total_notes.saturating_add(metrics.total_notes);
         ln_mode = crate::ln_policy::max_long_note_mode(ln_mode, metrics.ln_mode);
+        source_ln_profile = source_ln_profile.merge(metrics.source_ln_profile);
     }
-    Ok(CoursePlayMetrics { total_notes, ln_mode })
+    let course_fallback = entry_start_options.first().and_then(|options| options.ln_mode_override);
+    let ln_policy = crate::ln_policy::course_score_ln_policy_for_profiles(
+        ln_policy_setting,
+        course_fallback,
+        [source_ln_profile],
+    );
+    Ok(CoursePlayMetrics { total_notes, ln_mode, ln_policy })
 }
 
 pub(super) fn hydrate_course_entry_title_hints(

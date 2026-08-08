@@ -39,8 +39,8 @@ pub struct IrCourseIdentity {
 #[derive(Debug, Clone)]
 pub struct IrCourseSubmissionContext {
     pub played_at: i64,
-    /// LnPolicySetting の文字列表現 (コースは譜面ごとに解決が変わるため設定値)。
-    pub ln_policy_setting: String,
+    /// コース全体の譜面 profile から正規化した LnScorePolicy の文字列表現。
+    pub ln_policy: String,
     pub rule_mode: String,
     pub gauge: String,
     pub device_type: InputDeviceKind,
@@ -188,7 +188,7 @@ pub fn build_course_submission(
         },
         "rule": {
             "gauge": context.gauge,
-            "ln_policy": context.ln_policy_setting,
+            "ln_policy": context.ln_policy,
             "effective_ln_mode": course_ln_mode_id(result.course_ln_mode),
             "rule_mode": context.rule_mode,
             "scoring": "bms_ex_score_v1",
@@ -263,7 +263,7 @@ mod tests {
     use bmz_core::course::CourseKind;
     use bmz_core::lane::KeyMode;
 
-    use crate::ln_policy::LnPolicySetting;
+    use crate::ln_policy::LnScorePolicy;
     use crate::screens::result_model::{
         ResultFastSlowJudgeCounts, ResultJudgeCounts, ResultSummary,
     };
@@ -377,7 +377,7 @@ mod tests {
             course_id: 1,
             course_score_id: None,
             course_played_at: None,
-            ln_policy: LnPolicySetting::ForceHcn,
+            ln_policy: LnScorePolicy::ForceHcn,
             rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
             title: "Dan 1".to_string(),
             kind: CourseKind::Dan,
@@ -409,7 +409,7 @@ mod tests {
             &result,
             &IrCourseSubmissionContext {
                 played_at: 1_767_225_600,
-                ln_policy_setting: LnPolicySetting::ForceHcn.as_ir_str().to_string(),
+                ln_policy: LnScorePolicy::ForceHcn.as_str().to_string(),
                 rule_mode: "Dx".to_string(),
                 gauge: "Class".to_string(),
                 device_type: InputDeviceKind::Keyboard,
@@ -438,7 +438,7 @@ mod tests {
             course_id: 1,
             course_score_id: None,
             course_played_at: None,
-            ln_policy: LnPolicySetting::AutoLn,
+            ln_policy: LnScorePolicy::AutoLn,
             rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
             title: "Dan 1".to_string(),
             kind: CourseKind::Dan,
@@ -471,7 +471,7 @@ mod tests {
             &result,
             &IrCourseSubmissionContext {
                 played_at: 1_767_225_600,
-                ln_policy_setting: LnPolicySetting::AutoLn.as_ir_str().to_string(),
+                ln_policy: LnScorePolicy::AutoLn.as_str().to_string(),
                 rule_mode: "Beatoraja".to_string(),
                 gauge: "ExClass".to_string(),
                 device_type: InputDeviceKind::Keyboard,
@@ -499,7 +499,7 @@ mod tests {
             course_id: 1,
             course_score_id: None,
             course_played_at: None,
-            ln_policy: LnPolicySetting::AutoLn,
+            ln_policy: LnScorePolicy::AutoLn,
             rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
             title: "Dan 1".to_string(),
             kind: CourseKind::Dan,
@@ -535,7 +535,7 @@ mod tests {
             &result,
             &IrCourseSubmissionContext {
                 played_at: 1_767_225_600,
-                ln_policy_setting: LnPolicySetting::AutoLn.as_ir_str().to_string(),
+                ln_policy: LnScorePolicy::AutoLn.as_str().to_string(),
                 rule_mode: "Beatoraja".to_string(),
                 gauge: "Hard".to_string(),
                 device_type: InputDeviceKind::Keyboard,
@@ -563,7 +563,7 @@ mod tests {
             course_id: 1,
             course_score_id: None,
             course_played_at: None,
-            ln_policy: LnPolicySetting::AutoLn,
+            ln_policy: LnScorePolicy::AutoLn,
             rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
             title: "Dan 1".to_string(),
             kind: CourseKind::Dan,
@@ -596,7 +596,7 @@ mod tests {
             &result,
             &IrCourseSubmissionContext {
                 played_at: 1_767_225_600,
-                ln_policy_setting: LnPolicySetting::AutoLn.as_ir_str().to_string(),
+                ln_policy: LnScorePolicy::AutoLn.as_str().to_string(),
                 rule_mode: "Beatoraja".to_string(),
                 gauge: "ExHardClass".to_string(),
                 device_type: InputDeviceKind::Keyboard,

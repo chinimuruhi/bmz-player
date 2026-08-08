@@ -75,7 +75,7 @@ pub(super) fn lr2_course_score_insert(
     let course_failed = matches!(clear_type, ClearType::NoPlay | ClearType::Failed);
     CourseScoreInsert {
         course_hash: target.course_hash.clone(),
-        ln_policy: crate::ln_policy::LnPolicySetting::ForceLn,
+        ln_policy: crate::ln_policy::LnScorePolicy::ForceLn,
         rule_mode,
         source: target.source.clone(),
         course_key: target.course_key.clone(),

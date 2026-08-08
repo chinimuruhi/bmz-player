@@ -95,7 +95,7 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
     migrate_library_db(&app_paths.library_db)?;
     let library_db = LibraryDatabase::open(&app_paths.library_db)?;
     let score_db = open_active_score_db(&app_paths)?;
-    let (ln_policy, rule_mode) = active_course_score_context(&app_paths)?;
+    let (ln_policy_setting, rule_mode) = active_course_score_context(&app_paths)?;
 
     let course = library_db
         .list_courses()?
@@ -104,6 +104,11 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("course id {course_id} not found"))?;
     let identity = crate::ir::course_payload::course_identity_from_stored(&library_db, &course)
         .ok_or_else(|| anyhow::anyhow!("course id {course_id} has unresolved chart sha256"))?;
+    let ln_policy = crate::screens::select_model::normalized_course_ln_policy_for_definition(
+        &library_db,
+        &course.definition,
+        ln_policy_setting,
+    )?;
 
     let entries = score_db.list_recent_course_scores(
         &identity.course_hash,
@@ -118,7 +123,7 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
             kind_label(course.definition.kind),
             course.definition.title,
             course_id,
-            ln_policy.as_ir_str(),
+            ln_policy.as_str(),
             rule_mode.as_str(),
         );
         return Ok(());
@@ -129,7 +134,7 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
         kind_label(course.definition.kind),
         course.definition.title,
         entries.len(),
-        ln_policy.as_ir_str(),
+        ln_policy.as_str(),
         rule_mode.as_str(),
         limit,
     );
@@ -172,7 +177,7 @@ fn course_attempt(score_id: i64) -> Result<()> {
         entry.achieved_trophies.join(",")
     };
     println!("[{}] {} — attempt {}", entry.kind, entry.title, entry.course_score_id,);
-    println!("  LN policy:  {}", entry.ln_policy.as_ir_str());
+    println!("  LN policy:  {}", entry.ln_policy.as_str());
     println!("  Rule mode:  {}", entry.rule_mode.as_str());
     println!("  Played:     {}", format_unix_utc(entry.played_at));
     println!(

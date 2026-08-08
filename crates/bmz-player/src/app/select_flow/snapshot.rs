@@ -225,7 +225,7 @@ impl WinitApp {
             gauge: crate::screens::play_start::course_gauge_for(self.select.gauge_option)
                 .as_str()
                 .to_string(),
-            ln_policy: self.boot.profile_config.play.ln_mode_policy.as_ir_str().to_string(),
+            ln_policy: row.ln_policy.as_str().to_string(),
             rule_mode: self.boot.profile_config.play.rule_mode,
         })
     }

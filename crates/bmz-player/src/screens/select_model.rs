@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
-use bmz_core::course::{CourseKind, CourseLnConstraint};
+use bmz_core::course::{CourseDefinition, CourseKind, CourseLnConstraint};
 use bmz_gameplay::rule::RuleMode;
 use bmz_render::scene::SelectRowKind;
 
@@ -67,6 +67,48 @@ pub use virtual_folder::{
     VIRTUAL_FOLDER_CONFIG_FILE, VIRTUAL_FOLDER_PATH_PREFIX, load_select_items_in_virtual_folder,
     virtual_folder_breadcrumb, virtual_folder_root_items,
 };
+
+pub fn normalized_course_ln_policy_for_charts(
+    setting: LnPolicySetting,
+    constraint: CourseLnConstraint,
+    charts: &[ChartListItem],
+) -> LnScorePolicy {
+    let fallback = match constraint {
+        CourseLnConstraint::Default => None,
+        CourseLnConstraint::Ln => Some(bmz_chart::model::LongNoteMode::Ln),
+        CourseLnConstraint::Cn => Some(bmz_chart::model::LongNoteMode::Cn),
+        CourseLnConstraint::Hcn => Some(bmz_chart::model::LongNoteMode::Hcn),
+    };
+    crate::ln_policy::course_score_ln_policy_for_profiles(
+        setting,
+        fallback,
+        charts.iter().map(|chart| chart.ln_profile),
+    )
+}
+
+pub fn normalized_course_ln_policy_for_definition(
+    library_db: &LibraryDatabase,
+    definition: &CourseDefinition,
+    setting: LnPolicySetting,
+) -> Result<LnScorePolicy> {
+    let mut chart_ids = Vec::with_capacity(definition.entries.len());
+    for entry in &definition.entries {
+        let Some(chart_id) = entry.chart_id else {
+            return Err(anyhow::anyhow!("course has an unresolved chart entry"));
+        };
+        chart_ids.push(chart_id);
+    }
+    let expected_ids: HashSet<i64> = chart_ids.iter().copied().collect();
+    let charts = library_db.list_charts_by_ids(&chart_ids)?;
+    if charts.len() != expected_ids.len() {
+        return Err(anyhow::anyhow!(
+            "course chart profile count mismatch: expected {}, found {}",
+            expected_ids.len(),
+            charts.len(),
+        ));
+    }
+    Ok(normalized_course_ln_policy_for_charts(setting, definition.constraints.ln, &charts))
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DifficultyTableText {
@@ -187,6 +229,8 @@ pub struct SelectCourseRow {
     pub course_hash: Option<String>,
     /// rianIR/beatoraja connector互換のremote course hash。
     pub rian_course_hash_v1: Option<String>,
+    /// Course-wide score policy normalized from every resolved chart profile.
+    pub ln_policy: LnScorePolicy,
     pub title: String,
     pub kind: CourseKind,
     pub constraints: bmz_core::course::CourseConstraints,

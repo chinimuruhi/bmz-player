@@ -191,11 +191,22 @@ impl WinitApp {
     }
 
     pub(super) fn try_start_course_replay_for_slot(&mut self, course_id: i64, slot: u8) -> bool {
-        let Some(identity) = self.ir_course_identity(course_id) else {
+        let Some((stored, identity)) = self.course_identity_with_stored(course_id) else {
             tracing::warn!(course_id, slot, "course identity unavailable for replay slot");
             return false;
         };
-        let ln_policy = self.boot.profile_config.play.ln_mode_policy;
+        let ln_policy =
+            match crate::screens::select_model::normalized_course_ln_policy_for_definition(
+                &self.boot.library_db,
+                &stored.definition,
+                self.boot.profile_config.play.ln_mode_policy,
+            ) {
+                Ok(policy) => policy,
+                Err(error) => {
+                    tracing::warn!(%error, course_id, slot, "course LN policy unavailable for replay slot");
+                    return false;
+                }
+            };
         let rule_mode = self.boot.profile_config.play.rule_mode;
         match self.boot.score_db.course_replay_slot(
             &identity.course_hash,

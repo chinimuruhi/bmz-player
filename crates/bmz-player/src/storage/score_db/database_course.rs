@@ -8,7 +8,7 @@ impl ScoreDatabase {
     pub fn best_course_score(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
     ) -> Result<Option<CourseBestScore>> {
         super::super::course_score_db::best_course_score(
@@ -22,7 +22,7 @@ impl ScoreDatabase {
     pub fn best_course_clear(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
     ) -> Result<Option<bmz_core::clear::ClearType>> {
         super::super::course_score_db::best_course_clear(
@@ -47,7 +47,7 @@ impl ScoreDatabase {
     pub fn latest_course_score_id(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
     ) -> Result<Option<i64>> {
         super::super::course_score_db::latest_course_score_id(
@@ -61,7 +61,7 @@ impl ScoreDatabase {
     pub fn list_recent_course_scores(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
         limit: u32,
         offset: u32,
@@ -90,7 +90,7 @@ impl ScoreDatabase {
     pub fn course_replay_slot(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
         slot: u8,
     ) -> Result<Option<CourseReplaySlotRecord>> {
@@ -106,7 +106,7 @@ impl ScoreDatabase {
     pub fn course_replay_slots_for_course(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
     ) -> Result<[Option<CourseReplaySlotRecord>; 4]> {
         super::super::course_score_db::course_replay_slots_for_course(
@@ -120,7 +120,7 @@ impl ScoreDatabase {
     pub fn course_replay_slot_presence(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
     ) -> Result<[bool; 4]> {
         super::super::course_score_db::course_replay_slot_presence(
@@ -134,7 +134,7 @@ impl ScoreDatabase {
     pub fn achieved_trophy_names_for_course(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
     ) -> Result<Vec<String>> {
         super::super::course_score_db::achieved_trophy_names_for_course(
@@ -148,7 +148,7 @@ impl ScoreDatabase {
     pub fn best_course_score_for_trophy(
         &self,
         course_hash: &str,
-        ln_policy: LnPolicySetting,
+        ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
         trophy_name: &str,
     ) -> Result<Option<CourseBestScore>> {

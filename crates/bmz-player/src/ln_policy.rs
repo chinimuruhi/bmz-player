@@ -117,6 +117,16 @@ impl ChartLnProfile {
         self.has_defined_ln || self.has_defined_cn || self.has_defined_hcn
     }
 
+    /// Combine chart LN declarations for course-wide score-key normalization.
+    pub const fn merge(self, other: Self) -> Self {
+        Self {
+            has_undefined_ln: self.has_undefined_ln || other.has_undefined_ln,
+            has_defined_ln: self.has_defined_ln || other.has_defined_ln,
+            has_defined_cn: self.has_defined_cn || other.has_defined_cn,
+            has_defined_hcn: self.has_defined_hcn || other.has_defined_hcn,
+        }
+    }
+
     fn single_defined_mode(self) -> Option<LongNoteMode> {
         match (self.has_defined_ln, self.has_defined_cn, self.has_defined_hcn) {
             (true, false, false) => Some(LongNoteMode::Ln),
@@ -305,6 +315,20 @@ impl LnScorePolicy {
             LongNoteMode::Hcn => Self::AutoHcn,
         }
     }
+
+    /// Convert a normalized score policy back to an equivalent runtime setting.
+    /// This is used when replaying a course whose DB key stores the normalized
+    /// policy rather than the original profile setting.
+    pub const fn as_setting(self) -> LnPolicySetting {
+        match self {
+            Self::AutoLn => LnPolicySetting::AutoLn,
+            Self::AutoCn => LnPolicySetting::AutoCn,
+            Self::AutoHcn => LnPolicySetting::AutoHcn,
+            Self::ForceLn => LnPolicySetting::ForceLn,
+            Self::ForceCn => LnPolicySetting::ForceCn,
+            Self::ForceHcn => LnPolicySetting::ForceHcn,
+        }
+    }
 }
 
 pub fn score_ln_policy(setting: LnPolicySetting, profile: ChartLnProfile) -> LnScorePolicy {
@@ -347,6 +371,20 @@ pub fn course_score_ln_policy(
 
     let fallback = course_fallback.unwrap_or_else(|| setting.mode());
     score_ln_policy(LnPolicySetting::auto(fallback), profile)
+}
+
+/// Normalize one course-wide score key with the same rules as a single chart.
+///
+/// A course can contain several source LN profiles. Their flags are merged
+/// before applying [`course_score_ln_policy`], so settings that produce the
+/// same effective scoring rules share one `ln_policy` DB bucket.
+pub fn course_score_ln_policy_for_profiles(
+    setting: LnPolicySetting,
+    course_fallback: Option<LongNoteMode>,
+    profiles: impl IntoIterator<Item = ChartLnProfile>,
+) -> LnScorePolicy {
+    let profile = profiles.into_iter().fold(ChartLnProfile::default(), ChartLnProfile::merge);
+    course_score_ln_policy(setting, course_fallback, profile)
 }
 
 pub fn score_ln_policy_for_chart(setting: LnPolicySetting, chart: &PlayableChart) -> LnScorePolicy {
@@ -550,6 +588,73 @@ mod tests {
         );
         apply_score_ln_policy_to_chart(policy, &mut chart);
         assert!(chart.long_notes.iter().all(|pair| pair.mode == Some(LongNoteMode::Ln)));
+    }
+
+    #[test]
+    fn course_score_policy_normalizes_merged_chart_profiles() {
+        assert_eq!(
+            course_score_ln_policy_for_profiles(LnPolicySetting::AutoHcn, None, [NONE, NONE],),
+            LnScorePolicy::ForceLn,
+        );
+        assert_eq!(
+            course_score_ln_policy_for_profiles(
+                LnPolicySetting::AutoLn,
+                None,
+                [NONE, DEFINED_CN_ONLY],
+            ),
+            LnScorePolicy::ForceCn,
+        );
+        assert_eq!(
+            course_score_ln_policy_for_profiles(
+                LnPolicySetting::AutoHcn,
+                None,
+                [DEFINED_LN_ONLY, DEFINED_CN_ONLY],
+            ),
+            LnScorePolicy::AutoLn,
+        );
+        assert_eq!(
+            course_score_ln_policy_for_profiles(
+                LnPolicySetting::AutoHcn,
+                None,
+                [UNDEFINED_ONLY, DEFINED_CN_ONLY],
+            ),
+            LnScorePolicy::AutoHcn,
+        );
+    }
+
+    #[test]
+    fn course_score_policy_applies_constraint_before_normalization() {
+        assert_eq!(
+            course_score_ln_policy_for_profiles(
+                LnPolicySetting::AutoLn,
+                Some(LongNoteMode::Cn),
+                [UNDEFINED_ONLY, DEFINED_CN_ONLY],
+            ),
+            LnScorePolicy::AutoCn,
+        );
+        assert_eq!(
+            course_score_ln_policy_for_profiles(
+                LnPolicySetting::ForceHcn,
+                Some(LongNoteMode::Cn),
+                [DEFINED_LN_ONLY],
+            ),
+            LnScorePolicy::ForceHcn,
+        );
+    }
+
+    #[test]
+    fn normalized_course_policy_replays_with_equivalent_per_chart_policies() {
+        let profiles = [NONE, UNDEFINED_ONLY, DEFINED_CN_ONLY];
+        let fallback = Some(LongNoteMode::Hcn);
+        let normalized =
+            course_score_ln_policy_for_profiles(LnPolicySetting::AutoLn, fallback, profiles);
+
+        for profile in profiles {
+            assert_eq!(
+                course_score_ln_policy(LnPolicySetting::AutoLn, fallback, profile),
+                course_score_ln_policy(normalized.as_setting(), fallback, profile),
+            );
+        }
     }
 
     #[test]

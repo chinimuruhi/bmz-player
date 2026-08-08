@@ -267,7 +267,7 @@ fn select_snapshot_rows_copies_course_best_score_summary() {
     row.best_score = Some(crate::storage::score_db::CourseBestScore {
         course_score_id: 99,
         course_hash: "course-hash".to_string(),
-        ln_policy: crate::ln_policy::LnPolicySetting::ForceLn,
+        ln_policy: crate::ln_policy::LnScorePolicy::ForceLn,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         ex_score: 1234,
         max_ex_score: 2000,

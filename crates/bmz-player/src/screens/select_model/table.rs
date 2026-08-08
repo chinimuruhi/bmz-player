@@ -82,6 +82,11 @@ pub(super) fn build_select_course_row(
     let charts = library_db.list_charts_by_ids(&chart_ids).unwrap_or_default();
     let chart_by_id: std::collections::HashMap<i64, &ChartListItem> =
         charts.iter().map(|c| (c.chart_id, c)).collect();
+    let ln_policy = normalized_course_ln_policy_for_charts(
+        ln_policy_setting,
+        stored.definition.constraints.ln,
+        &charts,
+    );
 
     let entry_previews: Vec<CourseEntryPreview> = stored
         .definition
@@ -128,10 +133,10 @@ pub(super) fn build_select_course_row(
         stored.definition.trophies.iter().map(|t| t.name.clone()).collect();
 
     let identity = crate::ir::course_payload::course_identity_from_stored(library_db, &stored);
-    let best_score = identity.as_ref().and_then(|identity| {
-        score_db
-            .best_course_score(&identity.course_hash, ln_policy_setting, rule_mode)
-            .unwrap_or_else(|error| {
+    let score_identity = identity.as_ref().filter(|_| resolved_count == entry_count);
+    let best_score = score_identity.and_then(|identity| {
+        score_db.best_course_score(&identity.course_hash, ln_policy, rule_mode).unwrap_or_else(
+            |error| {
                 tracing::warn!(
                     %error,
                     course_id = stored.id,
@@ -140,13 +145,13 @@ pub(super) fn build_select_course_row(
                     "failed to load best course score"
                 );
                 None
-            })
+            },
+        )
     });
-    let replay_slots = identity
-        .as_ref()
+    let replay_slots = score_identity
         .map(|identity| {
             score_db
-                .course_replay_slot_presence(&identity.course_hash, ln_policy_setting, rule_mode)
+                .course_replay_slot_presence(&identity.course_hash, ln_policy, rule_mode)
                 .unwrap_or_else(|error| {
                     tracing::warn!(
                         %error,
@@ -159,15 +164,10 @@ pub(super) fn build_select_course_row(
                 })
         })
         .unwrap_or([false; 4]);
-    let achieved_trophy_names = identity
-        .as_ref()
+    let achieved_trophy_names = score_identity
         .map(|identity| {
             score_db
-                .achieved_trophy_names_for_course(
-                    &identity.course_hash,
-                    ln_policy_setting,
-                    rule_mode,
-                )
+                .achieved_trophy_names_for_course(&identity.course_hash, ln_policy, rule_mode)
                 .unwrap_or_else(|error| {
                     tracing::warn!(
                         %error,
@@ -185,6 +185,7 @@ pub(super) fn build_select_course_row(
         course_id: stored.id,
         course_hash: identity.as_ref().map(|identity| identity.course_hash.clone()),
         rian_course_hash_v1: identity.as_ref().map(|identity| identity.rian_course_hash_v1.clone()),
+        ln_policy,
         title: stored.definition.title,
         kind: stored.definition.kind,
         constraints: stored.definition.constraints,
@@ -208,14 +209,18 @@ pub(super) fn course_chart_total_notes(
     setting: LnPolicySetting,
     constraint: CourseLnConstraint,
 ) -> u32 {
-    let course_fallback = match constraint {
+    let course_fallback = course_ln_fallback(constraint);
+    let policy = course_score_ln_policy(setting, course_fallback, chart.ln_profile);
+    chart.scored_total_notes(policy)
+}
+
+fn course_ln_fallback(constraint: CourseLnConstraint) -> Option<bmz_chart::model::LongNoteMode> {
+    match constraint {
         CourseLnConstraint::Default => None,
         CourseLnConstraint::Ln => Some(bmz_chart::model::LongNoteMode::Ln),
         CourseLnConstraint::Cn => Some(bmz_chart::model::LongNoteMode::Cn),
         CourseLnConstraint::Hcn => Some(bmz_chart::model::LongNoteMode::Hcn),
-    };
-    let policy = course_score_ln_policy(setting, course_fallback, chart.ln_profile);
-    chart.scored_total_notes(policy)
+    }
 }
 
 /// Returns one folder item per level of the difficulty table, ordered by the
