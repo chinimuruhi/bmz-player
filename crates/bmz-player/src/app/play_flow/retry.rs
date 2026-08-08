@@ -405,10 +405,7 @@ impl WinitApp {
             self.play.play_ready_sound_started_at.is_some(),
             self.play.play_ending.is_some(),
             active_play.running.session.state,
-            bmz_gameplay::session::result_is_settled(
-                &active_play.running.session,
-                active_play.running.session.audio_clock.now(),
-            ),
+            active_play.running.session.judge.is_exhausted(&active_play.running.session.chart),
         );
         if !should_begin {
             return false;

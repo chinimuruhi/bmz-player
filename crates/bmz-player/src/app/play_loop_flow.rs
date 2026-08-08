@@ -46,6 +46,10 @@ impl WinitApp {
                         | bmz_gameplay::session::PlayState::Failed
                 ) =>
             {
+                let result_settled = bmz_gameplay::session::result_is_settled(
+                    &active_play.running.session,
+                    frame.render_snapshot.time,
+                );
                 active_play.running.result_graph.record_frame(&frame);
                 let fallback_mine_hits =
                     frame.mine_hits.iter().filter(|hit| hit.sound.is_none()).count();
@@ -74,6 +78,9 @@ impl WinitApp {
                 }
                 self.play.last_play_snapshot = Some(snapshot);
                 self.play_landmine_se(fallback_mine_hits);
+                if result_settled {
+                    self.finalize_settled_play_result_once();
+                }
             }
             Ok(frame) => {
                 let should_play_retire_sound = should_play_retire_sound_for_failed_transition(
@@ -188,6 +195,75 @@ impl WinitApp {
             }
         }
         self.sync_profile_visual_offset_from_active_play();
+    }
+
+    /// Play画面を `Playing` のまま維持し、判定確定後の保存・IRだけを先行する。
+    /// 実際の `Finished` 遷移と退出演出は gameplay の従来の終了条件に任せる。
+    fn finalize_settled_play_result_once(&mut self) {
+        let finish_mode = if self.play.active_course.is_some() {
+            crate::screens::play_finish::FinishResultMode::CourseStage
+        } else {
+            crate::screens::play_finish::FinishResultMode::Normal
+        };
+        let early_finished = {
+            let Some(active_play) = &mut self.play.active_play else {
+                return;
+            };
+            if active_play.running.finished.is_some() || active_play.running.practice_mode {
+                return;
+            }
+            let chart_length_ms = active_play.running.chart_length_ms;
+            // 保存値は判定確定時刻を使うが、RunningPlaySession の terminal duration は
+            // 従来どおり実際に Finished/Failed へ入った時点まで凍結しない。
+            let play_duration_ms =
+                (active_play.running.audio.clock().elapsed_since(TimeUs(0)).0.max(0) / 1_000)
+                    as u64;
+            match crate::screens::play_finish::finish_session_result_once(
+                &mut active_play.running.finished,
+                &mut self.boot.score_db,
+                &mut self.boot.network_db,
+                crate::screens::play_finish::FinishSessionResultOnceRequest {
+                    profile_paths: &self.boot.profile_paths,
+                    replay_config: &self.boot.profile_config.replay,
+                    ir_config: &self.boot.profile_config.ir,
+                    session: &active_play.running.session,
+                    played_at: now_unix_seconds(),
+                    applied_arrange: &active_play.running.applied_arrange,
+                    source_ln_profile: active_play.running.source_ln_profile,
+                    chart_length_ms: Some(chart_length_ms),
+                    play_duration_ms: Some(play_duration_ms),
+                    target_ex_score: active_play.running.target_ex_score,
+                    target_name: &active_play.running.target,
+                    score_key: active_play.running.score_key,
+                    practice_mode: active_play.running.practice_mode,
+                    finish_mode,
+                },
+            ) {
+                Ok(mut finished) => {
+                    let graph = Arc::new(
+                        active_play
+                            .running
+                            .result_graph
+                            .snapshot_for_session(&active_play.running.session),
+                    );
+                    finished.summary.graph = Arc::clone(&graph);
+                    if let Some(cached) = &mut active_play.running.finished {
+                        cached.summary.graph = graph;
+                    }
+                    Some(finished)
+                }
+                Err(error) => {
+                    tracing::error!(%error, "failed to finalize settled play result");
+                    None
+                }
+            }
+        };
+        if let Some(finished) = &early_finished {
+            if let Some(chart_id) = self.play.last_started_chart_id {
+                self.prepare_terminal_course_finish(chart_id, finished);
+            }
+            self.start_result_ir_for_finished_play(finished);
+        }
     }
 
     pub(super) fn maybe_start_ready_phase(&mut self) {

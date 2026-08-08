@@ -17,7 +17,19 @@ fn result_settles_after_slow_window_without_waiting_for_late_bgm() {
     // テスト用窓の最大 SLOW 側は Empty Poor の 200ms。境界上ではまだ受付中。
     assert!(!result_is_settled(&session, TimeUs(200_000)));
     assert!(result_is_settled(&session, TimeUs(200_001)));
-    assert!(should_finish(&session, TimeUs(200_001)));
+    // 判定結果は確定しても、Play の退出開始条件は従来の5秒待機+BGM完了を維持する。
+    assert!(!should_finish(&session, TimeUs(200_001)));
+    assert!(!should_finish(&session, TimeUs(5_000_001)));
+}
+
+#[test]
+fn play_exit_keeps_five_second_margin_after_result_settles() {
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.judge.process_input(&session.chart, human_press(TimeUs(0)));
+
+    assert!(result_is_settled(&session, TimeUs(200_001)));
+    assert!(!should_finish(&session, TimeUs(5_000_000)));
+    assert!(should_finish(&session, TimeUs(5_000_001)));
 }
 
 #[test]
