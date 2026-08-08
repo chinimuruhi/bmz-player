@@ -12,7 +12,8 @@ impl WinitApp {
         options: PlayStartOptions,
         course_title: &str,
     ) {
-        let snapshot = self.decide_snapshot_for_chart(chart_id);
+        let mut snapshot = self.decide_snapshot_for_chart(chart_id);
+        self.apply_course_skin_context(&mut snapshot);
         let title_override =
             DecideTitleOverride { title: course_title.to_string(), subtitle: String::new() };
         self.begin_decide_for_chart_with_snapshot(

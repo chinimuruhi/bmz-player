@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn course_decide_title_override_does_not_replace_play_snapshot_title() {
+fn course_decide_title_override_preserves_play_metadata_and_course_context() {
     let transition = DecideTransition {
         chart_id: 1,
         options: PlayStartOptions::default(),
@@ -11,6 +11,7 @@ fn course_decide_title_override_does_not_replace_play_snapshot_title() {
         snapshot: RenderSnapshot {
             title: "Song Title".to_string(),
             subtitle: "Song Subtitle".to_string(),
+            course_stage: Some(CourseStageMarker::Stage1),
             ..RenderSnapshot::default()
         },
         title_override: Some(DecideTitleOverride {
@@ -23,6 +24,7 @@ fn course_decide_title_override_does_not_replace_play_snapshot_title() {
 
     assert_eq!(decide_snapshot.title, "Course Title");
     assert_eq!(decide_snapshot.subtitle, "");
+    assert_eq!(decide_snapshot.course_stage, Some(CourseStageMarker::Stage1));
     assert_eq!(transition.snapshot.title, "Song Title");
     assert_eq!(transition.snapshot.subtitle, "Song Subtitle");
 }
