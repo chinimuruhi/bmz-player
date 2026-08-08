@@ -37,6 +37,18 @@ pub(in crate::app) fn select_option_panel_sound_for_transition(
     }
 }
 
+pub(in crate::app) fn select_option_panel_sound_for_scene_transition(
+    scene_kind: AppSceneKind,
+    current_panel: u8,
+    next_panel: u8,
+) -> Option<crate::system_sound::SoundType> {
+    if scene_kind == AppSceneKind::Select {
+        select_option_panel_sound_for_transition(current_panel, next_panel)
+    } else {
+        None
+    }
+}
+
 pub(in crate::app) fn transition_select_option_panel(
     current_panel: &mut u8,
     on_started_at: &mut Instant,

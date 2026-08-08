@@ -161,6 +161,15 @@ fn select_option_panel_transition_plays_open_and_close_sounds() {
     assert_eq!(select_option_panel_sound_for_transition(1, 2), None);
     assert_eq!(select_option_panel_sound_for_transition(2, 3), None);
     assert_eq!(select_option_panel_sound_for_transition(0, 0), None);
+
+    assert_eq!(
+        select_option_panel_sound_for_scene_transition(AppSceneKind::Select, 0, 1),
+        Some(SoundType::OptionOpen)
+    );
+    for scene in [AppSceneKind::Decide, AppSceneKind::Play, AppSceneKind::Result] {
+        assert_eq!(select_option_panel_sound_for_scene_transition(scene, 0, 1), None);
+        assert_eq!(select_option_panel_sound_for_scene_transition(scene, 1, 0), None);
+    }
 }
 
 #[test]

@@ -154,9 +154,11 @@ impl WinitApp {
             now,
         ) {
             self.reset_select_analog_scroll();
-            if let Some(sound_type) =
-                select_option_panel_sound_for_transition(previous_panel, panel)
-            {
+            if let Some(sound_type) = select_option_panel_sound_for_scene_transition(
+                self.current_scene_kind(),
+                previous_panel,
+                panel,
+            ) {
                 self.play_system_sound(sound_type);
             }
         }
