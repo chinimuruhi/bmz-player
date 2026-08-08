@@ -625,6 +625,63 @@ fn decide_plan_activates_fadeout_timer_destinations() {
 }
 
 #[test]
+fn decide_plan_hides_non_course_destinations_during_course_mode() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 6,
+                "w": 100,
+                "h": 100,
+                "destination": [
+                    { "id": -111, "dst": [
+                        { "x": 0, "y": 0, "w": 50, "h": 100 }
+                    ] },
+                    { "id": -110, "op": [-290], "dst": [
+                        { "x": 50, "y": 0, "w": 50, "h": 100 }
+                    ] }
+                ]
+            }
+            "#,
+    )
+    .unwrap();
+    let skin =
+        SkinContext::from_manifest_and_document(SkinManifest::default(), document, Vec::new());
+
+    let normal = plan_decide(
+        &RenderSnapshot::default(),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+    let course = plan_decide(
+        &RenderSnapshot {
+            course_stage: Some(crate::snapshot::CourseStageMarker::Stage1),
+            ..RenderSnapshot::default()
+        },
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+
+    let has_non_course_rect = |plan: &DrawPlan| {
+        plan.commands.iter().any(|command| {
+            matches!(
+                command,
+                DrawCommand::Rect {
+                    rect: Rect { x, width, .. },
+                    color: Color { r, g, b, .. },
+                } if approx_eq(*x, 0.5)
+                    && approx_eq(*width, 0.5)
+                    && approx_eq(*r, 0.0)
+                    && approx_eq(*g, 0.0)
+                    && approx_eq(*b, 0.0)
+            )
+        })
+    };
+
+    assert!(has_non_course_rect(&normal));
+    assert!(!has_non_course_rect(&course));
+}
+
+#[test]
 fn select_detail_panel_shows_gas_state() {
     let snapshot = crate::scene::SelectSnapshot {
         option_panel: 3,

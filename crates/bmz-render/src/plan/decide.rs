@@ -54,6 +54,7 @@ pub(super) fn plan_decide(
             gauge_increase_ms: snapshot.gauge_increase_elapsed_ms,
             gauge_max_ms: snapshot.gauge_max_elapsed_ms,
             score_save_enabled: Some(snapshot.score_save_enabled),
+            course_stage: snapshot.course_stage,
             ..crate::skin::SkinDrawState::default()
         };
         advance_skin_dynamic_timers(skin, dynamic_timers, &mut state, play_elapsed_ms);
