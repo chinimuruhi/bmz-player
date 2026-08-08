@@ -285,8 +285,13 @@ impl WinitApp {
                     );
                     return;
                 };
+                let ln_policy = self.boot.profile_config.play.ln_mode_policy;
                 let rule_mode = self.boot.profile_config.play.rule_mode;
-                match self.boot.score_db.latest_course_score_id(&identity.course_hash, rule_mode) {
+                match self.boot.score_db.latest_course_score_id(
+                    &identity.course_hash,
+                    ln_policy,
+                    rule_mode,
+                ) {
                     Ok(Some(course_score_id)) => {
                         tracing::info!(course_id, course_score_id, "booting into course replay");
                         self.start_course_replay_with_auto_advance(

@@ -127,11 +127,21 @@ LN policy は profile 内のスコア・リプレイをさらに分けるキー�
 - `score_history.ln_policy`
 - `score_best.ln_policy`
 - `replay_slots.ln_policy`
+- `course_scores.ln_policy`
+- `course_replay_slots.ln_policy`
 
 主キー:
 
 - `score_best`: `(chart_sha256, ln_policy)`
 - `replay_slots`: `(chart_sha256, ln_policy, slot)`
+- `course_scores` の検索キー: `(course_hash, ln_policy, rule_mode)`
+- `course_replay_slots`: `(course_hash, ln_policy, rule_mode, slot)`
+
+単曲の `ln_policy` は譜面ごとに正規化した `LnScorePolicy` を保存する。コースの
+`ln_policy` は複数譜面で解決結果が異なり得るため、コース開始時に選択した
+`LnPolicySetting` (`AutoLn` / `ForceCn` など) をそのまま保存する。
+既存のコーススコアは設定値を一意に復元できないため、migration では
+`ForceLn` bucket へ移す。
 
 通常リプレイファイルは `score_history` が個別 path を持つため、ファイル名衝突は起きにくい。
 replay slot は同じ chart SHA256 / slot 番号を複数 policy で使うため、新規保存時の slot replay ファイル名に `ln_policy` を含める。

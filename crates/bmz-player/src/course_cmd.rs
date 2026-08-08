@@ -95,7 +95,7 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
     migrate_library_db(&app_paths.library_db)?;
     let library_db = LibraryDatabase::open(&app_paths.library_db)?;
     let score_db = open_active_score_db(&app_paths)?;
-    let rule_mode = active_rule_mode(&app_paths)?;
+    let (ln_policy, rule_mode) = active_course_score_context(&app_paths)?;
 
     let course = library_db
         .list_courses()?
@@ -105,23 +105,31 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
     let identity = crate::ir::course_payload::course_identity_from_stored(&library_db, &course)
         .ok_or_else(|| anyhow::anyhow!("course id {course_id} has unresolved chart sha256"))?;
 
-    let entries = score_db.list_recent_course_scores(&identity.course_hash, rule_mode, limit, 0)?;
+    let entries = score_db.list_recent_course_scores(
+        &identity.course_hash,
+        ln_policy,
+        rule_mode,
+        limit,
+        0,
+    )?;
     if entries.is_empty() {
         println!(
-            "No attempts stored for course [{}] {} (id {}, rule_mode={}).",
+            "No attempts stored for course [{}] {} (id {}, ln_policy={}, rule_mode={}).",
             kind_label(course.definition.kind),
             course.definition.title,
             course_id,
+            ln_policy.as_ir_str(),
             rule_mode.as_str(),
         );
         return Ok(());
     }
 
     println!(
-        "[{}] {} — {} stored attempt(s) for rule_mode={} (showing up to {}):",
+        "[{}] {} — {} stored attempt(s) for ln_policy={}, rule_mode={} (showing up to {}):",
         kind_label(course.definition.kind),
         course.definition.title,
         entries.len(),
+        ln_policy.as_ir_str(),
         rule_mode.as_str(),
         limit,
     );
@@ -164,6 +172,7 @@ fn course_attempt(score_id: i64) -> Result<()> {
         entry.achieved_trophies.join(",")
     };
     println!("[{}] {} — attempt {}", entry.kind, entry.title, entry.course_score_id,);
+    println!("  LN policy:  {}", entry.ln_policy.as_ir_str());
     println!("  Rule mode:  {}", entry.rule_mode.as_str());
     println!("  Played:     {}", format_unix_utc(entry.played_at));
     println!(
@@ -235,7 +244,9 @@ fn open_active_score_db(app_paths: &AppPaths) -> Result<ScoreDatabase> {
     ScoreDatabase::open(&profile_paths.score_db)
 }
 
-fn active_rule_mode(app_paths: &AppPaths) -> Result<bmz_gameplay::rule::RuleMode> {
+fn active_course_score_context(
+    app_paths: &AppPaths,
+) -> Result<(crate::ln_policy::LnPolicySetting, bmz_gameplay::rule::RuleMode)> {
     let app_config = if app_paths.config_toml.exists() {
         load_app_config(&app_paths.config_toml)
             .with_context(|| format!("failed to load {}", app_paths.config_toml.display()))?
@@ -244,11 +255,14 @@ fn active_rule_mode(app_paths: &AppPaths) -> Result<bmz_gameplay::rule::RuleMode
     };
     let profile_paths = resolve_profile_paths(app_paths, &app_config.active_profile)?;
     if !profile_paths.profile_toml.exists() {
-        return Ok(bmz_gameplay::rule::RuleMode::Beatoraja);
+        return Ok((
+            crate::ln_policy::LnPolicySetting::AutoLn,
+            bmz_gameplay::rule::RuleMode::Beatoraja,
+        ));
     }
     let profile = load_profile_config(&profile_paths.profile_toml)
         .with_context(|| format!("failed to load {}", profile_paths.profile_toml.display()))?;
-    Ok(profile.play.rule_mode)
+    Ok((profile.play.ln_mode_policy, profile.play.rule_mode))
 }
 
 fn kind_label(kind: bmz_core::course::CourseKind) -> &'static str {

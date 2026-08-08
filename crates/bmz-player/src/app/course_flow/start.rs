@@ -116,12 +116,14 @@ impl WinitApp {
         let options = entry_start_options[0].clone();
         let course_title = definition.title.clone();
         let app_config = self.play_session_app_config();
+        let ln_policy = self.boot.profile_config.play.ln_mode_policy;
+        let rule_mode = self.boot.profile_config.play.rule_mode;
         let course_metrics = match course_play_metrics_for_definition(
             &self.boot.library_db,
             &definition,
             &app_config,
-            self.boot.profile_config.play.ln_mode_policy,
-            self.boot.profile_config.play.rule_mode,
+            ln_policy,
+            rule_mode,
             &entry_start_options,
         ) {
             Ok(metrics) => metrics,
@@ -133,6 +135,8 @@ impl WinitApp {
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
+            ln_policy,
+            rule_mode,
             course_total_notes: course_metrics.total_notes,
             course_ln_mode: course_metrics.ln_mode,
             current_index: 0,
@@ -179,6 +183,23 @@ impl WinitApp {
         let Some(stored) = stored else {
             tracing::warn!(course_id, "course not found");
             return;
+        };
+
+        let score_entry = match self.boot.score_db.course_score_entry_by_id(course_score_id) {
+            Ok(Some(entry)) => entry,
+            Ok(None) => {
+                tracing::warn!(course_id, course_score_id, "course score not found for replay");
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    course_id,
+                    course_score_id,
+                    "failed to load course score for replay"
+                );
+                return;
+            }
         };
 
         let entries = match self.boot.score_db.list_course_replays(course_score_id) {
@@ -254,12 +275,14 @@ impl WinitApp {
         let options = entry_start_options[0].clone();
         let course_title = definition.title.clone();
         let app_config = self.play_session_app_config();
+        let ln_policy = score_entry.ln_policy;
+        let rule_mode = score_entry.rule_mode;
         let course_metrics = match course_play_metrics_for_definition(
             &self.boot.library_db,
             &definition,
             &app_config,
-            self.boot.profile_config.play.ln_mode_policy,
-            self.boot.profile_config.play.rule_mode,
+            ln_policy,
+            rule_mode,
             &entry_start_options,
         ) {
             Ok(metrics) => metrics,
@@ -271,6 +294,8 @@ impl WinitApp {
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
+            ln_policy,
+            rule_mode,
             course_total_notes: course_metrics.total_notes,
             course_ln_mode: course_metrics.ln_mode,
             current_index: 0,

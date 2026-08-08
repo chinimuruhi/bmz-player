@@ -297,6 +297,7 @@ impl WinitApp {
         let rule_mode = course.rule_mode;
         let record = crate::storage::score_db::CourseReplaySlotRecord {
             course_hash: course_hash.clone(),
+            ln_policy: course.ln_policy,
             rule_mode,
             slot,
             rule: crate::config::profile_config::ReplaySlotRule::Always.as_str().to_string(),

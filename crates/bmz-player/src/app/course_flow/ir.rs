@@ -49,14 +49,8 @@ impl WinitApp {
         let course_hash = self.result.finished_course_hash.clone()?;
         let rian_course_hash_v1 = self.result.finished_course_rian_hash_v1.clone()?;
         let gauge = course.final_gauge_type.as_str().to_string();
-        let ln_policy = self.boot.profile_config.play.ln_mode_policy.as_ir_str().to_string();
-        Some((
-            course_hash,
-            rian_course_hash_v1,
-            gauge,
-            ln_policy,
-            self.boot.profile_config.play.rule_mode,
-        ))
+        let ln_policy = course.ln_policy.as_ir_str().to_string();
+        Some((course_hash, rian_course_hash_v1, gauge, ln_policy, course.rule_mode))
     }
 
     pub(super) fn start_result_ir_for_finished_play(&mut self, finished: &FinishedPlaySession) {
@@ -127,7 +121,7 @@ impl WinitApp {
             return;
         };
         let definition = &identity.definition;
-        let ln_setting = self.boot.profile_config.play.ln_mode_policy.as_ir_str().to_string();
+        let ln_setting = course_result.ln_policy.as_ir_str().to_string();
         let payload = crate::ir::course_payload::build_course_submission(
             definition,
             course_result,
@@ -183,6 +177,7 @@ impl WinitApp {
     pub(super) fn update_course_replay_slots(
         &mut self,
         course_hash: &str,
+        ln_policy: crate::ln_policy::LnPolicySetting,
         rule_mode: bmz_gameplay::rule::RuleMode,
         course_score_id: i64,
         played_at: i64,
@@ -202,7 +197,12 @@ impl WinitApp {
         let mut saved_slots = [false; 4];
         for (slot_index, &rule) in slot_rules.iter().enumerate() {
             let slot = slot_index as u8;
-            let prev = match self.boot.score_db.course_replay_slot(course_hash, rule_mode, slot) {
+            let prev = match self.boot.score_db.course_replay_slot(
+                course_hash,
+                ln_policy,
+                rule_mode,
+                slot,
+            ) {
                 Ok(record) => record,
                 Err(error) => {
                     tracing::warn!(
@@ -221,6 +221,7 @@ impl WinitApp {
             }
             let record = crate::storage::score_db::CourseReplaySlotRecord {
                 course_hash: course_hash.to_string(),
+                ln_policy,
                 rule_mode,
                 slot,
                 rule: rule.as_str().to_string(),

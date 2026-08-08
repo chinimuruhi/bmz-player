@@ -242,6 +242,18 @@ impl LnPolicySetting {
             Self::ForceHcn => "ForceHcn",
         }
     }
+
+    pub fn from_ir_str_opt(value: &str) -> Option<Self> {
+        match value {
+            "AutoLn" => Some(Self::AutoLn),
+            "AutoCn" => Some(Self::AutoCn),
+            "AutoHcn" => Some(Self::AutoHcn),
+            "ForceLn" => Some(Self::ForceLn),
+            "ForceCn" => Some(Self::ForceCn),
+            "ForceHcn" => Some(Self::ForceHcn),
+            _ => None,
+        }
+    }
 }
 
 fn cycle_ln_policy_setting(current: LnPolicySetting, direction: i32) -> LnPolicySetting {
@@ -418,6 +430,10 @@ mod tests {
         assert_eq!(LnPolicySetting::ForceLn.as_ir_str(), "ForceLn");
         assert_eq!(LnPolicySetting::ForceCn.as_ir_str(), "ForceCn");
         assert_eq!(LnPolicySetting::ForceHcn.as_ir_str(), "ForceHcn");
+        for setting in LnPolicySetting::ORDER {
+            assert_eq!(LnPolicySetting::from_ir_str_opt(setting.as_ir_str()), Some(setting));
+        }
+        assert_eq!(LnPolicySetting::from_ir_str_opt("force_ln"), None);
     }
 
     #[test]

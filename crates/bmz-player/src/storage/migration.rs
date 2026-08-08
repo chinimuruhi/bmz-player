@@ -515,7 +515,7 @@ mod tests {
         run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 26);
+        assert_eq!(version, 27);
 
         let mut stmt = conn.prepare("PRAGMA table_info(score_best)").unwrap();
         let columns = stmt
@@ -550,6 +550,58 @@ mod tests {
     }
 
     #[test]
+    fn score_migration_scopes_legacy_course_scores_and_replay_slots_to_force_ln() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let version_27 =
+            SCORE_MIGRATIONS.iter().position(|migration| migration.version == 27).unwrap();
+        run_migrations(&mut conn, &SCORE_MIGRATIONS[..version_27]).unwrap();
+        conn.execute_batch(
+            "INSERT INTO course_scores (
+                course_hash, source, course_key, title, kind, constraints_json,
+                chart_sha256s_json, ex_score, max_ex_score, clear_type,
+                gauge_type, gauge_value, max_combo, bp, course_failed,
+                course_clear, arrange, trophies_json, played_at, rule_mode
+             ) VALUES (
+                'course-a', '', '', 'Course A', 'dan', '{}', '[]',
+                500, 1000, 'Normal', 'Class', 80.0, 200, 5, 0, 1,
+                'Normal', '[]', 10, 'Beatoraja'
+             );
+             INSERT INTO course_replay_slots (
+                course_hash, rule_mode, slot, rule, course_score_id,
+                played_at, ex_score, bp, max_combo, clear_rank
+             ) VALUES (
+                'course-a', 'Beatoraja', 0, 'Always', 1,
+                10, 500, 5, 200, 5
+             );",
+        )
+        .unwrap();
+
+        run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+
+        let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        assert_eq!(version, 27);
+        let course_policy: String =
+            conn.query_row("SELECT ln_policy FROM course_scores", [], |row| row.get(0)).unwrap();
+        let slot_policy: String = conn
+            .query_row("SELECT ln_policy FROM course_replay_slots", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(course_policy, "ForceLn");
+        assert_eq!(slot_policy, "ForceLn");
+
+        let primary_key_columns = conn
+            .prepare(
+                "SELECT name FROM pragma_table_info('course_replay_slots')
+                 WHERE pk > 0 ORDER BY pk",
+            )
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(primary_key_columns, ["course_hash", "ln_policy", "rule_mode", "slot"]);
+    }
+
+    #[test]
     fn score_migration_repairs_ir_branch_version_20_collision() {
         let mut conn = Connection::open_in_memory().unwrap();
         let main_version_20 =
@@ -578,11 +630,12 @@ mod tests {
         run_score_migrations(&mut conn).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 26);
+        assert_eq!(version, 27);
         assert!(column_exists(&conn, "score_history", "source_kind").unwrap());
         assert!(column_exists(&conn, "score_history", "arrange_2p").unwrap());
         assert!(column_exists(&conn, "score_history", "applied_double_option").unwrap());
         assert!(column_exists(&conn, "score_history", "seed_scheme").unwrap());
+        assert!(column_exists(&conn, "course_scores", "ln_policy").unwrap());
         assert!(table_exists(&conn, "score_history_sources").unwrap());
     }
 }

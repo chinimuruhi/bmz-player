@@ -88,8 +88,15 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
-        let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
-        let rule_mode = self.boot.profile_config.play.rule_mode;
+        let (ln_policy_setting, rule_mode) = self
+            .play
+            .active_course
+            .as_ref()
+            .map(|course| (course.ln_policy, course.rule_mode))
+            .unwrap_or((
+                self.boot.profile_config.play.ln_mode_policy,
+                self.boot.profile_config.play.rule_mode,
+            ));
         let input = SharedInputBackend::default();
         let preload_input = input.clone();
         let audio_progress = Arc::new(AtomicU32::new(0));

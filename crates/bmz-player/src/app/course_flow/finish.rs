@@ -116,11 +116,12 @@ impl WinitApp {
                 self.play_course_result_entry_sound(clear_type);
                 return;
             };
+            let course_ln_policy = course_result.ln_policy;
             let course_rule_mode = course_result.rule_mode;
             course_result.previous_best_score = self
                 .boot
                 .score_db
-                .best_course_score(&identity.course_hash, course_rule_mode)
+                .best_course_score(&identity.course_hash, course_ln_policy, course_rule_mode)
                 .unwrap_or_else(|error| {
                     tracing::warn!(
                         %error,
@@ -151,6 +152,7 @@ impl WinitApp {
                 serde_json::to_string(&achieved_trophies).unwrap_or_else(|_| "[]".to_string());
             let insert = crate::storage::score_db::CourseScoreInsert {
                 course_hash: identity.course_hash.clone(),
+                ln_policy: course_ln_policy,
                 rule_mode: course_rule_mode,
                 source: stored_course.source.clone(),
                 course_key: stored_course.definition.key.clone(),
@@ -217,6 +219,7 @@ impl WinitApp {
                     // require strict improvement; empty slot always wins).
                     course_result.saved_replay_slots = self.update_course_replay_slots(
                         &identity.course_hash,
+                        course_ln_policy,
                         course_rule_mode,
                         course_score_id,
                         played_at,
@@ -228,7 +231,11 @@ impl WinitApp {
                     course_result.replay_slots = self
                         .boot
                         .score_db
-                        .course_replay_slot_presence(&identity.course_hash, course_rule_mode)
+                        .course_replay_slot_presence(
+                            &identity.course_hash,
+                            course_ln_policy,
+                            course_rule_mode,
+                        )
                         .unwrap_or_else(|error| {
                             tracing::warn!(
                                 %error,
@@ -256,7 +263,7 @@ impl WinitApp {
             course_result.best_score = self
                 .boot
                 .score_db
-                .best_course_score(&identity.course_hash, course_rule_mode)
+                .best_course_score(&identity.course_hash, course_ln_policy, course_rule_mode)
                 .unwrap_or_else(|error| {
                     tracing::warn!(
                         %error,

@@ -22,7 +22,7 @@ pub use super::course_score_db::{
     CourseScoreEntry, CourseScoreInsert,
 };
 use crate::config::profile_config::ReplaySlotRule;
-use crate::ln_policy::LnScorePolicy;
+use crate::ln_policy::{LnPolicySetting, LnScorePolicy};
 use crate::select_options::{DoubleOption, DoubleOptionScoreBucket};
 
 mod codec;

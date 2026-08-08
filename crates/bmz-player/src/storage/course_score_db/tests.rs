@@ -3,6 +3,8 @@ use rusqlite::Connection;
 use super::*;
 use crate::storage::migration::{SCORE_MIGRATIONS, run_migrations};
 
+const LN_POLICY: LnPolicySetting = LnPolicySetting::ForceLn;
+
 fn open_conn() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
     super::super::common::configure_connection(&conn).unwrap();
@@ -18,6 +20,7 @@ fn sample_score(
 ) -> CourseScoreInsert {
     CourseScoreInsert {
         course_hash: course_hash.to_string(),
+        ln_policy: LN_POLICY,
         rule_mode: RuleMode::Beatoraja,
         source: "table:x".to_string(),
         course_key: "dan-1".to_string(),
@@ -62,6 +65,7 @@ fn sample_slot(
 ) -> CourseReplaySlotRecord {
     CourseReplaySlotRecord {
         course_hash: course_hash.to_string(),
+        ln_policy: LN_POLICY,
         rule_mode: RuleMode::Beatoraja,
         slot,
         rule: "score".to_string(),
@@ -131,7 +135,8 @@ fn insert_course_score_round_trips_score_children_and_trophies() {
     )
     .unwrap();
 
-    let best = best_course_score(&conn, "course-a", RuleMode::Beatoraja).unwrap().unwrap();
+    let best =
+        best_course_score(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap().unwrap();
     assert_eq!(best.course_score_id, score_id);
     assert_eq!(best.course_hash, "course-a");
     assert_eq!(best.ex_score, 500);
@@ -157,7 +162,8 @@ fn insert_course_score_round_trips_score_children_and_trophies() {
     assert_eq!(replays[0].replay_path, "replay/course.toml");
 
     assert_eq!(
-        achieved_trophy_names_for_course(&conn, "course-a", RuleMode::Beatoraja).unwrap(),
+        achieved_trophy_names_for_course(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja)
+            .unwrap(),
         vec!["gold".to_string()]
     );
     let entry = course_score_entry_by_id(&conn, score_id).unwrap().unwrap();
@@ -174,16 +180,17 @@ fn best_and_latest_are_scoped_by_course_hash() {
         insert_course_score(&mut conn, &sample_score("course-a", 300, "Normal", 20)).unwrap();
     insert_course_score(&mut conn, &sample_score("course-b", 900, "Normal", 30)).unwrap();
 
-    let best = best_course_score(&conn, "course-a", RuleMode::Beatoraja).unwrap().unwrap();
+    let best =
+        best_course_score(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap().unwrap();
     assert_eq!(best.ex_score, 400);
     assert_eq!(best.play_count, 2);
     assert_eq!(best.clear_count, 2);
     assert_eq!(
-        latest_course_score_id(&conn, "course-a", RuleMode::Beatoraja).unwrap(),
+        latest_course_score_id(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap(),
         Some(newer)
     );
     assert_eq!(
-        best_course_clear(&conn, "course-a", RuleMode::Beatoraja).unwrap(),
+        best_course_clear(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap(),
         Some(ClearType::Hard)
     );
 }
@@ -196,16 +203,136 @@ fn replay_slots_are_keyed_by_course_hash() {
     upsert_course_replay_slot(&mut conn, &sample_slot("course-a", 0, score_id, 500)).unwrap();
     upsert_course_replay_slot(&mut conn, &sample_slot("course-a", 3, score_id, 700)).unwrap();
 
-    let slot = course_replay_slot(&conn, "course-a", RuleMode::Beatoraja, 3).unwrap().unwrap();
+    let slot =
+        course_replay_slot(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja, 3).unwrap().unwrap();
     assert_eq!(slot.ex_score, 700);
     assert_eq!(slot.bp, 7);
     assert_eq!(
-        course_replay_slot_presence(&conn, "course-a", RuleMode::Beatoraja).unwrap(),
+        course_replay_slot_presence(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap(),
         [true, false, false, true]
     );
     assert_eq!(
-        course_replay_slot_presence(&conn, "course-b", RuleMode::Beatoraja).unwrap(),
+        course_replay_slot_presence(&conn, "course-b", LN_POLICY, RuleMode::Beatoraja).unwrap(),
         [false; 4]
+    );
+}
+
+#[test]
+fn course_scores_are_separate_per_ln_policy() {
+    let mut conn = open_conn();
+    let force_ln_id =
+        insert_course_score(&mut conn, &sample_score("course-a", 400, "Hard", 10)).unwrap();
+    let mut force_cn = sample_score("course-a", 900, "Normal", 20);
+    force_cn.ln_policy = LnPolicySetting::ForceCn;
+    force_cn.trophies_json = r#"["silver"]"#.to_string();
+    force_cn.achieved_trophies = vec!["silver".to_string()];
+    let force_cn_id = insert_course_score(&mut conn, &force_cn).unwrap();
+
+    let force_ln =
+        best_course_score(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja)
+            .unwrap()
+            .unwrap();
+    let force_cn =
+        best_course_score(&conn, "course-a", LnPolicySetting::ForceCn, RuleMode::Beatoraja)
+            .unwrap()
+            .unwrap();
+
+    assert_eq!(force_ln.course_score_id, force_ln_id);
+    assert_eq!(force_ln.ex_score, 400);
+    assert_eq!(force_ln.play_count, 1);
+    assert_eq!(force_ln.clear_count, 1);
+    assert_eq!(force_cn.course_score_id, force_cn_id);
+    assert_eq!(force_cn.ex_score, 900);
+    assert_eq!(force_cn.play_count, 1);
+    assert_eq!(force_cn.clear_count, 1);
+    assert_eq!(
+        best_course_clear(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja,)
+            .unwrap(),
+        Some(ClearType::Hard)
+    );
+    assert_eq!(
+        achieved_trophy_names_for_course(
+            &conn,
+            "course-a",
+            LnPolicySetting::ForceLn,
+            RuleMode::Beatoraja,
+        )
+        .unwrap(),
+        vec!["gold".to_string()]
+    );
+    assert_eq!(
+        achieved_trophy_names_for_course(
+            &conn,
+            "course-a",
+            LnPolicySetting::ForceCn,
+            RuleMode::Beatoraja,
+        )
+        .unwrap(),
+        vec!["silver".to_string()]
+    );
+    assert_eq!(
+        latest_course_score_id(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja,)
+            .unwrap(),
+        Some(force_ln_id)
+    );
+    let history = list_recent_course_scores(
+        &conn,
+        "course-a",
+        LnPolicySetting::ForceCn,
+        RuleMode::Beatoraja,
+        10,
+        0,
+    )
+    .unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].course_score_id, force_cn_id);
+    assert_eq!(history[0].ln_policy, LnPolicySetting::ForceCn);
+}
+
+#[test]
+fn course_replay_slots_are_separate_per_ln_policy() {
+    let mut conn = open_conn();
+    let force_ln_id =
+        insert_course_score(&mut conn, &sample_score("course-a", 500, "Normal", 10)).unwrap();
+    let mut force_cn = sample_score("course-a", 700, "Normal", 20);
+    force_cn.ln_policy = LnPolicySetting::ForceCn;
+    let force_cn_id = insert_course_score(&mut conn, &force_cn).unwrap();
+
+    upsert_course_replay_slot(&mut conn, &sample_slot("course-a", 0, force_ln_id, 500)).unwrap();
+    let mut force_cn_slot = sample_slot("course-a", 0, force_cn_id, 700);
+    force_cn_slot.ln_policy = LnPolicySetting::ForceCn;
+    upsert_course_replay_slot(&mut conn, &force_cn_slot).unwrap();
+
+    let force_ln =
+        course_replay_slot(&conn, "course-a", LnPolicySetting::ForceLn, RuleMode::Beatoraja, 0)
+            .unwrap()
+            .unwrap();
+    let force_cn =
+        course_replay_slot(&conn, "course-a", LnPolicySetting::ForceCn, RuleMode::Beatoraja, 0)
+            .unwrap()
+            .unwrap();
+
+    assert_eq!(force_ln.course_score_id, force_ln_id);
+    assert_eq!(force_cn.course_score_id, force_cn_id);
+    assert_eq!(
+        course_replay_slot_presence(
+            &conn,
+            "course-a",
+            LnPolicySetting::ForceLn,
+            RuleMode::Beatoraja,
+        )
+        .unwrap(),
+        [true, false, false, false]
+    );
+    assert_eq!(
+        course_replay_slot_presence(
+            &conn,
+            "course-a",
+            LnPolicySetting::ForceCn,
+            RuleMode::Beatoraja,
+        )
+        .unwrap(),
+        [true, false, false, false]
     );
 }
 
@@ -218,18 +345,22 @@ fn course_scores_are_separate_per_rule_mode() {
     dx.rule_mode = RuleMode::Dx;
     let dx_id = insert_course_score(&mut conn, &dx).unwrap();
 
-    let beatoraja = best_course_score(&conn, "course-a", RuleMode::Beatoraja).unwrap().unwrap();
-    let dx = best_course_score(&conn, "course-a", RuleMode::Dx).unwrap().unwrap();
+    let beatoraja =
+        best_course_score(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap().unwrap();
+    let dx = best_course_score(&conn, "course-a", LN_POLICY, RuleMode::Dx).unwrap().unwrap();
 
     assert_eq!(beatoraja.course_score_id, beatoraja_id);
     assert_eq!(beatoraja.ex_score, 400);
     assert_eq!(dx.course_score_id, dx_id);
     assert_eq!(dx.ex_score, 900);
     assert_eq!(
-        latest_course_score_id(&conn, "course-a", RuleMode::Beatoraja).unwrap(),
+        latest_course_score_id(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap(),
         Some(beatoraja_id)
     );
-    assert_eq!(latest_course_score_id(&conn, "course-a", RuleMode::Dx).unwrap(), Some(dx_id));
+    assert_eq!(
+        latest_course_score_id(&conn, "course-a", LN_POLICY, RuleMode::Dx).unwrap(),
+        Some(dx_id)
+    );
 }
 
 #[test]
@@ -245,19 +376,20 @@ fn course_replay_slots_are_separate_per_rule_mode() {
     dx_slot.rule_mode = RuleMode::Dx;
     upsert_course_replay_slot(&mut conn, &dx_slot).unwrap();
 
-    let beatoraja = course_replay_slot(&conn, "course-a", RuleMode::Beatoraja, 0).unwrap().unwrap();
-    let dx = course_replay_slot(&conn, "course-a", RuleMode::Dx, 0).unwrap().unwrap();
+    let beatoraja =
+        course_replay_slot(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja, 0).unwrap().unwrap();
+    let dx = course_replay_slot(&conn, "course-a", LN_POLICY, RuleMode::Dx, 0).unwrap().unwrap();
 
     assert_eq!(beatoraja.course_score_id, beatoraja_id);
     assert_eq!(beatoraja.ex_score, 500);
     assert_eq!(dx.course_score_id, dx_id);
     assert_eq!(dx.ex_score, 700);
     assert_eq!(
-        course_replay_slot_presence(&conn, "course-a", RuleMode::Beatoraja).unwrap(),
+        course_replay_slot_presence(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja).unwrap(),
         [true, false, false, false]
     );
     assert_eq!(
-        course_replay_slot_presence(&conn, "course-a", RuleMode::Dx).unwrap(),
+        course_replay_slot_presence(&conn, "course-a", LN_POLICY, RuleMode::Dx).unwrap(),
         [true, false, false, false]
     );
 }

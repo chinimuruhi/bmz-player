@@ -4,6 +4,8 @@ use bmz_gameplay::rule::RuleMode;
 use bmz_render::snapshot::{DisplayJudgeCounts, FastSlowJudgeCounts};
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::ln_policy::LnPolicySetting;
+
 use super::common::{hash_to_hex, hex_to_hash};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +28,7 @@ pub struct CourseReplayRecord {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CourseScoreInsert {
     pub course_hash: String,
+    pub ln_policy: LnPolicySetting,
     pub rule_mode: RuleMode,
     pub source: String,
     pub course_key: String,
@@ -53,6 +56,7 @@ pub struct CourseScoreInsert {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CourseReplaySlotRecord {
     pub course_hash: String,
+    pub ln_policy: LnPolicySetting,
     pub rule_mode: RuleMode,
     pub slot: u8,
     pub rule: String,
@@ -68,6 +72,7 @@ pub struct CourseReplaySlotRecord {
 pub struct CourseBestScore {
     pub course_score_id: i64,
     pub course_hash: String,
+    pub ln_policy: LnPolicySetting,
     pub rule_mode: RuleMode,
     pub ex_score: u32,
     pub max_ex_score: u32,
@@ -90,6 +95,7 @@ pub struct CourseBestScore {
 pub struct CourseScoreEntry {
     pub course_score_id: i64,
     pub course_hash: String,
+    pub ln_policy: LnPolicySetting,
     pub rule_mode: RuleMode,
     pub source: String,
     pub course_key: String,
@@ -117,14 +123,15 @@ pub(super) fn insert_course_score(
     let tx = conn.transaction()?;
     tx.execute(
         "INSERT INTO course_scores (
-            course_hash, rule_mode, source, course_key, title, kind, constraints_json,
+            course_hash, ln_policy, rule_mode, source, course_key, title, kind, constraints_json,
             chart_sha256s_json, ex_score, max_ex_score, clear_type, gauge_type,
             gauge_value, max_combo, bp, course_failed, course_clear, arrange,
             trophies_json, played_at
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                   ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                   ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             record.course_hash,
+            record.ln_policy.as_ir_str(),
             record.rule_mode.as_str(),
             record.source,
             record.course_key,
@@ -202,24 +209,27 @@ pub(super) fn insert_course_score(
 pub(super) fn best_course_score(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
 ) -> Result<Option<CourseBestScore>> {
     let mut best = conn
         .query_row(
-        "SELECT cs.id, cs.course_hash, cs.rule_mode, cs.ex_score, cs.max_ex_score, cs.clear_type, cs.gauge_type,
+        "SELECT cs.id, cs.course_hash, cs.ln_policy, cs.rule_mode, cs.ex_score, cs.max_ex_score, cs.clear_type, cs.gauge_type,
                 cs.gauge_value, cs.max_combo, cs.bp,
                 COALESCE((SELECT SUM(sh.cb) FROM score_history sh WHERE sh.course_score_id = cs.id), 0),
                 cs.course_failed, cs.course_clear,
                 (SELECT COUNT(*) FROM course_scores count_cs
                     WHERE count_cs.course_hash = cs.course_hash
+                      AND count_cs.ln_policy = cs.ln_policy
                       AND count_cs.rule_mode = cs.rule_mode),
                 (SELECT COUNT(*) FROM course_scores clear_cs
                     WHERE clear_cs.course_hash = cs.course_hash
+                      AND clear_cs.ln_policy = cs.ln_policy
                       AND clear_cs.rule_mode = cs.rule_mode
                       AND clear_cs.clear_type NOT IN ('', 'NoPlay', 'Failed')),
                 cs.played_at
          FROM course_scores cs
-         WHERE cs.course_hash = ?1 AND cs.rule_mode = ?2
+         WHERE cs.course_hash = ?1 AND cs.ln_policy = ?2 AND cs.rule_mode = ?3
          ORDER BY cs.ex_score DESC,
                   CASE cs.clear_type
                       WHEN 'NoPlay' THEN 0
@@ -240,7 +250,7 @@ pub(super) fn best_course_score(
                   cs.played_at DESC,
                   cs.id DESC
          LIMIT 1",
-        params![course_hash, rule_mode.as_str()],
+        params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str()],
         course_best_score_from_row,
     )
         .optional()?;
@@ -251,13 +261,14 @@ pub(super) fn best_course_score(
 pub(super) fn best_course_clear(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
 ) -> Result<Option<ClearType>> {
     let value: Option<String> = conn
         .query_row(
             "SELECT clear_type
              FROM course_scores
-             WHERE course_hash = ?1 AND rule_mode = ?2
+             WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3
              ORDER BY CASE clear_type
                           WHEN 'NoPlay' THEN 0
                           WHEN 'Failed' THEN 1
@@ -273,7 +284,7 @@ pub(super) fn best_course_clear(
                           ELSE 0
                       END DESC
              LIMIT 1",
-            params![course_hash, rule_mode.as_str()],
+            params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str()],
             |row| row.get::<_, String>(0),
         )
         .optional()?;
@@ -307,6 +318,7 @@ pub(super) fn list_course_score_charts(
 pub(super) fn achieved_trophy_names_for_course(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
 ) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
@@ -314,39 +326,46 @@ pub(super) fn achieved_trophy_names_for_course(
          FROM course_trophy_achievements cta
          JOIN course_scores cs ON cs.id = cta.course_score_id
          WHERE cta.course_hash = ?1
-           AND cs.rule_mode = ?2
+           AND cs.ln_policy = ?2
+           AND cs.rule_mode = ?3
            AND cs.arrange IN ('Normal', 'Mirror', 'Random')
          ORDER BY cta.trophy_name",
     )?;
-    let rows =
-        stmt.query_map(params![course_hash, rule_mode.as_str()], |row| row.get::<_, String>(0))?;
+    let rows = stmt
+        .query_map(params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str()], |row| {
+            row.get::<_, String>(0)
+        })?;
     rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 pub(super) fn best_course_score_for_trophy(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
     trophy_name: &str,
 ) -> Result<Option<CourseBestScore>> {
     let mut best = conn
         .query_row(
-        "SELECT cs.id, cs.course_hash, cs.rule_mode, cs.ex_score, cs.max_ex_score, cs.clear_type,
+        "SELECT cs.id, cs.course_hash, cs.ln_policy, cs.rule_mode, cs.ex_score, cs.max_ex_score, cs.clear_type,
                 cs.gauge_type, cs.gauge_value, cs.max_combo, cs.bp,
                 COALESCE((SELECT SUM(sh.cb) FROM score_history sh WHERE sh.course_score_id = cs.id), 0),
                 cs.course_failed, cs.course_clear,
                 (SELECT COUNT(*) FROM course_scores count_cs
                     WHERE count_cs.course_hash = cs.course_hash
+                      AND count_cs.ln_policy = cs.ln_policy
                       AND count_cs.rule_mode = cs.rule_mode),
                 (SELECT COUNT(*) FROM course_scores clear_cs
                     WHERE clear_cs.course_hash = cs.course_hash
+                      AND clear_cs.ln_policy = cs.ln_policy
                       AND clear_cs.rule_mode = cs.rule_mode
                       AND clear_cs.clear_type NOT IN ('', 'NoPlay', 'Failed')),
                 cs.played_at
          FROM course_scores cs
          JOIN course_trophy_achievements cta
              ON cta.course_score_id = cs.id
-         WHERE cs.course_hash = ?1 AND cs.rule_mode = ?2 AND cta.trophy_name = ?3
+         WHERE cs.course_hash = ?1 AND cs.ln_policy = ?2 AND cs.rule_mode = ?3
+           AND cta.trophy_name = ?4
          ORDER BY cs.ex_score DESC,
                   CASE cs.clear_type
                       WHEN 'NoPlay' THEN 0
@@ -367,7 +386,7 @@ pub(super) fn best_course_score_for_trophy(
                   cs.played_at DESC,
                   cs.id DESC
          LIMIT 1",
-        params![course_hash, rule_mode.as_str(), trophy_name],
+        params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str(), trophy_name],
         course_best_score_from_row,
     )
         .optional()?;
@@ -420,22 +439,23 @@ fn hydrate_course_best_judges(conn: &Connection, best: &mut Option<CourseBestSco
 pub(super) fn list_recent_course_scores(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
     limit: u32,
     offset: u32,
 ) -> Result<Vec<CourseScoreEntry>> {
     let mut stmt = conn.prepare(
-        "SELECT id, course_hash, rule_mode, source, course_key, title, kind, constraints_json,
+        "SELECT id, course_hash, ln_policy, rule_mode, source, course_key, title, kind, constraints_json,
                 chart_sha256s_json, ex_score, max_ex_score, clear_type, gauge_type,
                 gauge_value, max_combo, bp, course_failed, course_clear, played_at
          FROM course_scores
-         WHERE course_hash = ?1 AND rule_mode = ?2
+         WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3
          ORDER BY played_at DESC, id DESC
-         LIMIT ?3 OFFSET ?4",
+         LIMIT ?4 OFFSET ?5",
     )?;
     let rows = stmt
         .query_map(
-            params![course_hash, rule_mode.as_str(), limit, offset],
+            params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str(), limit, offset],
             course_score_entry_base_from_row,
         )?
         .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -462,7 +482,7 @@ pub(super) fn course_score_entry_by_id(
 ) -> Result<Option<CourseScoreEntry>> {
     let Some(mut entry) = conn
         .query_row(
-            "SELECT id, course_hash, rule_mode, source, course_key, title, kind, constraints_json,
+            "SELECT id, course_hash, ln_policy, rule_mode, source, course_key, title, kind, constraints_json,
                     chart_sha256s_json, ex_score, max_ex_score, clear_type, gauge_type,
                     gauge_value, max_combo, bp, course_failed, course_clear, played_at
              FROM course_scores
@@ -491,14 +511,15 @@ pub(super) fn course_score_entry_by_id(
 pub(super) fn latest_course_score_id(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
 ) -> Result<Option<i64>> {
     conn.query_row(
         "SELECT id FROM course_scores
-         WHERE course_hash = ?1 AND rule_mode = ?2
+         WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3
          ORDER BY played_at DESC, id DESC
          LIMIT 1",
-        params![course_hash, rule_mode.as_str()],
+        params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str()],
         |row| row.get(0),
     )
     .optional()
@@ -535,10 +556,10 @@ pub(super) fn upsert_course_replay_slot(
     }
     conn.execute(
         "INSERT INTO course_replay_slots (
-            course_hash, rule_mode, slot, rule, course_score_id, played_at,
-            ex_score, bp, max_combo, clear_rank
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-         ON CONFLICT(course_hash, rule_mode, slot) DO UPDATE SET
+            course_hash, ln_policy, rule_mode, slot, rule, course_score_id,
+            played_at, ex_score, bp, max_combo, clear_rank
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         ON CONFLICT(course_hash, ln_policy, rule_mode, slot) DO UPDATE SET
             rule = excluded.rule,
             course_score_id = excluded.course_score_id,
             played_at = excluded.played_at,
@@ -548,6 +569,7 @@ pub(super) fn upsert_course_replay_slot(
             clear_rank = excluded.clear_rank",
         params![
             record.course_hash,
+            record.ln_policy.as_ir_str(),
             record.rule_mode.as_str(),
             record.slot,
             record.rule,
@@ -565,15 +587,16 @@ pub(super) fn upsert_course_replay_slot(
 pub(super) fn course_replay_slot(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
     slot: u8,
 ) -> Result<Option<CourseReplaySlotRecord>> {
     conn.query_row(
-        "SELECT course_hash, rule_mode, slot, rule, course_score_id, played_at,
+        "SELECT course_hash, ln_policy, rule_mode, slot, rule, course_score_id, played_at,
                 ex_score, bp, max_combo, clear_rank
          FROM course_replay_slots
-         WHERE course_hash = ?1 AND rule_mode = ?2 AND slot = ?3",
-        params![course_hash, rule_mode.as_str(), slot],
+         WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3 AND slot = ?4",
+        params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str(), slot],
         course_replay_slot_from_row,
     )
     .optional()
@@ -583,16 +606,20 @@ pub(super) fn course_replay_slot(
 pub(super) fn course_replay_slots_for_course(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
 ) -> Result<[Option<CourseReplaySlotRecord>; 4]> {
     let mut stmt = conn.prepare(
-        "SELECT course_hash, rule_mode, slot, rule, course_score_id, played_at,
+        "SELECT course_hash, ln_policy, rule_mode, slot, rule, course_score_id, played_at,
                 ex_score, bp, max_combo, clear_rank
          FROM course_replay_slots
-         WHERE course_hash = ?1 AND rule_mode = ?2",
+         WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3",
     )?;
     let rows = stmt
-        .query_map(params![course_hash, rule_mode.as_str()], course_replay_slot_from_row)?
+        .query_map(
+            params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str()],
+            course_replay_slot_from_row,
+        )?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let mut out: [Option<CourseReplaySlotRecord>; 4] = [None, None, None, None];
     for record in rows {
@@ -607,14 +634,18 @@ pub(super) fn course_replay_slots_for_course(
 pub(super) fn course_replay_slot_presence(
     conn: &Connection,
     course_hash: &str,
+    ln_policy: LnPolicySetting,
     rule_mode: RuleMode,
 ) -> Result<[bool; 4]> {
     let mut stmt = conn.prepare(
-        "SELECT slot FROM course_replay_slots WHERE course_hash = ?1 AND rule_mode = ?2",
+        "SELECT slot FROM course_replay_slots
+         WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3",
     )?;
     let mut out = [false; 4];
-    let rows =
-        stmt.query_map(params![course_hash, rule_mode.as_str()], |row| row.get::<_, u8>(0))?;
+    let rows = stmt
+        .query_map(params![course_hash, ln_policy.as_ir_str(), rule_mode.as_str()], |row| {
+            row.get::<_, u8>(0)
+        })?;
     for row in rows {
         let slot = row? as usize;
         if slot < out.len() {
@@ -629,15 +660,16 @@ fn course_replay_slot_from_row(
 ) -> rusqlite::Result<CourseReplaySlotRecord> {
     Ok(CourseReplaySlotRecord {
         course_hash: row.get(0)?,
-        rule_mode: rule_mode_from_row(row, 1)?,
-        slot: row.get(2)?,
-        rule: row.get(3)?,
-        course_score_id: row.get(4)?,
-        played_at: row.get(5)?,
-        ex_score: row.get(6)?,
-        bp: row.get(7)?,
-        max_combo: row.get(8)?,
-        clear_rank: row.get(9)?,
+        ln_policy: ln_policy_setting_from_row(row, 1)?,
+        rule_mode: rule_mode_from_row(row, 2)?,
+        slot: row.get(3)?,
+        rule: row.get(4)?,
+        course_score_id: row.get(5)?,
+        played_at: row.get(6)?,
+        ex_score: row.get(7)?,
+        bp: row.get(8)?,
+        max_combo: row.get(9)?,
+        clear_rank: row.get(10)?,
     })
 }
 
@@ -645,22 +677,23 @@ fn course_best_score_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Cours
     Ok(CourseBestScore {
         course_score_id: row.get(0)?,
         course_hash: row.get(1)?,
-        rule_mode: rule_mode_from_row(row, 2)?,
-        ex_score: row.get(3)?,
-        max_ex_score: row.get(4)?,
-        clear_type: row.get(5)?,
-        gauge_type: row.get(6)?,
-        gauge_value: row.get(7)?,
-        max_combo: row.get(8)?,
-        bp: row.get(9)?,
-        cb: row.get(10)?,
+        ln_policy: ln_policy_setting_from_row(row, 2)?,
+        rule_mode: rule_mode_from_row(row, 3)?,
+        ex_score: row.get(4)?,
+        max_ex_score: row.get(5)?,
+        clear_type: row.get(6)?,
+        gauge_type: row.get(7)?,
+        gauge_value: row.get(8)?,
+        max_combo: row.get(9)?,
+        bp: row.get(10)?,
+        cb: row.get(11)?,
         judge_counts: DisplayJudgeCounts::default(),
         fast_slow_counts: FastSlowJudgeCounts::default(),
-        course_failed: row.get(11)?,
-        course_clear: row.get(12)?,
-        play_count: row.get(13)?,
-        clear_count: row.get(14)?,
-        played_at: row.get(15)?,
+        course_failed: row.get(12)?,
+        course_clear: row.get(13)?,
+        play_count: row.get(14)?,
+        clear_count: row.get(15)?,
+        played_at: row.get(16)?,
     })
 }
 
@@ -668,23 +701,24 @@ fn course_score_entry_base_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result
     Ok(CourseScoreEntry {
         course_score_id: row.get(0)?,
         course_hash: row.get(1)?,
-        rule_mode: rule_mode_from_row(row, 2)?,
-        source: row.get(3)?,
-        course_key: row.get(4)?,
-        title: row.get(5)?,
-        kind: row.get(6)?,
-        constraints_json: row.get(7)?,
-        chart_sha256s_json: row.get(8)?,
-        ex_score: row.get(9)?,
-        max_ex_score: row.get(10)?,
-        clear_type: row.get(11)?,
-        gauge_type: row.get(12)?,
-        gauge_value: row.get(13)?,
-        max_combo: row.get(14)?,
-        bp: row.get(15)?,
-        course_failed: row.get(16)?,
-        course_clear: row.get(17)?,
-        played_at: row.get(18)?,
+        ln_policy: ln_policy_setting_from_row(row, 2)?,
+        rule_mode: rule_mode_from_row(row, 3)?,
+        source: row.get(4)?,
+        course_key: row.get(5)?,
+        title: row.get(6)?,
+        kind: row.get(7)?,
+        constraints_json: row.get(8)?,
+        chart_sha256s_json: row.get(9)?,
+        ex_score: row.get(10)?,
+        max_ex_score: row.get(11)?,
+        clear_type: row.get(12)?,
+        gauge_type: row.get(13)?,
+        gauge_value: row.get(14)?,
+        max_combo: row.get(15)?,
+        bp: row.get(16)?,
+        course_failed: row.get(17)?,
+        course_clear: row.get(18)?,
+        played_at: row.get(19)?,
         achieved_trophies: Vec::new(),
     })
 }
@@ -696,6 +730,20 @@ fn rule_mode_from_row(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result
             index,
             rusqlite::types::Type::Text,
             format!("invalid rule mode: {value}").into(),
+        )
+    })
+}
+
+fn ln_policy_setting_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+) -> rusqlite::Result<LnPolicySetting> {
+    let value: String = row.get(index)?;
+    LnPolicySetting::from_ir_str_opt(&value).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            index,
+            rusqlite::types::Type::Text,
+            format!("invalid LN policy setting: {value}").into(),
         )
     })
 }

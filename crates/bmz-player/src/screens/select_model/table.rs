@@ -129,22 +129,25 @@ pub(super) fn build_select_course_row(
 
     let identity = crate::ir::course_payload::course_identity_from_stored(library_db, &stored);
     let best_score = identity.as_ref().and_then(|identity| {
-        score_db.best_course_score(&identity.course_hash, rule_mode).unwrap_or_else(|error| {
-            tracing::warn!(
-                %error,
-                course_id = stored.id,
-                course_hash = %identity.course_hash,
-                rule_mode = rule_mode.as_str(),
-                "failed to load best course score"
-            );
-            None
-        })
+        score_db
+            .best_course_score(&identity.course_hash, ln_policy_setting, rule_mode)
+            .unwrap_or_else(|error| {
+                tracing::warn!(
+                    %error,
+                    course_id = stored.id,
+                    course_hash = %identity.course_hash,
+                    rule_mode = rule_mode.as_str(),
+                    "failed to load best course score"
+                );
+                None
+            })
     });
     let replay_slots = identity
         .as_ref()
         .map(|identity| {
-            score_db.course_replay_slot_presence(&identity.course_hash, rule_mode).unwrap_or_else(
-                |error| {
+            score_db
+                .course_replay_slot_presence(&identity.course_hash, ln_policy_setting, rule_mode)
+                .unwrap_or_else(|error| {
                     tracing::warn!(
                         %error,
                         course_id = stored.id,
@@ -153,15 +156,18 @@ pub(super) fn build_select_course_row(
                         "failed to load course_replay_slot_presence"
                     );
                     [false; 4]
-                },
-            )
+                })
         })
         .unwrap_or([false; 4]);
     let achieved_trophy_names = identity
         .as_ref()
         .map(|identity| {
             score_db
-                .achieved_trophy_names_for_course(&identity.course_hash, rule_mode)
+                .achieved_trophy_names_for_course(
+                    &identity.course_hash,
+                    ln_policy_setting,
+                    rule_mode,
+                )
                 .unwrap_or_else(|error| {
                     tracing::warn!(
                         %error,

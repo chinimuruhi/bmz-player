@@ -1085,4 +1085,47 @@ pub const SCORE_MIGRATIONS: &[Migration] = &[
                 WHERE best_score_history_id IS NOT NULL;",
         ],
     },
+    Migration {
+        version: 27,
+        // Course scores are keyed by the configured LN policy, not by each
+        // chart's resolved score policy. Historical rows predate that context
+        // and remain in the ForceLn compatibility bucket.
+        statements: &[
+            "ALTER TABLE course_scores
+                ADD COLUMN ln_policy TEXT NOT NULL DEFAULT 'ForceLn';",
+            "DROP INDEX IF EXISTS idx_score_course_scores_hash_played;",
+            "DROP INDEX IF EXISTS idx_score_course_scores_hash_ex_score;",
+            "CREATE INDEX idx_score_course_scores_hash_played
+                ON course_scores(course_hash, ln_policy, rule_mode, played_at);",
+            "CREATE INDEX idx_score_course_scores_hash_ex_score
+                ON course_scores(course_hash, ln_policy, rule_mode, ex_score DESC);",
+            "ALTER TABLE course_replay_slots RENAME TO course_replay_slots_old;",
+            "CREATE TABLE course_replay_slots (
+                course_hash TEXT NOT NULL,
+                ln_policy TEXT NOT NULL DEFAULT 'ForceLn',
+                rule_mode TEXT NOT NULL DEFAULT 'Beatoraja',
+                slot INTEGER NOT NULL CHECK (slot BETWEEN 0 AND 3),
+                rule TEXT NOT NULL,
+                course_score_id INTEGER NOT NULL
+                    REFERENCES course_scores(id) ON DELETE CASCADE,
+                played_at INTEGER NOT NULL,
+                ex_score INTEGER NOT NULL,
+                bp INTEGER NOT NULL,
+                max_combo INTEGER NOT NULL,
+                clear_rank INTEGER NOT NULL,
+                PRIMARY KEY(course_hash, ln_policy, rule_mode, slot)
+            );",
+            "INSERT INTO course_replay_slots (
+                course_hash, ln_policy, rule_mode, slot, rule, course_score_id,
+                played_at, ex_score, bp, max_combo, clear_rank
+            )
+            SELECT
+                old.course_hash, scores.ln_policy, old.rule_mode, old.slot,
+                old.rule, old.course_score_id, old.played_at, old.ex_score,
+                old.bp, old.max_combo, old.clear_rank
+            FROM course_replay_slots_old old
+            JOIN course_scores scores ON scores.id = old.course_score_id;",
+            "DROP TABLE course_replay_slots_old;",
+        ],
+    },
 ];

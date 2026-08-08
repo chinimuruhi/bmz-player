@@ -195,8 +195,14 @@ impl WinitApp {
             tracing::warn!(course_id, slot, "course identity unavailable for replay slot");
             return false;
         };
+        let ln_policy = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
-        match self.boot.score_db.course_replay_slot(&identity.course_hash, rule_mode, slot) {
+        match self.boot.score_db.course_replay_slot(
+            &identity.course_hash,
+            ln_policy,
+            rule_mode,
+            slot,
+        ) {
             Ok(Some(record)) => {
                 tracing::info!(
                     course_id,
