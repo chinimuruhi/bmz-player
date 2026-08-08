@@ -53,6 +53,20 @@ impl JudgeWindow {
     pub const fn bad_us(self) -> i64 {
         if self.bad_fast_us > self.bad_slow_us { self.bad_fast_us } else { self.bad_slow_us }
     }
+
+    /// 最終ノーツ後に入力がスコアへ影響し得る SLOW 側の最大時間。
+    ///
+    /// 見逃し Poor は `bad_slow_us` を過ぎた時点で確定し、判定済みノーツに
+    /// 対する追加入力は `empty_poor_slow_us` まで Empty Poor になり得る。
+    /// Mine も同じ終了判定で取りこぼさないように含める。
+    pub const fn result_settle_margin_us(self) -> i64 {
+        let judge_margin = if self.bad_slow_us > self.empty_poor_slow_us {
+            self.bad_slow_us
+        } else {
+            self.empty_poor_slow_us
+        };
+        if judge_margin > self.mine_hit_us { judge_margin } else { self.mine_hit_us }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +112,57 @@ impl JudgeWindows {
             Lane::Scratch | Lane::Scratch2 => self.long_scratch_release_margin_us,
             _ => self.long_note_release_margin_us,
         }
+    }
+
+    /// 通常ノーツ・スクラッチ・LN 終端を含む、リザルト確定までの最大 SLOW 窓。
+    pub const fn result_settle_margin_us(self) -> i64 {
+        let note = self.note.result_settle_margin_us();
+        let scratch = self.scratch.result_settle_margin_us();
+        let long_note_end = self.long_note_end.result_settle_margin_us();
+        let long_scratch_end = self.long_scratch_end.result_settle_margin_us();
+        let press = if note > scratch { note } else { scratch };
+        let long_end =
+            if long_note_end > long_scratch_end { long_note_end } else { long_scratch_end };
+        if press > long_end { press } else { long_end }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn window(bad_slow_us: i64, empty_poor_slow_us: i64, mine_hit_us: i64) -> JudgeWindow {
+        JudgeWindow {
+            pgreat_us: 10,
+            great_us: 20,
+            good_us: 30,
+            bad_fast_us: 40,
+            bad_slow_us,
+            empty_poor_fast_us: 50,
+            empty_poor_slow_us,
+            mine_hit_us,
+        }
+    }
+
+    #[test]
+    fn result_settle_margin_uses_largest_slow_window() {
+        assert_eq!(window(280, 150, 16).result_settle_margin_us(), 280);
+        assert_eq!(window(120, 180, 16).result_settle_margin_us(), 180);
+        assert_eq!(window(12, 15, 20).result_settle_margin_us(), 20);
+    }
+
+    #[test]
+    fn window_set_result_margin_includes_scratch_and_long_end() {
+        let windows = JudgeWindows {
+            note: window(100, 90, 16),
+            scratch: window(110, 140, 16),
+            long_note_end: window(180, 120, 16),
+            long_scratch_end: window(150, 130, 16),
+            long_note_release_margin_us: 0,
+            long_scratch_release_margin_us: 0,
+        };
+
+        assert_eq!(windows.result_settle_margin_us(), 180);
     }
 }
 

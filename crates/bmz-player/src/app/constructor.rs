@@ -249,6 +249,7 @@ impl WinitApp {
                 practice_chart_zero_time: None,
             },
             result: ResultRuntimeState {
+                prepared_course_finish: None,
                 finished_course: None,
                 finished_course_skin_summary: None,
                 finished_course_hash: None,

@@ -405,7 +405,10 @@ impl WinitApp {
             self.play.play_ready_sound_started_at.is_some(),
             self.play.play_ending.is_some(),
             active_play.running.session.state,
-            active_play.running.session.judge.is_exhausted(&active_play.running.session.chart),
+            bmz_gameplay::session::result_is_settled(
+                &active_play.running.session,
+                active_play.running.session.audio_clock.now(),
+            ),
         );
         if !should_begin {
             return false;
@@ -470,6 +473,9 @@ impl WinitApp {
             "play fadeout requested",
         );
         if let Some(finished) = &early_finished {
+            if let Some(chart_id) = self.play.last_started_chart_id {
+                self.prepare_terminal_course_finish(chart_id, finished);
+            }
             self.start_result_ir_for_finished_play(finished);
         }
         self.notify_obs_play_ended();

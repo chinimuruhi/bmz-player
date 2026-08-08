@@ -109,6 +109,9 @@ impl WinitApp {
         self.audio.draining_audio = Some(audio);
         self.refresh_player_stats_snapshot();
         if self.play.active_course.is_some() {
+            if let Some(chart_id) = self.play.last_started_chart_id {
+                self.prepare_terminal_course_finish(chart_id, &finished);
+            }
             self.advance_course_after_finish(finished);
             return;
         }

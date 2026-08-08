@@ -50,6 +50,7 @@ impl WinitApp {
     }
 
     pub(super) fn clear_finished_course(&mut self) {
+        self.result.prepared_course_finish = None;
         self.result.finished_course = None;
         self.result.finished_course_skin_summary = None;
         self.result.finished_course_hash = None;

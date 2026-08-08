@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn result_settles_after_slow_window_without_waiting_for_late_bgm() {
+    let mut chart = chart_with_keysound();
+    chart.bgm_events.push(SoundEvent {
+        tick: ChartTick(384),
+        time: TimeUs(2_000_000),
+        sound: SoundId(7),
+    });
+    let mut session = session_with_autoplay(chart);
+    let outcome = session.judge.process_input(&session.chart, human_press(TimeUs(0)));
+
+    assert!(outcome.events.iter().any(|event| event.judge == Judge::PGreat));
+    assert!(session.judge.is_exhausted(&session.chart));
+    assert!(!session.bgm_scheduler.is_done(&session.chart));
+    // テスト用窓の最大 SLOW 側は Empty Poor の 200ms。境界上ではまだ受付中。
+    assert!(!result_is_settled(&session, TimeUs(200_000)));
+    assert!(result_is_settled(&session, TimeUs(200_001)));
+    assert!(should_finish(&session, TimeUs(200_001)));
+}
+
+#[test]
 fn update_lane_key_states_release_transitions_to_keyoff() {
     let mut session = session_with_autoplay(chart_with_keysound());
     session.lane_keyon_started_at[Lane::Key1.index()] = Some(TimeUs(1_000));

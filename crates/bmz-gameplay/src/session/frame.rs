@@ -142,8 +142,14 @@ fn update_opponent_full_combo_timer(session: &mut GameSession, judgements: &[Jud
 }
 
 pub fn should_finish(session: &GameSession, audio_now: TimeUs) -> bool {
-    session.judge.is_exhausted(&session.chart)
-        && session.bgm_scheduler.is_done(&session.chart)
-        && audio_now.0 > session.chart.end_time.0 + SESSION_END_MARGIN_US
+    result_is_settled(session, audio_now)
+}
+
+/// 最終ノーツに対する Poor / Empty Poor / Mine の SLOW 側受付が終了し、
+/// これ以上スコアが変化しない状態かを返す。
+pub fn result_is_settled(session: &GameSession, audio_now: TimeUs) -> bool {
+    let result_settle_at =
+        session.chart.end_time.0.saturating_add(session.judge.window_set.result_settle_margin_us());
+    session.judge.is_exhausted(&session.chart) && audio_now.0 > result_settle_at
 }
 use super::*;

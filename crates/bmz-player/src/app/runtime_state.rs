@@ -145,6 +145,10 @@ pub(super) struct PlayRuntimeState {
 }
 
 pub(super) struct ResultRuntimeState {
+    /// 最終曲の判定確定時に保存・IR enqueue まで済ませたコース結果。
+    /// 単曲リザルトを表示し終えるまでは `finished_course` に昇格させず、従来の
+    /// 「最終曲リザルト → コースリザルト」の表示順を維持する。
+    pub(super) prepared_course_finish: Option<PreparedCourseFinish>,
     /// コース全体完了時のリザルト。リザルト画面から抜けるまで保持する。
     pub(super) finished_course: Option<CourseResultSummary>,
     /// `finished_course` から Result skin 用に集約した結果。
@@ -184,6 +188,14 @@ pub(super) struct ResultRuntimeState {
     pub(super) result_panel: i32,
     /// Result IR のキー長押し・アナログスクラッチ用入力状態。
     pub(super) result_ir_scroll: ResultIrScrollRuntime,
+}
+
+pub(super) struct PreparedCourseFinish {
+    pub(super) course_id: i64,
+    pub(super) course_result: CourseResultSummary,
+    pub(super) course_hash: Option<String>,
+    pub(super) rian_course_hash_v1: Option<String>,
+    pub(super) last_finished: Option<FinishedPlaySession>,
 }
 
 #[derive(Default)]

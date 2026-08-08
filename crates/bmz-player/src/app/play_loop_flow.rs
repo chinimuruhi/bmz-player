@@ -164,6 +164,9 @@ impl WinitApp {
                 // active_play がまだ残っている内に hispeed/lane_cover/lift を profile に保存する。
                 self.save_current_play_options(hispeed, "play finished");
                 if let Some(finished) = &early_finished {
+                    if let Some(chart_id) = self.play.last_started_chart_id {
+                        self.prepare_terminal_course_finish(chart_id, finished);
+                    }
                     self.start_result_ir_for_finished_play(finished);
                 }
                 self.notify_obs_play_ended();

@@ -8,6 +8,7 @@ use crate::screens::play_session::AppliedArrange;
 use crate::screens::play_start::PlayStartOptions;
 use crate::screens::result_model::{ResultJudgeCounts, ResultSummary};
 
+#[derive(Clone)]
 pub struct ActiveCourseSession {
     pub course_id: i64,
     pub definition: CourseDefinition,
@@ -34,6 +35,7 @@ pub struct ActiveCourseSession {
     pub auto_advance_intermediate_results: bool,
 }
 
+#[derive(Clone)]
 pub struct CourseEntryResult {
     pub chart_id: i64,
     pub finished: FinishedPlaySession,
