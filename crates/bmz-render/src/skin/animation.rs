@@ -71,20 +71,10 @@ pub(super) fn apply_skin_offset_to_frame_inner(
     include_hidden_cover_offsets: bool,
     relative: bool,
 ) {
-    let mut ids: Vec<i32> = destination.offsets.clone();
-    if destination.offset != 0 {
-        ids.push(destination.offset);
-    }
-    if is_judge_detail_destination_id(&destination.id) && !ids.contains(&OFFSET_JUDGEDETAIL_1P) {
-        ids.push(OFFSET_JUDGEDETAIL_1P);
-    }
+    let mut ids = normalized_destination_offset_ids(destination);
     if include_hidden_cover_offsets {
-        if !ids.contains(&3) {
-            ids.push(3);
-        }
-        if !ids.contains(&5) {
-            ids.push(5);
-        }
+        push_unique_skin_offset_id(&mut ids, 3);
+        push_unique_skin_offset_id(&mut ids, 5);
     }
 
     apply_skin_offset_ids_to_frame(&ids, frame, state, relative);
@@ -97,42 +87,54 @@ pub(super) fn apply_skin_offset_ids_to_frame(
     relative: bool,
 ) {
     for &offset_id in ids {
-        match offset_id {
-            3 => {
-                if !relative {
-                    frame.y += state.offset_lift_px;
-                }
-            }
-            4 => {
-                if !relative {
-                    frame.y += state.offset_lanecover_px;
-                }
-            }
-            5 => {
-                if !relative {
-                    frame.y += state.offset_hidden_cover_px;
-                }
-                if state.hidden_cover <= 0.0 {
-                    frame.a = (frame.a - 255).clamp(0, 255);
-                }
-            }
-            SKIN_OFFSET_BAR_LINE => {}
-            OFFSET_NOTES_1P => {}
-            _ => {
-                if let Some(offset) = state.skin_offsets.get(offset_id) {
-                    if !relative {
-                        // beatoraja: !relative のとき x/y は中央アンカーでシフト
-                        frame.x += offset.x - offset.w / 2;
-                        frame.y += offset.y - offset.h / 2;
-                    }
-                    frame.w += offset.w;
-                    frame.h += offset.h;
-                    frame.angle += offset.r;
-                    frame.a = (frame.a + offset.a).clamp(0, 255);
-                }
-            }
+        let Some(offset) = effective_skin_offset(offset_id, state) else {
+            continue;
+        };
+        if !relative {
+            // beatoraja: !relative のとき x/y は中央アンカーでシフト
+            frame.x += offset.x - offset.w / 2;
+            frame.y += offset.y - offset.h / 2;
+        }
+        frame.w += offset.w;
+        frame.h += offset.h;
+        frame.angle += offset.r;
+        if frame.apply_offset_alpha {
+            frame.a = (frame.a + offset.a).clamp(0, 255);
         }
     }
+}
+
+pub(super) fn normalized_destination_offset_ids(destination: &SkinDestinationDef) -> Vec<i32> {
+    let mut ids =
+        Vec::with_capacity(destination.offsets.len() + usize::from(destination.offset != 0));
+    for &id in &destination.offsets {
+        push_unique_skin_offset_id(&mut ids, id);
+    }
+    push_unique_skin_offset_id(&mut ids, destination.offset);
+    ids
+}
+
+pub(super) fn push_unique_skin_offset_id(ids: &mut Vec<i32>, id: i32) {
+    if (1..=BEATORAJA_SKIN_OFFSET_MAX).contains(&id) && !ids.contains(&id) {
+        ids.push(id);
+    }
+}
+
+pub(super) fn effective_skin_offset(id: i32, state: &SkinDrawState) -> Option<SkinOffsetValue> {
+    if !(1..=BEATORAJA_SKIN_OFFSET_MAX).contains(&id) {
+        return None;
+    }
+    let mut offset = state.skin_offsets.get(id).unwrap_or_default();
+    match id {
+        3 => offset.y = state.offset_lift_px,
+        4 => offset.y = state.offset_lanecover_px,
+        5 => {
+            offset.y = state.offset_hidden_cover_px;
+            offset.a = if state.hidden_enabled { 0 } else { -255 };
+        }
+        _ => {}
+    }
+    Some(offset)
 }
 
 /// `note_y` progress (0=判定ライン, 1=最奥) を `note.dst` エリア内の正規化 Y に変換する。
@@ -160,18 +162,7 @@ pub(super) fn apply_bar_line_skin_offsets_to_frame(
     frame: &mut ResolvedSkinFrame,
     state: &SkinDrawState,
 ) {
-    let mut ids: Vec<i32> = destination
-        .offsets
-        .iter()
-        .copied()
-        .filter(|&id| id != OFFSET_NOTES_1P && id != SKIN_OFFSET_BAR_LINE)
-        .collect();
-    if destination.offset != 0
-        && destination.offset != OFFSET_NOTES_1P
-        && destination.offset != SKIN_OFFSET_BAR_LINE
-    {
-        ids.push(destination.offset);
-    }
+    let ids = normalized_destination_offset_ids(destination);
     apply_skin_offset_ids_to_frame(&ids, frame, state, false);
     apply_bar_line_offset_to_frame(frame, state);
 }
@@ -180,10 +171,6 @@ pub(super) fn apply_bar_line_offset_to_frame(frame: &mut ResolvedSkinFrame, stat
     if let Some(offset) = state.skin_offsets.get(SKIN_OFFSET_BAR_LINE) {
         frame.h = (frame.h + offset.h).max(0);
     }
-}
-
-pub(super) fn is_judge_detail_destination_id(id: &str) -> bool {
-    matches!(id, "judge-early" | "judge-late") || id.starts_with("judgems")
 }
 
 pub(super) fn apply_all_offset_to_render_item(
@@ -232,24 +219,42 @@ pub(super) fn apply_all_offset_to_render_item(
             linear_filter,
             angle_deg,
             center,
+            post_scale,
         } => SkinRenderItem::RotatedImage {
             texture,
-            rect: apply_all_offset_to_rect(rect, scale_x, scale_y, translate_x, translate_y),
+            rect: apply_all_offset_to_rotated_rect(
+                rect,
+                center,
+                scale_x,
+                scale_y,
+                translate_x,
+                translate_y,
+            ),
             uv,
             tint,
             blend,
             source_size,
             linear_filter,
             angle_deg,
-            center: apply_all_offset_to_point(center, scale_x, scale_y, translate_x, translate_y),
+            center,
+            post_scale: Point { x: post_scale.x * scale_x, y: post_scale.y * scale_y },
         },
-        SkinRenderItem::Text { origin, text, style, caret, blend } => SkinRenderItem::Text {
-            origin: apply_all_offset_to_point(origin, scale_x, scale_y, translate_x, translate_y),
-            text,
-            style,
-            caret,
-            blend,
-        },
+        SkinRenderItem::Text { origin, text, style, caret, blend, post_scale } => {
+            SkinRenderItem::Text {
+                origin: apply_all_offset_to_point(
+                    origin,
+                    scale_x,
+                    scale_y,
+                    translate_x,
+                    translate_y,
+                ),
+                text,
+                style,
+                caret,
+                blend,
+                post_scale: Point { x: post_scale.x * scale_x, y: post_scale.y * scale_y },
+            }
+        }
         SkinRenderItem::Rect { rect, color, blend } => SkinRenderItem::Rect {
             rect: apply_all_offset_to_rect(rect, scale_x, scale_y, translate_x, translate_y),
             color,
@@ -284,6 +289,25 @@ pub(super) fn apply_all_offset_to_render_item(
     }
 }
 
+pub(super) fn apply_all_offset_to_rotated_rect(
+    rect: Rect,
+    center: Point,
+    scale_x: f32,
+    scale_y: f32,
+    translate_x: f32,
+    translate_y: f32,
+) -> Rect {
+    let pivot = Point { x: rect.x + center.x * rect.width, y: rect.y + center.y * rect.height };
+    let transformed_pivot =
+        apply_all_offset_to_point(pivot, scale_x, scale_y, translate_x, translate_y);
+    Rect {
+        x: transformed_pivot.x - center.x * rect.width,
+        y: transformed_pivot.y - center.y * rect.height,
+        width: rect.width,
+        height: rect.height,
+    }
+}
+
 pub(super) fn apply_all_offset_to_rect(
     rect: Rect,
     scale_x: f32,
@@ -293,7 +317,9 @@ pub(super) fn apply_all_offset_to_rect(
 ) -> Rect {
     Rect {
         x: rect.x * scale_x + translate_x,
-        y: rect.y * scale_y - translate_y,
+        // beatoraja の SpriteBatch transform は左下原点。BMZ の左上原点へ
+        // 変換すると、縦拡縮には原点差の `1 - scale_y` が加わる。
+        y: rect.y * scale_y + 1.0 - scale_y - translate_y,
         width: rect.width * scale_x,
         height: rect.height * scale_y,
     }
@@ -306,7 +332,7 @@ pub(super) fn apply_all_offset_to_point(
     translate_x: f32,
     translate_y: f32,
 ) -> Point {
-    Point { x: point.x * scale_x + translate_x, y: point.y * scale_y - translate_y }
+    Point { x: point.x * scale_x + translate_x, y: point.y * scale_y + 1.0 - scale_y - translate_y }
 }
 
 pub(super) fn result_judge_pie_segment_color(
@@ -407,6 +433,7 @@ pub(super) fn skin_image_item_for_frame(
         // on-screen direction.
         angle_deg: -frame.angle as f32,
         center: skin_rotation_center(center),
+        post_scale: Point { x: 1.0, y: 1.0 },
     }
 }
 
@@ -442,6 +469,7 @@ pub(super) fn resolve_destination_frame(
         loop_point => resolve_loop_elapsed(loop_point, elapsed_ms, cycle),
     };
     let acc = destination_interpolation_acc_from_frames(&animations);
+    let fixed_color = destination_frames_have_fixed_color(&animations, state);
     let mut frame = ResolvedSkinFrame::default();
     let mut previous = None;
     for animation in &animations {
@@ -452,7 +480,11 @@ pub(super) fn resolve_destination_frame(
         }
         // previous=None は最初のキーフレーム時刻より前 → destination はまだ表示開始
         // していない。beatoraja 同様、開始時刻前のオブジェクトは描画しない。
-        return previous.map(|previous| interpolate_skin_frame(previous, frame, elapsed_ms, acc));
+        return previous.map(|previous| {
+            let mut interpolated = interpolate_skin_frame(previous, frame, elapsed_ms, acc);
+            interpolated.apply_offset_alpha = fixed_color || elapsed_ms == previous.time;
+            interpolated
+        });
     }
     previous.or_else(|| animations.first().map(|_| frame))
 }
@@ -558,7 +590,25 @@ pub(super) fn interpolate_skin_frame(
         g: interpolate_i32(start.g, end.g, t),
         b: interpolate_i32(start.b, end.b, t),
         angle: interpolate_i32(start.angle, end.angle, t),
+        apply_offset_alpha: start.apply_offset_alpha,
     }
+}
+
+pub(super) fn destination_frames_have_fixed_color(
+    animations: &[SkinAnimationDef],
+    state: &SkinDrawState,
+) -> bool {
+    let mut frame = ResolvedSkinFrame::default();
+    let mut color = None;
+    for animation in animations {
+        apply_skin_animation(&mut frame, animation, state);
+        let current = (frame.r, frame.g, frame.b, frame.a);
+        if color.is_some_and(|color| color != current) {
+            return false;
+        }
+        color = Some(current);
+    }
+    true
 }
 
 pub(super) fn destination_interpolation_acc_from_frames(animations: &[SkinAnimationDef]) -> i32 {

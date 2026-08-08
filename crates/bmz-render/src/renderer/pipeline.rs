@@ -272,6 +272,11 @@ pub(super) fn create_image_quad_pipeline(
                         shader_location: 3,
                         format: wgpu::VertexFormat::Float32x4,
                     },
+                    wgpu::VertexAttribute {
+                        offset: 64,
+                        shader_location: 4,
+                        format: wgpu::VertexFormat::Float32x2,
+                    },
                 ],
             }],
         },
@@ -476,6 +481,7 @@ fn vs_main(
     @location(1) uv_rect: vec4<f32>,
     @location(2) tint: vec4<f32>,
     @location(3) rotation: vec4<f32>,
+    @location(4) post_scale: vec2<f32>,
 ) -> VertexOutput {
     var corners = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0),
@@ -497,7 +503,7 @@ fn vs_main(
         relative_aspect.x * s + relative_aspect.y * c,
     );
     let rotated = vec2<f32>(rotated_aspect.x / aspect, rotated_aspect.y);
-    let pos01 = rect.xy + pivot * rect.zw + rotated;
+    let pos01 = rect.xy + pivot * rect.zw + rotated * post_scale;
 
     var out: VertexOutput;
     out.position = vec4<f32>(pos01.x * 2.0 - 1.0, 1.0 - pos01.y * 2.0, 0.0, 1.0);
@@ -532,6 +538,7 @@ fn vs_main(
     @location(1) uv_rect: vec4<f32>,
     @location(2) tint: vec4<f32>,
     @location(3) rotation: vec4<f32>,
+    @location(4) post_scale: vec2<f32>,
 ) -> VertexOutput {
     var corners = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0),
@@ -553,7 +560,7 @@ fn vs_main(
         relative_aspect.x * s + relative_aspect.y * c,
     );
     let rotated = vec2<f32>(rotated_aspect.x / aspect, rotated_aspect.y);
-    let pos01 = rect.xy + pivot * rect.zw + rotated;
+    let pos01 = rect.xy + pivot * rect.zw + rotated * post_scale;
 
     var out: VertexOutput;
     out.position = vec4<f32>(pos01.x * 2.0 - 1.0, 1.0 - pos01.y * 2.0, 0.0, 1.0);

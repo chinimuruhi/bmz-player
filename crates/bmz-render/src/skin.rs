@@ -23,7 +23,9 @@ use crate::scene::{
     CourseConstraintFlags, CourseResultSkinSnapshot, DailyPlayerStatsSnapshot, PlayerStatsSnapshot,
     ResultGradeDiffDisplay, SelectRowKind, SelectRowSnapshot, SelectSnapshot,
 };
-use crate::skin_offset::{SKIN_OFFSET_BAR_LINE, SkinOffsetValues};
+use crate::skin_offset::{
+    BEATORAJA_SKIN_OFFSET_MAX, SKIN_OFFSET_BAR_LINE, SkinOffsetValue, SkinOffsetValues,
+};
 use crate::snapshot::{CourseStageMarker, DisplayJudgeCounts, LongBodyState};
 use bmz_chart::model::LongNoteMode;
 
@@ -80,10 +82,10 @@ use state_value_timer::*;
 use state_value_timing_graph::*;
 
 const OFFSET_ALL: i32 = 10;
+#[cfg(test)]
 const OFFSET_NOTES_1P: i32 = 30;
 #[cfg(test)]
 const OFFSET_JUDGE_1P: i32 = 32;
-const OFFSET_JUDGEDETAIL_1P: i32 = 33;
 
 #[path = "skin/model.rs"]
 mod skin_model;
@@ -120,6 +122,7 @@ impl SkinObject {
                         style: style.clone().with_alpha(resolved.alpha),
                         caret: None,
                         blend: resolved.blend,
+                        post_scale: Point { x: 1.0, y: 1.0 },
                     },
                     SkinSource::Number { slot, style, digits } => SkinRenderItem::Text {
                         origin: Point { x: resolved.rect.x, y: resolved.rect.y },
@@ -127,6 +130,7 @@ impl SkinObject {
                         style: style.clone().with_alpha(resolved.alpha),
                         caret: None,
                         blend: resolved.blend,
+                        post_scale: Point { x: 1.0, y: 1.0 },
                     },
                     SkinSource::Rect { color } => SkinRenderItem::Rect {
                         rect: resolved.rect,

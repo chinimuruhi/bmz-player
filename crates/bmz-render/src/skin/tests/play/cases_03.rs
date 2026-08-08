@@ -32,12 +32,8 @@ fn hidden_cover_clips_at_disappear_line() {
         &sources,
         &SkinDrawState { hidden_cover: 1.0, ..SkinDrawState::default() },
     );
-    let SkinRenderItem::Image { rect: flush_rect, uv: flush_uv, .. } = &flush[0] else {
-        panic!("expected image");
-    };
-    // オフセット無し: 上端 (skin y=140) が disappearLine
-    assert!(approx_eq(flush_rect.y, 580.0 / 720.0));
-    assert!(approx_eq(flush_rect.height, 580.0 / 720.0));
+    // beatoraja は上端 (skin y=140) が disappearLine と一致する場合も描画しない。
+    assert!(flush.is_empty());
 
     let clipped = document.static_image_render_items(
         &sources,
@@ -53,7 +49,7 @@ fn hidden_cover_clips_at_disappear_line() {
     // offset で上げた分、判定線より下を切り、上側 300px だけ残す
     assert!(approx_eq(clipped_rect.y, 280.0 / 720.0));
     assert!(approx_eq(clipped_rect.height, 300.0 / 720.0));
-    assert!(approx_eq(flush_uv.height - clipped_uv.height, 280.0 / 580.0));
+    assert!(approx_eq(1.0 - clipped_uv.height, 280.0 / 580.0));
 }
 
 #[test]

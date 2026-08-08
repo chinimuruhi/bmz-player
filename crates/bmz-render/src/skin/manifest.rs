@@ -279,13 +279,14 @@ pub fn append_skin_render_item(commands: &mut Vec<DrawCommand>, item: &SkinRende
                 commands.push(DrawCommand::RectBatch { rects: Arc::clone(rects), cache: *cache });
             }
         }
-        SkinRenderItem::Text { origin, text, style, caret, .. } => {
+        SkinRenderItem::Text { origin, text, style, caret, post_scale, .. } => {
             if !text.is_empty() || caret.is_some() {
                 commands.push(DrawCommand::Text {
                     origin: *origin,
                     text: text.clone(),
                     caret: *caret,
                     style: style.clone(),
+                    post_scale: *post_scale,
                 });
             }
         }
@@ -323,6 +324,7 @@ pub fn append_skin_render_item(commands: &mut Vec<DrawCommand>, item: &SkinRende
             linear_filter,
             angle_deg,
             center,
+            post_scale,
         } => {
             commands.push(DrawCommand::RotatedImage {
                 rect: *rect,
@@ -334,6 +336,7 @@ pub fn append_skin_render_item(commands: &mut Vec<DrawCommand>, item: &SkinRende
                 linear_filter: *linear_filter,
                 angle_rad: angle_deg.to_radians(),
                 center: *center,
+                post_scale: *post_scale,
             });
         }
     }

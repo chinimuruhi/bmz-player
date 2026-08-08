@@ -101,20 +101,9 @@ macro_rules! skin_document_render_graph_image_methods {
             cover: &SkinHiddenCoverDef,
             destination: &SkinDestinationDef,
             frame: ResolvedSkinFrame,
-            force_lift_cover: bool,
             state: &SkinDrawState,
             sources: &HashMap<String, SkinDocumentTexture>,
         ) -> Option<SkinRenderItem> {
-            let is_lift_cover = force_lift_cover
-                || is_lift_lane_cover_id(&cover.id)
-                || is_lift_lane_cover_id(&destination.id);
-            if is_lift_cover {
-                if state.offset_lift_px <= 0 {
-                    return None;
-                }
-            } else if state.hidden_cover <= 0.0 {
-                return None;
-            }
             let source = sources.get(&cover.src)?;
             let source_width = source.source_size.width.max(1.0);
             let source_height = source.source_size.height.max(1.0);

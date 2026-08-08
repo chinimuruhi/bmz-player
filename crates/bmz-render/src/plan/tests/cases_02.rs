@@ -675,7 +675,7 @@ fn default_play_bar_line_applies_height_and_alpha_offset() {
 }
 
 #[test]
-fn play_skin_document_ignores_notes_offset_on_bar_lines() {
+fn play_skin_document_applies_declared_notes_offset_to_bar_lines() {
     let document: crate::skin::SkinDocument = serde_json::from_str(
         r#"
             {
@@ -723,7 +723,7 @@ fn play_skin_document_ignores_notes_offset_on_bar_lines() {
         command,
         DrawCommand::Image { texture, rect, tint, .. }
             if *texture == TextureId(77)
-                && approx_eq(rect.height, 0.07)
+                && approx_eq(rect.height, 0.27)
                 && approx_eq(tint.a, 150.0 / 255.0)
     )));
 }

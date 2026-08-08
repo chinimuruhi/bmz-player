@@ -1,4 +1,5 @@
 use super::*;
+use crate::skin::{SkinImageScale, TextureRegion};
 
 pub(super) fn push_document_playfield(
     commands: &mut Vec<DrawCommand>,
@@ -125,15 +126,22 @@ fn push_document_lane(
         if let Some(item) = skin.document_mine_item(lane, snapshot.key_mode, rect) {
             append_document_item(commands, skin, skin_state, item);
         } else {
-            commands.push(DrawCommand::Image {
-                rect,
-                uv: UvRect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
-                source_size: None,
-                texture: DEFAULT_MINE_NOTE_TEXTURE,
-                tint: Color::rgba(1.0, 1.0, 1.0, 1.0),
-                blend: BlendMode::Normal,
-                linear_filter: false,
-            });
+            append_document_item(
+                commands,
+                skin,
+                skin_state,
+                SkinRenderItem::Image {
+                    rect,
+                    uv: TextureRegion { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+                    source_size: None,
+                    texture: SkinTextureId(DEFAULT_MINE_NOTE_TEXTURE.0),
+                    tint: Color::rgba(1.0, 1.0, 1.0, 1.0),
+                    blend: BlendMode::Normal,
+                    scale: SkinImageScale::Stretch,
+                    border: None,
+                    linear_filter: false,
+                },
+            );
         }
     }
 }

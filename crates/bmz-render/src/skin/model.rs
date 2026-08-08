@@ -374,6 +374,7 @@ pub enum SkinRenderItem {
         linear_filter: bool,
         angle_deg: f32,
         center: Point,
+        post_scale: Point,
     },
     Text {
         origin: Point,
@@ -381,6 +382,7 @@ pub enum SkinRenderItem {
         style: TextStyle,
         caret: Option<TextCaret>,
         blend: BlendMode,
+        post_scale: Point,
     },
     Rect {
         rect: Rect,

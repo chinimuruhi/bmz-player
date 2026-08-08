@@ -137,10 +137,29 @@ macro_rules! skin_document_render_play_lane_methods {
                 .filter(|height| *height > 0)
         }
 
-        fn apply_notes_offset_to_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect {
-            let Some(offset) = state.skin_offsets.get(OFFSET_NOTES_1P) else {
-                return rect;
+        fn notes_destination_offset(&self, state: &SkinDrawState) -> SkinOffsetValue {
+            let enabled_options = self.enabled_options();
+            let Some(destination) = self
+                .all_destinations(&enabled_options)
+                .into_iter()
+                .find(|destination| destination.id == "notes")
+            else {
+                return SkinOffsetValue::default();
             };
+            normalized_destination_offset_ids(destination)
+                .into_iter()
+                .filter_map(|id| effective_skin_offset(id, state))
+                .fold(SkinOffsetValue::default(), |mut total, offset| {
+                    total.x = total.x.saturating_add(offset.x);
+                    total.y = total.y.saturating_add(offset.y);
+                    total.w = total.w.saturating_add(offset.w);
+                    total.h = total.h.saturating_add(offset.h);
+                    total
+                })
+        }
+
+        fn apply_notes_offset_to_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect {
+            let offset = self.notes_destination_offset(state);
             let canvas_w = self.w.max(1) as f32;
             let canvas_h = self.h.max(1) as f32;
             let offset_w = offset.w as f32 / canvas_w;
@@ -156,9 +175,7 @@ macro_rules! skin_document_render_play_lane_methods {
         }
 
         fn apply_notes_offset_to_long_body_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect {
-            let Some(offset) = state.skin_offsets.get(OFFSET_NOTES_1P) else {
-                return rect;
-            };
+            let offset = self.notes_destination_offset(state);
             let canvas_w = self.w.max(1) as f32;
             let canvas_h = self.h.max(1) as f32;
             let offset_w = offset.w as f32 / canvas_w;

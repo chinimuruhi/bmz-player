@@ -267,10 +267,25 @@ pub(super) struct ResolvedSkinFrame {
     pub(super) g: i32,
     pub(super) b: i32,
     pub(super) angle: i32,
+    /// beatoraja `prepareColor` がこのフレームで offset.a を加算するか。
+    pub(super) apply_offset_alpha: bool,
 }
 
 impl Default for ResolvedSkinFrame {
     fn default() -> Self {
-        Self { time: 0, x: 0, y: 0, w: 0, h: 0, acc: 0, a: 255, r: 255, g: 255, b: 255, angle: 0 }
+        Self {
+            time: 0,
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+            acc: 0,
+            a: 255,
+            r: 255,
+            g: 255,
+            b: 255,
+            angle: 0,
+            apply_offset_alpha: true,
+        }
     }
 }

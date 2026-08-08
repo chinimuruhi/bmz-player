@@ -82,6 +82,7 @@ impl WgpuRenderer {
             0.0,
             Point { x: 0.5, y: 0.5 },
             surface_size.width as f32 / surface_size.height.max(1) as f32,
+            Point { x: 1.0, y: 1.0 },
         );
         self.queue.write_buffer(&self.upscale_buffer, 0, &bytes);
         self.upscale_rect = Some(rect);

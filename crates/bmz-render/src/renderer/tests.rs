@@ -79,6 +79,7 @@ fn sample_text() -> DrawCommand {
         origin: Point { x: 0.1, y: 0.1 },
         text: "x".to_string(),
         caret: None,
+        post_scale: Point { x: 1.0, y: 1.0 },
         style: TextStyle {
             font_id: None,
             size: 0.1,

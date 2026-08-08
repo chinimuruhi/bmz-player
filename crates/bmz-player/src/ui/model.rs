@@ -96,7 +96,7 @@ impl SceneSkinDefs {
         }
 
         // Bar Line offset は BMZ 独自拡張で、beatoraja の共通 offset とは分けて
-        // 従来どおり ID 34 の定義を補完する。
+        // beatoraja の有効範囲と衝突しない BMZ 専用 ID の定義を補完する。
         let bar_line = bmz_play_bar_line_offset();
         if let Some(existing) =
             self.offset.iter_mut().find(|existing| existing.id == SKIN_OFFSET_BAR_LINE)

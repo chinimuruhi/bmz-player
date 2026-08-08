@@ -1,5 +1,7 @@
-pub const SKIN_OFFSET_VALUE_COUNT: usize = 200;
-pub const SKIN_OFFSET_BAR_LINE: i32 = 34;
+pub const BEATORAJA_SKIN_OFFSET_MAX: i32 = 199;
+pub const SKIN_OFFSET_VALUE_COUNT: usize = 201;
+/// beatoraja の有効範囲 (1..=199) と衝突しない BMZ 独自の小節線 offset。
+pub const SKIN_OFFSET_BAR_LINE: i32 = 200;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SkinOffsetValue {

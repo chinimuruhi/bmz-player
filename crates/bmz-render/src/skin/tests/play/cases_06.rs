@@ -522,10 +522,10 @@ fn skin_document_resolves_hidden_cover_destinations() {
     let hidden = document.static_image_render_items(&sources, &SkinDrawState::default());
     let items = document.static_image_render_items(
         &sources,
-        &SkinDrawState { hidden_cover: 1.0, ..SkinDrawState::default() },
+        &SkinDrawState { hidden_enabled: true, ..SkinDrawState::default() },
     );
 
-    assert!(hidden.is_empty());
+    assert!(matches!(hidden.as_slice(), [SkinRenderItem::Image { tint, .. }] if tint.a == 0.0));
     assert_eq!(items.len(), 1);
     assert!(matches!(items[0], SkinRenderItem::Image {
                 rect: Rect { x, y, width, height },

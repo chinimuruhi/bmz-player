@@ -245,6 +245,7 @@ fn text_shadow_emits_extra_text_instances() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "A".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: None,
                 size: 0.1,
@@ -278,6 +279,7 @@ fn cached_text_frame_only_marks_new_glyphs_dirty() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "FPS 20".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: None,
                 size: 0.1,
@@ -342,12 +344,14 @@ fn cached_text_frame_reuses_static_text_layouts() {
                 origin: Point { x: 0.1, y: 0.1 },
                 text: "STATIC".to_string(),
                 caret: None,
+                post_scale: Point { x: 1.0, y: 1.0 },
                 style: style.clone(),
             },
             DrawCommand::Text {
                 origin: Point { x: 0.1, y: 0.1 },
                 text: "STATIC".to_string(),
                 caret: None,
+                post_scale: Point { x: 1.0, y: 1.0 },
                 style,
             },
         ],

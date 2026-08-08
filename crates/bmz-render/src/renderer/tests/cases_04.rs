@@ -328,6 +328,7 @@ fn plan_geometry_writes_rotation_instance_data() {
             linear_filter: false,
             angle_rad: 1.25,
             center: Point { x: 0.0, y: 1.0 },
+            post_scale: Point { x: 1.0, y: 1.0 },
         }],
     };
 
@@ -343,6 +344,42 @@ fn plan_geometry_writes_rotation_instance_data() {
     assert_eq!(floats[13], 0.0);
     assert_eq!(floats[14], 1.0);
     assert!((floats[15] - 16.0 / 9.0).abs() < f32::EPSILON);
+    assert_eq!(floats[16], 1.0);
+    assert_eq!(floats[17], 1.0);
+}
+
+#[test]
+fn all_offset_post_scale_is_applied_to_text_quads_and_caret() {
+    let origin = Point { x: 0.2, y: 0.3 };
+    let scale = Point { x: 1.5, y: 0.5 };
+    let mut quads = [TextQuad {
+        x: 0.3,
+        y: 0.5,
+        width: 0.2,
+        height: 0.4,
+        atlas_origin: (0, 0),
+        glyph_width: 1,
+        glyph_height: 1,
+        color: Color::rgb(1.0, 1.0, 1.0),
+    }];
+    scale_text_quads(&mut quads, origin, scale);
+    assert_approx(quads[0].x, 0.35);
+    assert_approx(quads[0].y, 0.4);
+    assert_approx(quads[0].width, 0.3);
+    assert_approx(quads[0].height, 0.2);
+
+    let caret = scale_text_rect_command(
+        RectCommand {
+            rect: Rect { x: 0.4, y: 0.5, width: 0.02, height: 0.1 },
+            color: Color::rgb(1.0, 1.0, 1.0),
+        },
+        origin,
+        scale,
+    );
+    assert_approx(caret.rect.x, 0.5);
+    assert_approx(caret.rect.y, 0.4);
+    assert_approx(caret.rect.width, 0.03);
+    assert_approx(caret.rect.height, 0.05);
 }
 
 #[test]

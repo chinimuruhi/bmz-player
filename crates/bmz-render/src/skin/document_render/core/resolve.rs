@@ -215,11 +215,11 @@ macro_rules! skin_document_render_core_resolve_methods {
                 self.lift_cover.iter().find(|cover| cover.id == destination.id)
             {
                 return self
-                    .hidden_cover_render_item(lift_cover, destination, frame, true, state, sources)
+                    .hidden_cover_render_item(lift_cover, destination, frame, state, sources)
                     .map(|item| vec![item]);
             }
             let hidden_cover = self.hidden_cover.iter().find(|cover| cover.id == destination.id)?;
-            self.hidden_cover_render_item(hidden_cover, destination, frame, false, state, sources)
+            self.hidden_cover_render_item(hidden_cover, destination, frame, state, sources)
                 .map(|item| vec![item])
         }
 

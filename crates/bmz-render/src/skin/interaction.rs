@@ -37,15 +37,12 @@ pub(super) fn clip_skin_cover_to_disappear_line(
     }
     let bottom = frame.y;
     let top = bottom.saturating_add(frame.h);
-    if top < disappear_y {
+    if top <= disappear_y {
         frame.h = 0;
         return;
     }
     // 下端が消失ライン以上なら加工不要 (SUDDEN+ の全開など)
     if bottom >= disappear_y {
-        return;
-    }
-    if top <= disappear_y {
         return;
     }
     // 消失ラインより下 (y が小さい側) だけ切り、上側を残す

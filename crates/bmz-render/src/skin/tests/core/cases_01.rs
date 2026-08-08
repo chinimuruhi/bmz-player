@@ -180,6 +180,7 @@ fn append_skin_render_items_keeps_empty_text_with_caret() {
             },
             caret: Some(TextCaret { byte_index: 0, color: Color::rgb(1.0, 1.0, 1.0) }),
             blend: BlendMode::Normal,
+            post_scale: Point { x: 1.0, y: 1.0 },
         }],
     );
 

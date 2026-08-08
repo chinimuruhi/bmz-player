@@ -84,7 +84,7 @@ pub(super) fn build_text_frame_with_fallback_cache(
     let mut command_quad_counts = Vec::new();
     let mut command_caret_rects = Vec::new();
     for command in &plan.commands {
-        let DrawCommand::Text { origin, text, style, caret } = command else {
+        let DrawCommand::Text { origin, text, style, caret, post_scale } = command else {
             continue;
         };
         let quads_before = builder.quads.len();
@@ -92,9 +92,14 @@ pub(super) fn build_text_frame_with_fallback_cache(
             && let Some(bitmap_font) = bitmap_fonts.get(font_id)
         {
             builder.push_bitmap_text(origin, text, style.clone(), font_id, bitmap_font, surface);
-            command_caret_rects.push(caret.and_then(|caret| {
-                bitmap_text_caret_rect(origin, text, style, bitmap_font, surface, caret)
-            }));
+            scale_text_quads(&mut builder.quads[quads_before..], *origin, *post_scale);
+            command_caret_rects.push(
+                caret
+                    .and_then(|caret| {
+                        bitmap_text_caret_rect(origin, text, style, bitmap_font, surface, caret)
+                    })
+                    .map(|caret| scale_text_rect_command(caret, *origin, *post_scale)),
+            );
         } else {
             let vector_fonts = style
                 .font_id
@@ -104,20 +109,49 @@ pub(super) fn build_text_frame_with_fallback_cache(
                 })
                 .unwrap_or(VectorFontSet::Fallback(default_fonts));
             builder.push_text(origin, text, style.clone(), vector_fonts, surface);
-            command_caret_rects.push(caret.and_then(|caret| {
-                vector_text_caret_rect_with_fallback(
-                    origin,
-                    text,
-                    style,
-                    vector_fonts,
-                    surface,
-                    caret,
-                )
-            }));
+            scale_text_quads(&mut builder.quads[quads_before..], *origin, *post_scale);
+            command_caret_rects.push(
+                caret
+                    .and_then(|caret| {
+                        vector_text_caret_rect_with_fallback(
+                            origin,
+                            text,
+                            style,
+                            vector_fonts,
+                            surface,
+                            caret,
+                        )
+                    })
+                    .map(|caret| scale_text_rect_command(caret, *origin, *post_scale)),
+            );
         }
         command_quad_counts.push(builder.quads.len() - quads_before);
     }
     builder.finish(command_quad_counts, command_caret_rects)
+}
+
+pub(super) fn scale_text_quads(quads: &mut [TextQuad], origin: Point, scale: Point) {
+    if scale == (Point { x: 1.0, y: 1.0 }) {
+        return;
+    }
+    for quad in quads {
+        quad.x = origin.x + (quad.x - origin.x) * scale.x;
+        quad.y = origin.y + (quad.y - origin.y) * scale.y;
+        quad.width *= scale.x;
+        quad.height *= scale.y;
+    }
+}
+
+pub(super) fn scale_text_rect_command(
+    mut command: RectCommand,
+    origin: Point,
+    scale: Point,
+) -> RectCommand {
+    command.rect.x = origin.x + (command.rect.x - origin.x) * scale.x;
+    command.rect.y = origin.y + (command.rect.y - origin.y) * scale.y;
+    command.rect.width *= scale.x;
+    command.rect.height *= scale.y;
+    command
 }
 
 #[cfg(test)]

@@ -94,7 +94,8 @@ fn pms_note_expansion_uses_quarter_note_elapsed_time() {
                     "note": ["n1"],
                     "expansionrate": [150, 80],
                     "dst": [{ "time": 0, "x": 10, "y": 20, "w": 30, "h": 60 }]
-                }
+                },
+                "destination": [{ "id": "notes", "offset": 30 }]
             }
             "#,
     )
@@ -196,7 +197,8 @@ fn notes_offset_keeps_long_note_caps_joined_to_body() {
                     "note": ["n1"],
                     "size": [10],
                     "dst": [{ "time": 0, "x": 10, "y": 20, "w": 30, "h": 60 }]
-                }
+                },
+                "destination": [{ "id": "notes", "offset": 30 }]
             }
             "#,
     )

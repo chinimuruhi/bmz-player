@@ -389,9 +389,71 @@ fn all_offset_transforms_play_skin_render_item() {
 
     let SkinRenderItem::Image { rect, .. } = item else { panic!() };
     assert!(approx_eq(rect.x, 0.4));
-    assert!(approx_eq(rect.y, 0.0));
+    assert!(approx_eq(rect.y, 0.5));
     assert!(approx_eq(rect.width, 0.15));
     assert!(approx_eq(rect.height, 0.1));
+}
+
+#[test]
+fn all_offset_scales_text_and_rotated_images_after_local_layout() {
+    let mut offsets = SkinOffsetValues::default();
+    offsets.set(
+        OFFSET_ALL,
+        crate::skin_offset::SkinOffsetValue { x: 10, y: 20, w: 50, h: -50, r: 0, a: 0 },
+    );
+    let state = SkinDrawState { skin_offsets: offsets, ..SkinDrawState::default() };
+    let style = TextStyle {
+        font_id: None,
+        size: 0.1,
+        bitmap_size: None,
+        color: Color::rgb(1.0, 1.0, 1.0),
+        layer: TextLayer::Skin,
+        align: TextAlign::Left,
+        max_width: 0.0,
+        overflow: TextOverflow::Overflow,
+        wrapping: false,
+        outline: None,
+        shadow: None,
+    };
+
+    let text = apply_all_offset_to_render_item(
+        SkinRenderItem::Text {
+            origin: Point { x: 0.2, y: 0.4 },
+            text: "text".to_string(),
+            style,
+            caret: None,
+            blend: BlendMode::Normal,
+            post_scale: Point { x: 1.0, y: 1.0 },
+        },
+        &state,
+    );
+    let SkinRenderItem::Text { origin, post_scale, .. } = text else { panic!() };
+    assert!(approx_eq(origin.x, 0.4));
+    assert!(approx_eq(origin.y, 0.5));
+    assert_eq!(post_scale, Point { x: 1.5, y: 0.5 });
+
+    let rotated = apply_all_offset_to_render_item(
+        SkinRenderItem::RotatedImage {
+            texture: SkinTextureId(1),
+            rect: Rect { x: 0.2, y: 0.4, width: 0.1, height: 0.2 },
+            uv: TextureRegion::default(),
+            tint: Color::rgb(1.0, 1.0, 1.0),
+            blend: BlendMode::Normal,
+            source_size: None,
+            linear_filter: false,
+            angle_deg: 45.0,
+            center: Point { x: 0.0, y: 1.0 },
+            post_scale: Point { x: 1.0, y: 1.0 },
+        },
+        &state,
+    );
+    let SkinRenderItem::RotatedImage { rect, center, post_scale, .. } = rotated else { panic!() };
+    assert_eq!(center, Point { x: 0.0, y: 1.0 });
+    assert!(approx_eq(rect.x, 0.4));
+    assert!(approx_eq(rect.y, 0.4));
+    assert!(approx_eq(rect.width, 0.1));
+    assert!(approx_eq(rect.height, 0.2));
+    assert_eq!(post_scale, Point { x: 1.5, y: 0.5 });
 }
 
 #[test]
@@ -404,7 +466,8 @@ fn notes_offset_resizes_note_from_beatoraja_bottom_anchor() {
                     "id": "notes",
                     "note": ["n1"],
                     "dst": [{ "time": 0, "x": 10, "y": 20, "w": 30, "h": 40 }]
-                }
+                },
+                "destination": [{ "id": "notes", "offset": 30 }]
             }
             "#,
     )
@@ -428,4 +491,45 @@ fn notes_offset_resizes_note_from_beatoraja_bottom_anchor() {
     assert!(approx_eq(rect.width, original.width + 0.05));
     assert!(approx_eq(rect.height, 0.3));
     assert!(approx_eq(rect.y + rect.height, original.y + original.height - 0.2));
+}
+
+#[test]
+fn notes_offset_uses_only_marker_ids_and_deduplicates_them() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"{
+            "w": 100, "h": 100,
+            "destination": [{ "id": "notes", "offsets": [30, 30, 42, 0, 200] }]
+        }"#,
+    )
+    .unwrap();
+    let mut offsets = SkinOffsetValues::default();
+    offsets.set(
+        30,
+        crate::skin_offset::SkinOffsetValue { x: 10, y: 20, w: 5, h: 6, ..Default::default() },
+    );
+    offsets.set(
+        42,
+        crate::skin_offset::SkinOffsetValue { x: -3, y: 4, w: 7, h: -2, ..Default::default() },
+    );
+    offsets.set(
+        SKIN_OFFSET_BAR_LINE,
+        crate::skin_offset::SkinOffsetValue {
+            x: 100,
+            y: 100,
+            w: 100,
+            h: 100,
+            ..Default::default()
+        },
+    );
+    let state = SkinDrawState { skin_offsets: offsets, ..SkinDrawState::default() };
+
+    assert_eq!(
+        document.notes_destination_offset(&state),
+        crate::skin_offset::SkinOffsetValue { x: 7, y: 24, w: 12, h: 4, ..Default::default() }
+    );
+
+    let document_without_marker: SkinDocument =
+        serde_json::from_str(r#"{ "w": 100, "h": 100 }"#).unwrap();
+    let rect = Rect { x: 0.1, y: 0.2, width: 0.3, height: 0.4 };
+    assert_eq!(document_without_marker.apply_notes_offset_to_rect(rect, &state), rect);
 }

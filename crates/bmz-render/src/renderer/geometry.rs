@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) const RECT_INSTANCE_FLOATS: usize = 8;
 pub(super) const RECT_INSTANCE_BYTES: usize = RECT_INSTANCE_FLOATS * std::mem::size_of::<f32>();
-pub(super) const IMAGE_INSTANCE_FLOATS: usize = 16;
+pub(super) const IMAGE_INSTANCE_FLOATS: usize = 18;
 pub(super) const IMAGE_INSTANCE_BYTES: usize = IMAGE_INSTANCE_FLOATS * std::mem::size_of::<f32>();
 pub(super) const TEXT_INSTANCE_FLOATS: usize = 12;
 pub(super) const TEXT_INSTANCE_BYTES: usize = TEXT_INSTANCE_FLOATS * std::mem::size_of::<f32>();
@@ -324,6 +324,7 @@ pub(super) fn encode_plan_geometry_into(
                         0.0,
                         Point { x: 0.5, y: 0.5 },
                         image_rotation_aspect,
+                        Point { x: 1.0, y: 1.0 },
                     );
                     push_or_extend_image(
                         steps,
@@ -368,6 +369,7 @@ pub(super) fn encode_plan_geometry_into(
                     0.0,
                     Point { x: 0.5, y: 0.5 },
                     image_rotation_aspect,
+                    Point { x: 1.0, y: 1.0 },
                 );
                 push_or_extend_image(steps, *texture, *blend, *linear_filter, start..images.len());
             }
@@ -381,6 +383,7 @@ pub(super) fn encode_plan_geometry_into(
                 linear_filter,
                 angle_rad,
                 center,
+                post_scale,
             } => {
                 let start = images.len();
                 let rect = canvas_viewport.transform_rect(*rect);
@@ -396,6 +399,7 @@ pub(super) fn encode_plan_geometry_into(
                     *angle_rad,
                     *center,
                     image_rotation_aspect,
+                    *post_scale,
                 );
                 push_or_extend_image(steps, *texture, *blend, *linear_filter, start..images.len());
             }
@@ -515,6 +519,7 @@ pub(super) fn encode_image_instance(
     angle_rad: f32,
     center: Point,
     rotation_aspect: f32,
+    post_scale: Point,
 ) {
     images.extend_from_slice(bytemuck::bytes_of(&[
         rect.x,
@@ -533,6 +538,8 @@ pub(super) fn encode_image_instance(
         center.x,
         center.y,
         rotation_aspect,
+        post_scale.x,
+        post_scale.y,
     ]));
 }
 
@@ -586,7 +593,7 @@ pub(super) fn build_text_frame(
     let mut command_quad_counts = Vec::new();
     let mut command_caret_rects = Vec::new();
     for command in &plan.commands {
-        let DrawCommand::Text { origin, text, style, caret } = command else {
+        let DrawCommand::Text { origin, text, style, caret, post_scale } = command else {
             continue;
         };
         let quads_before = builder.quads.len();
@@ -594,9 +601,14 @@ pub(super) fn build_text_frame(
             style.font_id.as_ref().and_then(|font_id| bitmap_fonts.get(font_id))
         {
             builder.push_bitmap_text(origin, text, style.clone(), bitmap_font, surface);
-            command_caret_rects.push(caret.and_then(|caret| {
-                bitmap_text_caret_rect(origin, text, style, bitmap_font, surface, caret)
-            }));
+            scale_text_quads(&mut builder.quads[quads_before..], *origin, *post_scale);
+            command_caret_rects.push(
+                caret
+                    .and_then(|caret| {
+                        bitmap_text_caret_rect(origin, text, style, bitmap_font, surface, caret)
+                    })
+                    .map(|caret| scale_text_rect_command(caret, *origin, *post_scale)),
+            );
         } else {
             let font = style
                 .font_id
@@ -604,9 +616,14 @@ pub(super) fn build_text_frame(
                 .and_then(|font_id| fonts.get(font_id))
                 .unwrap_or(default_font);
             builder.push_text(origin, text, style.clone(), font, surface);
-            command_caret_rects.push(caret.and_then(|caret| {
-                vector_text_caret_rect(origin, text, style, font, surface, caret)
-            }));
+            scale_text_quads(&mut builder.quads[quads_before..], *origin, *post_scale);
+            command_caret_rects.push(
+                caret
+                    .and_then(|caret| {
+                        vector_text_caret_rect(origin, text, style, font, surface, caret)
+                    })
+                    .map(|caret| scale_text_rect_command(caret, *origin, *post_scale)),
+            );
         }
         command_quad_counts.push(builder.quads.len() - quads_before);
     }

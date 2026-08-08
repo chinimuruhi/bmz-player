@@ -421,6 +421,8 @@ pub trait SkinDocumentRenderExt {
 
     fn primary_note_lane_height_px(&self) -> Option<i32>;
 
+    fn notes_destination_offset(&self, state: &SkinDrawState) -> SkinOffsetValue;
+
     fn apply_notes_offset_to_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect;
 
     fn apply_notes_offset_to_long_body_rect(&self, rect: Rect, state: &SkinDrawState) -> Rect;
@@ -646,7 +648,6 @@ pub trait SkinDocumentRenderExt {
         cover: &SkinHiddenCoverDef,
         destination: &SkinDestinationDef,
         frame: ResolvedSkinFrame,
-        force_lift_cover: bool,
         state: &SkinDrawState,
         sources: &HashMap<String, SkinDocumentTexture>,
     ) -> Option<SkinRenderItem>;

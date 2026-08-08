@@ -86,12 +86,14 @@ pub enum DrawCommand {
         linear_filter: bool,
         angle_rad: f32,
         center: Point,
+        post_scale: Point,
     },
     Text {
         origin: Point,
         text: String,
         style: TextStyle,
         caret: Option<TextCaret>,
+        post_scale: Point,
     },
 }
 

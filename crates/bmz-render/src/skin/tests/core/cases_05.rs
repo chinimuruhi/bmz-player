@@ -127,3 +127,131 @@ fn text_destination_rect_for_ref_returns_normalized_first_frame() {
 
     assert!(document.text_destination_rect_for_ref(999).is_none());
 }
+
+#[test]
+fn destination_offsets_deduplicate_ids_and_accept_only_beatoraja_range() {
+    let destination: SkinDestinationDef = serde_json::from_str(
+        r#"{
+            "id": "image",
+            "offset": 42,
+            "offsets": [42, 42, 0, -1, 200, 34],
+            "dst": [{ "x": 100, "y": 200, "w": 20, "h": 40 }]
+        }"#,
+    )
+    .unwrap();
+    let mut offsets = SkinOffsetValues::default();
+    offsets.set(42, SkinOffsetValue { x: 10, y: 20, w: 4, h: 6, r: 7, a: -25 });
+    offsets.set(34, SkinOffsetValue { x: 3, y: -2, ..Default::default() });
+    offsets.set(
+        SKIN_OFFSET_BAR_LINE,
+        SkinOffsetValue { x: 1000, y: 1000, w: 1000, h: 1000, r: 1000, a: 1000 },
+    );
+    let state = SkinDrawState { skin_offsets: offsets, ..SkinDrawState::default() };
+    let mut frame =
+        ResolvedSkinFrame { x: 100, y: 200, w: 20, h: 40, a: 200, angle: 1, ..Default::default() };
+
+    apply_skin_offset_to_frame(&destination, &mut frame, &state, false);
+
+    assert_eq!((frame.x, frame.y, frame.w, frame.h), (111, 215, 24, 46));
+    assert_eq!(frame.angle, 8);
+    assert_eq!(frame.a, 175);
+}
+
+#[test]
+fn runtime_offsets_preserve_configured_components_of_special_ids() {
+    let mut offsets = SkinOffsetValues::default();
+    offsets.set(3, SkinOffsetValue { x: 3, y: 999, w: 2, h: 4, r: 1, a: 5 });
+    offsets.set(4, SkinOffsetValue { x: 4, y: 999, w: 6, h: 8, r: 2, a: 6 });
+    offsets.set(5, SkinOffsetValue { x: 5, y: 999, w: 10, h: 12, r: 3, a: 123 });
+    let disabled = SkinDrawState {
+        skin_offsets: offsets,
+        offset_lift_px: 10,
+        offset_lanecover_px: -20,
+        offset_hidden_cover_px: 30,
+        hidden_enabled: false,
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(
+        effective_skin_offset(3, &disabled),
+        Some(SkinOffsetValue { x: 3, y: 10, w: 2, h: 4, r: 1, a: 5 })
+    );
+    assert_eq!(
+        effective_skin_offset(4, &disabled),
+        Some(SkinOffsetValue { x: 4, y: -20, w: 6, h: 8, r: 2, a: 6 })
+    );
+    assert_eq!(
+        effective_skin_offset(5, &disabled),
+        Some(SkinOffsetValue { x: 5, y: 30, w: 10, h: 12, r: 3, a: -255 })
+    );
+
+    let enabled = SkinDrawState { hidden_enabled: true, ..disabled };
+    assert_eq!(effective_skin_offset(5, &enabled).unwrap().a, 0);
+}
+
+#[test]
+fn judge_detail_offset_requires_an_explicit_destination_id() {
+    let implicit: SkinDestinationDef = serde_json::from_str(
+        r#"{ "id": "judge-early", "dst": [{ "x": 10, "y": 20, "w": 30, "h": 40 }] }"#,
+    )
+    .unwrap();
+    let explicit: SkinDestinationDef = serde_json::from_str(
+        r#"{ "id": "judge-early", "offset": 33, "dst": [{ "x": 10, "y": 20, "w": 30, "h": 40 }] }"#,
+    )
+    .unwrap();
+    let mut offsets = SkinOffsetValues::default();
+    offsets.set(33, SkinOffsetValue { x: 8, y: 10, w: 4, h: 6, r: 1, a: -20 });
+    let state = SkinDrawState { skin_offsets: offsets, ..SkinDrawState::default() };
+    let original = ResolvedSkinFrame { x: 10, y: 20, w: 30, h: 40, a: 200, ..Default::default() };
+
+    let mut implicit_frame = original;
+    apply_skin_offset_to_frame(&implicit, &mut implicit_frame, &state, false);
+    assert_eq!(implicit_frame.x, original.x);
+    assert_eq!(implicit_frame.a, original.a);
+
+    let mut explicit_frame = original;
+    apply_skin_offset_to_frame(&explicit, &mut explicit_frame, &state, false);
+    assert_eq!((explicit_frame.x, explicit_frame.y), (16, 27));
+    assert_eq!((explicit_frame.w, explicit_frame.h), (34, 46));
+    assert_eq!(explicit_frame.angle, 1);
+    assert_eq!(explicit_frame.a, 180);
+}
+
+#[test]
+fn animated_color_applies_offset_alpha_only_at_keyframes() {
+    let varying: SkinDestinationDef = serde_json::from_str(
+        r#"{
+            "id": "image", "offset": 42,
+            "dst": [
+                { "time": 0, "x": 0, "y": 0, "w": 10, "h": 10, "a": 100 },
+                { "time": 1000, "a": 200 }
+            ]
+        }"#,
+    )
+    .unwrap();
+    let fixed: SkinDestinationDef = serde_json::from_str(
+        r#"{
+            "id": "image", "offset": 42,
+            "dst": [
+                { "time": 0, "x": 0, "y": 0, "w": 10, "h": 10, "a": 100 },
+                { "time": 1000, "x": 100, "a": 100 }
+            ]
+        }"#,
+    )
+    .unwrap();
+    let mut offsets = SkinOffsetValues::default();
+    offsets.set(42, SkinOffsetValue { a: 40, ..Default::default() });
+    let state = SkinDrawState { skin_offsets: offsets, ..SkinDrawState::default() };
+
+    let mut keyframe = resolve_destination_frame(&varying, 0, &[], &state).unwrap();
+    apply_skin_offset_to_frame(&varying, &mut keyframe, &state, false);
+    assert_eq!(keyframe.a, 140);
+
+    let mut interpolated = resolve_destination_frame(&varying, 500, &[], &state).unwrap();
+    apply_skin_offset_to_frame(&varying, &mut interpolated, &state, false);
+    assert_eq!(interpolated.a, 150);
+
+    let mut fixed_color = resolve_destination_frame(&fixed, 500, &[], &state).unwrap();
+    apply_skin_offset_to_frame(&fixed, &mut fixed_color, &state, false);
+    assert_eq!(fixed_color.a, 140);
+}

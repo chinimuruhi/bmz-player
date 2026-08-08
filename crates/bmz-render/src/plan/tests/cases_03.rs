@@ -52,6 +52,73 @@ fn play_skin_document_places_hit_timing_note_bottom_on_judge_line() {
 }
 
 #[test]
+fn play_skin_all_offset_transforms_fallback_mine_sprite() {
+    let document: crate::skin::SkinDocument = serde_json::from_str(
+        r#"{
+            "type": 0,
+            "w": 100,
+            "h": 100,
+            "note": {
+                "id": "notes",
+                "note": ["missing-note"],
+                "size": [10],
+                "dst": [{ "x": 10, "y": 20, "w": 30, "h": 60 }]
+            }
+        }"#,
+    )
+    .unwrap();
+    let skin = SkinContext::from_manifest_and_document(SkinManifest::default(), document, []);
+    let mut snapshot = RenderSnapshot::default();
+    snapshot.visible_mines[Lane::Key1.index()].push(VisibleMine {
+        lane: Lane::Key1,
+        time: TimeUs(1_000),
+        y: 0.5,
+        damage: 8.0,
+    });
+
+    let base_plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(snapshot.clone()),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+    let base = base_plan
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            DrawCommand::Image { texture, rect, .. } if *texture == DEFAULT_MINE_NOTE_TEXTURE => {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .expect("fallback mine sprite");
+
+    snapshot.skin_offsets.set(
+        10,
+        crate::skin_offset::SkinOffsetValue { x: 10, y: 20, w: 50, h: -50, ..Default::default() },
+    );
+    let offset_plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(snapshot),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+    let transformed = offset_plan
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            DrawCommand::Image { texture, rect, .. } if *texture == DEFAULT_MINE_NOTE_TEXTURE => {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .expect("transformed fallback mine sprite");
+
+    assert!(approx_eq(transformed.x, base.x * 1.5 + 0.1));
+    assert!(approx_eq(transformed.y, base.y * 0.5 + 0.5 - 0.2));
+    assert!(approx_eq(transformed.width, base.width * 1.5));
+    assert!(approx_eq(transformed.height, base.height * 0.5));
+}
+
+#[test]
 fn skin_lane_height_uses_document_note_area_for_lane_cover_offsets() {
     let document: crate::skin::SkinDocument = serde_json::from_str(
         r#"

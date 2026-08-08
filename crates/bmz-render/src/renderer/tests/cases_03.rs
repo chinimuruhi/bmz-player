@@ -45,6 +45,7 @@ fn text_outline_emits_surrounding_text_instances() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "A".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: None,
                 size: 0.1,
@@ -136,6 +137,7 @@ fn default_font_fallback_uses_selected_face_in_glyph_and_layout_cache_keys() {
             origin: Point { x: 0.1, y: 0.1 },
             text: text.clone(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: None,
                 size: 0.1,
@@ -205,6 +207,7 @@ fn explicit_vector_font_does_not_use_default_fallback_faces() {
             origin: Point { x: 0.1, y: 0.1 },
             text: fallback_char.to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: Some(custom_id.to_string()),
                 size: 0.1,
@@ -247,6 +250,7 @@ fn explicit_vector_font_renders_without_default_fallback() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "A".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: Some("skin:custom".to_string()),
                 size: 0.1,
@@ -285,6 +289,7 @@ fn text_without_any_font_is_skipped_without_default_fallback() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "A".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: None,
                 size: 0.1,
@@ -328,6 +333,7 @@ fn japanese_text_emits_glyph_quads_with_default_font() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "日本語と記号★♪".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: None,
                 size: 0.1,
@@ -400,6 +406,7 @@ fn bitmap_font_text_uses_registered_font() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "A".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: Some("bitmap".to_string()),
                 size: 0.1,
@@ -511,6 +518,7 @@ fn bitmap_font_text_positions_glyphs_from_destination_baseline() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "A".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: Some("bitmap".to_string()),
                 size: 0.3,
@@ -585,6 +593,7 @@ fn bitmap_font_shrink_keeps_text_vertically_centered_in_destination() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "AAAA".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: Some("bitmap".to_string()),
                 size: 0.2,
@@ -659,6 +668,7 @@ fn bitmap_font_text_uses_bitmap_size_for_scale() {
             origin: Point { x: 0.1, y: 0.1 },
             text: "A".to_string(),
             caret: None,
+            post_scale: Point { x: 1.0, y: 1.0 },
             style: TextStyle {
                 font_id: Some("bitmap".to_string()),
                 size: 0.3,

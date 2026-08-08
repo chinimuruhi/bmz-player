@@ -5,7 +5,7 @@ use bmz_core::time::TimeUs;
 use crate::skin::{SkinDocument, SkinDocumentTexture, SkinImageSize, SkinTextureId};
 use crate::snapshot::{
     DisplayInput, DisplayJudgeCounts, DisplayJudgement, LongBodyState, NoteVisualKind,
-    RenderSnapshot, VisibleBarLine, VisibleLongNote, VisibleNote,
+    RenderSnapshot, VisibleBarLine, VisibleLongNote, VisibleMine, VisibleNote,
 };
 
 use super::*;
