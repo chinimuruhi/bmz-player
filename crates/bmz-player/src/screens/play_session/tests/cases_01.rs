@@ -149,6 +149,34 @@ fn placeholder_session_visuals_use_hsfix_to_select_hispeed_mode() {
 }
 
 #[test]
+fn placeholder_session_visuals_apply_no_speed_constraint() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.hispeed = 4.0;
+    profile.lane.sudden = 400;
+    profile.lane.lift = 200;
+    profile.lane.hidden = 300;
+    profile.play.lane_effect = LaneEffectConfig::HiddenSudden;
+    let options = PlaySessionOptions {
+        hs_fix: HsFixOption::MaxBpm,
+        speed_constraint: bmz_core::course::CourseSpeedConstraint::NoSpeed,
+        ..PlaySessionOptions::default()
+    };
+    let mut snapshot = bmz_render::snapshot::RenderSnapshot {
+        now_bpm: 240.0,
+        max_bpm: 480.0,
+        ..Default::default()
+    };
+
+    apply_placeholder_session_visuals(&mut snapshot, &profile, KeyMode::K7, &options);
+
+    assert_eq!(snapshot.hispeed, 1.0);
+    assert_eq!(snapshot.hispeed_mode_index, 0);
+    assert_eq!(snapshot.lane_cover, 0.0);
+    assert_eq!(snapshot.lift, 0.0);
+    assert_eq!(snapshot.hidden_cover, 0.0);
+}
+
+#[test]
 fn placeholder_session_visuals_match_session_bga_modes() {
     for (mode, profile_autoplay, option_autoplay, replay, expected) in [
         (BgaModeConfig::On, false, false, false, true),

@@ -28,6 +28,9 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     if !profile_lane_settings_changed(before, profile) {
         return false;
     }
+    if speed_locked {
+        return false;
+    }
 
     let mode_changed = before.hispeed_mode != profile.hispeed_mode;
     let hispeed_changed = before.hispeed != profile.hispeed;
@@ -68,10 +71,6 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
         }
     }
 
-    if speed_locked {
-        return true;
-    }
-
     if target_green_changed {
         session.target_green_number = profile.target_green_number.max(1);
     }
@@ -96,6 +95,14 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     }
 
     true
+}
+
+pub(in crate::app) fn lane_state_for_profile_save(
+    speed_locked: bool,
+    hispeed: Option<f32>,
+    lane_state: Option<ActiveLaneState>,
+) -> (Option<f32>, Option<ActiveLaneState>) {
+    if speed_locked { (None, None) } else { (hispeed, lane_state) }
 }
 
 pub(in crate::app) fn active_lane_state_for_session(

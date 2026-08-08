@@ -672,6 +672,9 @@ impl WinitApp {
         let Some(pending) = &self.play.pending_play_start else {
             return;
         };
+        if pending.options.speed_constraint == bmz_core::course::CourseSpeedConstraint::NoSpeed {
+            return;
+        }
         if pending.lane_actions.is_empty() {
             return;
         }
@@ -689,6 +692,9 @@ impl WinitApp {
     }
 
     pub(super) fn commit_active_play_lane_state_to_profile(&mut self) -> bool {
+        if active_course_speed_locked(self.play.active_course.as_ref()) {
+            return true;
+        }
         let Some(active_play) = &self.play.active_play else {
             return false;
         };
@@ -703,7 +709,11 @@ impl WinitApp {
     }
 
     pub(super) fn save_current_play_options(&mut self, hispeed: Option<f32>, reason: &'static str) {
-        let lane_state = self.active_lane_state();
+        let (hispeed, lane_state) = lane_state_for_profile_save(
+            active_course_speed_locked(self.play.active_course.as_ref()),
+            hispeed,
+            self.active_lane_state(),
+        );
         let options = self.current_select_play_options();
         self.sync_profile_visual_offset_from_active_play();
         apply_current_play_options_to_profile(

@@ -65,6 +65,9 @@ pub struct PlayStartOptions {
     /// Course judge constraint (e.g. NoGood / NoGreat).  Forwarded to the
     /// JudgeEngine via PlaySessionOptions::judge_constraint.
     pub judge_constraint: CourseJudgeConstraint,
+    /// Course speed constraint. `NoSpeed` forces HS 1.0 with no lane covers
+    /// for the duration of the course without changing the saved profile.
+    pub speed_constraint: CourseSpeedConstraint,
     /// Course fallback for undefined long notes (Ln/Cn/Hcn). AUTO settings use
     /// this instead of their configured fallback while preserving explicitly
     /// typed notes. FORCE settings ignore it and convert every long note.
@@ -136,6 +139,7 @@ pub fn play_session_options_from_start(
         initial_gauge_values: start_options.initial_gauge_values,
         initial_course_combo: start_options.initial_course_combo,
         judge_constraint: start_options.judge_constraint,
+        speed_constraint: start_options.speed_constraint,
         ln_mode_override: start_options.ln_mode_override,
         ln_policy_setting: Default::default(),
         rule_mode: Default::default(),
@@ -321,9 +325,9 @@ pub fn apply_course_constraints(options: &mut PlayStartOptions, constraints: &Co
         CourseGaugeConstraint::Keys24 => Some(GaugeProperty::Keyboard),
     };
 
-    // NoSpeed: enforced at the input-handling layer in WinitApp::route_keyboard_input
-    // by reading active_course.definition.constraints.speed.
-    let _ = constraints.speed == CourseSpeedConstraint::NoSpeed;
+    // NoSpeed is applied while constructing both the placeholder and real
+    // session, then kept locked by the app-side input handling.
+    options.speed_constraint = constraints.speed;
 
     // Judge constraints are applied at GameSession construction by narrowing
     // the judge window inside play_session_options_from_start.
@@ -555,6 +559,20 @@ mod tests {
         let session = play_session_options_from_start(&app_config, options);
 
         assert_eq!(session.gauge_property, Some(GaugeProperty::Lr2));
+    }
+
+    #[test]
+    fn course_speed_constraint_reaches_session_options() {
+        let app_config = AppConfig::default();
+        let mut options = PlayStartOptions::default();
+        let mut constraints = default_constraints();
+        constraints.speed = CourseSpeedConstraint::NoSpeed;
+
+        apply_course_constraints(&mut options, &constraints);
+        assert_eq!(options.speed_constraint, CourseSpeedConstraint::NoSpeed);
+
+        let session = play_session_options_from_start(&app_config, options);
+        assert_eq!(session.speed_constraint, CourseSpeedConstraint::NoSpeed);
     }
 
     #[test]

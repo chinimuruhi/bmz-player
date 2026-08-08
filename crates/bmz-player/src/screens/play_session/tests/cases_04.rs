@@ -203,6 +203,32 @@ fn build_game_session_uses_hsfix_to_select_hispeed_mode() {
 }
 
 #[test]
+fn build_game_session_applies_no_speed_constraint_without_profile_lane_settings() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.hispeed = 4.0;
+    profile.lane.sudden = 400;
+    profile.lane.lift = 200;
+    profile.lane.hidden = 300;
+    profile.play.lane_effect = LaneEffectConfig::HiddenSudden;
+
+    let session = build_game_session(
+        Arc::new(chart()),
+        &profile,
+        PlaySessionOptions {
+            hs_fix: HsFixOption::MaxBpm,
+            speed_constraint: bmz_core::course::CourseSpeedConstraint::NoSpeed,
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert_eq!(session.hispeed, 1.0);
+    assert_eq!(session.hispeed_mode, HispeedMode::Normal);
+    assert_eq!(session.lane_cover, 0.0);
+    assert_eq!(session.lift, 0.0);
+    assert_eq!(session.hidden_cover, 0.0);
+}
+
+#[test]
 fn build_game_session_initializes_floating_hispeed_for_hsfix_base_bpm() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.lane.hispeed_mode = HispeedModeConfig::Floating;

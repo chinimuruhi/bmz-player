@@ -454,9 +454,7 @@ impl WinitApp {
         if self.play.active_play.is_none() {
             return self.apply_pending_play_lane_action(action);
         }
-        let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
-            course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
-        });
+        let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
         let Some(active_play) = &mut self.play.active_play else {
             return false;
         };
@@ -492,9 +490,7 @@ impl WinitApp {
     }
 
     pub(super) fn apply_pending_play_lane_action(&mut self, action: PlayLaneAction) -> bool {
-        let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
-            course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
-        });
+        let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
         let now_bpm =
             self.play.last_play_snapshot.as_ref().map_or(120.0, |snapshot| snapshot.now_bpm);
         let Some(pending) = &mut self.play.pending_play_start else {

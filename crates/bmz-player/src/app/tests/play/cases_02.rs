@@ -239,7 +239,7 @@ fn pending_green_number_change_switches_displayed_state_to_floating() {
 }
 
 #[test]
-fn pending_lane_state_matches_no_speed_control_rules() {
+fn pending_lane_state_rejects_all_no_speed_controls() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut lane = PendingPlayLaneState {
         hispeed: 2.0,
@@ -253,22 +253,23 @@ fn pending_lane_state_matches_no_speed_control_rules() {
         hispeed_auto_adjust: false,
     };
 
-    assert!(!apply_pending_play_lane_action_to_state(
-        &mut lane,
+    for action in [
+        PlayLaneAction::ToggleHispeedMode,
         PlayLaneAction::Hispeed(HispeedChange::Up),
-        &profile,
-        120.0,
-        true,
-    ));
-    assert!(apply_pending_play_lane_action_to_state(
-        &mut lane,
         PlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP),
-        &profile,
-        120.0,
-        true,
-    ));
+        PlayLaneAction::GreenNumberDelta(1),
+        PlayLaneAction::ToggleLaneCoverVisibility,
+    ] {
+        assert!(
+            !apply_pending_play_lane_action_to_state(&mut lane, action, &profile, 120.0, true,)
+        );
+    }
+    assert_eq!(lane.hispeed_mode, HispeedMode::Floating);
     assert_eq!(lane.hispeed, 2.0);
-    assert!((lane.lane_cover - LANE_COVER_STEP).abs() < f32::EPSILON);
+    assert_eq!(lane.target_green_number, 300);
+    assert_eq!(lane.lane_cover, 0.0);
+    assert_eq!(lane.lift, 0.0);
+    assert!(lane.lane_cover_visible);
 }
 
 #[test]

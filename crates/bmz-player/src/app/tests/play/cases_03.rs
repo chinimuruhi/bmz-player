@@ -107,6 +107,31 @@ fn egui_lane_profile_cover_change_keeps_runtime_nhs_hispeed() {
 }
 
 #[test]
+fn egui_lane_profile_changes_do_not_modify_no_speed_session() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let before = profile.lane.clone();
+    let mut edited = profile.lane.clone();
+    edited.hispeed = 4.0;
+    edited.hispeed_mode = HispeedModeConfig::Floating;
+    edited.sudden = 250;
+    edited.lift = 100;
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(app_test_chart()),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions {
+            speed_constraint: bmz_core::course::CourseSpeedConstraint::NoSpeed,
+            ..Default::default()
+        },
+    );
+
+    assert!(!apply_profile_lane_settings_to_session(&mut session, &before, &edited, true));
+    assert_eq!(session.hispeed, 1.0);
+    assert_eq!(session.hispeed_mode, HispeedMode::Normal);
+    assert_eq!(session.lane_cover, 0.0);
+    assert_eq!(session.lift, 0.0);
+}
+
+#[test]
 fn egui_lane_profile_target_change_recalculates_fhs_hispeed() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.lane.hispeed_mode = HispeedModeConfig::Floating;
@@ -248,7 +273,7 @@ fn green_number_step_switches_normal_hispeed_to_floating() {
 }
 
 #[test]
-fn green_number_step_respects_no_speed_constraint() {
+fn active_lane_state_rejects_all_no_speed_controls() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut session = crate::screens::play_session::build_game_session(
         std::sync::Arc::new(app_test_chart()),
@@ -256,11 +281,36 @@ fn green_number_step_respects_no_speed_constraint() {
         crate::screens::play_session::PlaySessionOptions::default(),
     );
 
-    assert!(!apply_green_number_step_to_session(&mut session, 1, true));
-
+    for action in [
+        PlayLaneAction::ToggleHispeedMode,
+        PlayLaneAction::Hispeed(HispeedChange::Up),
+        PlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP),
+        PlayLaneAction::GreenNumberDelta(1),
+        PlayLaneAction::ToggleLaneCoverVisibility,
+    ] {
+        assert!(!apply_play_lane_action_to_session(&mut session, action, true, 0.25));
+    }
     assert_eq!(session.hispeed_mode, HispeedMode::Normal);
     assert_eq!(session.target_green_number, 300);
     assert_eq!(session.hispeed, 2.0);
+    assert_eq!(session.lane_cover, 0.0);
+    assert_eq!(session.lift, 0.0);
+    assert!(session.lane_cover_visible);
+}
+
+#[test]
+fn no_speed_lane_state_is_not_selected_for_profile_save() {
+    let lane_state = ActiveLaneState {
+        lane_cover: 0.0,
+        lift: 0.0,
+        hispeed_mode: HispeedMode::Normal,
+        target_green_number: 300,
+    };
+
+    let (hispeed, lane_state) = lane_state_for_profile_save(true, Some(1.0), Some(lane_state));
+
+    assert!(hispeed.is_none());
+    assert!(lane_state.is_none());
 }
 
 #[test]

@@ -64,27 +64,37 @@ pub fn apply_placeholder_session_visuals(
     snapshot.gauge_max = current.definition.max;
     snapshot.gauge_border = current.definition.border;
 
-    snapshot.lift = lift_from_profile(profile);
-    snapshot.lane_cover = crate::config::play::clamp_lane_cover_for_lift(
-        lane_unit_to_f32(profile.lane.sudden),
-        snapshot.lift,
-    );
-    let hispeed_mode = hispeed_mode_from_hs_fix(options.hs_fix);
+    let speed_locked = options.speed_constraint == bmz_core::course::CourseSpeedConstraint::NoSpeed;
+    snapshot.lift = if speed_locked { 0.0 } else { lift_from_profile(profile) };
+    snapshot.lane_cover = if speed_locked {
+        0.0
+    } else {
+        crate::config::play::clamp_lane_cover_for_lift(
+            lane_unit_to_f32(profile.lane.sudden),
+            snapshot.lift,
+        )
+    };
+    let hispeed_mode =
+        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(options.hs_fix) };
     snapshot.hispeed_mode_index = hispeed_mode_index(hispeed_mode);
     let target_green_number = profile.lane.target_green_number.max(1);
-    snapshot.hispeed = placeholder_hispeed_for_mode(
-        profile,
-        hispeed_mode,
-        target_green_number,
-        snapshot.lane_cover,
-        snapshot.lift,
-        snapshot.now_bpm,
-    );
+    snapshot.hispeed = if speed_locked {
+        1.0
+    } else {
+        placeholder_hispeed_for_mode(
+            profile,
+            hispeed_mode,
+            target_green_number,
+            snapshot.lane_cover,
+            snapshot.lift,
+            snapshot.now_bpm,
+        )
+    };
     snapshot.lanecover_enabled = lanecover_enabled_from_profile(profile);
     snapshot.lift_enabled = lift_enabled_from_profile(profile);
     snapshot.hidden_enabled = hidden_enabled_from_profile(profile);
     snapshot.hispeed_auto_adjust = profile.lane.hispeed_auto_adjust;
-    snapshot.hidden_cover = hidden_cover_from_profile(profile);
+    snapshot.hidden_cover = if speed_locked { 0.0 } else { hidden_cover_from_profile(profile) };
 
     snapshot.key_mode = key_mode;
     // session 構築時と同じく基準 BPM = initial_bpm (decide snapshot の now_bpm)。
@@ -253,22 +263,31 @@ pub fn build_game_session_with_input_backend(
         chart.metadata.initial_bpm,
         &chart.timing_events,
     );
-    let hispeed_mode = hispeed_mode_from_hs_fix(options.hs_fix);
+    let speed_locked = options.speed_constraint == bmz_core::course::CourseSpeedConstraint::NoSpeed;
+    let hispeed_mode =
+        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(options.hs_fix) };
     let target_green_number = profile.lane.target_green_number.max(1);
-    let lift = lift_from_profile(profile);
-    let lane_cover =
-        crate::config::play::clamp_lane_cover_for_lift(lane_unit_to_f32(profile.lane.sudden), lift);
+    let lift = if speed_locked { 0.0 } else { lift_from_profile(profile) };
+    let lane_cover = if speed_locked {
+        0.0
+    } else {
+        crate::config::play::clamp_lane_cover_for_lift(lane_unit_to_f32(profile.lane.sudden), lift)
+    };
     let hsfix_base_bpm = hsfix_base_bpm_for_chart(&chart, &timing_map, options.hs_fix);
-    let hispeed = initial_hispeed_for_mode(
-        profile,
-        hispeed_mode,
-        target_green_number,
-        lane_cover,
-        lift,
-        &chart,
-        &timing_map,
-        options.hs_fix,
-    );
+    let hispeed = if speed_locked {
+        1.0
+    } else {
+        initial_hispeed_for_mode(
+            profile,
+            hispeed_mode,
+            target_green_number,
+            lane_cover,
+            lift,
+            &chart,
+            &timing_map,
+            options.hs_fix,
+        )
+    };
 
     // Course judge constraints narrow the judge window so the corresponding
     // judge band is unreachable: NoGood zeroes good_us, NoGreat zeroes both
@@ -398,7 +417,7 @@ pub fn build_game_session_with_input_backend(
         lift_enabled: lift_enabled_from_profile(profile),
         hidden_enabled: hidden_enabled_from_profile(profile),
         hispeed_auto_adjust: profile.lane.hispeed_auto_adjust,
-        hidden_cover: hidden_cover_from_profile(profile),
+        hidden_cover: if speed_locked { 0.0 } else { hidden_cover_from_profile(profile) },
         skin_offsets: skin_offsets_from_profile(profile, key_mode, session_mode),
         bga_enabled: bga_enabled_from_profile(profile, autoplay_enabled, is_replay),
         poor_bga_duration_us: poor_bga_duration_us_from_profile(profile),

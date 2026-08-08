@@ -101,6 +101,12 @@ pub(in crate::app) fn course_constraint_flags(
     }
 }
 
+pub(in crate::app) fn active_course_speed_locked(course: Option<&ActiveCourseSession>) -> bool {
+    course.is_some_and(|course| {
+        course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
+    })
+}
+
 pub(in crate::app) fn moved_select_index(
     current_index: usize,
     row_count: usize,

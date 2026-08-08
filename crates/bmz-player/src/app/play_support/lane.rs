@@ -5,6 +5,9 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
     now_bpm: f32,
     speed_locked: bool,
 ) -> bool {
+    if speed_locked {
+        return false;
+    }
     match action {
         PlayLaneAction::ToggleHispeedMode => match lane.hispeed_mode {
             HispeedMode::Normal => {
@@ -17,9 +20,6 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
             }
         },
         PlayLaneAction::Hispeed(change) => {
-            if speed_locked {
-                return false;
-            }
             let step = hispeed_step_for_profile(profile, lane.hispeed_mode);
             lane.hispeed = adjusted_hispeed(lane.hispeed, change, step);
         }
@@ -27,31 +27,28 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
             if lane.lane_cover_visible {
                 lane.lane_cover = (lane.lane_cover - delta)
                     .clamp(0.0, crate::config::play::lane_cover_max_for_lift(lane.lift));
-                lane.refresh_cover_hispeed(now_bpm, speed_locked);
+                lane.refresh_cover_hispeed(now_bpm, false);
             } else {
                 lane.lift = (lane.lift + delta).clamp(0.0, (1.0 - lane.lane_cover).clamp(0.0, 1.0));
                 if lane.hispeed_auto_adjust {
-                    lane.refresh_floating_hispeed(now_bpm, speed_locked);
+                    lane.refresh_floating_hispeed(now_bpm, false);
                 }
             }
         }
         PlayLaneAction::GreenNumberDelta(delta) => {
-            if speed_locked {
-                return false;
-            }
             let current = match lane.hispeed_mode {
                 HispeedMode::Normal => lane.current_green_number(now_bpm),
                 HispeedMode::Floating => lane.target_green_number,
             };
             lane.target_green_number = adjusted_green_number(current, delta);
             lane.hispeed_mode = HispeedMode::Floating;
-            lane.refresh_floating_hispeed(now_bpm, speed_locked);
+            lane.refresh_floating_hispeed(now_bpm, false);
         }
         PlayLaneAction::ToggleLaneCoverVisibility => {
             let was_visible = lane.lane_cover_visible;
             lane.lane_cover_visible = !lane.lane_cover_visible;
             if !was_visible && lane.lane_cover_visible {
-                lane.refresh_cover_hispeed(now_bpm, speed_locked);
+                lane.refresh_cover_hispeed(now_bpm, false);
             }
         }
     }
@@ -84,6 +81,9 @@ pub(in crate::app) fn apply_play_lane_action_to_session(
     speed_locked: bool,
     hispeed_step: f32,
 ) -> bool {
+    if speed_locked {
+        return false;
+    }
     match action {
         PlayLaneAction::ToggleHispeedMode => {
             match session.hispeed_mode {
@@ -100,22 +100,16 @@ pub(in crate::app) fn apply_play_lane_action_to_session(
             true
         }
         PlayLaneAction::Hispeed(change) => {
-            if speed_locked {
-                return false;
-            }
             apply_hispeed_change_to_session(session, change, hispeed_step);
             true
         }
         PlayLaneAction::LaneCoverDelta(delta) => {
-            apply_lane_cover_step_to_session(session, delta, speed_locked)
+            apply_lane_cover_step_to_session(session, delta, false)
         }
         PlayLaneAction::GreenNumberDelta(delta) => {
-            apply_green_number_step_to_session(session, delta, speed_locked)
+            apply_green_number_step_to_session(session, delta, false)
         }
-        PlayLaneAction::ToggleLaneCoverVisibility => {
-            toggle_lane_cover_visibility(session, speed_locked);
-            true
-        }
+        PlayLaneAction::ToggleLaneCoverVisibility => toggle_lane_cover_visibility(session, false),
     }
 }
 
@@ -181,6 +175,9 @@ pub(in crate::app) fn apply_lane_cover_step_to_session(
     delta: f32,
     speed_locked: bool,
 ) -> bool {
+    if speed_locked {
+        return false;
+    }
     if session.lane_cover_visible {
         session.lane_cover = (session.lane_cover - delta)
             .clamp(0.0, crate::config::play::lane_cover_max_for_lift(session.lift));
@@ -245,11 +242,15 @@ pub(in crate::app) fn register_play_start_double_press(
 pub(in crate::app) fn toggle_lane_cover_visibility(
     session: &mut bmz_gameplay::session::GameSession,
     speed_locked: bool,
-) {
+) -> bool {
+    if speed_locked {
+        return false;
+    }
     let was_visible = session.lane_cover_visible;
     session.lane_cover_visible = !session.lane_cover_visible;
     if !was_visible && session.lane_cover_visible {
         reset_floating_hispeed_if_enabled(session, speed_locked);
     }
+    true
 }
 use super::*;

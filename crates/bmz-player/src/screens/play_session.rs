@@ -104,6 +104,9 @@ pub struct PlaySessionOptions {
     /// `NoGood` zeroes the good window, `NoGreat` zeroes great and good
     /// windows; the next judge band kicks in immediately.
     pub judge_constraint: bmz_core::course::CourseJudgeConstraint,
+    /// Course speed constraint. `NoSpeed` overrides the session-only lane
+    /// presentation while preserving the player's saved lane settings.
+    pub speed_constraint: bmz_core::course::CourseSpeedConstraint,
     /// Course-forced long-note mode (Ln/Cn/Hcn).  `None` keeps the chart's
     /// declared mode.
     pub ln_mode_override: Option<bmz_chart::model::LongNoteMode>,
@@ -238,6 +241,7 @@ impl Default for PlaySessionOptions {
             initial_gauge_values: None,
             initial_course_combo: None,
             judge_constraint: bmz_core::course::CourseJudgeConstraint::Normal,
+            speed_constraint: bmz_core::course::CourseSpeedConstraint::Free,
             ln_mode_override: None,
             ln_policy_setting: LnPolicySetting::AutoLn,
             rule_mode: RuleMode::Beatoraja,

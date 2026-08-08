@@ -22,9 +22,7 @@ impl WinitApp {
     }
 
     pub(super) fn sync_active_play_lane_settings_from_profile(&mut self, before: &LaneViewConfig) {
-        let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
-            course.definition.constraints.speed == bmz_core::course::CourseSpeedConstraint::NoSpeed
-        });
+        let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
         let profile_lane = self.boot.profile_config.lane.clone();
         let Some(active_play) = &mut self.play.active_play else {
             return;

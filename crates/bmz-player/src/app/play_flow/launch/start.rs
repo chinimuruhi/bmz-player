@@ -290,10 +290,7 @@ impl WinitApp {
         if let Some(pending) =
             self.play.pending_play_start.as_ref().filter(|pending| pending.chart_id == chart_id)
         {
-            let speed_locked = self.play.active_course.as_ref().is_some_and(|course| {
-                course.definition.constraints.speed
-                    == bmz_core::course::CourseSpeedConstraint::NoSpeed
-            });
+            let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
             replay_pending_play_lane_actions(
                 &mut active_play.running.session,
                 &pending.lane_actions,
