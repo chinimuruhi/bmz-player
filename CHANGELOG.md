@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## v0.2.0
+
+### 改善
+
+- rianIR に正式対応しました。
+  - AUTO を含むコースの実効 LN 種別を正規化し、コーススコアを rianIR へ送信できるようにしました。
+
+- コースプレイのスコアの扱いを改善しました。
+  - コーススコア LN policy ごとに保存するよう変更しました。既存データは `ForceLn` として移行します。
+
+- Windows のゲームパッド入力に Raw Input backend を追加しました。
+  - 設定画面で gilrs / Raw Input を選択でき、入力 backend の変更をアプリ再起動なしで反映できるようにしました。
+  - GameInput は一部 HID コントローラーでプロセスごとクラッシュするため通常ビルドから無効化し、既存設定を gilrs へ移行します。実装は開発用の `experimental-gameinput` feature に残し、Windows 配布物からは削除しました。
+
+- 処理負荷を削減しました。
+  - 難易度表更新、IR backlog、更新確認、曲 scan の DB 反映を Select 画面まで保留し、Play 中の描画や DB access との競合を避けるようにしました。
+  - skin 設定画面では表示範囲内の property / filepath / offset 行だけを構築し、path context のキャッシュと変更スロットの直接追跡によって毎フレームの複製を削減しました。
+  - コース中間リザルト中に次ステージの譜面・WAV・BGA をバックグラウンド preload し、コース選択時の全ステージ集計も非同期化して Play への遷移を高速化しました。
+  - コース最終判定が確定した時点でスコア保存と IR 送信を開始しつつ、Play の終了演出は従来のタイミングを維持するようにしました。
+
+- system bgm (選曲BGM/決定SE) が選曲画面に戻るたびに再抽選されるよう変更しました。
+
+### 修正
+
+- 10/14Kプレイ時にコントローラーが反応しない不具合を修正しました。
+- beatoraja から取り込んだ MYBEST score に ghost が無い場合、再 import で現在のベスト履歴へ ghost を補完するようにしました。
+- リザルトから retry した後、開始前に退出すると選曲画面の clear status が古いまま残る問題を修正しました。
+- コースの `NoSpeed` 制約を HS 1.0、SUDDEN / LIFT / HIDDEN 0 で開始し、HS・緑数字・レーンカバー操作と一時状態の保存をすべて無効にするようにしました。
+- コースの Decide 表示、stage metrics、結果確定、LN policy の扱いを統一し、Select 以外で option panel の開閉音が鳴る問題を修正しました。
+- skin offset の適用対象・順序・原点・ID 条件を beatoraja に合わせ、Notes offset を変更しても通常ノート、LN cap / body、小節線がずれたり分離したりしないようにしました。
+
+### テスト・開発環境
+
+- Raw Input、gilrs controller slot、backend 即時切り替え、GameInput 設定移行、コース LN policy・rianIR送信・preload、skin offset、設定画面 virtualization の回帰テストを追加・更新しました。
+- `docs/controls.md`、`docs/ir.md`、`docs/ln.md`、`docs/rule.md`、`docs/packaging.md`、`docs/licenses.md` を更新しました。
+
 ## v0.1.13
 
 ### 改善
