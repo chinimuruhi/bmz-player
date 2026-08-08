@@ -18,6 +18,13 @@ pub(super) fn should_play_select_bgm_on_enter(select_preview_playing: bool) -> b
     !select_preview_playing
 }
 
+pub(super) fn should_shuffle_system_sound_sets_on_scene_enter(
+    previous: Option<AppSceneKind>,
+    next: AppSceneKind,
+) -> bool {
+    next == AppSceneKind::Select && previous.is_some_and(|scene| scene != AppSceneKind::Select)
+}
+
 pub(super) fn system_bgm_stop_targets_on_scene_enter(
     scene_kind: AppSceneKind,
 ) -> &'static [crate::system_sound::SoundType] {
@@ -221,10 +228,9 @@ pub(super) fn settings_edit_direction_from_mouse_wheel(delta: MouseScrollDelta) 
     mouse_wheel_y(delta).signum() as i32
 }
 
-pub(super) fn system_sound_manager_from_boot(
+pub(super) fn system_sound_catalog_from_boot(
     boot: &BootstrappedApp,
-    audio: &crate::audio::SystemAudio,
-) -> crate::system_sound_manager::SystemSoundManager {
+) -> crate::system_sound::SoundSetCatalog {
     let cfg = &boot.profile_config.system_sound;
     let bgm_candidates = if cfg.bgm_dir.is_empty() {
         Vec::new()
@@ -247,8 +253,23 @@ pub(super) fn system_sound_manager_from_boot(
     } else {
         Some(PathBuf::from(&cfg.default_sound_dir))
     };
-    let selection =
-        crate::system_sound::select_random_sound_set(&bgm_candidates, &se_candidates, default_dir);
+    crate::system_sound::SoundSetCatalog {
+        bgm_dirs: bgm_candidates,
+        se_dirs: se_candidates,
+        default_dir,
+    }
+}
+
+pub(super) fn system_sound_manager_from_catalog(
+    catalog: &crate::system_sound::SoundSetCatalog,
+    audio: &crate::audio::SystemAudio,
+) -> crate::system_sound_manager::SystemSoundManager {
+    let selection = catalog.select_random();
+    tracing::info!(
+        bgm_dir = ?selection.bgm_dir,
+        se_dir = ?selection.se_dir,
+        "selected system sound sets"
+    );
     crate::system_sound_manager::SystemSoundManager::new(audio.engine(), &selection)
 }
 

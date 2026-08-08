@@ -16,6 +16,9 @@ impl WinitApp {
         if previous == Some(AppSceneKind::Select) && scene_kind != AppSceneKind::Select {
             self.stop_select_preview();
         }
+        if should_shuffle_system_sound_sets_on_scene_enter(previous, scene_kind) {
+            self.shuffle_system_sound_sets();
+        }
         self.fire_scene_transition_sounds(scene_kind);
         if let Some(window) = &self.window {
             window.set_title(window_title_for_scene(scene_kind));
@@ -176,6 +179,20 @@ impl WinitApp {
                 self.play_system_sound(result_entry_sound_for_clear(clear_type));
             }
         }
+    }
+
+    /// beatoraja の `SystemSoundManager.shuffle()` と同様に、起動時にスキャンした候補から
+    /// BGM / SE セットを再抽選する。旧セットの BGM は、同じ SoundId へ新しいサンプルを
+    /// 登録する前に停止する。
+    fn shuffle_system_sound_sets(&mut self) {
+        let Some(system_audio) = self.audio.system_audio.as_ref() else {
+            return;
+        };
+        if let Some(manager) = &self.audio.system_sound {
+            manager.stop_all_bgm();
+        }
+        self.audio.system_sound =
+            Some(system_sound_manager_from_catalog(&self.audio.system_sound_catalog, system_audio));
     }
 
     /// `profile.audio_mix.system_bgm_volume` / `system_se_volume` に

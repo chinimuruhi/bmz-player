@@ -5,7 +5,8 @@
 //!
 //! - 起動時に「BGM セット」と「SE セット」のディレクトリツリーをスキャンして候補を集める。
 //! - BGM セットは `select.wav` を含むディレクトリ、SE セットは `clear.wav` を含むディレクトリ。
-//! - 起動時にランダムに 1 セットずつ選んで、各 [`SoundType`] のファイルパスを解決する。
+//! - 初期化時と選曲画面へ戻るたび、ランダムに 1 セットずつ選んで各 [`SoundType`] の
+//!   ファイルパスを解決する。
 //! - 解決できないファイルは `defaultsound/<filename>` をフォールバック検索する。
 //!
 //! 本モジュールは「どのファイルを使うか」までを決めるところまでが責務。
@@ -146,6 +147,23 @@ pub struct SoundSetSelection {
     pub se_dir: Option<PathBuf>,
     /// `defaultsound/` のパス。各ファイルのフォールバック検索に使う。
     pub default_dir: Option<PathBuf>,
+}
+
+/// 起動時にスキャンした BGM / SE セット候補。
+///
+/// beatoraja と同様に候補のスキャンは起動時だけ行い、選曲画面へ戻る際はこの一覧から
+/// [`SoundSetSelection`] を再抽選する。
+#[derive(Debug, Clone, Default)]
+pub struct SoundSetCatalog {
+    pub bgm_dirs: Vec<PathBuf>,
+    pub se_dirs: Vec<PathBuf>,
+    pub default_dir: Option<PathBuf>,
+}
+
+impl SoundSetCatalog {
+    pub fn select_random(&self) -> SoundSetSelection {
+        select_random_sound_set(&self.bgm_dirs, &self.se_dirs, self.default_dir.clone())
+    }
 }
 
 impl SoundSetSelection {
@@ -373,6 +391,24 @@ mod tests {
 
         assert_eq!(selection.bgm_dir.as_deref(), Some(bgm[0].as_path()));
         assert!(se.iter().any(|p| Some(p.as_path()) == selection.se_dir.as_deref()));
+        assert_eq!(selection.default_dir.as_deref(), Some(default.as_path()));
+    }
+
+    #[test]
+    fn catalog_selects_from_cached_candidates() {
+        let bgm = PathBuf::from("/bgm/set1");
+        let se = PathBuf::from("/se/set1");
+        let default = PathBuf::from("/default");
+        let catalog = SoundSetCatalog {
+            bgm_dirs: vec![bgm.clone()],
+            se_dirs: vec![se.clone()],
+            default_dir: Some(default.clone()),
+        };
+
+        let selection = catalog.select_random();
+
+        assert_eq!(selection.bgm_dir.as_deref(), Some(bgm.as_path()));
+        assert_eq!(selection.se_dir.as_deref(), Some(se.as_path()));
         assert_eq!(selection.default_dir.as_deref(), Some(default.as_path()));
     }
 }

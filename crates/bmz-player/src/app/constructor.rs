@@ -98,12 +98,15 @@ impl WinitApp {
         let applied_obs_config = boot.app_config.obs.clone();
         let obs_controller = crate::obs::ObsController::spawn(applied_obs_config.clone());
 
-        // システム SE / BGM facade を構築する。
+        // システム SE / BGM の候補を起動時に一度だけスキャンし、facade を構築する。
         // - `profile.[system_sound].bgm_dir` / `se_dir` が指定されていれば再帰スキャンして
-        //   セットを集め、その中からランダム選択する(beatoraja 互換)。
+        //   セットを集め、その中からランダム選択する(beatoraja 互換)。選曲画面へ戻る
+        //   ときはスキャン済み候補から再抽選する。
         // - 空なら scan を省略し、`default_sound_dir` だけにフォールバックする。
-        let system_sound =
-            system_audio.as_ref().map(|audio| system_sound_manager_from_boot(&boot, audio));
+        let system_sound_catalog = system_sound_catalog_from_boot(&boot);
+        let system_sound = system_audio
+            .as_ref()
+            .map(|audio| system_sound_manager_from_catalog(&system_sound_catalog, audio));
         let select_preview =
             system_audio.as_ref().map(|audio| SelectChartPreview::new(audio.engine()));
         let select_assets =
@@ -322,6 +325,7 @@ impl WinitApp {
                 audio_diagnostics_last: None,
                 input_diagnostics_last_sequence: 0,
                 system_audio,
+                system_sound_catalog,
                 system_sound,
             },
             ui: UiRuntimeState {

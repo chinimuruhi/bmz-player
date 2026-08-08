@@ -151,6 +151,26 @@ fn non_play_scene_stops_all_transition_bgms() {
 }
 
 #[test]
+fn returning_to_select_reshuffles_system_sound_sets() {
+    assert!(!should_shuffle_system_sound_sets_on_scene_enter(None, AppSceneKind::Select));
+    assert!(!should_shuffle_system_sound_sets_on_scene_enter(
+        Some(AppSceneKind::Select),
+        AppSceneKind::Select,
+    ));
+    for previous in [AppSceneKind::Decide, AppSceneKind::Play, AppSceneKind::Result] {
+        assert!(
+            should_shuffle_system_sound_sets_on_scene_enter(Some(previous), AppSceneKind::Select),
+            "previous={previous:?}"
+        );
+    }
+    for next in [AppSceneKind::Decide, AppSceneKind::Play, AppSceneKind::Result] {
+        assert!(
+            !should_shuffle_system_sound_sets_on_scene_enter(Some(AppSceneKind::Select), next,)
+        );
+    }
+}
+
+#[test]
 fn left_overlay_hides_toast_while_screenshot_pending() {
     let toast = Some(("スクリーンショットを保存しました", Duration::from_millis(100)));
     assert_eq!(resolve_left_overlay_text(true, toast, "SCAN 1 / 2"), "SCAN 1 / 2");

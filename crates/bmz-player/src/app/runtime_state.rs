@@ -280,6 +280,9 @@ pub(super) struct AppAudioRuntimeState {
     /// システム SE / BGM を再生する cpal ストリーム。
     /// 開けない環境では `None` で、システム音はサイレント。
     pub(super) system_audio: Option<crate::audio::SystemAudio>,
+    /// 起動時にスキャンしたシステム BGM / SE セット候補。
+    /// 選曲画面へ戻る際の再抽選では再スキャンせず、この一覧を使う。
+    pub(super) system_sound_catalog: crate::system_sound::SoundSetCatalog,
     /// `system_audio` 上にデコード済みサンプルを乗せて再生・停止する facade。
     /// `system_audio` が `None` の場合や、サウンドセット未指定の場合も `Some` で
     /// 構築されるが id_map が空なので各 play/stop は no-op になる。

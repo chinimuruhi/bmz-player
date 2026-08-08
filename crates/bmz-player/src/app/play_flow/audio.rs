@@ -205,8 +205,10 @@ impl WinitApp {
         };
 
         if self.audio.system_sound.is_none() {
-            self.audio.system_sound =
-                Some(system_sound_manager_from_boot(&self.boot, &system_audio));
+            self.audio.system_sound = Some(system_sound_manager_from_catalog(
+                &self.audio.system_sound_catalog,
+                &system_audio,
+            ));
         }
         if !self.select.select_assets.has_preview() {
             self.select
