@@ -35,6 +35,7 @@ impl EguiLayer {
             show_settings: false,
             show_profile_settings: false,
             show_skin: false,
+            skin_ui_path_cache: SkinUiPathCache::default(),
             show_license_notice: false,
             license_notice_text: None,
             update_dialog_active: false,
@@ -320,6 +321,7 @@ impl EguiLayer {
                     skin_meta,
                     skin_catalog,
                     app_paths,
+                    &mut self.skin_ui_path_cache,
                     text,
                 );
                 save_profile_config |= skin_actions.save;

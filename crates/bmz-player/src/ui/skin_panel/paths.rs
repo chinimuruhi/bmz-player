@@ -3,6 +3,33 @@ pub(in crate::ui) struct SkinUiPathContext {
     package: Option<bmz_skin::SkinPathContext>,
 }
 
+/// スキン設定 UI で使う package-aware path context のスロット別キャッシュ。
+///
+/// Lua skin の context 構築は entry と library root の canonicalize を伴うため、
+/// 同じスキンを表示している間は毎フレーム作り直さない。
+#[derive(Default)]
+pub(in crate::ui) struct SkinUiPathCache {
+    entries: BTreeMap<&'static str, (String, Option<SkinUiPathContext>)>,
+}
+
+impl SkinUiPathCache {
+    pub(in crate::ui) fn get_or_resolve(
+        &mut self,
+        slot: SkinSlot,
+        app_paths: &AppPaths,
+        skin_path: &str,
+    ) -> Option<&SkinUiPathContext> {
+        let key = slot.defs_header_id();
+        let needs_refresh =
+            self.entries.get(key).is_none_or(|(cached_path, _)| cached_path != skin_path);
+        if needs_refresh {
+            let context = skin_root_path(app_paths, skin_path);
+            self.entries.insert(key, (skin_path.to_string(), context));
+        }
+        self.entries.get(key).and_then(|(_, context)| context.as_ref())
+    }
+}
+
 impl SkinUiPathContext {
     #[cfg(test)]
     pub(in crate::ui) fn legacy(root: &Path) -> Self {

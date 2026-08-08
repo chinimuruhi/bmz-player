@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn skin_rows_only_build_widgets_inside_the_scroll_clip_rect() {
+    let mut built_rows = 0;
+    egui::__run_test_ui(|ui| {
+        let visible =
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(ui.available_width(), 64.0));
+        ui.set_clip_rect(ui.clip_rect().intersect(visible));
+        for row in 0..1_000 {
+            show_culled_skin_row(ui, row, 20.0, |_ui| built_rows += 1);
+        }
+    });
+
+    assert!(built_rows > 0);
+    assert!(built_rows < 10, "画面外の行まで構築された: {built_rows}");
+}
+
+#[test]
 fn filepath_default_uses_random_sentinel_for_random_def() {
     // def="Random" は具体ファイルへ固定せず、ランダム番兵を既定にする。
     let filepath = SkinFilepathDef {

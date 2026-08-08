@@ -1,6 +1,19 @@
 use super::*;
 
 #[test]
+fn direct_skin_reload_request_maps_battle_slots_and_offsets() {
+    let mut request = SkinReloadRequest::default();
+    request_skin_reload(&mut request, SkinSlot::Battle5, false);
+    request_skin_reload(&mut request, SkinSlot::Battle7, true);
+
+    assert!(request.play10);
+    assert!(request.play14);
+    assert!(request.offsets);
+    assert!(!request.select);
+    assert!(!request.result);
+}
+
+#[test]
 fn skin_reload_diff_scopes_play_slot_without_select_reload() {
     let before = SkinConfig::default();
     let mut after = before.clone();

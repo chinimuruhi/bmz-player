@@ -340,6 +340,8 @@ pub struct EguiLayer {
     pub(super) show_profile_settings: bool,
     /// スキン設定パネルの開閉状態。
     pub(super) show_skin: bool,
+    /// Lua skin の canonicalize をスキン設定 UI の毎フレームで繰り返さないためのキャッシュ。
+    pub(super) skin_ui_path_cache: SkinUiPathCache,
     /// ライセンス / third-party notice 表示パネルの開閉状態。
     pub(super) show_license_notice: bool,
     /// ライセンス表示パネルに出す結合済み notice text。

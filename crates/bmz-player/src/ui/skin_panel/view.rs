@@ -6,12 +6,12 @@ pub(in crate::ui) fn build_skin_panel(
     skin_meta: &SkinConfigMeta,
     skin_catalog: &SkinCatalog,
     app_paths: &AppPaths,
+    path_cache: &mut SkinUiPathCache,
     text: Localizer,
 ) -> SkinPanelActions {
     let mut save_clicked = false;
     let mut reset_clicked = false;
-    let mut changed = false;
-    let before_skin = skin.clone();
+    let mut reload = SkinReloadRequest::default();
     let show_bundled_origin = show_bundled_skin_origin(app_paths, skin_catalog);
     localized_sized_panel_window(
         "スキン設定",
@@ -26,298 +26,216 @@ pub(in crate::ui) fn build_skin_panel(
         scrollable_window_content(ui, |ui| {
             ui.label(tr!(text, "skin-description"));
             egui::Grid::new("skin_grid").num_columns(2).show(ui, |ui| {
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Select,
-                    &skin_scene_label(SkinSlot::Select, text),
-                    &skin_catalog.select,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Decide,
-                    &skin_scene_label(SkinSlot::Decide, text),
-                    &skin_catalog.decide,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play4,
-                    &skin_scene_label(SkinSlot::Play4, text),
-                    &skin_catalog.play4,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play5,
-                    &skin_scene_label(SkinSlot::Play5, text),
-                    &skin_catalog.play5,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play6,
-                    &skin_scene_label(SkinSlot::Play6, text),
-                    &skin_catalog.play6,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play7,
-                    &skin_scene_label(SkinSlot::Play7, text),
-                    &skin_catalog.play7,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play8,
-                    &skin_scene_label(SkinSlot::Play8, text),
-                    &skin_catalog.play8,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play9,
-                    &skin_scene_label(SkinSlot::Play9, text),
-                    &skin_catalog.play9,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play10,
-                    &skin_scene_label(SkinSlot::Play10, text),
-                    &skin_catalog.play10,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Play14,
-                    &skin_scene_label(SkinSlot::Play14, text),
-                    &skin_catalog.play14,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Battle5,
-                    &skin_scene_label(SkinSlot::Battle5, text),
-                    &skin_catalog.battle5,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Battle7,
-                    &skin_scene_label(SkinSlot::Battle7, text),
-                    &skin_catalog.battle7,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::Result,
-                    &skin_scene_label(SkinSlot::Result, text),
-                    &skin_catalog.result,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
-                changed |= skin_path_combo(
-                    ui,
-                    skin,
-                    SkinSlot::CourseResult,
-                    &skin_scene_label(SkinSlot::CourseResult, text),
-                    &skin_catalog.course_result,
-                    show_bundled_origin,
-                    text,
-                );
-                ui.end_row();
+                for (slot, candidates) in [
+                    (SkinSlot::Select, skin_catalog.select.as_slice()),
+                    (SkinSlot::Decide, skin_catalog.decide.as_slice()),
+                    (SkinSlot::Play4, skin_catalog.play4.as_slice()),
+                    (SkinSlot::Play5, skin_catalog.play5.as_slice()),
+                    (SkinSlot::Play6, skin_catalog.play6.as_slice()),
+                    (SkinSlot::Play7, skin_catalog.play7.as_slice()),
+                    (SkinSlot::Play8, skin_catalog.play8.as_slice()),
+                    (SkinSlot::Play9, skin_catalog.play9.as_slice()),
+                    (SkinSlot::Play10, skin_catalog.play10.as_slice()),
+                    (SkinSlot::Play14, skin_catalog.play14.as_slice()),
+                    (SkinSlot::Battle5, skin_catalog.battle5.as_slice()),
+                    (SkinSlot::Battle7, skin_catalog.battle7.as_slice()),
+                    (SkinSlot::Result, skin_catalog.result.as_slice()),
+                    (SkinSlot::CourseResult, skin_catalog.course_result.as_slice()),
+                ] {
+                    if skin_path_combo(
+                        ui,
+                        skin,
+                        slot,
+                        &skin_scene_label(slot, text),
+                        candidates,
+                        show_bundled_origin,
+                        text,
+                    ) {
+                        // path ごとの履歴復元は options / files と offset をまとめて差し替える。
+                        request_skin_reload(&mut reload, slot, true);
+                    }
+                    ui.end_row();
+                }
             });
             ui.separator();
             ui.label(tr!(text, "skin-loaded-options-description"));
-            let select_root = skin_root_path(app_paths, &skin.select);
-            let decide_root = skin_root_path(app_paths, &skin.decide);
-            let play4_root = skin_root_path(app_paths, &skin.play4);
-            let play5_root = skin_root_path(app_paths, &skin.play5);
-            let play6_root = skin_root_path(app_paths, &skin.play6);
-            let play7_root = skin_root_path(app_paths, &skin.play7);
-            let play8_root = skin_root_path(app_paths, &skin.play8);
-            let play9_root = skin_root_path(app_paths, &skin.play9);
-            let play10_root = skin_root_path(app_paths, &skin.play10);
-            let play14_root = skin_root_path(app_paths, &skin.play14);
-            let battle5_root = skin_root_path(app_paths, &skin.battle5);
-            let battle7_root = skin_root_path(app_paths, &skin.battle7);
-            let result_root = skin_root_path(app_paths, &skin.result);
-            let course_result_root = skin_root_path(app_paths, &skin.course_result);
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Select,
                 &skin_meta.select,
-                select_root.as_ref(),
+                &skin.select,
+                app_paths,
+                path_cache,
                 &mut skin.select_options,
                 &mut skin.select_files,
                 &mut skin.select_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Decide,
                 &skin_meta.decide,
-                decide_root.as_ref(),
+                &skin.decide,
+                app_paths,
+                path_cache,
                 &mut skin.decide_options,
                 &mut skin.decide_files,
                 &mut skin.decide_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play4,
                 &skin_meta.play4,
-                play4_root.as_ref(),
+                &skin.play4,
+                app_paths,
+                path_cache,
                 &mut skin.play4_options,
                 &mut skin.play4_files,
                 &mut skin.play4_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play5,
                 &skin_meta.play5,
-                play5_root.as_ref(),
+                &skin.play5,
+                app_paths,
+                path_cache,
                 &mut skin.play5_options,
                 &mut skin.play5_files,
                 &mut skin.play5_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play6,
                 &skin_meta.play6,
-                play6_root.as_ref(),
+                &skin.play6,
+                app_paths,
+                path_cache,
                 &mut skin.play6_options,
                 &mut skin.play6_files,
                 &mut skin.play6_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play7,
                 &skin_meta.play7,
-                play7_root.as_ref(),
+                &skin.play7,
+                app_paths,
+                path_cache,
                 &mut skin.play7_options,
                 &mut skin.play7_files,
                 &mut skin.play7_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play8,
                 &skin_meta.play8,
-                play8_root.as_ref(),
+                &skin.play8,
+                app_paths,
+                path_cache,
                 &mut skin.play8_options,
                 &mut skin.play8_files,
                 &mut skin.play8_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play9,
                 &skin_meta.play9,
-                play9_root.as_ref(),
+                &skin.play9,
+                app_paths,
+                path_cache,
                 &mut skin.play9_options,
                 &mut skin.play9_files,
                 &mut skin.play9_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play10,
                 &skin_meta.play10,
-                play10_root.as_ref(),
+                &skin.play10,
+                app_paths,
+                path_cache,
                 &mut skin.play10_options,
                 &mut skin.play10_files,
                 &mut skin.play10_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Play14,
                 &skin_meta.play14,
-                play14_root.as_ref(),
+                &skin.play14,
+                app_paths,
+                path_cache,
                 &mut skin.play14_options,
                 &mut skin.play14_files,
                 &mut skin.play14_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Battle5,
                 &skin_meta.battle5,
-                battle5_root.as_ref(),
+                &skin.battle5,
+                app_paths,
+                path_cache,
                 &mut skin.battle5_options,
                 &mut skin.battle5_files,
                 &mut skin.battle5_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Battle7,
                 &skin_meta.battle7,
-                battle7_root.as_ref(),
+                &skin.battle7,
+                app_paths,
+                path_cache,
                 &mut skin.battle7_options,
                 &mut skin.battle7_files,
                 &mut skin.battle7_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::Result,
                 &skin_meta.result,
-                result_root.as_ref(),
+                &skin.result,
+                app_paths,
+                path_cache,
                 &mut skin.result_options,
                 &mut skin.result_files,
                 &mut skin.result_offsets,
                 text,
             );
-            changed |= build_scene_skin_defs(
+            build_scene_skin_defs_with_reload(
+                &mut reload,
                 ui,
                 SkinSlot::CourseResult,
                 &skin_meta.course_result,
-                course_result_root.as_ref(),
+                &skin.course_result,
+                app_paths,
+                path_cache,
                 &mut skin.course_result_options,
                 &mut skin.course_result_files,
                 &mut skin.course_result_offsets,
@@ -335,11 +253,28 @@ pub(in crate::ui) fn build_skin_panel(
             });
         });
     });
-    let reload = if changed {
-        skin_reload_request_from_diff(&before_skin, skin)
-    } else {
-        Default::default()
-    };
     SkinPanelActions { save: save_clicked, reset: reset_clicked, reload }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_scene_skin_defs_with_reload(
+    reload: &mut SkinReloadRequest,
+    ui: &mut egui::Ui,
+    slot: SkinSlot,
+    defs: &SceneSkinDefs,
+    skin_path: &str,
+    app_paths: &AppPaths,
+    path_cache: &mut SkinUiPathCache,
+    options: &mut BTreeMap<String, String>,
+    files: &mut BTreeMap<String, String>,
+    offsets: &mut Vec<SkinOffsetConfig>,
+    text: Localizer,
+) {
+    let edit = build_scene_skin_defs(
+        ui, slot, defs, skin_path, app_paths, path_cache, options, files, offsets, text,
+    );
+    if edit.changed {
+        request_skin_reload(reload, slot, edit.offsets_changed);
+    }
 }
 use super::*;

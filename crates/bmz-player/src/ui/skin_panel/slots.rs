@@ -91,6 +91,29 @@ pub(in crate::ui) fn skin_scene_defs_label(slot: SkinSlot, text: Localizer) -> S
     tr!(text, "skin-scene-options", "scene" => skin_scene_label(slot, text))
 }
 
+pub(in crate::ui) fn request_skin_reload(
+    request: &mut SkinReloadRequest,
+    slot: SkinSlot,
+    offsets_changed: bool,
+) {
+    match slot {
+        SkinSlot::Select => request.select = true,
+        SkinSlot::Decide => request.decide = true,
+        SkinSlot::Play4 => request.play4 = true,
+        SkinSlot::Play5 => request.play5 = true,
+        SkinSlot::Play6 => request.play6 = true,
+        SkinSlot::Play7 => request.play7 = true,
+        SkinSlot::Play8 => request.play8 = true,
+        SkinSlot::Play9 => request.play9 = true,
+        SkinSlot::Play10 | SkinSlot::Battle5 => request.play10 = true,
+        SkinSlot::Play14 | SkinSlot::Battle7 => request.play14 = true,
+        SkinSlot::Result => request.result = true,
+        SkinSlot::CourseResult => request.course_result = true,
+    }
+    request.offsets |= offsets_changed;
+}
+
+#[cfg(test)]
 pub(in crate::ui) fn skin_reload_request_from_diff(
     before: &SkinConfig,
     after: &SkinConfig,

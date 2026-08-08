@@ -3,17 +3,26 @@
 /// - property: ComboBox で選択肢を選び `options` へ書き込む。
 /// - filepath: `path` グロブにマッチするファイルを ComboBox で選び `files` へ書き込む。
 /// - offset: 宣言された要素ごとに x/y/w/h/r/a を編集し `offsets` (名前単位) へ反映。
+#[derive(Debug, Clone, Copy, Default)]
+pub(in crate::ui) struct SceneSkinEdit {
+    pub(in crate::ui) changed: bool,
+    pub(in crate::ui) offsets_changed: bool,
+}
+
 pub(in crate::ui) fn build_scene_skin_defs(
     ui: &mut egui::Ui,
     slot: SkinSlot,
     defs: &SceneSkinDefs,
-    path_context: Option<&SkinUiPathContext>,
+    skin_path: &str,
+    app_paths: &AppPaths,
+    path_cache: &mut SkinUiPathCache,
     options: &mut BTreeMap<String, String>,
     files: &mut BTreeMap<String, String>,
     offsets: &mut Vec<SkinOffsetConfig>,
     text: Localizer,
-) -> bool {
-    let mut changed = sync_skin_offsets_with_defs(&defs.offset, offsets);
+) -> SceneSkinEdit {
+    let mut changed = false;
+    let mut offsets_changed = false;
     egui::CollapsingHeader::new(skin_scene_defs_label(slot, text))
         .id_salt(slot.defs_header_id())
         .show(ui, |ui| {
@@ -21,131 +30,167 @@ pub(in crate::ui) fn build_scene_skin_defs(
                 ui.label(tr!(text, "skin-no-settings"));
                 return;
             }
-            let _ = fill_missing_skin_defaults_with_context(defs, path_context, options, files);
+            // 折りたたまれた別スロットの offset 正規化や Lua path 解決を避ける。
+            let synced = sync_skin_offsets_with_defs(&defs.offset, offsets);
+            changed |= synced;
+            offsets_changed |= synced;
+            let path_context = if defs.filepath.is_empty() {
+                None
+            } else {
+                path_cache.get_or_resolve(slot, app_paths, skin_path)
+            };
+            changed |= fill_missing_skin_defaults_with_context(defs, path_context, options, files);
             if !defs.property.is_empty() {
                 ui.strong(tr!(text, "skin-options"));
                 // property / filepath は同名 (例: "シャッター") を持ちうるので、egui の
                 // ComboBox ID 衝突を防ぐためにカテゴリで名前空間を切る。
                 ui.push_id("property", |ui| {
-                    for prop in &defs.property {
-                        let mut selected = options
-                            .get(&prop.name)
-                            .cloned()
-                            .unwrap_or_else(|| property_default(prop));
-                        let before = selected.clone();
-                        egui::ComboBox::from_label(&prop.name).selected_text(&selected).show_ui(
-                            ui,
-                            |ui| {
-                                for item in &prop.item {
-                                    ui.selectable_value(
-                                        &mut selected,
-                                        item.name.clone(),
-                                        &item.name,
-                                    );
-                                }
-                            },
-                        );
-                        if selected != before {
-                            options.insert(prop.name.clone(), selected);
-                            changed = true;
-                        }
+                    let row_height = ui.spacing().interact_size.y;
+                    for (index, prop) in defs.property.iter().enumerate() {
+                        show_culled_skin_row(ui, (index, prop.name.as_str()), row_height, |ui| {
+                            let mut selected = options
+                                .get(&prop.name)
+                                .cloned()
+                                .unwrap_or_else(|| property_default(prop));
+                            let before = selected.clone();
+                            egui::ComboBox::from_label(&prop.name)
+                                .selected_text(&selected)
+                                .show_ui(ui, |ui| {
+                                    for item in &prop.item {
+                                        ui.selectable_value(
+                                            &mut selected,
+                                            item.name.clone(),
+                                            &item.name,
+                                        );
+                                    }
+                                });
+                            if selected != before {
+                                options.insert(prop.name.clone(), selected);
+                                changed = true;
+                            }
+                        });
                     }
                 });
             }
             if !defs.filepath.is_empty() {
                 ui.strong(tr!(text, "skin-file-selection"));
                 ui.push_id("filepath", |ui| {
-                    for filepath in &defs.filepath {
-                        let mut selected = files.get(&filepath.name).cloned().unwrap_or_default();
-                        let before = selected.clone();
-                        let display = if selected.is_empty() {
-                            tr!(text, "skin-file-none")
-                        } else if selected == RANDOM_FILE_SELECTION {
-                            tr!(text, "skin-file-random")
-                        } else {
-                            filepath_selection_label(&selected).to_string()
-                        };
-                        egui::ComboBox::from_label(&filepath.name).selected_text(display).show_ui(
+                    let row_height = ui.spacing().interact_size.y;
+                    for (index, filepath) in defs.filepath.iter().enumerate() {
+                        show_culled_skin_row(
                             ui,
+                            (index, filepath.name.as_str()),
+                            row_height,
                             |ui| {
-                                // beatoraja 同様、具体ファイルに加えて「ランダム」を選べる。
-                                // ランダム選択時は毎ロードで候補からランダムに解決する。
-                                ui.selectable_value(
-                                    &mut selected,
-                                    RANDOM_FILE_SELECTION.to_string(),
-                                    tr!(text, "skin-file-random"),
-                                );
-                                // 候補列挙は ComboBox を開いたときだけ行う (毎フレームの fs 走査を回避)。
-                                let candidates = match path_context {
-                                    Some(context) => {
-                                        glob_candidates_for_skin(context, &filepath.path)
-                                    }
-                                    None => Vec::new(),
+                                let mut selected =
+                                    files.get(&filepath.name).cloned().unwrap_or_default();
+                                let before = selected.clone();
+                                let display = if selected.is_empty() {
+                                    tr!(text, "skin-file-none")
+                                } else if selected == RANDOM_FILE_SELECTION {
+                                    tr!(text, "skin-file-random")
+                                } else {
+                                    filepath_selection_label(&selected).to_string()
                                 };
-                                if let Some(normalized) =
-                                    normalize_filepath_selection(&selected, &candidates)
-                                {
-                                    selected = normalized;
-                                }
-                                if candidates.is_empty() {
-                                    ui.label(tr!(text, "skin-file-no-candidates"));
-                                }
-                                for candidate in candidates {
-                                    let label = filepath_selection_label(&candidate);
-                                    ui.selectable_value(&mut selected, candidate.clone(), label);
+                                egui::ComboBox::from_label(&filepath.name)
+                                    .selected_text(display)
+                                    .show_ui(ui, |ui| {
+                                        // beatoraja 同様、具体ファイルに加えて「ランダム」を選べる。
+                                        // ランダム選択時は毎ロードで候補からランダムに解決する。
+                                        ui.selectable_value(
+                                            &mut selected,
+                                            RANDOM_FILE_SELECTION.to_string(),
+                                            tr!(text, "skin-file-random"),
+                                        );
+                                        // 候補列挙は ComboBox を開いたときだけ行う。
+                                        let candidates = match path_context {
+                                            Some(context) => {
+                                                glob_candidates_for_skin(context, &filepath.path)
+                                            }
+                                            None => Vec::new(),
+                                        };
+                                        if let Some(normalized) =
+                                            normalize_filepath_selection(&selected, &candidates)
+                                        {
+                                            selected = normalized;
+                                        }
+                                        if candidates.is_empty() {
+                                            ui.label(tr!(text, "skin-file-no-candidates"));
+                                        }
+                                        for candidate in candidates {
+                                            let label = filepath_selection_label(&candidate);
+                                            ui.selectable_value(
+                                                &mut selected,
+                                                candidate.clone(),
+                                                label,
+                                            );
+                                        }
+                                    });
+                                if selected != before {
+                                    files.insert(filepath.name.clone(), selected);
+                                    changed = true;
                                 }
                             },
                         );
-                        if selected != before {
-                            files.insert(filepath.name.clone(), selected);
-                            changed = true;
-                        }
                     }
                 });
             }
             if !defs.offset.is_empty() {
                 ui.strong(tr!(text, "skin-offset-elements"));
+                let row_height = ui.text_style_height(&egui::TextStyle::Body)
+                    + ui.spacing().item_spacing.y
+                    + ui.spacing().interact_size.y;
                 for (offset_index, offset_def) in defs.offset.iter().enumerate() {
-                    ui.push_id((offset_index, offset_def.id, offset_def.name.as_str()), |ui| {
-                        ui.label(format!(
-                            "{} [{}] — id {}",
-                            offset_def.name, offset_def.category, offset_def.id
-                        ));
-                        let existing = offsets
-                            .iter()
-                            .find(|offset| {
-                                offset.name.as_deref() == Some(offset_def.name.as_str())
-                                    && offset.id == offset_def.id
-                            })
-                            .or_else(|| {
-                                offsets.iter().find(|offset| {
+                    show_culled_skin_row(
+                        ui,
+                        (offset_index, offset_def.id, offset_def.name.as_str()),
+                        row_height,
+                        |ui| {
+                            ui.add(
+                                egui::Label::new(format!(
+                                    "{} [{}] — id {}",
+                                    offset_def.name, offset_def.category, offset_def.id
+                                ))
+                                .wrap_mode(egui::TextWrapMode::Extend),
+                            );
+                            let existing = offsets
+                                .iter()
+                                .find(|offset| {
                                     offset.name.as_deref() == Some(offset_def.name.as_str())
+                                        && offset.id == offset_def.id
                                 })
-                            })
-                            .or_else(|| {
-                                offsets.iter().find(|offset| {
-                                    offset.name.is_none() && offset.id == offset_def.id
+                                .or_else(|| {
+                                    offsets.iter().find(|offset| {
+                                        offset.name.as_deref() == Some(offset_def.name.as_str())
+                                    })
                                 })
-                            })
-                            .cloned();
-                        let mut value = existing.unwrap_or(SkinOffsetConfig {
-                            name: Some(offset_def.name.clone()),
-                            id: offset_def.id,
-                            ..Default::default()
-                        });
-                        value.name = Some(offset_def.name.clone());
-                        value.id = offset_def.id;
-                        let before = value.clone();
-                        ui.horizontal(|ui| {
-                            changed |= add_offset_drag_values(ui, offset_def, &mut value, text);
-                        });
-                        if value != before {
-                            changed |= update_skin_offset_value(offsets, offset_def, value);
-                        }
-                    });
+                                .or_else(|| {
+                                    offsets.iter().find(|offset| {
+                                        offset.name.is_none() && offset.id == offset_def.id
+                                    })
+                                })
+                                .cloned();
+                            let mut value = existing.unwrap_or(SkinOffsetConfig {
+                                name: Some(offset_def.name.clone()),
+                                id: offset_def.id,
+                                ..Default::default()
+                            });
+                            value.name = Some(offset_def.name.clone());
+                            value.id = offset_def.id;
+                            let before = value.clone();
+                            ui.horizontal(|ui| {
+                                let _ = add_offset_drag_values(ui, offset_def, &mut value, text);
+                            });
+                            if value != before {
+                                changed |= update_skin_offset_value(offsets, offset_def, value);
+                                offsets_changed = true;
+                            }
+                        },
+                    );
                 }
             }
             if !defs.is_empty() && ui.button(tr!(text, "skin-reset-defaults")).clicked() {
+                let previous_offsets = offsets.clone();
                 changed |= reset_scene_skin_to_defaults_with_context(
                     defs,
                     path_context,
@@ -153,9 +198,28 @@ pub(in crate::ui) fn build_scene_skin_defs(
                     files,
                     offsets,
                 );
+                offsets_changed |= *offsets != previous_offsets;
             }
         });
-    changed
+    SceneSkinEdit { changed, offsets_changed }
+}
+
+/// 外側の ScrollArea の clip rect に入る行だけ widget tree を構築する。
+///
+/// `allocate_space` で全体のスクロール量は維持しつつ、Rmz-skin のような数百行の
+/// ComboBox / label / DragValue を画面外まで毎フレーム生成しない。
+pub(in crate::ui) fn show_culled_skin_row(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    row_height: f32,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
+    let (_, rect) = ui.allocate_space(egui::vec2(ui.available_width(), row_height));
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let mut row_ui = ui.new_child(egui::UiBuilder::new().id_salt(id_salt).max_rect(rect));
+    add_contents(&mut row_ui);
 }
 
 /// 現在のスキン定義に合わせ、offset 設定を名前優先で正規化する。
@@ -172,14 +236,21 @@ pub(in crate::ui) fn sync_skin_offsets_with_defs(
     }
 
     let previous = offsets.clone();
+    let mut named_sources = std::collections::HashMap::with_capacity(previous.len());
+    let mut legacy_sources = std::collections::HashMap::with_capacity(previous.len());
+    for offset in &previous {
+        if let Some(name) = offset.name.as_deref() {
+            named_sources.entry(name).or_insert(offset);
+        } else {
+            legacy_sources.entry(offset.id).or_insert(offset);
+        }
+    }
     let mut synced = Vec::with_capacity(previous.len().max(defs.len()));
     for offset_def in defs {
-        let source = previous
-            .iter()
-            .find(|offset| offset.name.as_deref() == Some(offset_def.name.as_str()))
-            .or_else(|| {
-                previous.iter().find(|offset| offset.name.is_none() && offset.id == offset_def.id)
-            });
+        let source = named_sources
+            .get(offset_def.name.as_str())
+            .copied()
+            .or_else(|| legacy_sources.get(&offset_def.id).copied());
         if let Some(source) = source {
             let mut value = source.clone();
             value.name = Some(offset_def.name.clone());
@@ -314,13 +385,14 @@ pub(in crate::ui) fn fill_missing_skin_defaults_with_context(
         return changed;
     };
     for filepath in &defs.filepath {
-        let candidates = glob_candidates_for_skin(path_context, &filepath.path);
-        let current = files.get(&filepath.name).map(|value| value.replace('\\', "/"));
         // beatoraja は保存済み filepath を候補内に存在するか検証せず尊重する。
         // BMZ 旧版の相対パス保存も含め、空でなければここでは置き換えない。
-        if current.as_ref().is_some_and(|selected| !selected.is_empty()) {
+        let current = files.get(&filepath.name);
+        if current.is_some_and(|selected| !selected.is_empty()) {
             continue;
         }
+        let current = current.map(|value| value.replace('\\', "/"));
+        let candidates = glob_candidates_for_skin(path_context, &filepath.path);
         if let Some(default) = filepath_default(filepath, &candidates) {
             if current.as_deref() != Some(default.as_str()) {
                 files.insert(filepath.name.clone(), default);
