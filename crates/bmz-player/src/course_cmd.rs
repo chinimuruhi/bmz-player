@@ -98,9 +98,7 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
     let (ln_policy_setting, rule_mode) = active_course_score_context(&app_paths)?;
 
     let course = library_db
-        .list_courses()?
-        .into_iter()
-        .find(|c| c.id == course_id)
+        .course_by_id(course_id)?
         .ok_or_else(|| anyhow::anyhow!("course id {course_id} not found"))?;
     let identity = crate::ir::course_payload::course_identity_from_stored(&library_db, &course)
         .ok_or_else(|| anyhow::anyhow!("course id {course_id} has unresolved chart sha256"))?;

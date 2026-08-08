@@ -139,6 +139,10 @@ impl LibraryDatabase {
         super::super::course_db::list_courses(&self.conn)
     }
 
+    pub fn course_by_id(&self, course_id: i64) -> Result<Option<StoredCourse>> {
+        super::super::course_db::course_by_id(&self.conn, course_id)
+    }
+
     pub fn list_courses_by_source(&self, source: &str) -> Result<Vec<StoredCourse>> {
         super::super::course_db::list_courses_by_source(&self.conn, source)
     }

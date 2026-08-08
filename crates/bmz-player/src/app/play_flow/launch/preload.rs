@@ -3,7 +3,7 @@ use super::*;
 impl WinitApp {
     pub(super) fn begin_decide_for_chart(&mut self, chart_id: i64, options: PlayStartOptions) {
         let snapshot = self.decide_snapshot_for_chart(chart_id);
-        self.begin_decide_for_chart_with_snapshot(chart_id, options, snapshot, None);
+        self.begin_decide_for_chart_with_snapshot(chart_id, options, snapshot, None, None);
     }
 
     pub(super) fn begin_course_decide_for_chart(
@@ -11,8 +11,9 @@ impl WinitApp {
         chart_id: i64,
         options: PlayStartOptions,
         course_title: &str,
+        chart_metadata: ChartListItem,
     ) {
-        let mut snapshot = self.decide_snapshot_for_chart(chart_id);
+        let mut snapshot = self.decide_snapshot_for_chart_with_metadata(chart_id, &chart_metadata);
         self.apply_course_skin_context(&mut snapshot);
         let title_override =
             DecideTitleOverride { title: course_title.to_string(), subtitle: String::new() };
@@ -21,6 +22,7 @@ impl WinitApp {
             options,
             snapshot,
             Some(title_override),
+            Some(chart_metadata),
         );
     }
 
@@ -30,13 +32,19 @@ impl WinitApp {
         options: PlayStartOptions,
         mut snapshot: RenderSnapshot,
         title_override: Option<DecideTitleOverride>,
+        chart_metadata: Option<ChartListItem>,
     ) {
         // Pre-import placeholder only: resolve the same AUTO fallback / FORCE
         // priority as preload and account for Battle here. The running session
         // replaces this with a count derived from the imported source chart.
-        if let Ok(charts) = self.boot.library_db.list_charts_by_ids(&[chart_id])
-            && let Some(chart) = charts.first()
-        {
+        let chart_metadata = chart_metadata.or_else(|| {
+            self.boot
+                .library_db
+                .list_charts_by_ids(&[chart_id])
+                .ok()
+                .and_then(|mut charts| charts.pop())
+        });
+        if let Some(chart) = &chart_metadata {
             let policy = crate::ln_policy::course_score_ln_policy(
                 self.boot.profile_config.play.ln_mode_policy,
                 options.ln_mode_override,
@@ -55,10 +63,24 @@ impl WinitApp {
         // Play 画面へ入ってから stagefile / backbmp の有無が切り替わると、ロード演出中に
         // 代替タイトルから曲画像へ差し替わって見える。Decide 中に先行ロードし、
         // Play の最初の snapshot から同じ runtime image 100 / 101 を使えるようにする。
-        self.prepare_play_meta_image_textures(chart_id);
+        if let Some(chart) = &chart_metadata {
+            self.prepare_play_meta_image_textures_from_chart(chart);
+        } else {
+            self.prepare_play_meta_image_textures(chart_id);
+        }
         // Play スキンは裏で decode+upload を進めるが、Decide 入場では待たない。
         // 実際の Play 入場で `ensure_skin_ready` が保険として残る。
-        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let play_skin_key_mode = chart_metadata
+            .as_ref()
+            .and_then(|chart| KeyMode::from_str_opt(&chart.mode))
+            .map(|key_mode| {
+                play_skin_key_mode_for_options(
+                    key_mode,
+                    options.double_option,
+                    options.session_mode,
+                )
+            })
+            .unwrap_or_else(|| self.play_skin_key_mode_for_chart(chart_id, &options));
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
@@ -241,28 +263,46 @@ impl WinitApp {
     /// corked stream の内部
     /// worker だけが動き続ける状態を避ける。
     pub(super) fn decide_snapshot_for_chart(&self, chart_id: i64) -> RenderSnapshot {
-        let mut snapshot = RenderSnapshot::default();
         let metadata = chart_snapshot_metadata_for_chart(
             &self.select.select_items,
             chart_id,
             |chart_id| {
                 self.boot
-                .library_db
-                .list_charts_by_ids(&[chart_id])
-                .map_err(|error| {
-                    tracing::warn!(%error, chart_id, "failed to load chart metadata for play snapshot");
-                    error
-                })
-                .ok()
-                .and_then(|mut charts| charts.pop())
+                    .library_db
+                    .list_charts_by_ids(&[chart_id])
+                    .map_err(|error| {
+                        tracing::warn!(%error, chart_id, "failed to load chart metadata for play snapshot");
+                        error
+                    })
+                    .ok()
+                    .and_then(|mut charts| charts.pop())
             },
         );
-        if let Some((chart, best_ex_score)) = metadata {
+        self.decide_snapshot_for_chart_metadata(chart_id, metadata)
+    }
+
+    pub(super) fn decide_snapshot_for_chart_with_metadata(
+        &self,
+        chart_id: i64,
+        chart: &ChartListItem,
+    ) -> RenderSnapshot {
+        self.decide_snapshot_for_chart_metadata(chart_id, Some((chart.clone(), None)))
+    }
+
+    fn decide_snapshot_for_chart_metadata(
+        &self,
+        chart_id: i64,
+        metadata: Option<(ChartListItem, Option<u32>)>,
+    ) -> RenderSnapshot {
+        let mut snapshot = RenderSnapshot::default();
+        let chart_hint = metadata.as_ref().map(|(chart, _)| chart);
+        if let Some((chart, best_ex_score)) = &metadata {
             let total_notes =
                 chart.scored_total_notes_for_setting(self.boot.profile_config.play.ln_mode_policy);
-            apply_chart_metadata_to_snapshot(&mut snapshot, &chart, total_notes, best_ex_score);
+            apply_chart_metadata_to_snapshot(&mut snapshot, chart, total_notes, *best_ex_score);
         }
-        let (primary, secondary, fallback) = self.table_text_context_for_chart(chart_id).as_tuple();
+        let (primary, secondary, fallback) =
+            self.table_text_context_for_chart_with_metadata(chart_id, chart_hint).as_tuple();
         snapshot.table_text_primary = primary;
         snapshot.table_text_secondary = secondary;
         snapshot.table_text_fallback = fallback;

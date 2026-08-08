@@ -61,10 +61,12 @@ impl WinitApp {
         arrange_overrides: Vec<AppliedArrange>,
         auto_advance_intermediate_results: bool,
     ) {
-        let stored = match self.boot.library_db.list_courses() {
-            Ok(courses) => courses.into_iter().find(|c| c.id == course_id),
+        let started_at = Instant::now();
+        let course_load_started_at = Instant::now();
+        let stored = match self.boot.library_db.course_by_id(course_id) {
+            Ok(course) => course,
             Err(error) => {
-                tracing::error!(%error, course_id, "failed to load courses for start_course");
+                tracing::error!(%error, course_id, "failed to load course for start_course");
                 return;
             }
         };
@@ -72,11 +74,8 @@ impl WinitApp {
             tracing::warn!(course_id, "course not found");
             return;
         };
+        let course_load_elapsed = course_load_started_at.elapsed();
         let mut definition = stored.definition;
-        if let Err(error) = hydrate_course_entry_title_hints(&self.boot.library_db, &mut definition)
-        {
-            tracing::warn!(%error, course_id, "failed to hydrate course entry titles");
-        }
         if definition.entries.is_empty()
             || definition.entries.iter().any(|entry| entry.chart_id.is_none())
         {
@@ -114,24 +113,26 @@ impl WinitApp {
             entry_start_options.push(options);
         }
         let options = entry_start_options[0].clone();
-        let course_title = definition.title.clone();
-        let app_config = self.play_session_app_config();
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
-        let course_metrics = match course_play_metrics_for_definition(
+        let metadata_started_at = Instant::now();
+        let library_snapshot = match course_play_metrics_from_library_metadata(
             &self.boot.library_db,
             &definition,
-            &app_config,
             ln_policy_setting,
-            rule_mode,
             &entry_start_options,
         ) {
-            Ok(metrics) => metrics,
+            Ok(snapshot) => snapshot,
             Err(error) => {
-                tracing::error!(%error, course_id, "failed to count course notes from source");
+                tracing::error!(%error, course_id, "failed to load course chart metadata");
                 return;
             }
         };
+        let metadata_elapsed = metadata_started_at.elapsed();
+        apply_course_entry_title_hints(&mut definition, &library_snapshot.titles);
+        let course_title = definition.title.clone();
+        let course_metrics = library_snapshot.metrics;
+        let first_chart = library_snapshot.first_chart;
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
@@ -145,7 +146,22 @@ impl WinitApp {
             entry_start_options,
             auto_advance_intermediate_results,
         });
-        self.begin_course_decide_for_chart(first_chart_id, options, &course_title);
+        self.begin_course_decide_for_chart(first_chart_id, options, &course_title, first_chart);
+        self.begin_course_metrics_background(course_id, first_chart_id, started_at, true);
+        tracing::info!(
+            course_id,
+            entries = self
+                .play
+                .active_course
+                .as_ref()
+                .map(|course| course.definition.entries.len())
+                .unwrap_or_default(),
+            course_load_elapsed_ms = course_load_elapsed.as_millis(),
+            metadata_elapsed_ms = metadata_elapsed.as_millis(),
+            metadata_total_notes = course_metrics.total_notes,
+            select_to_decide_elapsed_ms = started_at.elapsed().as_millis(),
+            "course decide transition scheduled"
+        );
     }
 
     /// Start a course in replay mode, replaying the saved per-chart inputs of
@@ -170,13 +186,15 @@ impl WinitApp {
         course_score_id: i64,
         auto_advance_intermediate_results: bool,
     ) {
-        let stored = match self.boot.library_db.list_courses() {
-            Ok(courses) => courses.into_iter().find(|c| c.id == course_id),
+        let started_at = Instant::now();
+        let course_load_started_at = Instant::now();
+        let stored = match self.boot.library_db.course_by_id(course_id) {
+            Ok(course) => course,
             Err(error) => {
                 tracing::error!(
                     %error,
                     course_id,
-                    "failed to load courses for start_course_replay"
+                    "failed to load course for start_course_replay"
                 );
                 return;
             }
@@ -185,6 +203,7 @@ impl WinitApp {
             tracing::warn!(course_id, "course not found");
             return;
         };
+        let course_load_elapsed = course_load_started_at.elapsed();
 
         let score_entry = match self.boot.score_db.course_score_entry_by_id(course_score_id) {
             Ok(Some(entry)) => entry,
@@ -244,10 +263,6 @@ impl WinitApp {
         };
 
         let mut definition = stored.definition;
-        if let Err(error) = hydrate_course_entry_title_hints(&self.boot.library_db, &mut definition)
-        {
-            tracing::warn!(%error, course_id, "failed to hydrate replay course entry titles");
-        }
         let first_chart_id = definition.entries.iter().find_map(|e| e.chart_id);
         let Some(first_chart_id) = first_chart_id else {
             tracing::warn!(course_id, "no resolved chart in course");
@@ -274,25 +289,27 @@ impl WinitApp {
             entry_start_options.push(options);
         }
         let options = entry_start_options[0].clone();
-        let course_title = definition.title.clone();
-        let app_config = self.play_session_app_config();
         let ln_policy = score_entry.ln_policy;
         let ln_policy_setting = ln_policy.as_setting();
         let rule_mode = score_entry.rule_mode;
-        let course_metrics = match course_play_metrics_for_definition(
+        let metadata_started_at = Instant::now();
+        let library_snapshot = match course_play_metrics_from_library_metadata(
             &self.boot.library_db,
             &definition,
-            &app_config,
             ln_policy_setting,
-            rule_mode,
             &entry_start_options,
         ) {
-            Ok(metrics) => metrics,
+            Ok(snapshot) => snapshot,
             Err(error) => {
-                tracing::error!(%error, course_id, "failed to count replay course notes from source");
+                tracing::error!(%error, course_id, "failed to load replay course chart metadata");
                 return;
             }
         };
+        let metadata_elapsed = metadata_started_at.elapsed();
+        apply_course_entry_title_hints(&mut definition, &library_snapshot.titles);
+        let course_title = definition.title.clone();
+        let course_metrics = library_snapshot.metrics;
+        let first_chart = library_snapshot.first_chart;
         self.play.active_course = Some(ActiveCourseSession {
             course_id,
             definition,
@@ -306,6 +323,16 @@ impl WinitApp {
             entry_start_options,
             auto_advance_intermediate_results,
         });
-        self.begin_course_decide_for_chart(first_chart_id, options, &course_title);
+        self.begin_course_decide_for_chart(first_chart_id, options, &course_title, first_chart);
+        self.begin_course_metrics_background(course_id, first_chart_id, started_at, false);
+        tracing::info!(
+            course_id,
+            course_score_id,
+            course_load_elapsed_ms = course_load_elapsed.as_millis(),
+            metadata_elapsed_ms = metadata_elapsed.as_millis(),
+            metadata_total_notes = course_metrics.total_notes,
+            select_to_decide_elapsed_ms = started_at.elapsed().as_millis(),
+            "course replay decide transition scheduled"
+        );
     }
 }

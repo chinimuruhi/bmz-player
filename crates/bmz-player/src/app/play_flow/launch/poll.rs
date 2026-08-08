@@ -97,6 +97,9 @@ impl WinitApp {
         }
 
         self.publish_prepared_play_chart();
+        // Course開始時の全譜面metricsは、ここで公開された先頭譜面を再利用して
+        // background計算を始める。preloaded sessionをactiveへmoveする前に行う。
+        self.poll_course_metrics();
 
         // 2) Play 入場が確定 (pending_play_start) しており、バッファに preload があれば install。
         if self
@@ -272,6 +275,7 @@ impl WinitApp {
     /// summary.  Call from any path that returns to the select screen
     /// without completing the course naturally.
     pub(super) fn clear_active_course_state(&mut self) {
+        self.clear_pending_course_metrics();
         if self.play.pending_course_stage_launch.is_some() {
             self.invalidate_play_preload();
         }

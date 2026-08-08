@@ -22,13 +22,136 @@ pub(super) struct CoursePlayMetrics {
     pub(super) ln_policy: crate::ln_policy::LnScorePolicy,
 }
 
-pub(super) fn course_play_metrics_for_definition(
+pub(super) struct CourseLibrarySnapshot {
+    pub(super) metrics: CoursePlayMetrics,
+    pub(super) first_chart: ChartListItem,
+    pub(super) titles: HashMap<i64, String>,
+}
+
+fn finish_course_play_metrics(
+    total_notes: u32,
+    ln_mode: Option<bmz_chart::model::LongNoteMode>,
+    source_ln_profile: crate::ln_policy::ChartLnProfile,
+    ln_policy_setting: crate::ln_policy::LnPolicySetting,
+    entry_start_options: &[PlayStartOptions],
+) -> CoursePlayMetrics {
+    let course_fallback = entry_start_options.first().and_then(|options| options.ln_mode_override);
+    let ln_policy = crate::ln_policy::course_score_ln_policy_for_profiles(
+        ln_policy_setting,
+        course_fallback,
+        [source_ln_profile],
+    );
+    CoursePlayMetrics { total_notes, ln_mode, ln_policy }
+}
+
+/// DBへ保存済みの譜面メタデータだけを一括取得し、decide入場前に使う軽量な
+/// コース集計値と先頭譜面メタデータを返す。
+///
+/// `#RANDOM` 分岐後の厳密値は background import で後から置き換える。
+pub(super) fn course_play_metrics_from_library_metadata(
+    library_db: &LibraryDatabase,
+    definition: &bmz_core::course::CourseDefinition,
+    ln_policy_setting: crate::ln_policy::LnPolicySetting,
+    entry_start_options: &[PlayStartOptions],
+) -> Result<CourseLibrarySnapshot> {
+    let chart_ids = definition
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            entry.chart_id.with_context(|| format!("course entry {} is not resolved", index + 1))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let charts = library_db.list_charts_by_ids(&chart_ids)?;
+    course_play_metrics_from_chart_metadata(
+        definition,
+        ln_policy_setting,
+        entry_start_options,
+        charts,
+    )
+}
+
+pub(super) fn course_play_metrics_from_chart_metadata(
+    definition: &bmz_core::course::CourseDefinition,
+    ln_policy_setting: crate::ln_policy::LnPolicySetting,
+    entry_start_options: &[PlayStartOptions],
+    charts: Vec<ChartListItem>,
+) -> Result<CourseLibrarySnapshot> {
+    anyhow::ensure!(
+        definition.entries.len() == entry_start_options.len(),
+        "course entry option count mismatch: entries={}, options={}",
+        definition.entries.len(),
+        entry_start_options.len()
+    );
+    let chart_ids = definition
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            entry.chart_id.with_context(|| format!("course entry {} is not resolved", index + 1))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let charts_by_id =
+        charts.into_iter().map(|chart| (chart.chart_id, chart)).collect::<HashMap<_, _>>();
+    let first_chart_id = *chart_ids.first().context("course has no entries")?;
+    let first_chart = charts_by_id
+        .get(&first_chart_id)
+        .cloned()
+        .with_context(|| format!("course first chart {first_chart_id} is not in the library"))?;
+
+    let mut total_notes = 0u32;
+    let mut ln_mode = None;
+    let mut source_ln_profile = crate::ln_policy::ChartLnProfile::default();
+    for (index, (chart_id, start_options)) in chart_ids.iter().zip(entry_start_options).enumerate()
+    {
+        let chart = charts_by_id.get(chart_id).with_context(|| {
+            format!("course entry {} chart {chart_id} is not in the library", index + 1)
+        })?;
+        let score_policy = crate::ln_policy::course_score_ln_policy(
+            ln_policy_setting,
+            start_options.ln_mode_override,
+            chart.ln_profile,
+        );
+        let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
+        let double_option = start_options.double_option.normalize_for_key_mode(key_mode);
+        let multiplier = if start_options.session_mode.is_battle()
+            || matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
+        {
+            2
+        } else {
+            1
+        };
+        total_notes = total_notes
+            .saturating_add(chart.scored_total_notes(score_policy).saturating_mul(multiplier));
+        ln_mode = crate::ln_policy::max_long_note_mode(
+            ln_mode,
+            crate::ln_policy::played_ln_mode(chart.ln_profile, score_policy),
+        );
+        source_ln_profile = source_ln_profile.merge(chart.ln_profile);
+    }
+
+    let metrics = finish_course_play_metrics(
+        total_notes,
+        ln_mode,
+        source_ln_profile,
+        ln_policy_setting,
+        entry_start_options,
+    );
+    let titles =
+        charts_by_id.into_iter().map(|(chart_id, chart)| (chart_id, chart.title)).collect();
+    Ok(CourseLibrarySnapshot { metrics, first_chart, titles })
+}
+
+/// 先頭譜面はPlay preload workerが既に変換した値を再利用し、残りの譜面だけを
+/// sourceからimportして厳密なコース集計値を返す。
+pub(super) fn course_play_metrics_for_definition_reusing_first(
     library_db: &LibraryDatabase,
     definition: &bmz_core::course::CourseDefinition,
     app_config: &AppConfig,
     ln_policy_setting: crate::ln_policy::LnPolicySetting,
     rule_mode: bmz_gameplay::rule::RuleMode,
     entry_start_options: &[PlayStartOptions],
+    first_metrics: crate::screens::play_session::ScoredChartMetrics,
 ) -> Result<CoursePlayMetrics> {
     anyhow::ensure!(
         definition.entries.len() == entry_start_options.len(),
@@ -36,51 +159,50 @@ pub(super) fn course_play_metrics_for_definition(
         definition.entries.len(),
         entry_start_options.len()
     );
+    anyhow::ensure!(!definition.entries.is_empty(), "course has no entries");
+
     let mut total_notes = 0u32;
     let mut ln_mode = None;
     let mut source_ln_profile = crate::ln_policy::ChartLnProfile::default();
     for (index, (entry, start_options)) in
         definition.entries.iter().zip(entry_start_options).enumerate()
     {
-        let chart_id = entry
-            .chart_id
-            .with_context(|| format!("course entry {} is not resolved", index + 1))?;
-        let mut session_options =
-            play_session_options_from_start(app_config, start_options.clone());
-        session_options.ln_policy_setting = ln_policy_setting;
-        session_options.rule_mode = rule_mode;
-        let metrics = crate::screens::play_session::scored_chart_metrics_for_chart(
-            library_db,
-            chart_id,
-            &session_options,
-        )
-        .with_context(|| format!("failed to count course entry {} from source", index + 1))?;
+        let entry_started_at = Instant::now();
+        let metrics = if index == 0 {
+            first_metrics
+        } else {
+            let chart_id = entry
+                .chart_id
+                .with_context(|| format!("course entry {} is not resolved", index + 1))?;
+            let mut session_options =
+                play_session_options_from_start(app_config, start_options.clone());
+            session_options.ln_policy_setting = ln_policy_setting;
+            session_options.rule_mode = rule_mode;
+            crate::screens::play_session::scored_chart_metrics_for_chart(
+                library_db,
+                chart_id,
+                &session_options,
+            )
+            .with_context(|| format!("failed to count course entry {} from source", index + 1))?
+        };
+        tracing::info!(
+            entry_index = index + 1,
+            reused_play_preload = index == 0,
+            elapsed_ms = entry_started_at.elapsed().as_millis(),
+            total_notes = metrics.total_notes,
+            "course background metrics counted entry"
+        );
         total_notes = total_notes.saturating_add(metrics.total_notes);
         ln_mode = crate::ln_policy::max_long_note_mode(ln_mode, metrics.ln_mode);
         source_ln_profile = source_ln_profile.merge(metrics.source_ln_profile);
     }
-    let course_fallback = entry_start_options.first().and_then(|options| options.ln_mode_override);
-    let ln_policy = crate::ln_policy::course_score_ln_policy_for_profiles(
+    Ok(finish_course_play_metrics(
+        total_notes,
+        ln_mode,
+        source_ln_profile,
         ln_policy_setting,
-        course_fallback,
-        [source_ln_profile],
-    );
-    Ok(CoursePlayMetrics { total_notes, ln_mode, ln_policy })
-}
-
-pub(super) fn hydrate_course_entry_title_hints(
-    library_db: &LibraryDatabase,
-    definition: &mut bmz_core::course::CourseDefinition,
-) -> Result<()> {
-    let chart_ids =
-        definition.entries.iter().filter_map(|entry| entry.chart_id).collect::<Vec<_>>();
-    let titles = library_db
-        .list_charts_by_ids(&chart_ids)?
-        .into_iter()
-        .map(|chart| (chart.chart_id, chart.title))
-        .collect::<HashMap<_, _>>();
-    apply_course_entry_title_hints(definition, &titles);
-    Ok(())
+        entry_start_options,
+    ))
 }
 
 pub(super) fn apply_course_entry_title_hints(

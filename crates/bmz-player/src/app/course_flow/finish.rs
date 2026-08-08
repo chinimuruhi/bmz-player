@@ -3,6 +3,9 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn finish_active_course(&mut self) {
+        // 通常はPlay中に完了済み。極端に短い/早期Failedのコースでも
+        // result denominatorを確定してからActiveCourseSessionを消費する。
+        self.await_course_metrics();
         if self.play.pending_course_stage_launch.is_some() {
             self.invalidate_play_preload();
         }

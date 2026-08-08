@@ -191,8 +191,12 @@ mod course_flow_advance;
 mod course_flow_finish;
 #[path = "app/course_flow/ir.rs"]
 mod course_flow_ir;
+#[path = "app/course_flow/metrics.rs"]
+mod course_flow_metrics;
 #[path = "app/course_flow/start.rs"]
 mod course_flow_start;
+#[path = "app/course_metrics_state.rs"]
+mod course_metrics_state;
 mod frame_flow;
 mod frame_runtime;
 mod input_runtime;
@@ -275,6 +279,7 @@ mod table_fetch_runtime;
 mod update_prompt;
 
 use app_support::*;
+use course_metrics_state::*;
 use pending_state::*;
 use play_preload_state::*;
 use play_transition_state::*;

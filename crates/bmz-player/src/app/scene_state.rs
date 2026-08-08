@@ -377,6 +377,14 @@ impl WinitApp {
     }
 
     pub(super) fn table_text_context_for_chart(&self, chart_id: i64) -> DifficultyTableText {
+        self.table_text_context_for_chart_with_metadata(chart_id, None)
+    }
+
+    pub(super) fn table_text_context_for_chart_with_metadata(
+        &self,
+        chart_id: i64,
+        chart_hint: Option<&ChartListItem>,
+    ) -> DifficultyTableText {
         if let Some(table_text) = self.select.select_items.iter().find_map(|item| match item {
             SelectItem::Chart(row)
                 if row.chart.as_ref().is_some_and(|chart| chart.chart_id == chart_id) =>
@@ -391,7 +399,7 @@ impl WinitApp {
         let source_hint = table_source_url_from_context(&self.select.folder_stack, selected);
         let source_order = table_source_order(&self.boot.app_config);
 
-        let chart = self
+        let chart = chart_hint.cloned().or_else(|| self
             .select.select_items
             .iter()
             .find_map(|item| match item {
@@ -402,6 +410,7 @@ impl WinitApp {
                 }
                 _ => None,
             })
+            )
             .or_else(|| {
                 self.boot
                     .library_db

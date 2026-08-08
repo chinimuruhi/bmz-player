@@ -150,6 +150,10 @@ impl WinitApp {
             self.clear_play_meta_image_state();
             return;
         };
+        self.prepare_play_meta_image_textures_from_chart(&chart);
+    }
+
+    pub(super) fn prepare_play_meta_image_textures_from_chart(&mut self, chart: &ChartListItem) {
         self.sync_play_stagefile_texture(&chart.folder_path, &chart.stage_file);
         self.sync_play_backbmp_texture(&chart.folder_path, &chart.backbmp_file);
     }

@@ -393,6 +393,14 @@ pub struct ScoredChartMetrics {
     pub source_ln_profile: ChartLnProfile,
 }
 
+pub fn scored_chart_metrics_from_prepared(prepared: &PreparedPlayChart) -> ScoredChartMetrics {
+    ScoredChartMetrics {
+        total_notes: scored_note_count(&prepared.chart),
+        ln_mode: played_ln_mode(prepared.source_ln_profile, prepared.score_key.ln_policy),
+        source_ln_profile: prepared.source_ln_profile,
+    }
+}
+
 pub fn scored_chart_metrics_for_chart(
     library_db: &LibraryDatabase,
     chart_id: i64,

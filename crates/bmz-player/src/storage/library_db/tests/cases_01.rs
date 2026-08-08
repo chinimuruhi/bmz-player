@@ -116,6 +116,39 @@ fn upsert_chart_import_preserves_first_seen_time_across_rescan() {
 }
 
 #[test]
+fn course_by_id_loads_only_the_requested_definition_with_entries() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut db = LibraryDatabase { conn };
+    let first = course_with_entries(vec![CourseEntry {
+        title_hint: "First stage".to_string(),
+        md5: None,
+        sha256: None,
+        chart_id: None,
+    }]);
+    let mut second = course_with_entries(vec![CourseEntry {
+        title_hint: "Second stage".to_string(),
+        md5: None,
+        sha256: None,
+        chart_id: None,
+    }]);
+    second.key = "table:test#1".to_string();
+    second.title = "Other Course".to_string();
+    let first_id = db.upsert_course("table:test", &first, 0, 1).unwrap();
+    let second_id = db.upsert_course("table:test", &second, 1, 1).unwrap();
+
+    let loaded = db.course_by_id(first_id).unwrap().unwrap();
+
+    assert_eq!(loaded.id, first_id);
+    assert_ne!(loaded.id, second_id);
+    assert_eq!(loaded.definition.title, "Test Course");
+    assert_eq!(loaded.definition.entries.len(), 1);
+    assert_eq!(loaded.definition.entries[0].title_hint, "First stage");
+    assert!(db.course_by_id(i64::MAX).unwrap().is_none());
+}
+
+#[test]
 fn upsert_chart_import_backfills_unresolved_course_entries() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();

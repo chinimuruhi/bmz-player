@@ -16,11 +16,12 @@ pub struct ActiveCourseSession {
     /// Course-wide normalized score key derived from every entry's LN profile.
     pub ln_policy: LnScorePolicy,
     pub rule_mode: RuleMode,
-    /// Total notes imported from every source chart with the entry's actual
-    /// play options. This remains course-wide when a Failed chart aborts early.
+    /// Course-wide total initialized from library metadata before Decide, then
+    /// replaced by the background source import using the entry's actual play
+    /// options. This remains course-wide when a Failed chart aborts early.
     pub course_total_notes: u32,
-    /// Effective course-wide LN kind after AUTO/FORCE and course fallback
-    /// resolution. None means the course contains no long notes.
+    /// Effective course-wide LN kind. Like `course_total_notes`, this starts
+    /// from library metadata and is replaced by the exact background import.
     pub course_ln_mode: Option<bmz_chart::model::LongNoteMode>,
     pub current_index: usize,
     pub entry_results: Vec<CourseEntryResult>,

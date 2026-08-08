@@ -270,7 +270,7 @@ pub use preload::{
     preload_play_session_for_chart, preload_play_session_for_chart_with_callbacks,
     preload_play_session_for_chart_with_progress,
     preload_play_session_reloading_audio_with_progress, scored_chart_metrics_for_chart,
-    scored_note_count_for_chart,
+    scored_chart_metrics_from_prepared, scored_note_count_for_chart,
 };
 
 use arrange_algorithm::*;

@@ -90,11 +90,14 @@ pub(super) struct PlayRuntimeState {
     pub(super) pending_play_preload: Option<PendingPlayPreload>,
     /// 中間リザルト表示中に開始した次コース譜面の先読み要求。
     pub(super) pending_course_stage_launch: Option<PendingCourseStageLaunch>,
+    /// Decide中に先頭譜面の変換結果を再利用して計算する、厳密なコース全体metrics。
+    pub(super) pending_course_metrics: Option<PendingCourseMetrics>,
     /// Decide 演出中に preload worker から受け取った結果を退避し、
     /// `start_chart_with_options` で再利用するためのバッファ。
     /// 既に裏で完了している譜面/音源ロードを main で再度同期実行するのを避ける。
     pub(super) preloaded_play_session: Option<PreloadedInputPlaySession>,
     pub(super) play_preload_generation: u64,
+    pub(super) course_metrics_generation: u64,
     /// 同曲リトライ用に残すキー音 / 静止画 BGA / 動画デコーダ。
     pub(super) play_media_cache: Option<PlayMediaCache>,
     pub(super) play_ending: Option<PlayEndingTransition>,

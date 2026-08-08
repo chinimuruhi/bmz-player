@@ -392,6 +392,105 @@ fn course_entry_title_hints_are_hydrated_for_unplayed_stages() {
 }
 
 #[test]
+fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
+    let mut first = select_chart_row(10).chart.unwrap();
+    first.title = "First".to_string();
+    first.total_notes = 100;
+    first.ln_profile =
+        crate::ln_policy::ChartLnProfile { has_undefined_ln: true, ..Default::default() };
+    first.ln_counts =
+        crate::ln_policy::ChartLnCounts { undefined_ln_pairs: 1, ..Default::default() };
+    let mut second = select_chart_row(20).chart.unwrap();
+    second.title = "Second".to_string();
+    second.total_notes = 200;
+    second.ln_profile =
+        crate::ln_policy::ChartLnProfile { has_defined_cn: true, ..Default::default() };
+    second.ln_counts =
+        crate::ln_policy::ChartLnCounts { defined_cn_pairs: 2, ..Default::default() };
+    let definition = bmz_core::course::CourseDefinition {
+        key: "course".to_string(),
+        title: "Course".to_string(),
+        kind: bmz_core::course::CourseKind::Course,
+        entries: vec![
+            bmz_core::course::CourseEntry {
+                title_hint: String::new(),
+                md5: None,
+                sha256: None,
+                chart_id: Some(10),
+            },
+            bmz_core::course::CourseEntry {
+                title_hint: String::new(),
+                md5: None,
+                sha256: None,
+                chart_id: Some(20),
+            },
+        ],
+        constraints: Default::default(),
+        trophies: Vec::new(),
+        release: true,
+    };
+    let options = vec![
+        PlayStartOptions::default(),
+        PlayStartOptions { double_option: DoubleOption::Battle, ..Default::default() },
+    ];
+
+    let snapshot = course_play_metrics_from_chart_metadata(
+        &definition,
+        crate::ln_policy::LnPolicySetting::ForceCn,
+        &options,
+        vec![first, second],
+    )
+    .unwrap();
+
+    assert_eq!(snapshot.first_chart.chart_id, 10);
+    assert_eq!(snapshot.titles.get(&20).map(String::as_str), Some("Second"));
+    assert_eq!(snapshot.metrics.total_notes, 505);
+    assert_eq!(snapshot.metrics.ln_mode, Some(bmz_chart::model::LongNoteMode::Cn));
+    assert_eq!(snapshot.metrics.ln_policy, crate::ln_policy::LnScorePolicy::ForceCn);
+}
+
+#[test]
+fn exact_course_metrics_reuse_first_prepared_chart_without_library_access() {
+    let db = LibraryDatabase::from_connection(rusqlite::Connection::open_in_memory().unwrap());
+    let definition = bmz_core::course::CourseDefinition {
+        key: "course".to_string(),
+        title: "Course".to_string(),
+        kind: bmz_core::course::CourseKind::Course,
+        entries: vec![bmz_core::course::CourseEntry {
+            title_hint: "First".to_string(),
+            md5: None,
+            sha256: None,
+            chart_id: Some(999),
+        }],
+        constraints: Default::default(),
+        trophies: Vec::new(),
+        release: true,
+    };
+    let first_metrics = crate::screens::play_session::ScoredChartMetrics {
+        total_notes: 321,
+        ln_mode: Some(bmz_chart::model::LongNoteMode::Hcn),
+        source_ln_profile: crate::ln_policy::ChartLnProfile {
+            has_defined_hcn: true,
+            ..Default::default()
+        },
+    };
+
+    let metrics = course_play_metrics_for_definition_reusing_first(
+        &db,
+        &definition,
+        &AppConfig::default(),
+        crate::ln_policy::LnPolicySetting::AutoLn,
+        bmz_gameplay::rule::RuleMode::Beatoraja,
+        &[PlayStartOptions::default()],
+        first_metrics,
+    )
+    .unwrap();
+
+    assert_eq!(metrics.total_notes, 321);
+    assert_eq!(metrics.ln_mode, Some(bmz_chart::model::LongNoteMode::Hcn));
+}
+
+#[test]
 fn course_intermediate_result_only_with_active_course_and_no_course_result() {
     // active_course 保持 + finished_play あり + finished_course 無し → 中間リザルト。
     assert!(is_course_intermediate_result(true, false, true));
