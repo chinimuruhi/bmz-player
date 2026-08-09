@@ -42,6 +42,23 @@ pub const SKIN_BMZ_INPUT_COUNT: usize = 8;
 /// BMZ extension: matching press-edge timers.
 pub const SKIN_TIMER_BMZ_INPUT_BASE: i32 = 19_000;
 pub const SKIN_TIMER_BMZ_INPUT_LAST: i32 = 19_007;
+/// BMZ extension: latest judgement timers split by judge region and lane kind.
+/// Slots are region 0 Scratch/Keys, region 1 Scratch/Keys, region 2 Scratch/Keys.
+pub const SKIN_TIMER_BMZ_JUDGE_LANE_BASE: i32 = 19_010;
+pub const SKIN_TIMER_BMZ_JUDGE_LANE_LAST: i32 = 19_015;
+pub const SKIN_BMZ_JUDGE_LANE_COUNT: usize = 6;
+/// BMZ extension: PGREAT options for the split judgement slots.
+pub const SKIN_OPTION_BMZ_JUDGE_LANE_PGREAT_BASE: i32 = 19_020;
+pub const SKIN_OPTION_BMZ_JUDGE_LANE_PGREAT_LAST: i32 = 19_025;
+/// BMZ extension: FAST/EARLY options for the split judgement slots.
+pub const SKIN_OPTION_BMZ_JUDGE_LANE_FAST_BASE: i32 = 19_030;
+pub const SKIN_OPTION_BMZ_JUDGE_LANE_FAST_LAST: i32 = 19_035;
+/// BMZ extension: SLOW/LATE options for the split judgement slots.
+pub const SKIN_OPTION_BMZ_JUDGE_LANE_SLOW_BASE: i32 = 19_040;
+pub const SKIN_OPTION_BMZ_JUDGE_LANE_SLOW_LAST: i32 = 19_045;
+/// BMZ extension: timing difference refs for the split judgement slots.
+pub const SKIN_REF_BMZ_JUDGE_LANE_DURATION_BASE: i32 = 19_050;
+pub const SKIN_REF_BMZ_JUDGE_LANE_DURATION_LAST: i32 = 19_055;
 /// BMZ extension: generic daily statistics number refs.
 pub const SKIN_REF_BMZ_DAILY_BASE: i32 = 1930;
 pub const SKIN_REF_BMZ_DAILY_LAST: i32 = 1946;

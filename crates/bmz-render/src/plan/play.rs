@@ -40,6 +40,13 @@ pub(super) fn plan_play(
     let play_elapsed_ms = play_elapsed_ms(snapshot);
     let mut skin_state = build_play_skin_state(snapshot, skin, play_elapsed_ms);
     dynamic_timers.ingest_skin_events(&snapshot.skin_events, key_mode, snapshot.time.0);
+    let judge_region_count =
+        skin.document().map(|document| document.judge_region_count()).unwrap_or(1);
+    dynamic_timers.ingest_judge_lane_state(
+        &snapshot.recent_judgements,
+        judge_region_count,
+        snapshot.time.0,
+    );
     advance_skin_dynamic_timers(skin, dynamic_timers, &mut skin_state, play_elapsed_ms);
     let skin_text = build_play_skin_text(snapshot);
     // `{"id":"notes"}` マーカーと `timer: 3` (FAILED) で3分割。

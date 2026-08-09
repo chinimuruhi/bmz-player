@@ -1,6 +1,76 @@
 use super::*;
 
 #[test]
+fn play_plan_keeps_bmz_split_scratch_judge_timer_after_recent_window_expires() {
+    let document: crate::skin::SkinDocument = serde_json::from_str(
+        r#"{
+            "type": 0,
+            "w": 100,
+            "h": 100,
+            "source": [{"id": 1, "path": "marker.png"}],
+            "image": [{"id": "marker", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10}],
+            "destination": [{
+                "id": "marker",
+                "timer": 19010,
+                "op": [19030],
+                "loop": -1,
+                "dst": [
+                    {"time": 0, "x": 0, "y": 0, "w": 10, "h": 10},
+                    {"time": 2000}
+                ]
+            }]
+        }"#,
+    )
+    .unwrap();
+    let skin = SkinContext::from_manifest_and_document(
+        SkinManifest::default(),
+        document,
+        [crate::skin::SkinDocumentTexture {
+            source_id: "1".to_string(),
+            texture: SkinTextureId(88),
+            source_size: crate::skin::SkinImageSize { width: 10.0, height: 10.0 },
+        }],
+    );
+    let mut runtime = crate::skin::DynamicTimerRuntime::default();
+    let first = RenderSnapshot {
+        time: TimeUs(100_000),
+        play_elapsed_time: TimeUs(100_000),
+        recent_judgements: vec![DisplayJudgement {
+            lane: Lane::Scratch,
+            judge: Judge::Great,
+            side: Some(TimingSide::Fast),
+            text: "GREAT FAST".to_string(),
+            combo: 1,
+            delta_us: -5_000,
+            time: TimeUs(100_000),
+            is_miss: false,
+            timing_ms_suppressed: false,
+        }],
+        ..Default::default()
+    };
+    let first_plan =
+        DrawPlan::from_scene_with_skin(&AppSceneSnapshot::Play(first), &skin, &mut runtime);
+    assert!(first_plan.commands.iter().any(
+        |command| matches!(command, DrawCommand::Image { texture, .. } if *texture == TextureId(88))
+    ));
+
+    let after_recent_window = RenderSnapshot {
+        time: TimeUs(1_200_000),
+        play_elapsed_time: TimeUs(1_200_000),
+        recent_judgements: Vec::new(),
+        ..Default::default()
+    };
+    let persisted_plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(after_recent_window),
+        &skin,
+        &mut runtime,
+    );
+    assert!(persisted_plan.commands.iter().any(
+        |command| matches!(command, DrawCommand::Image { texture, .. } if *texture == TextureId(88))
+    ));
+}
+
+#[test]
 fn play_skin_document_places_hit_timing_note_bottom_on_judge_line() {
     let document: crate::skin::SkinDocument = serde_json::from_str(
         r#"

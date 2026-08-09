@@ -79,6 +79,18 @@ pub(in crate::skin) fn test_skin_op(
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
         }
+        SKIN_OPTION_BMZ_JUDGE_LANE_PGREAT_BASE..=SKIN_OPTION_BMZ_JUDGE_LANE_PGREAT_LAST => {
+            state.judge_lane_index[(op - SKIN_OPTION_BMZ_JUDGE_LANE_PGREAT_BASE) as usize]
+                == Some(0)
+        }
+        SKIN_OPTION_BMZ_JUDGE_LANE_FAST_BASE..=SKIN_OPTION_BMZ_JUDGE_LANE_FAST_LAST => {
+            state.judge_lane_timing_sign[(op - SKIN_OPTION_BMZ_JUDGE_LANE_FAST_BASE) as usize]
+                == Some(1)
+        }
+        SKIN_OPTION_BMZ_JUDGE_LANE_SLOW_BASE..=SKIN_OPTION_BMZ_JUDGE_LANE_SLOW_LAST => {
+            state.judge_lane_timing_sign[(op - SKIN_OPTION_BMZ_JUDGE_LANE_SLOW_BASE) as usize]
+                == Some(-1)
+        }
         1 => matches!(
             state.select_row_kind,
             SelectRowKind::Folder

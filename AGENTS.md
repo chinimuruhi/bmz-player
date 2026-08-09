@@ -414,7 +414,8 @@ database:
 - static image destination `stretch`
 - `graph` (type 101/102/110-115/140-147)
 - `SkinDrawState`: BPM (now/min/max), lane_cover, total_duration_ms, judge_timing_ms, best/target ex_score
-- `skin_state_number`: ref 14/90/91/107/121/150/160/163/164/310-312/407/420/425-427/525
+- `skin_state_number`: ref 14/90/91/107/121/150/160/163/164/310-312/407/420/425-427/525-527/19050-19055
+- BMZ拡張のScratch/鍵盤別最新判定: timer 19010-19015、PGREAT/FAST/SLOW option 19020-19045、タイミング差 ref 19050-19055
 - `skin_state_text`: ref 10-16 (title/subtitle/genre/artist/subartist 系)
 
 現在対応済みの主なLua skin要素:

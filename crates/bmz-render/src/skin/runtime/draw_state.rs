@@ -123,6 +123,17 @@ pub struct SkinDrawState {
     pub judge_combo: [u32; MAX_JUDGE_REGIONS],
     /// 領域別の判定タイミング符号。1=EARLY/FAST, -1=LATE/SLOW。
     pub judge_timing_sign: [Option<i8>; MAX_JUDGE_REGIONS],
+    /// BMZ拡張: 判定領域×Scratch/鍵盤別の判定タイマー経過ms。
+    /// index は region 0 Scratch/Keys, region 1 Scratch/Keys, region 2 Scratch/Keys。
+    pub judge_lane_ms: [Option<i32>; SKIN_BMZ_JUDGE_LANE_COUNT],
+    /// BMZ拡張: 判定領域×Scratch/鍵盤別の最新判定画像インデックス。
+    pub judge_lane_index: [Option<usize>; SKIN_BMZ_JUDGE_LANE_COUNT],
+    /// BMZ拡張: 判定領域×Scratch/鍵盤別のタイミング符号。
+    /// 1=EARLY/FAST, -1=LATE/SLOW, None=表示フィルタで非表示。
+    pub judge_lane_timing_sign: [Option<i8>; SKIN_BMZ_JUDGE_LANE_COUNT],
+    /// BMZ拡張: 判定領域×Scratch/鍵盤別のタイミング差ms。
+    /// 符号は 押下時刻 - note時刻 (FAST=負)。Noneなら非表示。
+    pub judge_lane_timing_ms: [Option<i32>; SKIN_BMZ_JUDGE_LANE_COUNT],
     /// OFFSET_LIFT (id=3) の y 値 (skin canvas pixel 単位)。リフト量に応じて要素をシフトする。
     pub offset_lift_px: i32,
     /// OFFSET_LANECOVER (id=4) の y 値 (skin canvas pixel 単位)。レーンカバー位置インジケータのシフト。
@@ -483,6 +494,10 @@ impl Default for SkinDrawState {
             judge_index: [None; MAX_JUDGE_REGIONS],
             judge_combo: [0; MAX_JUDGE_REGIONS],
             judge_timing_sign: [None; MAX_JUDGE_REGIONS],
+            judge_lane_ms: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
+            judge_lane_index: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
+            judge_lane_timing_sign: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
+            judge_lane_timing_ms: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
             offset_lift_px: 0,
             offset_lanecover_px: 0,
             offset_hidden_cover_px: 0,

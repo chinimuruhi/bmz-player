@@ -14,6 +14,7 @@ pub struct DynamicTimerRuntime {
     keybeam_suppressed: [bool; LANE_COUNT],
     keybeam_fade_allowed: [bool; LANE_COUNT],
     key_logger: KeyLoggerRuntime,
+    judge_lane: JudgeLaneRuntime,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -30,6 +31,33 @@ pub(in crate::skin) struct KeyLoggerRuntime {
     next_event_slot: [usize; LANE_COUNT],
 }
 
+/// BMZ拡張の判定領域×Scratch/鍵盤別の最新判定。
+///
+/// 標準判定表示の800msリストとは別にrenderer runtimeへラッチし、destinationの
+/// timer/loopだけで各チャンネルの表示時間を決められるようにする。
+#[derive(Debug, Clone)]
+struct JudgeLaneRuntime {
+    last_now_us: Option<i64>,
+    region_count: Option<usize>,
+    started_us: [Option<i64>; SKIN_BMZ_JUDGE_LANE_COUNT],
+    judge_index: [Option<usize>; SKIN_BMZ_JUDGE_LANE_COUNT],
+    timing_sign: [Option<i8>; SKIN_BMZ_JUDGE_LANE_COUNT],
+    timing_ms: [Option<i32>; SKIN_BMZ_JUDGE_LANE_COUNT],
+}
+
+impl Default for JudgeLaneRuntime {
+    fn default() -> Self {
+        Self {
+            last_now_us: None,
+            region_count: None,
+            started_us: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
+            judge_index: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
+            timing_sign: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
+            timing_ms: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
+        }
+    }
+}
+
 impl Default for DynamicTimerRuntime {
     fn default() -> Self {
         Self {
@@ -44,6 +72,7 @@ impl Default for DynamicTimerRuntime {
             keybeam_suppressed: [false; LANE_COUNT],
             keybeam_fade_allowed: [false; LANE_COUNT],
             key_logger: KeyLoggerRuntime::default(),
+            judge_lane: JudgeLaneRuntime::default(),
         }
     }
 }
@@ -84,6 +113,7 @@ impl DynamicTimerRuntime {
             self.logical_input_starts.map(|start| start.map(|start| now_ms.saturating_sub(start)));
         self.advance_keybeam(state, now_ms);
         self.key_logger.write_state(state, now_ms);
+        self.judge_lane.write_state(state);
         state.keylogger_exclude_cool = !document.graph.iter().any(|graph| {
             graph.id.starts_with("keylogger-graph-judge-") && graph.id.ends_with("-cool")
         });
@@ -161,6 +191,15 @@ impl DynamicTimerRuntime {
         self.key_logger.ingest(events, key_mode, now_us);
     }
 
+    pub(crate) fn ingest_judge_lane_state(
+        &mut self,
+        judgements: &[crate::snapshot::DisplayJudgement],
+        region_count: usize,
+        now_us: i64,
+    ) {
+        self.judge_lane.ingest(judgements, region_count, now_us);
+    }
+
     fn advance_keybeam(&mut self, state: &mut SkinDrawState, now_ms: i32) {
         for lane in 0..LANE_COUNT {
             let keyon_start = state.keyon_ms[lane].map(|elapsed| now_ms.saturating_sub(elapsed));
@@ -185,6 +224,58 @@ impl DynamicTimerRuntime {
             self.keybeam_keyon_starts[lane] = keyon_start;
             self.keybeam_keyoff_starts[lane] = keyoff_start;
         }
+    }
+}
+
+impl JudgeLaneRuntime {
+    fn ingest(
+        &mut self,
+        judgements: &[crate::snapshot::DisplayJudgement],
+        region_count: usize,
+        now_us: i64,
+    ) {
+        let region_count = region_count.clamp(1, MAX_JUDGE_REGIONS);
+        if self.last_now_us.is_some_and(|last| now_us < last)
+            || self.region_count.is_some_and(|last| last != region_count)
+        {
+            *self = Self::default();
+        }
+        self.last_now_us = Some(now_us);
+        self.region_count = Some(region_count);
+
+        // recent_judgements は発生順なので、同時刻の同一チャンネルは後の判定を採用する。
+        for judgement in judgements {
+            let region = lane_judge_region(judgement.lane.index(), LANE_COUNT, region_count);
+            let lane_kind = usize::from(!matches!(judgement.lane, Lane::Scratch | Lane::Scratch2));
+            let slot = region * 2 + lane_kind;
+            if self.started_us[slot].is_some_and(|last| judgement.time.0 < last) {
+                continue;
+            }
+            self.started_us[slot] = Some(judgement.time.0);
+            self.judge_index[slot] = Some(judge_image_index_for_judge(judgement.judge));
+            self.timing_sign[slot] = judgement.side.map(|side| match side {
+                TimingSide::Fast => 1,
+                TimingSide::Slow => -1,
+            });
+            self.timing_ms[slot] = (!judgement.timing_ms_suppressed).then_some(
+                (judgement.delta_us / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+            );
+        }
+    }
+
+    fn write_state(&self, state: &mut SkinDrawState) {
+        let Some(now_us) = self.last_now_us else {
+            return;
+        };
+        state.judge_lane_ms = self.started_us.map(|started| {
+            started.map(|started| {
+                (now_us.saturating_sub(started) / 1_000).clamp(i32::MIN as i64, i32::MAX as i64)
+                    as i32
+            })
+        });
+        state.judge_lane_index = self.judge_index;
+        state.judge_lane_timing_sign = self.timing_sign;
+        state.judge_lane_timing_ms = self.timing_ms;
     }
 }
 

@@ -1,5 +1,186 @@
 use super::*;
 
+fn split_judgement(
+    lane: Lane,
+    judge: Judge,
+    side: Option<TimingSide>,
+    delta_us: i64,
+    time_us: i64,
+    timing_ms_suppressed: bool,
+) -> crate::snapshot::DisplayJudgement {
+    crate::snapshot::DisplayJudgement {
+        lane,
+        judge,
+        side,
+        text: String::new(),
+        combo: 0,
+        delta_us,
+        time: TimeUs(time_us),
+        is_miss: false,
+        timing_ms_suppressed,
+    }
+}
+
+#[test]
+fn bmz_split_judge_runtime_keeps_scratch_and_keys_independent_past_800ms() {
+    let document: SkinDocument = serde_json::from_str("{}").unwrap();
+    let mut runtime = DynamicTimerRuntime::default();
+    let mut state = SkinDrawState::default();
+
+    runtime.ingest_judge_lane_state(
+        &[
+            split_judgement(Lane::Scratch, Judge::PGreat, None, -2_000, 100_000, false),
+            split_judgement(
+                Lane::Key1,
+                Judge::Great,
+                Some(TimingSide::Slow),
+                8_000,
+                400_000,
+                false,
+            ),
+            split_judgement(
+                Lane::Key8,
+                Judge::Great,
+                Some(TimingSide::Fast),
+                -7_000,
+                500_000,
+                false,
+            ),
+            split_judgement(
+                Lane::Scratch2,
+                Judge::Good,
+                Some(TimingSide::Slow),
+                9_000,
+                700_000,
+                false,
+            ),
+        ],
+        2,
+        700_000,
+    );
+    runtime.advance(&document, &mut state, 700);
+
+    assert_eq!(skin_timer_elapsed_ms(Some(19_010), &state), Some(600));
+    assert_eq!(skin_timer_elapsed_ms(Some(19_011), &state), Some(300));
+    assert_eq!(skin_timer_elapsed_ms(Some(19_012), &state), Some(0));
+    assert_eq!(skin_timer_elapsed_ms(Some(19_013), &state), Some(200));
+    assert!(test_skin_op(19_020, &[], &state));
+    assert!(!test_skin_op(19_030, &[], &state));
+    assert!(test_skin_op(19_041, &[], &state));
+    assert!(test_skin_op(19_042, &[], &state));
+    assert!(test_skin_op(19_033, &[], &state));
+    assert_eq!(skin_state_number(19_050, &state), Some(2));
+    assert_eq!(skin_state_number(19_051, &state), Some(-8));
+    assert_eq!(skin_state_number(19_052, &state), Some(-9));
+    assert_eq!(skin_state_number(19_053, &state), Some(7));
+
+    // 標準の800msリストが空になっても、拡張チャンネルはrenderer runtimeに残る。
+    runtime.ingest_judge_lane_state(&[], 2, 1_800_000);
+    runtime.advance(&document, &mut state, 1_800);
+    assert_eq!(skin_timer_elapsed_ms(Some(19_010), &state), Some(1_700));
+    assert_eq!(skin_timer_elapsed_ms(Some(19_011), &state), Some(1_400));
+    assert_eq!(skin_timer_elapsed_ms(Some(19_012), &state), Some(1_100));
+    assert_eq!(skin_timer_elapsed_ms(Some(19_013), &state), Some(1_300));
+    assert!(test_skin_op(19_020, &[], &state));
+    assert_eq!(state.judge_ms, [None; MAX_JUDGE_REGIONS]);
+    assert_eq!(state.judge_index, [None; MAX_JUDGE_REGIONS]);
+}
+
+#[test]
+fn bmz_split_judge_runtime_preserves_fast_slow_filter_and_resets_on_rewind() {
+    let document: SkinDocument = serde_json::from_str("{}").unwrap();
+    let mut runtime = DynamicTimerRuntime::default();
+    let mut state = SkinDrawState::default();
+
+    runtime.ingest_judge_lane_state(
+        &[split_judgement(Lane::Key1, Judge::PGreat, None, -3_000, 1_000_000, true)],
+        1,
+        1_000_000,
+    );
+    runtime.advance(&document, &mut state, 1_000);
+    assert!(test_skin_op(19_021, &[], &state));
+    assert!(!test_skin_op(19_031, &[], &state));
+    assert!(!test_skin_op(19_041, &[], &state));
+    assert_eq!(skin_state_number(19_051, &state), None);
+
+    runtime.ingest_judge_lane_state(&[], 1, 0);
+    runtime.advance(&document, &mut state, 0);
+    assert_eq!(skin_timer_elapsed_ms(Some(19_011), &state), None);
+    assert!(!test_skin_op(19_021, &[], &state));
+    assert_eq!(skin_state_number(19_051, &state), None);
+}
+
+#[test]
+fn bmz_split_judge_ids_cover_all_six_channels() {
+    let state = SkinDrawState {
+        judge_lane_ms: std::array::from_fn(|slot| Some(slot as i32)),
+        judge_lane_index: [Some(0); SKIN_BMZ_JUDGE_LANE_COUNT],
+        judge_lane_timing_sign: std::array::from_fn(|slot| {
+            Some(if slot % 2 == 0 { 1 } else { -1 })
+        }),
+        judge_lane_timing_ms: std::array::from_fn(|slot| Some(slot as i32 + 1)),
+        ..Default::default()
+    };
+
+    for slot in 0..SKIN_BMZ_JUDGE_LANE_COUNT {
+        assert_eq!(
+            skin_timer_elapsed_ms(Some(SKIN_TIMER_BMZ_JUDGE_LANE_BASE + slot as i32), &state),
+            Some(slot as i32)
+        );
+        assert!(test_skin_op(SKIN_OPTION_BMZ_JUDGE_LANE_PGREAT_BASE + slot as i32, &[], &state));
+        assert_eq!(
+            test_skin_op(SKIN_OPTION_BMZ_JUDGE_LANE_FAST_BASE + slot as i32, &[], &state),
+            slot % 2 == 0
+        );
+        assert_eq!(
+            test_skin_op(SKIN_OPTION_BMZ_JUDGE_LANE_SLOW_BASE + slot as i32, &[], &state),
+            slot % 2 == 1
+        );
+        assert_eq!(
+            skin_state_number(SKIN_REF_BMZ_JUDGE_LANE_DURATION_BASE + slot as i32, &state),
+            Some(-(slot as i64 + 1))
+        );
+    }
+}
+
+#[test]
+fn bmz_split_judge_runtime_maps_third_region_scratch_and_keys() {
+    let document: SkinDocument = serde_json::from_str("{}").unwrap();
+    let mut runtime = DynamicTimerRuntime::default();
+    let mut state = SkinDrawState::default();
+
+    runtime.ingest_judge_lane_state(
+        &[
+            split_judgement(
+                Lane::Scratch2,
+                Judge::Great,
+                Some(TimingSide::Fast),
+                -4_000,
+                100_000,
+                false,
+            ),
+            split_judgement(
+                Lane::Key14,
+                Judge::Great,
+                Some(TimingSide::Slow),
+                6_000,
+                200_000,
+                false,
+            ),
+        ],
+        3,
+        200_000,
+    );
+    runtime.advance(&document, &mut state, 200);
+
+    assert_eq!(skin_timer_elapsed_ms(Some(19_014), &state), Some(100));
+    assert_eq!(skin_timer_elapsed_ms(Some(19_015), &state), Some(0));
+    assert!(test_skin_op(19_034, &[], &state));
+    assert!(test_skin_op(19_045, &[], &state));
+    assert_eq!(skin_state_number(19_054, &state), Some(4));
+    assert_eq!(skin_state_number(19_055, &state), Some(-6));
+}
+
 #[test]
 fn logical_input_press_edges_drive_options_timers_and_runtime_events() {
     let document: SkinDocument = serde_json::from_str(

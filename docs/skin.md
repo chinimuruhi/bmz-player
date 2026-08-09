@@ -288,6 +288,45 @@ E1 は設定済み E1 と legacy Start、E2 は設定済み E2 と legacy Select
 }
 ```
 
+### BMZ Scratch / Keys Judge Refs
+
+プレイ中の最新判定を、判定領域ごとに Scratch と鍵盤へ分けて公開するBMZ拡張。
+slotは `region * 2 + lane kind` の順で、Scratch判定はScratch側だけ、鍵盤判定は鍵盤側だけを
+更新する。両方のtimerは同時に有効にでき、互いの判定では再起動しない。
+
+| 判定領域 / lane kind | timer | PGREAT option | FAST / EARLY option | SLOW / LATE option | タイミング差 ref |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| region 0 / 1P Scratch | 19010 | 19020 | 19030 | 19040 | 19050 |
+| region 0 / 1P Keys | 19011 | 19021 | 19031 | 19041 | 19051 |
+| region 1 / 2P Scratch | 19012 | 19022 | 19032 | 19042 | 19052 |
+| region 1 / 2P Keys | 19013 | 19023 | 19033 | 19043 | 19053 |
+| region 2 / 3P Scratch | 19014 | 19024 | 19034 | 19044 | 19054 |
+| region 2 / 3P Keys | 19015 | 19025 | 19035 | 19045 | 19055 |
+
+判定領域は既存の `timer 46/47/247` と同じく、skinの `judge[].index` から得た領域数と
+beatoraja互換のレーン分割で決まる。`1P` / `2P` / `3P` は物理プレイヤー数ではなく、
+それぞれregion 0 / 1 / 2の別名。Scratchは `Lane::Scratch` / `Lane::Scratch2`、それ以外の
+レーンはKeysに分類するため、ScratchのないモードではScratch側timerは開始しない。
+
+timerは該当チャンネルの最新判定からの経過ms。標準判定表示に使う800msの
+`recent_judgements`保持期間とは別に、プレイ中の最後の値をrenderer runtimeへ保持する。
+表示時間はdestinationの `dst` と `loop` で決める。プレイ開始、リトライ、次曲開始、
+skin runtimeのresetでは全チャンネルを未開始へ戻す。
+
+FAST/SLOW optionとタイミング差refには、既存の判定表示設定と同じフィルタを適用する。
+
+- `Auto`: PGREATのFAST/SLOW optionだけfalse。タイミング差refは返す。
+- `ThresholdMs`: 閾値未満ではFAST/SLOW optionをfalseにし、タイミング差refも値なしにする。
+- タイミング差refの符号は既存ref `525..527` と同じで、正がFAST、負がSLOW。
+
+判定前はtimerがOFF、各optionがfalse、タイミング差refが値なしとなる。PGREAT optionは
+最新判定がPGREATかどうかを表し、FAST/SLOWの表示フィルタとは独立する。
+
+既存の `timer 46/47/247`、PGREAT option `241/261/361`、FAST/SLOW option
+`1242/1243/1262/1263/1362/1363`、タイミング差ref `525..527` の挙動と800ms保持は変更しない。
+このため拡張IDを参照しない既存skinの表示は変わらない。拡張IDはbeatorajaおよび古いBMZでは
+利用できない。
+
 ### BMZ Result IR Scope
 
 リザルトの IR パネル (`result_panel(1)`) は、BMZ 対応 skin に限り全体ランキングと
