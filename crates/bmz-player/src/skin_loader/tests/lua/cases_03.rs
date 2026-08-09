@@ -416,6 +416,84 @@ fn antique_play_lua_bakes_configured_keybeam_height_offset_when_available() {
 }
 
 #[test]
+fn antique_play_lua_places_split_fast_slow_beside_the_key_label_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/mz-select/play/antique/system/play7main.luaskin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let load = |scratch: &str| {
+        decode_beatoraja_skin_with_options(
+            &skin_path,
+            SkinKind::Play,
+            &BTreeMap::from([
+                ("スクラッチ".to_string(), scratch.to_string()),
+                ("FAST/SLOW".to_string(), "SCRATCH/KEYS別 (BMZ)".to_string()),
+            ]),
+            &BTreeMap::new(),
+        )
+        .expect("decode Antique split FAST/SLOW skin")
+    };
+    let assert_destination = |document: &SkinDocument, id: &str, timer, option, x, width, alpha| {
+        let destination = document
+            .destination
+            .iter()
+            .find_map(|entry| match entry {
+                DestinationListEntry::Single(destination)
+                    if destination.id == id && destination.timer == Some(timer) =>
+                {
+                    Some(destination)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("Antique destination {id} timer {timer}"));
+        assert_eq!(destination.loop_time, Some(-1));
+        assert_eq!(destination.op, vec![909, option]);
+        assert!(matches!(
+            destination.dst.first(),
+            Some(bmz_render::skin::SkinDstEntry::Frame(frame))
+                if frame.x == Some(x)
+                    && frame.w == Some(width)
+                    && frame.h == Some(20)
+                    && frame.a == alpha
+        ));
+        assert!(matches!(
+            destination.dst.last(),
+            Some(bmz_render::skin::SkinDstEntry::Frame(frame))
+                if frame.time == Some(500)
+        ));
+    };
+
+    let left = load("左");
+    assert!(left.document.enabled_options().contains(&909));
+    assert!(!left.document.enabled_options().contains(&908));
+    assert!(left.document.property.iter().any(|property| {
+        property.name == "FAST/SLOW"
+            && property
+                .item
+                .iter()
+                .any(|item| item.name == "SCRATCH/KEYS別 (BMZ)" && item.op == 909)
+    }));
+    let scratch_source = left
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src_judgedetail_scratch")
+        .expect("Antique scratch FAST/SLOW source");
+    assert_eq!((scratch_source.size.width, scratch_source.size.height), (108.0, 40.0));
+    assert_destination(&left.document, "img_s_fast", 19010, 19030, 307, 108, None);
+    assert_destination(&left.document, "img_s_slow", 19010, 19040, 307, 108, None);
+    assert_destination(&left.document, "img_fast", 19011, 19031, 423, 72, None);
+    assert_destination(&left.document, "img_slow", 19011, 19041, 423, 72, None);
+
+    let right = load("右");
+    assert_destination(&right.document, "img_fast", 19011, 19031, 263, 72, None);
+    assert_destination(&right.document, "img_slow", 19011, 19041, 263, 72, None);
+    assert_destination(&right.document, "img_s_fast", 19010, 19030, 343, 108, None);
+    assert_destination(&right.document, "img_s_slow", 19010, 19040, 343, 108, None);
+}
+
+#[test]
 fn simple_play_lua_bakes_configured_note_height_offset_when_available() {
     let skin_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/simple-play/play7.luaskin");
