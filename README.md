@@ -2,9 +2,6 @@
 
 Next-Generation BMS Player (WIP)
 
-beatoraja の後継を目指しています。
-多くの機能は未実装ですが、まずは開発者自身が快適にプレイできることを目指して開発しています。
-
 Supported OS
 - Windows
 - macOS
@@ -136,11 +133,10 @@ cargo run
 ## Roadmap
 
 - [ ] more beatoraja-compatible features 
-- [ ] battle mode
+- [ ] battle mode (WIP)
 - [ ] rec mode (譜面動画作成モード)
 - [ ] practice mode
 - [ ] Arena Mode
-- [ ] i18n (en / ko / zh-CN / zh-TW / zh-HK)
 - [ ] WASAPI exclusive
 - [ ] ギミック系BMSへの対応
 - [ ] non stop mode
