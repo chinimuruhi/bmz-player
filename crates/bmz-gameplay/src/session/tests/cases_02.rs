@@ -142,6 +142,7 @@ fn course_combo_carry_extends_display_combo_without_changing_score_max() {
     assert_eq!(session.score.max_combo, 1);
     assert_eq!(session.display_combo(), 101);
     assert_eq!(session.display_max_combo(), 101);
+    assert_eq!(session.recent_display_judgements[0].combo, 101);
 }
 
 #[test]
@@ -169,6 +170,10 @@ fn course_combo_carry_resets_on_combo_break() {
     assert_eq!(session.score.max_combo, 1);
     assert_eq!(session.display_combo(), 1);
     assert_eq!(session.display_max_combo(), 101);
+    assert_eq!(
+        session.recent_display_judgements.iter().map(|event| event.combo).collect::<Vec<_>>(),
+        [101, 0, 1]
+    );
 }
 
 #[test]

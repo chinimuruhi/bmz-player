@@ -212,7 +212,11 @@ impl SkinContext {
             .iter()
             .find(|j| j.index == region as i32)
             .or_else(|| document.judge.first())?;
-        let state = SkinDrawState { skin_offsets: *skin_offsets, ..SkinDrawState::default() };
+        let region = judge_def.index.clamp(0, MAX_JUDGE_REGIONS as i32 - 1) as usize;
+        let mut state = SkinDrawState { skin_offsets: *skin_offsets, ..SkinDrawState::default() };
+        state.judge_ms[region] = Some(elapsed_ms);
+        state.judge_index[region] = Some(judge_image_index);
+        state.judge_combo[region] = combo;
         document.judge_render_items_for_def(
             judge_def,
             judge_image_index,

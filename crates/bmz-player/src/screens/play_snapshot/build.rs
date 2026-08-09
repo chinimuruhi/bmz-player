@@ -352,17 +352,33 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             .iter()
             .map(|input| DisplayInput { lane: input.lane, time: input.time })
             .collect(),
-        recent_judgements: recent_judgements
-            .iter()
-            .map(|event| {
-                let combo = if session.display_only_lane_mask[event.lane.index()] {
-                    session.opponent_score.as_ref().map_or(0, |score| score.combo)
-                } else {
-                    session.display_combo()
-                };
-                display_judgement(event, combo)
-            })
-            .collect(),
+        recent_judgements: if session.recent_display_judgements.len() != recent_judgements.len()
+            || !session
+                .recent_display_judgements
+                .iter()
+                .zip(recent_judgements)
+                .all(|(display, judgement)| display.judgement == *judgement)
+        {
+            // Snapshot 単体テストなど、session を経由せず判定列を渡す呼び出しの
+            // 互換経路。通常プレイでは下の判定時点コンボを使う。
+            recent_judgements
+                .iter()
+                .map(|event| {
+                    let combo = if session.display_only_lane_mask[event.lane.index()] {
+                        session.opponent_score.as_ref().map_or(0, |score| score.combo)
+                    } else {
+                        session.display_combo()
+                    };
+                    display_judgement(event, combo)
+                })
+                .collect()
+        } else {
+            session
+                .recent_display_judgements
+                .iter()
+                .map(|event| display_judgement(&event.judgement, event.combo))
+                .collect()
+        },
         skin_events: Vec::new(),
         hit_error_ring: bmz_render::snapshot::HitErrorRingSnapshot {
             values: session.hit_error_ring.values,

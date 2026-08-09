@@ -74,7 +74,8 @@ fn bmz_split_judge_runtime_keeps_scratch_and_keys_independent_past_800ms() {
     assert_eq!(skin_state_number(19_052, &state), Some(-9));
     assert_eq!(skin_state_number(19_053, &state), Some(7));
 
-    // 標準の800msリストが空になっても、拡張チャンネルはrenderer runtimeに残る。
+    // 標準の800msリストが空になっても、標準・拡張の両チャンネルを
+    // renderer runtime に残し、各 destination の終端で表示を止める。
     runtime.ingest_judge_lane_state(&[], 2, 1_800_000);
     runtime.advance(&document, &mut state, 1_800);
     assert_eq!(skin_timer_elapsed_ms(Some(19_010), &state), Some(1_700));
@@ -82,8 +83,8 @@ fn bmz_split_judge_runtime_keeps_scratch_and_keys_independent_past_800ms() {
     assert_eq!(skin_timer_elapsed_ms(Some(19_012), &state), Some(1_100));
     assert_eq!(skin_timer_elapsed_ms(Some(19_013), &state), Some(1_300));
     assert!(test_skin_op(19_020, &[], &state));
-    assert_eq!(state.judge_ms, [None; MAX_JUDGE_REGIONS]);
-    assert_eq!(state.judge_index, [None; MAX_JUDGE_REGIONS]);
+    assert_eq!(state.judge_ms, [Some(1_400), Some(1_100), None]);
+    assert_eq!(state.judge_index, [Some(1), Some(2), None]);
 }
 
 #[test]

@@ -323,6 +323,49 @@ fn build_render_snapshot_filters_visible_notes_and_formats_judgements() {
 }
 
 #[test]
+fn build_render_snapshot_preserves_dp_combo_at_each_judgement() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut session =
+        build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    session.score.combo = 6;
+    let judgements = [
+        JudgementEvent {
+            note_id: None,
+            lane: Lane::Key1,
+            judge: Judge::PGreat,
+            side: TimingSide::Fast,
+            delta: TimeUs(0),
+            time: TimeUs(1_000),
+            affects_score: true,
+        },
+        JudgementEvent {
+            note_id: None,
+            lane: Lane::Key8,
+            judge: Judge::PGreat,
+            side: TimingSide::Fast,
+            delta: TimeUs(0),
+            time: TimeUs(2_000),
+            affects_score: true,
+        },
+    ];
+    session.recent_display_judgements = vec![
+        bmz_gameplay::session::DisplayJudgementEvent { judgement: judgements[0].clone(), combo: 5 },
+        bmz_gameplay::session::DisplayJudgementEvent { judgement: judgements[1].clone(), combo: 6 },
+    ];
+
+    let snapshot = build_render_snapshot(&session, TimeUs(3_000), &judgements, None);
+
+    assert_eq!(
+        snapshot
+            .recent_judgements
+            .iter()
+            .map(|event| (event.lane, event.combo))
+            .collect::<Vec<_>>(),
+        [(Lane::Key1, 5), (Lane::Key8, 6)]
+    );
+}
+
+#[test]
 fn visual_offset_moves_lane_objects_without_advancing_effect_timers() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut session =

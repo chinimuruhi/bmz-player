@@ -676,6 +676,7 @@ fn session() -> GameSession {
         scratch_angle_last_render_at: None,
         lane_auto_release_at: Default::default(),
         recent_judgements: Vec::new(),
+        recent_display_judgements: Vec::new(),
         pending_skin_events: Vec::new(),
         next_skin_event_sequence: 0,
         result_judgements: Default::default(),

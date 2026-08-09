@@ -39,6 +39,11 @@ pub(in crate::skin) struct KeyLoggerRuntime {
 struct JudgeLaneRuntime {
     last_now_us: Option<i64>,
     region_count: Option<usize>,
+    region_started_us: [Option<i64>; MAX_JUDGE_REGIONS],
+    region_judge_index: [Option<usize>; MAX_JUDGE_REGIONS],
+    region_combo: [u32; MAX_JUDGE_REGIONS],
+    region_timing_sign: [Option<i8>; MAX_JUDGE_REGIONS],
+    region_timing_ms: [Option<i32>; MAX_JUDGE_REGIONS],
     started_us: [Option<i64>; SKIN_BMZ_JUDGE_LANE_COUNT],
     judge_index: [Option<usize>; SKIN_BMZ_JUDGE_LANE_COUNT],
     timing_sign: [Option<i8>; SKIN_BMZ_JUDGE_LANE_COUNT],
@@ -50,6 +55,11 @@ impl Default for JudgeLaneRuntime {
         Self {
             last_now_us: None,
             region_count: None,
+            region_started_us: [None; MAX_JUDGE_REGIONS],
+            region_judge_index: [None; MAX_JUDGE_REGIONS],
+            region_combo: [0; MAX_JUDGE_REGIONS],
+            region_timing_sign: [None; MAX_JUDGE_REGIONS],
+            region_timing_ms: [None; MAX_JUDGE_REGIONS],
             started_us: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
             judge_index: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
             timing_sign: [None; SKIN_BMZ_JUDGE_LANE_COUNT],
@@ -246,6 +256,19 @@ impl JudgeLaneRuntime {
         // recent_judgements は発生順なので、同時刻の同一チャンネルは後の判定を採用する。
         for judgement in judgements {
             let region = lane_judge_region(judgement.lane.index(), LANE_COUNT, region_count);
+            if self.region_started_us[region].is_none_or(|last| judgement.time.0 >= last) {
+                self.region_started_us[region] = Some(judgement.time.0);
+                self.region_judge_index[region] =
+                    Some(judge_image_index_for_judge(judgement.judge));
+                self.region_combo[region] = judgement.combo;
+                self.region_timing_sign[region] = judgement.side.map(|side| match side {
+                    TimingSide::Fast => 1,
+                    TimingSide::Slow => -1,
+                });
+                self.region_timing_ms[region] = (!judgement.timing_ms_suppressed).then_some(
+                    (judgement.delta_us / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+                );
+            }
             let lane_kind = usize::from(!matches!(judgement.lane, Lane::Scratch | Lane::Scratch2));
             let slot = region * 2 + lane_kind;
             if self.started_us[slot].is_some_and(|last| judgement.time.0 < last) {
@@ -267,6 +290,16 @@ impl JudgeLaneRuntime {
         let Some(now_us) = self.last_now_us else {
             return;
         };
+        state.judge_ms = self.region_started_us.map(|started| {
+            started.map(|started| {
+                (now_us.saturating_sub(started) / 1_000).clamp(i32::MIN as i64, i32::MAX as i64)
+                    as i32
+            })
+        });
+        state.judge_index = self.region_judge_index;
+        state.judge_combo = self.region_combo;
+        state.judge_timing_sign = self.region_timing_sign;
+        state.judge_timing_ms = self.region_timing_ms;
         state.judge_lane_ms = self.started_us.map(|started| {
             started.map(|started| {
                 (now_us.saturating_sub(started) / 1_000).clamp(i32::MIN as i64, i32::MAX as i64)

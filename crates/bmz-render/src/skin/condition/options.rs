@@ -272,17 +272,35 @@ pub(in crate::skin) fn test_skin_op(
         1080 => state.play_screen && state.practice_mode,
         // OPTION_1P/2P/3P_PERFECT and EARLY/LATE judge-detail conditions.
         // beatoraja maps FAST/EARLY to positive recent judge timing, LATE/SLOW to negative.
-        // judge_timing_sign is None when FAST/SLOW display is suppressed (Auto mode hides PGREAT,
-        // ThresholdMs mode hides below the threshold), so no extra judge_index guard is needed.
+        // beatoraja の EARLY/LATE は `getNowJudge(player) > 1` も要求するため、
+        // ThresholdMs=0 で timing sign が残る場合でも PGREAT とは同時成立しない。
         241 => state.judge_index[0] == Some(0),
-        1242 => state.judge_timing_sign[0] == Some(1),
-        1243 => state.judge_timing_sign[0] == Some(-1),
+        1242 => {
+            state.judge_index[0].is_some_and(|index| index > 0)
+                && state.judge_timing_sign[0] == Some(1)
+        }
+        1243 => {
+            state.judge_index[0].is_some_and(|index| index > 0)
+                && state.judge_timing_sign[0] == Some(-1)
+        }
         261 => state.judge_index[1] == Some(0),
-        1262 => state.judge_timing_sign[1] == Some(1),
-        1263 => state.judge_timing_sign[1] == Some(-1),
+        1262 => {
+            state.judge_index[1].is_some_and(|index| index > 0)
+                && state.judge_timing_sign[1] == Some(1)
+        }
+        1263 => {
+            state.judge_index[1].is_some_and(|index| index > 0)
+                && state.judge_timing_sign[1] == Some(-1)
+        }
         361 => state.judge_index[2] == Some(0),
-        1362 => state.judge_timing_sign[2] == Some(1),
-        1363 => state.judge_timing_sign[2] == Some(-1),
+        1362 => {
+            state.judge_index[2].is_some_and(|index| index > 0)
+                && state.judge_timing_sign[2] == Some(1)
+        }
+        1363 => {
+            state.judge_index[2].is_some_and(|index| index > 0)
+                && state.judge_timing_sign[2] == Some(-1)
+        }
         // OPTION_COURSE_STAGE1..4 / OPTION_COURSE_STAGE_FINAL
         280 => state.course_stage == Some(CourseStageMarker::Stage1),
         281 => state.course_stage == Some(CourseStageMarker::Stage2),

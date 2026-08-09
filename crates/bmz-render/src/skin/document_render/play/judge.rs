@@ -26,7 +26,12 @@ macro_rules! skin_document_render_play_judge_methods {
         ) -> Option<Vec<SkinRenderItem>> {
             let judge_image_index = judge_image_index(judge)?;
             let judge_def = self.judge.first()?;
-            let state = SkinDrawState { skin_offsets: *skin_offsets, ..SkinDrawState::default() };
+            let region = judge_def.index.clamp(0, MAX_JUDGE_REGIONS as i32 - 1) as usize;
+            let mut state =
+                SkinDrawState { skin_offsets: *skin_offsets, ..SkinDrawState::default() };
+            state.judge_ms[region] = Some(elapsed_ms);
+            state.judge_index[region] = Some(judge_image_index);
+            state.judge_combo[region] = combo;
             self.judge_render_items_for_def(
                 judge_def,
                 judge_image_index,
@@ -46,11 +51,28 @@ macro_rules! skin_document_render_play_judge_methods {
             sources: &HashMap<String, SkinDocumentTexture>,
             state: &SkinDrawState,
         ) -> Option<Vec<SkinRenderItem>> {
-            let image_destination = judge.images.get(judge_index)?;
+            let gauge_is_max = state.gauge_max > 0.0 && state.gauge >= state.gauge_max;
+            let effective_judge_index = if judge_index == 0 && gauge_is_max {
+                judge.images.get(6).map_or(0, |_| 6)
+            } else {
+                judge_index
+            };
+            let image_destination = judge.images.get(effective_judge_index)?;
             let enabled_options = self.enabled_options();
+            if !destination_ops_match(image_destination, &enabled_options, state, false)
+                || !eval_skin_draw_condition(&image_destination.draw, state)
+            {
+                return None;
+            }
+            let image_elapsed_ms =
+                if image_destination.timer.is_some() || !image_destination.timer_expr.is_empty() {
+                    destination_timer_elapsed_ms(image_destination, state)?
+                } else {
+                    elapsed_ms
+                };
             let mut image_frame = resolve_destination_frame_until_end(
                 image_destination,
-                elapsed_ms,
+                image_elapsed_ms,
                 &enabled_options,
                 state,
             )?;
@@ -65,15 +87,34 @@ macro_rules! skin_document_render_play_judge_methods {
             // 注入すると、`offsets: [32]` を持つ skin (beatoraja 標準形) で
             // 二重適用になり、判定文字とコンボ数の Y が乖離する原因になる。
             apply_skin_offset_to_frame(image_destination, &mut image_frame, &offset_state, false);
-            let number_destination = judge.numbers.get(judge_index);
-            let mut number_frame = number_destination.and_then(|destination| {
-                resolve_destination_frame_until_end(
-                    destination,
-                    elapsed_ms,
-                    &enabled_options,
-                    state,
-                )
+            let number_destination = (if judge_index == 0 && gauge_is_max {
+                judge.numbers.get(6).or_else(|| judge.numbers.first())
+            } else if judge_index < 3 {
+                judge.numbers.get(judge_index)
+            } else {
+                None
+            })
+            .filter(|destination| {
+                destination_ops_match(destination, &enabled_options, state, false)
+                    && eval_skin_draw_condition(&destination.draw, state)
             });
+            let number_elapsed_ms = number_destination.and_then(|destination| {
+                if destination.timer.is_some() || !destination.timer_expr.is_empty() {
+                    destination_timer_elapsed_ms(destination, state)
+                } else {
+                    Some(elapsed_ms)
+                }
+            });
+            let mut number_frame = number_destination.zip(number_elapsed_ms).and_then(
+                |(destination, number_elapsed_ms)| {
+                    resolve_destination_frame_until_end(
+                        destination,
+                        number_elapsed_ms,
+                        &enabled_options,
+                        state,
+                    )
+                },
+            );
             let judge_align = number_destination
                 .and_then(|destination| {
                     self.value
@@ -108,7 +149,7 @@ macro_rules! skin_document_render_play_judge_methods {
             }
             let image = self.image.iter().find(|image| image.id == image_destination.id)?;
             let source = resolve_document_source(sources, &image.src)?;
-            let uv = skin_image_texture_region(image, source.source_size, elapsed_ms);
+            let uv = skin_image_texture_region(image, source.source_size, image_elapsed_ms);
             let (rect, uv) = stretch_skin_image_geometry(
                 image_destination.stretch,
                 normalize_skin_frame_rect(image_frame, self.w, self.h),
@@ -150,7 +191,7 @@ macro_rules! skin_document_render_play_judge_methods {
                     combo as i64,
                     image_frame_for_numbers,
                     number_frame,
-                    elapsed_ms,
+                    number_elapsed_ms.unwrap_or(elapsed_ms),
                     sources,
                     false,
                     Some(judge_align),

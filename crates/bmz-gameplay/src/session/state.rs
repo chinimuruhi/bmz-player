@@ -125,6 +125,11 @@ pub struct GameSession {
     /// `audio_now` がこの時刻を超えたら keyon → keyoff へ遷移する。
     pub lane_auto_release_at: [Option<TimeUs>; LANE_COUNT],
     pub recent_judgements: Vec<JudgementEvent>,
+    /// 判定が発生した瞬間の表示用コンボを保持した判定列。
+    ///
+    /// DP/BATTLE では左右の判定表示が独立して残るため、現在の全体コンボから
+    /// 再計算せず、beatoraja と同じく各判定時点の値を描画へ渡す。
+    pub recent_display_judgements: Vec<DisplayJudgementEvent>,
     /// Skin runtime がフレーム間で入力・判定履歴を構築するためのイベント列。
     /// `advance_session_frame` の終端で drain し、長時間プレイでもセッション側に
     /// 無制限に蓄積しない。sequence は同一時刻のイベント順も一意にする。
@@ -243,6 +248,12 @@ pub struct SessionFrame {
 pub struct SkinRuntimeEvent {
     pub sequence: u64,
     pub kind: SkinRuntimeEventKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayJudgementEvent {
+    pub judgement: JudgementEvent,
+    pub combo: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

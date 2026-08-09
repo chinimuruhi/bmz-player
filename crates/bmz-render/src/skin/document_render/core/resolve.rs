@@ -21,6 +21,22 @@ macro_rules! skin_document_render_core_resolve_methods {
                 apply_nearest_f_diff_rank_fallback(state, has_nearest_f_diff_rank_destination);
             let state = state.as_ref();
             if let Some(judge_def) = self.judge.iter().find(|judge| judge.id == destination.id) {
+                // SkinJudge 自身に destination が設定されている場合は、beatoraja の
+                // `super.prepare` と同じく外側の timer/op/draw も先に評価する。
+                // dst が空なら SkinJudge constructor の既定 destination が残る。
+                if !destination.dst.is_empty() {
+                    if !destination_ops_match(
+                        destination,
+                        enabled_options,
+                        state,
+                        has_nearest_f_diff_rank_destination,
+                    ) || !eval_skin_draw_condition(&destination.draw, state)
+                    {
+                        return None;
+                    }
+                    let outer_elapsed = destination_timer_elapsed_ms(destination, state)?;
+                    resolve_destination_frame(destination, outer_elapsed, enabled_options, state)?;
+                }
                 let region = judge_def.index.clamp(0, MAX_JUDGE_REGIONS as i32 - 1) as usize;
                 let elapsed = state.judge_ms[region]?;
                 let judge_image_index = state.judge_index[region]?;

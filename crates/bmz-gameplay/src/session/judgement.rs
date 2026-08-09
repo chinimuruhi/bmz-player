@@ -4,6 +4,7 @@ pub fn apply_judge_outcome(
 ) -> Vec<JudgementEvent> {
     let has_display_only_event =
         outcome.events.iter().any(|event| session.display_only_lane_mask[event.lane.index()]);
+    let mut display_only_combos = Vec::with_capacity(outcome.events.len());
     for event in &mut outcome.events {
         if session.display_only_lane_mask[event.lane.index()] {
             if event.affects_score {
@@ -24,6 +25,10 @@ pub fn apply_judge_outcome(
                 }
             }
             event.affects_score = false;
+            display_only_combos
+                .push(session.opponent_score.as_ref().map_or(0, |score| score.combo));
+        } else {
+            display_only_combos.push(0);
         }
     }
     outcome.mine_hits.retain(|hit| {
@@ -48,7 +53,7 @@ pub fn apply_judge_outcome(
             .is_none_or(|note| !session.display_only_lane_mask[note.lane.index()])
     });
     let mut events = Vec::with_capacity(outcome.events.len());
-    for event in outcome.events {
+    for (event, display_only_combo) in outcome.events.into_iter().zip(display_only_combos) {
         if event.affects_score {
             session.score.apply(&event);
             update_course_combo_state(session, &event);
@@ -66,6 +71,16 @@ pub fn apply_judge_outcome(
                     },
                 );
             }
+        }
+        let combo = if session.display_only_lane_mask[event.lane.index()] {
+            display_only_combo
+        } else {
+            session.display_combo()
+        };
+        if event.affects_score || session.display_only_lane_mask[event.lane.index()] {
+            session
+                .recent_display_judgements
+                .push(DisplayJudgementEvent { judgement: event.clone(), combo });
         }
         push_skin_runtime_event(session, SkinRuntimeEventKind::Judgement(event.clone()));
         events.push(event);

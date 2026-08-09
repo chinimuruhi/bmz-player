@@ -36,6 +36,48 @@ fn lane_judge_region_maps_14k_sides() {
 }
 
 #[test]
+fn judge_runtime_keeps_each_dp_combo_after_recent_history_expires() {
+    use crate::snapshot::DisplayJudgement;
+
+    let document: SkinDocument =
+        serde_json::from_str(r#"{ "type": 0, "w": 1, "h": 1, "destination": [] }"#).unwrap();
+    let judgement = |lane, combo, time| DisplayJudgement {
+        lane,
+        judge: bmz_core::judge::Judge::PGreat,
+        side: None,
+        text: String::new(),
+        combo,
+        delta_us: 0,
+        time: TimeUs(time),
+        is_miss: false,
+        timing_ms_suppressed: false,
+    };
+    let mut runtime = DynamicTimerRuntime::default();
+    let mut state = SkinDrawState::default();
+    runtime.ingest_judge_lane_state(
+        &[judgement(Lane::Key1, 5, 1_000), judgement(Lane::Key8, 6, 2_000)],
+        2,
+        3_000,
+    );
+    runtime.advance(&document, &mut state, 3);
+    assert_eq!(&state.judge_combo[..2], &[5, 6]);
+
+    let mut break_judgement = judgement(Lane::Key8, 0, 4_000);
+    break_judgement.judge = bmz_core::judge::Judge::Bad;
+    runtime.ingest_judge_lane_state(&[break_judgement], 2, 5_000);
+    runtime.advance(&document, &mut state, 5);
+    assert_eq!(&state.judge_combo[..2], &[5, 0]);
+
+    // session 側の recent_judgements (800ms) が空になっても、SkinJudge の
+    // destination timer が終わるまで左右の最新値を保持する。
+    runtime.ingest_judge_lane_state(&[], 2, 1_000_000);
+    runtime.advance(&document, &mut state, 1_000);
+    assert_eq!(&state.judge_combo[..2], &[5, 0]);
+    assert_eq!(state.judge_ms[0], Some(999));
+    assert_eq!(state.judge_ms[1], Some(996));
+}
+
+#[test]
 fn dual_judge_regions_render_combo_at_separate_positions() {
     let document: SkinDocument = serde_json::from_str(
             r#"
@@ -137,6 +179,147 @@ fn dual_judge_regions_render_combo_at_separate_positions() {
 }
 
 #[test]
+fn judge_uses_max_gauge_variant_and_hides_combo_for_bad() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+        {
+            "type": 0,
+            "w": 100,
+            "h": 100,
+            "source": [{ "id": 1, "path": "judge.png" }],
+            "image": [
+                { "id": "i0", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "i1", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "i2", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "i3", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "i4", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "i5", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "i6", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 }
+            ],
+            "value": [
+                { "id": "n0", "src": 1, "x": 0, "y": 10, "w": 100, "h": 10, "divx": 10, "digit": 3 },
+                { "id": "n1", "src": 1, "x": 0, "y": 10, "w": 100, "h": 10, "divx": 10, "digit": 3 },
+                { "id": "n2", "src": 1, "x": 0, "y": 10, "w": 100, "h": 10, "divx": 10, "digit": 3 },
+                { "id": "n3", "src": 1, "x": 0, "y": 10, "w": 100, "h": 10, "divx": 10, "digit": 3 },
+                { "id": "n4", "src": 1, "x": 0, "y": 10, "w": 100, "h": 10, "divx": 10, "digit": 3 },
+                { "id": "n5", "src": 1, "x": 0, "y": 10, "w": 100, "h": 10, "divx": 10, "digit": 3 },
+                { "id": "n6", "src": 1, "x": 0, "y": 10, "w": 100, "h": 10, "divx": 10, "digit": 3 }
+            ],
+            "judge": [{
+                "id": "judge",
+                "index": 0,
+                "images": [
+                    { "id": "i0", "dst": [{ "time": 0, "x": 10, "y": 10, "w": 10, "h": 10 }, { "time": 500 }] },
+                    { "id": "i1", "dst": [{ "time": 0, "x": 20, "y": 10, "w": 10, "h": 10 }, { "time": 500 }] },
+                    { "id": "i2", "dst": [{ "time": 0, "x": 30, "y": 10, "w": 10, "h": 10 }, { "time": 500 }] },
+                    { "id": "i3", "dst": [{ "time": 0, "x": 40, "y": 10, "w": 10, "h": 10 }, { "time": 500 }] },
+                    { "id": "i4", "dst": [{ "time": 0, "x": 50, "y": 10, "w": 10, "h": 10 }, { "time": 500 }] },
+                    { "id": "i5", "dst": [{ "time": 0, "x": 60, "y": 10, "w": 10, "h": 10 }, { "time": 500 }] },
+                    { "id": "i6", "dst": [{ "time": 0, "x": 70, "y": 10, "w": 10, "h": 10 }, { "time": 500 }] }
+                ],
+                "numbers": [
+                    { "id": "n0", "dst": [{ "time": 0, "x": 10, "y": 0, "w": 5, "h": 10 }, { "time": 500 }] },
+                    { "id": "n1", "dst": [{ "time": 0, "x": 20, "y": 0, "w": 5, "h": 10 }, { "time": 500 }] },
+                    { "id": "n2", "dst": [{ "time": 0, "x": 30, "y": 0, "w": 5, "h": 10 }, { "time": 500 }] },
+                    { "id": "n3", "dst": [{ "time": 0, "x": 40, "y": 0, "w": 5, "h": 10 }, { "time": 500 }] },
+                    { "id": "n4", "dst": [{ "time": 0, "x": 50, "y": 0, "w": 5, "h": 10 }, { "time": 500 }] },
+                    { "id": "n5", "dst": [{ "time": 0, "x": 60, "y": 0, "w": 5, "h": 10 }, { "time": 500 }] },
+                    { "id": "n6", "dst": [{ "time": 0, "x": 70, "y": 0, "w": 5, "h": 10 }, { "time": 500 }] }
+                ]
+            }],
+            "destination": [{ "id": "judge" }]
+        }
+        "#,
+    )
+    .unwrap();
+    let sources = mock_source("1", 100.0, 100.0);
+    let max_state = SkinDrawState { gauge: 100.0, gauge_max: 100.0, ..SkinDrawState::default() };
+
+    let max_items = document
+        .judge_render_items_for_def(&document.judge[0], 0, 42, 100, &sources, &max_state)
+        .unwrap();
+    let max_x = match &max_items[0] {
+        SkinRenderItem::Image { rect, .. } => rect.x,
+        _ => panic!(),
+    };
+    assert!(approx_eq(max_x, 0.7));
+    assert!(max_items.len() > 1);
+
+    let bad_items = document
+        .judge_render_items_for_def(
+            &document.judge[0],
+            3,
+            42,
+            100,
+            &sources,
+            &SkinDrawState::default(),
+        )
+        .unwrap();
+    assert_eq!(bad_items.len(), 1);
+}
+
+#[test]
+fn judge_child_destination_uses_its_own_timer() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+        {
+            "type": 0, "w": 100, "h": 100,
+            "source": [{ "id": 1, "path": "judge.png" }],
+            "image": [{ "id": "pg", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 }],
+            "judge": [{
+                "id": "judge", "index": 0,
+                "images": [{
+                    "id": "pg", "timer": 0, "loop": -1,
+                    "dst": [{ "time": 0, "x": 0, "y": 0, "w": 10, "h": 10 }, { "time": 500 }]
+                }]
+            }],
+            "destination": [{ "id": "judge" }]
+        }
+        "#,
+    )
+    .unwrap();
+    let sources = mock_source("1", 100.0, 100.0);
+    let state = SkinDrawState { elapsed_ms: 600, ..SkinDrawState::default() };
+
+    assert!(
+        document
+            .judge_render_items_for_def(&document.judge[0], 0, 0, 100, &sources, &state)
+            .is_none()
+    );
+}
+
+#[test]
+fn judge_outer_destination_conditions_are_applied() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+        {
+            "type": 0, "w": 100, "h": 100,
+            "source": [{ "id": 1, "path": "judge.png" }],
+            "image": [{ "id": "pg", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 }],
+            "judge": [{
+                "id": "judge", "index": 0,
+                "images": [{
+                    "id": "pg",
+                    "dst": [{ "time": 0, "x": 0, "y": 0, "w": 10, "h": 10 }, { "time": 500 }]
+                }]
+            }],
+            "destination": [{
+                "id": "judge", "op": [999],
+                "dst": [{ "time": 0, "x": 0, "y": 0, "w": 1, "h": 1 }]
+            }]
+        }
+        "#,
+    )
+    .unwrap();
+    let sources = mock_source("1", 100.0, 100.0);
+    let mut state = SkinDrawState::default();
+    state.judge_ms[0] = Some(100);
+    state.judge_index[0] = Some(0);
+
+    assert!(document.static_render_items(&sources, &state, &SkinTextState::default()).is_empty());
+}
+
+#[test]
 fn skin_document_hides_judge_combo_when_region_combo_is_zero() {
     let document: SkinDocument = serde_json::from_str(
             r#"
@@ -198,8 +381,8 @@ fn skin_draw_options_match_judge_fast_slow_regions() {
         judge_timing_sign: [None, None, None],
         ..SkinDrawState::default()
     };
-    // ThresholdMs モード(threshold=0): PGREAT も side=Some のまま渡るため
-    // judge_timing_sign=Some(1) となり、op 1242 は true になる。
+    // ThresholdMs モード(threshold=0)で PGREAT の side が残っても、beatoraja と
+    // 同じく PERFECT と EARLY/LATE は同時成立しない。
     let perfect_threshold = SkinDrawState {
         judge_index: [Some(0), None, None],
         judge_timing_sign: [Some(1), None, None],
@@ -213,7 +396,7 @@ fn skin_draw_options_match_judge_fast_slow_regions() {
     assert!(test_skin_op(241, &[], &perfect_auto));
     assert!(!test_skin_op(1242, &[], &perfect_auto));
     assert!(test_skin_op(241, &[], &perfect_threshold));
-    assert!(test_skin_op(1242, &[], &perfect_threshold));
+    assert!(!test_skin_op(1242, &[], &perfect_threshold));
 }
 
 #[test]

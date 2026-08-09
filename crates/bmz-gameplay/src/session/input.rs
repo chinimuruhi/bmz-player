@@ -53,6 +53,9 @@ pub fn update_recent_judgements(session: &mut GameSession, events: &[JudgementEv
             .cloned(),
     );
     session.recent_judgements.retain(|event| now.0 <= event.time.0 + JUDGEMENT_DISPLAY_US);
+    session
+        .recent_display_judgements
+        .retain(|event| now.0 <= event.judgement.time.0 + JUDGEMENT_DISPLAY_US);
 }
 
 pub fn update_recent_inputs(session: &mut GameSession, inputs: &[InputEvent], now: TimeUs) {

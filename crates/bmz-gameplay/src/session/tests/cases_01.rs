@@ -57,6 +57,90 @@ fn display_only_opponent_judgement_does_not_change_primary_score_or_gauge() {
 }
 
 #[test]
+fn judgement_display_latches_combo_at_each_dp_event() {
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.autoplay = None;
+    session.score.combo = 4;
+    session.score.max_combo = 4;
+
+    for (lane, judge, time) in [
+        (Lane::Key1, Judge::PGreat, 1_000_000),
+        (Lane::Key8, Judge::PGreat, 1_100_000),
+        (Lane::Key8, Judge::Bad, 1_200_000),
+    ] {
+        apply_judge_outcome(
+            &mut session,
+            JudgeOutcome {
+                events: vec![JudgementEvent {
+                    note_id: None,
+                    lane,
+                    judge,
+                    side: TimingSide::Fast,
+                    delta: TimeUs(0),
+                    time: TimeUs(time),
+                    affects_score: true,
+                }],
+                ..JudgeOutcome::default()
+            },
+        );
+    }
+
+    assert_eq!(
+        session
+            .recent_display_judgements
+            .iter()
+            .map(|event| (event.judgement.lane, event.combo))
+            .collect::<Vec<_>>(),
+        [(Lane::Key1, 5), (Lane::Key8, 6), (Lane::Key8, 0)]
+    );
+}
+
+#[test]
+fn battle_judgement_display_latches_each_players_combo() {
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.autoplay = None;
+    session.score.combo = 4;
+    session.opponent_score = Some(ScoreState { combo: 5, max_combo: 5, ..ScoreState::default() });
+    session.display_only_lane_mask[Lane::Key8.index()] = true;
+
+    apply_judge_outcome(
+        &mut session,
+        JudgeOutcome {
+            events: vec![
+                JudgementEvent {
+                    note_id: None,
+                    lane: Lane::Key1,
+                    judge: Judge::PGreat,
+                    side: TimingSide::Fast,
+                    delta: TimeUs(0),
+                    time: TimeUs(1_000_000),
+                    affects_score: true,
+                },
+                JudgementEvent {
+                    note_id: None,
+                    lane: Lane::Key8,
+                    judge: Judge::PGreat,
+                    side: TimingSide::Fast,
+                    delta: TimeUs(0),
+                    time: TimeUs(1_000_000),
+                    affects_score: true,
+                },
+            ],
+            ..JudgeOutcome::default()
+        },
+    );
+
+    assert_eq!(
+        session
+            .recent_display_judgements
+            .iter()
+            .map(|event| (event.judgement.lane, event.combo))
+            .collect::<Vec<_>>(),
+        [(Lane::Key1, 5), (Lane::Key8, 6)]
+    );
+}
+
+#[test]
 fn display_only_opponent_hcn_updates_only_opponent_gauge() {
     let mut session = session_with_autoplay(chart_with_keysound());
     session.gauge = GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 200);
