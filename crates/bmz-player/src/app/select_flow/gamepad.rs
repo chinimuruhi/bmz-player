@@ -3,7 +3,14 @@ use super::*;
 impl WinitApp {
     pub(super) fn poll_gamepad_events(&mut self) {
         let should_log_raw_input = self.should_log_gamepad_key_config_raw_input();
+        let configs = gamepad_scratch_configs(&self.boot.profile_config.input);
+        let slots =
+            resolve_gamepad_runtime_slots(&self.boot.app_config.input, self.gamepad.as_ref());
         let Some(gamepad) = &mut self.gamepad else { return };
+        gamepad.set_analog_config(
+            configs,
+            crate::input::gamepad::GamepadSlotMap::from_device_ids(slots),
+        );
         let backend_name = gamepad.name();
         let output = gamepad.poll();
         if self.input.should_discard_gamepad_output(self.ui.focused) {

@@ -1,6 +1,8 @@
 use super::*;
+use crate::config::profile_config::GamepadScratchConfig;
 
 pub fn normalize_profile_input(input: &mut ProfileInputConfig) {
+    migrate_legacy_analog_scratch_config(input);
     if !input.legacy_bindings.is_empty() {
         let (ui, play) = migrate_legacy_bindings(&input.legacy_bindings);
         if input.ui.bindings.is_empty() && !ui.is_empty() {
@@ -15,6 +17,23 @@ pub fn normalize_profile_input(input: &mut ProfileInputConfig) {
     if input.ui.bindings.is_empty() {
         input.ui.bindings = crate::config::profile_config::default_ui_bindings();
     }
+}
+
+fn migrate_legacy_analog_scratch_config(input: &mut ProfileInputConfig) {
+    let nested_is_default = input.gamepad1 == GamepadScratchConfig::default()
+        && input.gamepad2 == GamepadScratchConfig::default();
+    if nested_is_default {
+        if let Some(sensitivity) = input.legacy_analog_scratch_sensitivity {
+            input.gamepad1.analog_scratch_sensitivity = sensitivity;
+            input.gamepad2.analog_scratch_sensitivity = sensitivity;
+        }
+        if let Some(threshold) = input.legacy_analog_scratch_threshold {
+            input.gamepad1.analog_scratch_threshold = threshold;
+            input.gamepad2.analog_scratch_threshold = threshold;
+        }
+    }
+    input.legacy_analog_scratch_sensitivity = None;
+    input.legacy_analog_scratch_threshold = None;
 }
 
 pub fn default_profile_input() -> ProfileInputConfig {
@@ -36,9 +55,11 @@ pub fn default_profile_input() -> ProfileInputConfig {
         },
         play,
         legacy_bindings: Vec::new(),
-        analog_scratch_sensitivity: 1.0,
+        legacy_analog_scratch_sensitivity: None,
         analog_scratch_timeout_ms: 500,
-        analog_scratch_threshold: 100,
+        legacy_analog_scratch_threshold: None,
+        gamepad1: GamepadScratchConfig::default(),
+        gamepad2: GamepadScratchConfig::default(),
         analog_ticks_per_scroll: 3,
         keyboard_release_bounce_ms: 0,
         controller_release_bounce_ms: 0,

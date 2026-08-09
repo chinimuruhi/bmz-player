@@ -36,14 +36,21 @@ pub struct ProfileInputConfig {
     /// 旧 `[[input.bindings]]` (lane + action 混在)。読込時のみ。保存時は出力しない。
     #[serde(default, rename = "bindings", skip_serializing)]
     pub legacy_bindings: Vec<BindingConfigEntry>,
-    #[serde(default = "default_analog_scratch_sensitivity")]
-    pub analog_scratch_sensitivity: f32,
+    /// 旧profileの共通アナログ感度。読込時に1P/2Pへ移行し、保存時は出力しない。
+    #[serde(default, rename = "analog_scratch_sensitivity", skip_serializing)]
+    pub legacy_analog_scratch_sensitivity: Option<f32>,
     /// 旧アナログ皿の壁時計タイムアウト。読込互換だけに残し、保存時は出力しない。
     #[serde(default = "default_analog_scratch_timeout_ms", skip_serializing)]
     pub analog_scratch_timeout_ms: u32,
-    /// beatoraja の analogScratchThreshold 相当。既定は Version2 向けの 100。
-    #[serde(default = "default_analog_scratch_threshold")]
-    pub analog_scratch_threshold: u32,
+    /// 旧profileの共通停止閾値。読込時に1P/2Pへ移行し、保存時は出力しない。
+    #[serde(default, rename = "analog_scratch_threshold", skip_serializing)]
+    pub legacy_analog_scratch_threshold: Option<u32>,
+    /// 論理1Pコントローラー (`gamepad1`) のスクラッチ設定。
+    #[serde(default)]
+    pub gamepad1: GamepadScratchConfig,
+    /// 論理2Pコントローラー (`gamepad2`) のスクラッチ設定。
+    #[serde(default)]
+    pub gamepad2: GamepadScratchConfig,
     /// 選曲画面でアナログスクラッチ何 tick ごとにカーソルを 1 つ動かすか (beatoraja の analogTicksPerScroll)。
     #[serde(default = "default_analog_ticks_per_scroll")]
     pub analog_ticks_per_scroll: u32,
@@ -72,6 +79,32 @@ fn default_analog_scratch_timeout_ms() -> u32 {
 
 pub fn default_analog_scratch_threshold() -> u32 {
     100
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GamepadScratchConfig {
+    /// trueは回転差分方式、falseはbeatorajaのANALOG SCRATCH OFF相当の端点方式。
+    #[serde(default = "default_true")]
+    pub analog_scratch: bool,
+    #[serde(default = "default_analog_scratch_sensitivity")]
+    pub analog_scratch_sensitivity: f32,
+    /// beatoraja の analogScratchThreshold 相当。既定は Version2 向けの100。
+    #[serde(default = "default_analog_scratch_threshold")]
+    pub analog_scratch_threshold: u32,
+}
+
+impl Default for GamepadScratchConfig {
+    fn default() -> Self {
+        Self {
+            analog_scratch: true,
+            analog_scratch_sensitivity: default_analog_scratch_sensitivity(),
+            analog_scratch_threshold: default_analog_scratch_threshold(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_analog_ticks_per_scroll() -> u32 {

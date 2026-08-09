@@ -161,11 +161,31 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
                 .map(|next| profile.input.select_input_mode = next)
                 .is_some()
         }
-        SettingsEntryId::AnalogScratchSensitivity => {
-            adjust_f32_tenths(&mut profile.input.analog_scratch_sensitivity, delta, 0.1, 5.0)
+        SettingsEntryId::AnalogScratch1P => {
+            profile.input.gamepad1.analog_scratch = !profile.input.gamepad1.analog_scratch;
+            true
         }
-        SettingsEntryId::AnalogScratchThreshold => {
-            adjust_u32(&mut profile.input.analog_scratch_threshold, delta, 1, 1000)
+        SettingsEntryId::AnalogScratchSensitivity1P => adjust_f32_tenths(
+            &mut profile.input.gamepad1.analog_scratch_sensitivity,
+            delta,
+            0.1,
+            5.0,
+        ),
+        SettingsEntryId::AnalogScratchThreshold1P => {
+            adjust_u32(&mut profile.input.gamepad1.analog_scratch_threshold, delta, 1, 1000)
+        }
+        SettingsEntryId::AnalogScratch2P => {
+            profile.input.gamepad2.analog_scratch = !profile.input.gamepad2.analog_scratch;
+            true
+        }
+        SettingsEntryId::AnalogScratchSensitivity2P => adjust_f32_tenths(
+            &mut profile.input.gamepad2.analog_scratch_sensitivity,
+            delta,
+            0.1,
+            5.0,
+        ),
+        SettingsEntryId::AnalogScratchThreshold2P => {
+            adjust_u32(&mut profile.input.gamepad2.analog_scratch_threshold, delta, 1, 1000)
         }
         SettingsEntryId::AnalogTicksPerScroll => {
             adjust_u32(&mut profile.input.analog_ticks_per_scroll, delta, 1, 100)

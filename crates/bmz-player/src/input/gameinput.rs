@@ -11,8 +11,8 @@ use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
 use super::gamepad::{
     AnalogGamepadProcessor, ConnectedGamepad, GamepadButtonEvent, GamepadPollOutput,
-    RawControlCode, RawInputEvent, RawInputEventKind, current_device_timestamp,
-    gamepad_device_id_from_stable_id,
+    GamepadScratchConfig, GamepadSlotMap, RawControlCode, RawInputEvent, RawInputEventKind,
+    current_device_timestamp, gamepad_device_id_from_stable_id,
 };
 
 const GAME_INPUT_KIND_CONTROLLER: u32 = 0x0000_000e;
@@ -163,7 +163,7 @@ pub struct GameInputBackend {
 }
 
 impl GameInputBackend {
-    pub fn new(sensitivity: f32, scratch_threshold: u32) -> Result<Self> {
+    pub fn new(configs: [GamepadScratchConfig; 2]) -> Result<Self> {
         let library_name: Vec<u16> = "GameInput.dll".encode_utf16().chain(Some(0)).collect();
         // SAFETY: library_name is nul-terminated and remains alive for the call.
         let module = unsafe { LoadLibraryW(library_name.as_ptr()) };
@@ -194,13 +194,13 @@ impl GameInputBackend {
             owner_thread: std::thread::current().id(),
             devices: HashMap::new(),
             next_backend_id: 0,
-            analog: AnalogGamepadProcessor::new(sensitivity, scratch_threshold),
+            analog: AnalogGamepadProcessor::new(configs, GamepadSlotMap::default()),
             diagnostics: GameInputPollDiagnostics::default(),
         })
     }
 
-    pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
-        self.analog.set_config(sensitivity, scratch_threshold);
+    pub fn set_analog_config(&mut self, configs: [GamepadScratchConfig; 2], slots: GamepadSlotMap) {
+        self.analog.set_config(configs, slots);
     }
 
     pub fn poll(&mut self) -> GamepadPollOutput {
@@ -652,7 +652,9 @@ mod tests {
 
     #[test]
     fn creates_and_polls_installed_gameinput_runtime() {
-        let Ok(mut backend) = GameInputBackend::new(1.0, 100) else { return };
+        let Ok(mut backend) = GameInputBackend::new([GamepadScratchConfig::default(); 2]) else {
+            return;
+        };
         let _ = backend.poll();
         assert_eq!(backend.owner_thread, std::thread::current().id());
     }

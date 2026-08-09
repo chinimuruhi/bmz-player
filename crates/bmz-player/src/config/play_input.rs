@@ -31,7 +31,8 @@ use device::*;
 mod tests {
     use super::*;
     use crate::config::profile_config::{
-        ProfileInputConfig, SelectInputModeConfig, UiInputConfig, default_ui_bindings,
+        GamepadScratchConfig, ProfileInputConfig, SelectInputModeConfig, UiInputConfig,
+        default_ui_bindings,
     };
 
     fn sample_7k_input() -> ProfileInputConfig {
@@ -51,9 +52,11 @@ mod tests {
             ui: UiInputConfig { bindings: default_ui_bindings() },
             play,
             legacy_bindings: Vec::new(),
-            analog_scratch_sensitivity: 1.0,
+            legacy_analog_scratch_sensitivity: None,
             analog_scratch_timeout_ms: 500,
-            analog_scratch_threshold: 100,
+            legacy_analog_scratch_threshold: None,
+            gamepad1: GamepadScratchConfig::default(),
+            gamepad2: GamepadScratchConfig::default(),
             analog_ticks_per_scroll: 3,
             keyboard_release_bounce_ms: 0,
             controller_release_bounce_ms: 0,
@@ -88,9 +91,11 @@ mod tests {
             ui: UiInputConfig::default(),
             play,
             legacy_bindings: Vec::new(),
-            analog_scratch_sensitivity: 1.0,
+            legacy_analog_scratch_sensitivity: None,
             analog_scratch_timeout_ms: 500,
-            analog_scratch_threshold: 100,
+            legacy_analog_scratch_threshold: None,
+            gamepad1: GamepadScratchConfig::default(),
+            gamepad2: GamepadScratchConfig::default(),
             analog_ticks_per_scroll: 3,
             keyboard_release_bounce_ms: 0,
             controller_release_bounce_ms: 0,
@@ -267,9 +272,11 @@ mod tests {
             ui: UiInputConfig::default(),
             play,
             legacy_bindings: Vec::new(),
-            analog_scratch_sensitivity: 1.0,
+            legacy_analog_scratch_sensitivity: None,
             analog_scratch_timeout_ms: 500,
-            analog_scratch_threshold: 100,
+            legacy_analog_scratch_threshold: None,
+            gamepad1: GamepadScratchConfig::default(),
+            gamepad2: GamepadScratchConfig::default(),
             analog_ticks_per_scroll: 3,
             keyboard_release_bounce_ms: 0,
             controller_release_bounce_ms: 0,

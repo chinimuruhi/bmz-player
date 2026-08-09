@@ -81,18 +81,22 @@ impl WinitApp {
         skin_pipeline.set_pending(SkinKind::Result, pending_result_skin);
         let now = Instant::now();
 
-        let gamepad = if boot.app_config.input.gamepad_enabled {
-            let sensitivity = boot.profile_config.input.analog_scratch_sensitivity;
-            let threshold = boot.profile_config.input.analog_scratch_threshold;
+        let mut gamepad = if boot.app_config.input.gamepad_enabled {
             initialize_gamepad_backend(
                 boot.app_config.input.gamepad_backend,
-                sensitivity,
-                threshold,
+                gamepad_scratch_configs(&boot.profile_config.input),
                 raw_input_bridge.clone(),
             )
         } else {
             None
         };
+        let gamepad_slots = resolve_gamepad_runtime_slots(&boot.app_config.input, gamepad.as_ref());
+        if let Some(backend) = &mut gamepad {
+            backend.set_analog_config(
+                gamepad_scratch_configs(&boot.profile_config.input),
+                crate::input::gamepad::GamepadSlotMap::from_device_ids(gamepad_slots),
+            );
+        }
 
         let initial_window_mode = boot.app_config.video.mode.clone();
         let applied_obs_config = boot.app_config.obs.clone();

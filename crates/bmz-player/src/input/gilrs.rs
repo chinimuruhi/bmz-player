@@ -5,8 +5,8 @@ use gilrs::{Axis, Button, EventType};
 
 use super::gamepad::{
     AnalogGamepadProcessor, ConnectedGamepad, GamepadButtonEvent, GamepadPollOutput,
-    RawControlCode, RawInputEvent, RawInputEventKind, current_device_timestamp,
-    gamepad_device_id_from_backend_index,
+    GamepadScratchConfig, RawControlCode, RawInputEvent, RawInputEventKind,
+    current_device_timestamp, gamepad_device_id_from_backend_index,
 };
 
 pub use super::gamepad::GamepadSlotMap;
@@ -22,14 +22,14 @@ pub struct GilrsBackend {
 }
 
 impl GilrsBackend {
-    pub fn new(sensitivity: f32, scratch_threshold: u32) -> Result<Self, Box<gilrs::Error>> {
+    pub fn new(configs: [GamepadScratchConfig; 2]) -> Result<Self, Box<gilrs::Error>> {
         let gilrs =
             gilrs::GilrsBuilder::new().with_default_filters(false).build().map_err(Box::new)?;
-        Ok(Self { gilrs, analog: AnalogGamepadProcessor::new(sensitivity, scratch_threshold) })
+        Ok(Self { gilrs, analog: AnalogGamepadProcessor::new(configs, GamepadSlotMap::default()) })
     }
 
-    pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
-        self.analog.set_config(sensitivity, scratch_threshold);
+    pub fn set_analog_config(&mut self, configs: [GamepadScratchConfig; 2], slots: GamepadSlotMap) {
+        self.analog.set_config(configs, slots);
     }
 
     pub fn poll(&mut self) -> GilrsPollOutput {

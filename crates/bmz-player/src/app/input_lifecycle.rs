@@ -77,8 +77,7 @@ impl WinitApp {
         input.gamepad_slot_runtime_device_ids = [None; 2];
         let enabled = input.gamepad_enabled;
         let requested = input.gamepad_backend;
-        let sensitivity = self.boot.profile_config.input.analog_scratch_sensitivity;
-        let threshold = self.boot.profile_config.input.analog_scratch_threshold;
+        let configs = gamepad_scratch_configs(&self.boot.profile_config.input);
 
         // RawInputBackend の Drop で usage 登録を解除してから新 backend を作る。
         self.gamepad = None;
@@ -87,16 +86,19 @@ impl WinitApp {
             return;
         }
 
-        let mut gamepad = initialize_gamepad_backend(
-            requested,
-            sensitivity,
-            threshold,
-            self.raw_input_bridge.clone(),
-        );
+        let mut gamepad =
+            initialize_gamepad_backend(requested, configs, self.raw_input_bridge.clone());
         let attach_error = gamepad.as_mut().and_then(|backend| backend.attach_window(window).err());
         if let Some(error) = attach_error {
             tracing::warn!(%error, ?requested, "gamepad backend could not attach to the window; falling back to gilrs");
-            gamepad = initialize_gilrs_backend(sensitivity, threshold);
+            gamepad = initialize_gilrs_backend(configs);
+        }
+        let slots = resolve_gamepad_runtime_slots(&self.boot.app_config.input, gamepad.as_ref());
+        if let Some(backend) = &mut gamepad {
+            backend.set_analog_config(
+                configs,
+                crate::input::gamepad::GamepadSlotMap::from_device_ids(slots),
+            );
         }
         tracing::info!(
             ?requested,
@@ -231,10 +233,9 @@ impl WinitApp {
                     self.gamepad.as_mut().and_then(|backend| backend.attach_window(&window).err());
                 if let Some(error) = raw_input_attach_error {
                     tracing::warn!(%error, "gamepad backend could not attach to the window; falling back to gilrs");
-                    self.gamepad = initialize_gilrs_backend(
-                        self.boot.profile_config.input.analog_scratch_sensitivity,
-                        self.boot.profile_config.input.analog_scratch_threshold,
-                    );
+                    let configs = gamepad_scratch_configs(&self.boot.profile_config.input);
+                    self.gamepad = initialize_gilrs_backend(configs);
+                    self.apply_gamepad_analog_config();
                 }
                 window.request_redraw();
                 self.ui.egui = Some(EguiLayer::new(

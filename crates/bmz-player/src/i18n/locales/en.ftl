@@ -366,6 +366,7 @@ profile-display-auto-adjust-hispeed = Adjust HS to the current BPM when lane cov
 profile-display-green-number = Target green number
 profile-input-title = Input
 profile-input-analog-sensitivity = Analog sensitivity
+profile-input-analog-scratch = Analog scratch
 profile-input-analog-stop-threshold = Analog stop threshold
 profile-input-keyboard-release-bounce-ms = Keyboard release bounce filter (ms)
 profile-input-controller-release-bounce-ms = Controller release bounce filter (ms)

@@ -341,7 +341,12 @@ impl WinitApp {
         }
         if matches!(
             entry_id,
-            SettingsEntryId::AnalogScratchSensitivity | SettingsEntryId::AnalogScratchThreshold
+            SettingsEntryId::AnalogScratch1P
+                | SettingsEntryId::AnalogScratchSensitivity1P
+                | SettingsEntryId::AnalogScratchThreshold1P
+                | SettingsEntryId::AnalogScratch2P
+                | SettingsEntryId::AnalogScratchSensitivity2P
+                | SettingsEntryId::AnalogScratchThreshold2P
         ) {
             self.apply_gamepad_analog_config();
         }
@@ -355,27 +360,25 @@ impl WinitApp {
         before: &ProfileInputConfig,
     ) {
         let after = &self.boot.profile_config.input;
-        if before.analog_scratch_sensitivity == after.analog_scratch_sensitivity
-            && before.analog_scratch_threshold == after.analog_scratch_threshold
-        {
+        if before.gamepad1 == after.gamepad1 && before.gamepad2 == after.gamepad2 {
             return;
         }
         self.apply_gamepad_analog_config();
     }
 
     pub(super) fn apply_gamepad_analog_config(&mut self) {
-        let input = &self.boot.profile_config.input;
+        let configs = gamepad_scratch_configs(&self.boot.profile_config.input);
+        let slots =
+            resolve_gamepad_runtime_slots(&self.boot.app_config.input, self.gamepad.as_ref());
         if let Some(gamepad) = &mut self.gamepad {
             gamepad.set_analog_config(
-                input.analog_scratch_sensitivity,
-                input.analog_scratch_threshold,
-            );
-            tracing::info!(
-                sensitivity = input.analog_scratch_sensitivity,
-                threshold = input.analog_scratch_threshold,
-                "applied analog scratch settings"
+                configs,
+                crate::input::gamepad::GamepadSlotMap::from_device_ids(slots),
             );
         }
+        self.reset_select_analog_scroll();
+        self.reset_play_analog_scroll();
+        self.clear_result_ir_scroll_input();
     }
 
     pub(super) fn sync_select_play_options_from_profile_if_needed(

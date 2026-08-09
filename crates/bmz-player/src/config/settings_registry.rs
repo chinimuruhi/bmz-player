@@ -54,8 +54,12 @@ pub enum SettingsEntryId {
     Hidden,
     TargetGreenNumber,
     SelectInputMode,
-    AnalogScratchSensitivity,
-    AnalogScratchThreshold,
+    AnalogScratch1P,
+    AnalogScratchSensitivity1P,
+    AnalogScratchThreshold1P,
+    AnalogScratch2P,
+    AnalogScratchSensitivity2P,
+    AnalogScratchThreshold2P,
     AnalogTicksPerScroll,
     KeyboardReleaseBounceMs,
     ControllerReleaseBounceMs,
@@ -127,8 +131,12 @@ impl SettingsEntryId {
 
     pub const INPUT_ENTRIES: &'static [Self] = &[
         Self::SelectInputMode,
-        Self::AnalogScratchSensitivity,
-        Self::AnalogScratchThreshold,
+        Self::AnalogScratch1P,
+        Self::AnalogScratchSensitivity1P,
+        Self::AnalogScratchThreshold1P,
+        Self::AnalogScratch2P,
+        Self::AnalogScratchSensitivity2P,
+        Self::AnalogScratchThreshold2P,
         Self::AnalogTicksPerScroll,
         Self::KeyboardReleaseBounceMs,
         Self::ControllerReleaseBounceMs,
@@ -195,8 +203,12 @@ impl SettingsEntryId {
             Self::Hidden => "HIDDEN",
             Self::TargetGreenNumber => "GREEN NO.",
             Self::SelectInputMode => "SELECT INPUT",
-            Self::AnalogScratchSensitivity => "ANALOG SENS",
-            Self::AnalogScratchThreshold => "ANALOG STOP",
+            Self::AnalogScratch1P => "1P ANALOG SCRATCH",
+            Self::AnalogScratchSensitivity1P => "1P ANALOG SENS",
+            Self::AnalogScratchThreshold1P => "1P ANALOG STOP",
+            Self::AnalogScratch2P => "2P ANALOG SCRATCH",
+            Self::AnalogScratchSensitivity2P => "2P ANALOG SENS",
+            Self::AnalogScratchThreshold2P => "2P ANALOG STOP",
             Self::AnalogTicksPerScroll => "ANALOG SCROLL",
             Self::KeyboardReleaseBounceMs => "KEYBOARD BOUNCE",
             Self::ControllerReleaseBounceMs => "CONTROLLER BOUNCE",
@@ -400,16 +412,25 @@ mod tests {
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::MisslayerDurationMs, 50));
         assert_eq!(profile.play.misslayer_duration_ms, 5_000);
 
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AnalogScratchSensitivity, 1));
-        assert!((profile.input.analog_scratch_sensitivity - 1.1).abs() < f32::EPSILON);
+        assert!(adjust_settings_value(
+            &mut profile,
+            SettingsEntryId::AnalogScratchSensitivity1P,
+            1,
+        ));
+        assert!((profile.input.gamepad1.analog_scratch_sensitivity - 1.1).abs() < f32::EPSILON);
 
-        profile.input.analog_scratch_threshold = 995;
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AnalogScratchThreshold, 10));
-        assert_eq!(profile.input.analog_scratch_threshold, 1_000);
+        profile.input.gamepad1.analog_scratch_threshold = 995;
+        assert!(
+            adjust_settings_value(&mut profile, SettingsEntryId::AnalogScratchThreshold1P, 10,)
+        );
+        assert_eq!(profile.input.gamepad1.analog_scratch_threshold, 1_000);
         assert_eq!(
-            format_settings_value(&profile, SettingsEntryId::AnalogScratchThreshold),
+            format_settings_value(&profile, SettingsEntryId::AnalogScratchThreshold1P),
             "1000 ticks"
         );
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AnalogScratch2P, 1));
+        assert!(!profile.input.gamepad2.analog_scratch);
 
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::KeyboardReleaseBounceMs, 5,));
         assert_eq!(profile.input.keyboard_release_bounce_ms, 5);

@@ -34,8 +34,8 @@ mod windows {
 
     use super::super::gamepad::{
         AnalogGamepadProcessor, ConnectedGamepad, GamepadButtonEvent, GamepadPollOutput,
-        GamepadPressedButton, RawControlCode, RawInputEvent, RawInputEventKind,
-        current_device_timestamp, gamepad_device_id_from_stable_id,
+        GamepadPressedButton, GamepadScratchConfig, GamepadSlotMap, RawControlCode, RawInputEvent,
+        RawInputEventKind, current_device_timestamp, gamepad_device_id_from_stable_id,
     };
 
     const GENERIC_DESKTOP_USAGE_PAGE: u16 = 0x01;
@@ -185,8 +185,8 @@ mod windows {
     }
 
     impl RawInputBackend {
-        pub fn new(bridge: RawInputBridge, sensitivity: f32, scratch_threshold: u32) -> Self {
-            Self { bridge, analog: AnalogGamepadProcessor::new(sensitivity, scratch_threshold) }
+        pub fn new(bridge: RawInputBridge, configs: [GamepadScratchConfig; 2]) -> Self {
+            Self { bridge, analog: AnalogGamepadProcessor::new(configs, GamepadSlotMap::default()) }
         }
 
         pub fn attach_window(&mut self, window: &Window) -> Result<()> {
@@ -197,8 +197,12 @@ mod windows {
             self.bridge.register_window(handle.hwnd.get() as HWND)
         }
 
-        pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
-            self.analog.set_config(sensitivity, scratch_threshold);
+        pub fn set_analog_config(
+            &mut self,
+            configs: [GamepadScratchConfig; 2],
+            slots: GamepadSlotMap,
+        ) {
+            self.analog.set_config(configs, slots);
         }
 
         pub fn poll(&mut self) -> GamepadPollOutput {
@@ -1188,7 +1192,7 @@ mod windows {
                     axis_count: 0,
                 },
             );
-            let mut backend = RawInputBackend::new(bridge, 1.0, 100);
+            let mut backend = RawInputBackend::new(bridge, [GamepadScratchConfig::default(); 2]);
 
             assert_eq!(
                 backend.poll().pressed_buttons,

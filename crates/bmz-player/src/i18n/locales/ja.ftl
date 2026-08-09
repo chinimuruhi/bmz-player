@@ -363,6 +363,7 @@ profile-display-auto-adjust-hispeed = レーンカバー変更時に現在BPMへ
 profile-display-green-number = 緑数字ターゲット
 profile-input-title = 入力
 profile-input-analog-sensitivity = アナログ感度
+profile-input-analog-scratch = アナログスクラッチ
 profile-input-analog-stop-threshold = アナログ停止閾値
 profile-input-keyboard-release-bounce-ms = キーボード リリース後バウンス除去 (ms)
 profile-input-controller-release-bounce-ms = コントローラー リリース後バウンス除去 (ms)

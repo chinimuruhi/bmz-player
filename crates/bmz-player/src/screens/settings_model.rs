@@ -576,7 +576,7 @@ mod tests {
         assert!(items.iter().any(|item| matches!(
             item,
             SelectItem::Config(row)
-                if row.entry_id == SettingsEntryId::AnalogScratchSensitivity
+                if row.entry_id == SettingsEntryId::AnalogScratchSensitivity1P
         )));
         assert!(items.iter().any(|item| matches!(
             item,

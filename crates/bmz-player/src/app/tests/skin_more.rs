@@ -436,13 +436,13 @@ fn skin_logical_inputs_include_all_e_actions_and_ui_directions() {
 fn loaded_skin_reset_preserves_non_skin_profile_settings() {
     let mut current = ProfileConfig::new_default("default", "Current", 1);
     current.play.random = RandomOptionConfig::SRandom;
-    current.input.analog_scratch_sensitivity = 2.5;
+    current.input.gamepad1.analog_scratch_sensitivity = 2.5;
     current.ui.show_fps = true;
     current.skin.select = "current/select.json".to_string();
 
     let mut loaded = ProfileConfig::new_default("default", "Disk", 2);
     loaded.play.random = RandomOptionConfig::Mirror;
-    loaded.input.analog_scratch_sensitivity = 0.5;
+    loaded.input.gamepad1.analog_scratch_sensitivity = 0.5;
     loaded.ui.show_fps = false;
     loaded.skin.select = "disk/select.json".to_string();
 
@@ -451,7 +451,7 @@ fn loaded_skin_reset_preserves_non_skin_profile_settings() {
     assert_eq!(current.display_name, "Current");
     assert_eq!(current.updated_at, 1);
     assert_eq!(current.play.random, RandomOptionConfig::SRandom);
-    assert_eq!(current.input.analog_scratch_sensitivity, 2.5);
+    assert_eq!(current.input.gamepad1.analog_scratch_sensitivity, 2.5);
     assert!(current.ui.show_fps);
     assert_eq!(current.skin.select, "disk/select.json");
 }

@@ -538,12 +538,13 @@ fn default_gamepad_ui_bindings_use_thumb_buttons_without_dpad_enter_back() {
 }
 
 #[test]
-fn input_config_reads_legacy_start_key() {
-    let input: ProfileInputConfig = toml::from_str(
+fn input_config_reads_legacy_start_key_and_migrates_common_analog_settings() {
+    let mut input: ProfileInputConfig = toml::from_str(
         r#"
             scratch_mode = "Normal"
             start_key = "E"
             analog_scratch_sensitivity = 1.0
+            analog_scratch_threshold = 321
             analog_scratch_timeout_ms = 500
 
             [[bindings]]
@@ -553,12 +554,17 @@ fn input_config_reads_legacy_start_key() {
             "#,
     )
     .unwrap();
+    assert_eq!(input.legacy_bindings[0].lane, Some(LaneConfig::Key1));
+    crate::config::play_input::normalize_profile_input(&mut input);
 
     assert_eq!(input.start_key.as_deref(), Some("E"));
     assert_eq!(input.scratch_mode, ScratchInputMode::Normal);
-    assert_eq!(input.legacy_bindings[0].lane, Some(LaneConfig::Key1));
+    assert!(input.legacy_bindings.is_empty());
     assert_eq!(input.analog_scratch_timeout_ms, 500);
-    assert_eq!(input.analog_scratch_threshold, default_analog_scratch_threshold());
+    assert_eq!(input.gamepad1.analog_scratch_sensitivity, 1.0);
+    assert_eq!(input.gamepad2.analog_scratch_sensitivity, 1.0);
+    assert_eq!(input.gamepad1.analog_scratch_threshold, 321);
+    assert_eq!(input.gamepad2.analog_scratch_threshold, 321);
     assert_eq!(input.keyboard_release_bounce_ms, 0);
     assert_eq!(input.controller_release_bounce_ms, 0);
 }
@@ -572,7 +578,10 @@ fn input_config_serializes_select_actions_without_start_key() {
     assert!(!toml.contains("start_key"));
     assert!(!toml.contains("scratch_mode"));
     assert!(!toml.contains("analog_scratch_timeout_ms"));
-    assert!(toml.contains("analog_scratch_threshold = 100"));
+    assert!(toml.contains("[gamepad1]"));
+    assert!(toml.contains("[gamepad2]"));
+    assert_eq!(toml.matches("analog_scratch = true").count(), 2);
+    assert_eq!(toml.matches("analog_scratch_threshold = 100").count(), 2);
     assert!(toml.contains("keyboard_release_bounce_ms = 0"));
     assert!(toml.contains("controller_release_bounce_ms = 0"));
     assert!(toml.contains("action = \"E1\""));
@@ -581,6 +590,23 @@ fn input_config_serializes_select_actions_without_start_key() {
     assert!(toml.contains("action = \"E4\""));
     assert!(toml.contains("control = \"Axis1+\"\nlane = \"Scratch\"\nscratch = \"up\""));
     assert!(toml.contains("control = \"Axis1-\"\nlane = \"Scratch\"\nscratch = \"down\""));
+}
+
+#[test]
+fn input_config_roundtrips_per_player_analog_scratch_settings() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.input.gamepad1.analog_scratch = false;
+    profile.input.gamepad1.analog_scratch_sensitivity = 1.7;
+    profile.input.gamepad2.analog_scratch_threshold = 432;
+
+    let toml = toml::to_string(&profile.input).unwrap();
+    let decoded: ProfileInputConfig = toml::from_str(&toml).unwrap();
+
+    assert!(!decoded.gamepad1.analog_scratch);
+    assert_eq!(decoded.gamepad1.analog_scratch_sensitivity, 1.7);
+    assert!(decoded.gamepad2.analog_scratch);
+    assert_eq!(decoded.gamepad2.analog_scratch_threshold, 432);
+    assert!(!toml.contains("legacy_analog_scratch"));
 }
 
 #[test]

@@ -364,6 +364,7 @@ profile-display-auto-adjust-hispeed = 軌道遮罩變更時依目前 BPM 自動�
 profile-display-green-number = 目標綠數字
 profile-input-title = 輸入
 profile-input-analog-sensitivity = 類比輸入靈敏度
+profile-input-analog-scratch = 類比轉盤
 profile-input-analog-stop-threshold = 類比輸入停止閾值
 profile-input-keyboard-release-bounce-ms = 鍵盤放開回彈過濾（毫秒）
 profile-input-controller-release-bounce-ms = 控制器放開回彈過濾（毫秒）

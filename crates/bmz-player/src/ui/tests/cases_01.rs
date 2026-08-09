@@ -217,7 +217,8 @@ fn restricted_profile_settings_keep_only_realtime_categories() {
     edited.audio_mix.master_volume = 23;
     edited.judge.input_offset_us = 4_000;
     edited.lane.hispeed = 3.25;
-    edited.input.analog_scratch_threshold = 321;
+    edited.input.gamepad1.analog_scratch_threshold = 321;
+    edited.input.gamepad2.analog_scratch = false;
     edited.input.keyboard_release_bounce_ms = 4;
     edited.input.controller_release_bounce_ms = 7;
 
@@ -228,7 +229,8 @@ fn restricted_profile_settings_keep_only_realtime_categories() {
     assert_eq!(edited.audio_mix.master_volume, 23);
     assert_eq!(edited.judge.input_offset_us, 4_000);
     assert_eq!(edited.lane.hispeed, 3.25);
-    assert_eq!(edited.input.analog_scratch_threshold, 321);
+    assert_eq!(edited.input.gamepad1.analog_scratch_threshold, 321);
+    assert!(!edited.input.gamepad2.analog_scratch);
     assert_eq!(edited.input.keyboard_release_bounce_ms, 4);
     assert_eq!(edited.input.controller_release_bounce_ms, 7);
 }

@@ -363,6 +363,7 @@ profile-display-auto-adjust-hispeed = 轨道遮罩变化时按当前 BPM 自动�
 profile-display-green-number = 目标绿数字
 profile-input-title = 输入
 profile-input-analog-sensitivity = 模拟输入灵敏度
+profile-input-analog-scratch = 模拟转盘
 profile-input-analog-stop-threshold = 模拟输入停止阈值
 profile-input-keyboard-release-bounce-ms = 键盘释放回弹过滤（毫秒）
 profile-input-controller-release-bounce-ms = 控制器释放回弹过滤（毫秒）

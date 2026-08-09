@@ -300,23 +300,18 @@ pub(super) fn daily_player_stats_snapshot_from_stats(
 
 pub(super) fn initialize_gamepad_backend(
     kind: GamepadBackendKind,
-    sensitivity: f32,
-    scratch_threshold: u32,
+    configs: [crate::input::gamepad::GamepadScratchConfig; 2],
     raw_input_bridge: Option<crate::input::rawinput::RawInputBridge>,
 ) -> Option<crate::input::gamepad::GamepadBackend> {
     match kind {
-        GamepadBackendKind::Auto => initialize_gilrs_backend(sensitivity, scratch_threshold),
-        GamepadBackendKind::Gilrs => initialize_gilrs_backend(sensitivity, scratch_threshold),
+        GamepadBackendKind::Auto => initialize_gilrs_backend(configs),
+        GamepadBackendKind::Gilrs => initialize_gilrs_backend(configs),
         GamepadBackendKind::RawInput => {
             #[cfg(windows)]
             if let Some(bridge) = raw_input_bridge {
                 tracing::info!("Raw Input gamepad backend initialized; awaiting window attachment");
                 return Some(crate::input::gamepad::GamepadBackend::RawInput(Box::new(
-                    crate::input::rawinput::RawInputBackend::new(
-                        bridge,
-                        sensitivity,
-                        scratch_threshold,
-                    ),
+                    crate::input::rawinput::RawInputBackend::new(bridge, configs),
                 )));
             }
             #[cfg(windows)]
@@ -325,30 +320,28 @@ pub(super) fn initialize_gamepad_backend(
             tracing::warn!(
                 "Raw Input gamepad backend is only available on Windows; falling back to gilrs"
             );
-            initialize_gilrs_backend(sensitivity, scratch_threshold)
+            initialize_gilrs_backend(configs)
         }
         GamepadBackendKind::GameInput => {
             #[cfg(all(windows, feature = "experimental-gameinput"))]
             {
-                if let Some(backend) = initialize_gameinput_backend(sensitivity, scratch_threshold)
-                {
+                if let Some(backend) = initialize_gameinput_backend(configs) {
                     return Some(backend);
                 }
                 tracing::warn!("GameInput initialization failed; falling back to gilrs");
             }
             #[cfg(not(all(windows, feature = "experimental-gameinput")))]
             tracing::warn!("GameInput backend is disabled; falling back to gilrs");
-            initialize_gilrs_backend(sensitivity, scratch_threshold)
+            initialize_gilrs_backend(configs)
         }
     }
 }
 
 #[cfg(all(windows, feature = "experimental-gameinput"))]
 pub(super) fn initialize_gameinput_backend(
-    sensitivity: f32,
-    scratch_threshold: u32,
+    configs: [crate::input::gamepad::GamepadScratchConfig; 2],
 ) -> Option<crate::input::gamepad::GamepadBackend> {
-    match crate::input::gameinput::GameInputBackend::new(sensitivity, scratch_threshold) {
+    match crate::input::gameinput::GameInputBackend::new(configs) {
         Ok(backend) => {
             tracing::info!("GameInput initialized on main thread");
             Some(crate::input::gamepad::GamepadBackend::GameInput(Box::new(backend)))
@@ -361,10 +354,9 @@ pub(super) fn initialize_gameinput_backend(
 }
 
 pub(super) fn initialize_gilrs_backend(
-    sensitivity: f32,
-    scratch_threshold: u32,
+    configs: [crate::input::gamepad::GamepadScratchConfig; 2],
 ) -> Option<crate::input::gamepad::GamepadBackend> {
-    match crate::input::gilrs::GilrsBackend::new(sensitivity, scratch_threshold) {
+    match crate::input::gilrs::GilrsBackend::new(configs) {
         Ok(backend) => {
             tracing::info!("gilrs initialized");
             Some(crate::input::gamepad::GamepadBackend::Gilrs(Box::new(backend)))
@@ -374,6 +366,16 @@ pub(super) fn initialize_gilrs_backend(
             None
         }
     }
+}
+
+pub(super) fn gamepad_scratch_configs(
+    input: &ProfileInputConfig,
+) -> [crate::input::gamepad::GamepadScratchConfig; 2] {
+    [input.gamepad1, input.gamepad2].map(|config| crate::input::gamepad::GamepadScratchConfig {
+        analog_scratch: config.analog_scratch,
+        sensitivity: config.analog_scratch_sensitivity,
+        threshold: config.analog_scratch_threshold,
+    })
 }
 
 pub(super) fn resolve_gamepad_runtime_slots(

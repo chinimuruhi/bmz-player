@@ -59,6 +59,19 @@ impl GamepadSlotMap {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GamepadScratchConfig {
+    pub analog_scratch: bool,
+    pub sensitivity: f32,
+    pub threshold: u32,
+}
+
+impl Default for GamepadScratchConfig {
+    fn default() -> Self {
+        Self { analog_scratch: true, sensitivity: 1.0, threshold: 100 }
+    }
+}
+
 pub fn gamepad_device_id_from_backend_index(index: u32) -> DeviceId {
     DeviceId(GAMEPAD_DEVICE_ID_BASE.saturating_add(index))
 }
@@ -208,16 +221,16 @@ pub enum GamepadBackend {
 }
 
 impl GamepadBackend {
-    pub fn set_analog_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
+    pub fn set_analog_config(&mut self, configs: [GamepadScratchConfig; 2], slots: GamepadSlotMap) {
         match self {
-            Self::Gilrs(backend) => backend.set_analog_config(sensitivity, scratch_threshold),
+            Self::Gilrs(backend) => backend.set_analog_config(configs, slots),
             #[cfg(windows)]
             Self::RawInput(backend) => {
-                backend.set_analog_config(sensitivity, scratch_threshold);
+                backend.set_analog_config(configs, slots);
             }
             #[cfg(all(windows, feature = "experimental-gameinput"))]
             Self::GameInput(backend) => {
-                backend.set_analog_config(sensitivity, scratch_threshold);
+                backend.set_analog_config(configs, slots);
             }
         }
     }
@@ -287,26 +300,77 @@ struct ScratchState {
     last_counter_update: Option<Instant>,
 }
 
+#[derive(Default)]
+struct DigitalAxisState {
+    positive_pressed: bool,
+    negative_pressed: bool,
+    control_name: Option<String>,
+}
+
 pub struct AnalogGamepadProcessor {
     axis_prev: HashMap<(DeviceId, u32), f32>,
+    axis_names: HashMap<(DeviceId, u32), String>,
     scratch_state: HashMap<(DeviceId, u32), ScratchState>,
-    tick_max_size: f32,
-    scratch_threshold: u32,
+    digital_axis_state: HashMap<(DeviceId, u32), DigitalAxisState>,
+    configs: [GamepadScratchConfig; 2],
+    slots: GamepadSlotMap,
+    pending_buttons: Vec<GamepadButtonEvent>,
 }
 
 impl AnalogGamepadProcessor {
-    pub fn new(sensitivity: f32, scratch_threshold: u32) -> Self {
+    pub fn new(configs: [GamepadScratchConfig; 2], slots: GamepadSlotMap) -> Self {
         Self {
             axis_prev: HashMap::new(),
+            axis_names: HashMap::new(),
             scratch_state: HashMap::new(),
-            tick_max_size: BASE_TICK_MAX_SIZE / sensitivity.max(0.01),
-            scratch_threshold: clamp_analog_scratch_threshold(scratch_threshold),
+            digital_axis_state: HashMap::new(),
+            configs,
+            slots,
+            pending_buttons: Vec::new(),
         }
     }
 
-    pub fn set_config(&mut self, sensitivity: f32, scratch_threshold: u32) {
-        self.tick_max_size = BASE_TICK_MAX_SIZE / sensitivity.max(0.01);
-        self.scratch_threshold = clamp_analog_scratch_threshold(scratch_threshold);
+    pub fn set_config(&mut self, configs: [GamepadScratchConfig; 2], slots: GamepadSlotMap) {
+        if self.configs == configs && self.slots == slots {
+            return;
+        }
+
+        let old_configs = self.configs;
+        let old_slots = self.slots;
+        let timestamp = current_device_timestamp();
+        let axes = self.axis_prev.keys().copied().collect::<Vec<_>>();
+        for (device_id, axis_key) in axes {
+            let old_analog = config_for_device(old_configs, old_slots, device_id).analog_scratch;
+            let new_analog = config_for_device(configs, slots, device_id).analog_scratch;
+            if old_analog == new_analog {
+                continue;
+            }
+            if let Some(state) = self.scratch_state.get_mut(&(device_id, axis_key)) {
+                state.release_if_active_at(device_id, timestamp, &mut self.pending_buttons);
+            }
+            if let Some(state) = self.digital_axis_state.get_mut(&(device_id, axis_key)) {
+                state.release_all(device_id, timestamp, &mut self.pending_buttons);
+            }
+            self.scratch_state.remove(&(device_id, axis_key));
+            self.digital_axis_state.remove(&(device_id, axis_key));
+
+            if !new_analog
+                && let (Some(&value), Some(axis_name)) = (
+                    self.axis_prev.get(&(device_id, axis_key)),
+                    self.axis_names.get(&(device_id, axis_key)),
+                )
+            {
+                self.digital_axis_state.entry((device_id, axis_key)).or_default().apply_value(
+                    value,
+                    axis_name,
+                    device_id,
+                    timestamp,
+                    &mut self.pending_buttons,
+                );
+            }
+        }
+        self.configs = configs;
+        self.slots = slots;
     }
 
     pub fn process_axis(
@@ -320,10 +384,14 @@ impl AnalogGamepadProcessor {
         timestamp: DeviceTimestamp,
         output: &mut GamepadPollOutput,
     ) {
-        let prev = self.axis_prev.entry((device_id, axis_key)).or_insert(value);
-        let ticks = compute_analog_diff(*prev, value, self.tick_max_size);
-        *prev = value;
-        if ticks == 0 {
+        let key = (device_id, axis_key);
+        let config = config_for_device(self.configs, self.slots, device_id);
+        let tick_max_size = BASE_TICK_MAX_SIZE / config.sensitivity.max(0.01);
+        let previous = self.axis_prev.insert(key, value);
+        let changed = previous.is_none_or(|prev| prev.to_bits() != value.to_bits());
+        let ticks = previous.map_or(0, |prev| compute_analog_diff(prev, value, tick_max_size));
+        self.axis_names.entry(key).or_insert_with(|| axis_name.to_string());
+        if !changed && ticks == 0 {
             return;
         }
 
@@ -336,31 +404,56 @@ impl AnalogGamepadProcessor {
             mapped_control: Some(axis_name.to_string()),
             pressed: None,
             value: Some(value),
-            ticks: Some(ticks),
+            ticks: config.analog_scratch.then_some(ticks),
         });
-        output.axis_ticks.push(GamepadAxisTickEvent {
-            name: axis_name.to_string(),
-            device_id,
-            timestamp,
-            ticks,
-        });
+        if config.analog_scratch {
+            if ticks == 0 {
+                return;
+            }
+            output.axis_ticks.push(GamepadAxisTickEvent {
+                name: axis_name.to_string(),
+                device_id,
+                timestamp,
+                ticks,
+            });
 
-        let now = Instant::now();
-        let state = self.scratch_state.entry((device_id, axis_key)).or_default();
-        state.advance_to(now, self.scratch_threshold, device_id, &mut output.buttons);
-        state.apply_movement(
-            ticks,
-            axis_name,
-            device_id,
-            timestamp,
-            self.scratch_threshold,
-            &mut output.buttons,
-        );
+            let threshold = clamp_analog_scratch_threshold(config.threshold);
+            let now = Instant::now();
+            let state = self.scratch_state.entry(key).or_default();
+            state.advance_to(now, threshold, device_id, &mut output.buttons);
+            state.apply_movement(
+                ticks,
+                axis_name,
+                device_id,
+                timestamp,
+                threshold,
+                &mut output.buttons,
+            );
+        } else {
+            self.digital_axis_state.entry(key).or_default().apply_value(
+                value,
+                axis_name,
+                device_id,
+                timestamp,
+                &mut output.buttons,
+            );
+        }
     }
 
     pub fn check_timeouts(&mut self, now: Instant, events: &mut Vec<GamepadButtonEvent>) {
+        events.append(&mut self.pending_buttons);
+        let configs = self.configs;
+        let slots = self.slots;
         for ((device_id, _axis), state) in &mut self.scratch_state {
-            state.advance_to(now, self.scratch_threshold, *device_id, events);
+            let config = config_for_device(configs, slots, *device_id);
+            if config.analog_scratch {
+                state.advance_to(
+                    now,
+                    clamp_analog_scratch_threshold(config.threshold),
+                    *device_id,
+                    events,
+                );
+            }
         }
     }
 
@@ -375,11 +468,20 @@ impl AnalogGamepadProcessor {
                 state.release_if_active_at(device_id, timestamp, events);
             }
         }
+        for ((state_device_id, _axis), state) in &mut self.digital_axis_state {
+            if *state_device_id == device_id {
+                state.release_all(device_id, timestamp, events);
+            }
+        }
         self.axis_prev.retain(|(state_device_id, _), _| *state_device_id != device_id);
+        self.axis_names.retain(|(state_device_id, _), _| *state_device_id != device_id);
+        self.scratch_state.retain(|(state_device_id, _), _| *state_device_id != device_id);
+        self.digital_axis_state.retain(|(state_device_id, _), _| *state_device_id != device_id);
     }
 
     pub fn pressed_buttons(&self) -> Vec<GamepadPressedButton> {
-        self.scratch_state
+        let mut pressed = self
+            .scratch_state
             .iter()
             .filter_map(|((device_id, _axis), state)| {
                 if !state.active {
@@ -395,7 +497,38 @@ impl AnalogGamepadProcessor {
                     device_id: *device_id,
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        for ((device_id, _axis), state) in &self.digital_axis_state {
+            let Some(axis_name) = state.control_name.as_deref() else { continue };
+            if state.positive_pressed {
+                pressed.push(GamepadPressedButton {
+                    name: format!("{axis_name}+"),
+                    device_id: *device_id,
+                });
+            }
+            if state.negative_pressed {
+                pressed.push(GamepadPressedButton {
+                    name: format!("{axis_name}-"),
+                    device_id: *device_id,
+                });
+            }
+        }
+        pressed
+    }
+}
+
+fn config_for_device(
+    configs: [GamepadScratchConfig; 2],
+    slots: GamepadSlotMap,
+    device_id: DeviceId,
+) -> GamepadScratchConfig {
+    if slots.slot_device_ids[0] == Some(device_id) {
+        configs[0]
+    } else if slots.slot_device_ids[1] == Some(device_id) {
+        configs[1]
+    } else {
+        // SPのgamepadワイルドカードと未割当デバイスは1P設定を使う。
+        configs[0]
     }
 }
 
@@ -493,6 +626,72 @@ impl ScratchState {
     }
 }
 
+impl DigitalAxisState {
+    fn apply_value(
+        &mut self,
+        value: f32,
+        axis_name: &str,
+        device_id: DeviceId,
+        timestamp: DeviceTimestamp,
+        events: &mut Vec<GamepadButtonEvent>,
+    ) {
+        self.control_name.get_or_insert_with(|| axis_name.to_string());
+        let positive = value > 0.9;
+        let negative = value < -0.9;
+
+        if self.positive_pressed && !positive {
+            self.push_button_event(device_id, false, true, timestamp, events);
+        }
+        if self.negative_pressed && !negative {
+            self.push_button_event(device_id, false, false, timestamp, events);
+        }
+        if !self.positive_pressed && positive {
+            self.push_button_event(device_id, true, true, timestamp, events);
+        }
+        if !self.negative_pressed && negative {
+            self.push_button_event(device_id, true, false, timestamp, events);
+        }
+        self.positive_pressed = positive;
+        self.negative_pressed = negative;
+    }
+
+    fn release_all(
+        &mut self,
+        device_id: DeviceId,
+        timestamp: DeviceTimestamp,
+        events: &mut Vec<GamepadButtonEvent>,
+    ) {
+        if self.positive_pressed {
+            self.push_button_event(device_id, false, true, timestamp, events);
+            self.positive_pressed = false;
+        }
+        if self.negative_pressed {
+            self.push_button_event(device_id, false, false, timestamp, events);
+            self.negative_pressed = false;
+        }
+    }
+
+    fn push_button_event(
+        &self,
+        device_id: DeviceId,
+        pressed: bool,
+        positive: bool,
+        timestamp: DeviceTimestamp,
+        events: &mut Vec<GamepadButtonEvent>,
+    ) {
+        if let Some(axis_name) = self.control_name.as_deref() {
+            events.push(GamepadButtonEvent {
+                name: format!("{}{}", axis_name, if positive { "+" } else { "-" }),
+                device_id,
+                pressed,
+                timestamp,
+                // OFFは端点を通常のコントローラーボタンとして扱う。
+                synthesized_analog_axis: false,
+            });
+        }
+    }
+}
+
 pub fn to_device_input_event(event: &GamepadButtonEvent) -> DeviceInputEvent {
     DeviceInputEvent {
         device: event.device_id,
@@ -537,6 +736,25 @@ mod tests {
 
     fn event_timestamp(ns: u128) -> DeviceTimestamp {
         DeviceTimestamp::MonotonicNs(ns)
+    }
+
+    fn process_axis(
+        processor: &mut AnalogGamepadProcessor,
+        device_id: DeviceId,
+        value: f32,
+        timestamp: u128,
+        output: &mut GamepadPollOutput,
+    ) {
+        processor.process_axis(
+            device_id,
+            0,
+            "Axis1",
+            "Axis1".to_string(),
+            RawControlCode { value: 0, label: "Axis(0)".to_string() },
+            value,
+            event_timestamp(timestamp),
+            output,
+        );
     }
 
     #[test]
@@ -686,6 +904,76 @@ mod tests {
     }
 
     #[test]
+    fn analog_scratch_off_uses_axis_endpoints_without_tick_scroll() {
+        let off = GamepadScratchConfig { analog_scratch: false, ..Default::default() };
+        let mut processor = AnalogGamepadProcessor::new(
+            [off, GamepadScratchConfig::default()],
+            GamepadSlotMap::default(),
+        );
+        let mut output = GamepadPollOutput::default();
+
+        process_axis(&mut processor, DeviceId(16), 0.0, 1, &mut output);
+        process_axis(&mut processor, DeviceId(16), 0.91, 2, &mut output);
+        process_axis(&mut processor, DeviceId(16), 0.5, 3, &mut output);
+        process_axis(&mut processor, DeviceId(16), -0.91, 4, &mut output);
+
+        assert_eq!(
+            button_events(&output.buttons),
+            vec![
+                ("Axis1+".to_string(), true),
+                ("Axis1+".to_string(), false),
+                ("Axis1-".to_string(), true),
+            ]
+        );
+        assert!(output.axis_ticks.is_empty());
+        assert!(output.buttons.iter().all(|event| !event.synthesized_analog_axis));
+        assert_eq!(
+            processor.pressed_buttons(),
+            vec![GamepadPressedButton { name: "Axis1-".to_string(), device_id: DeviceId(16) }]
+        );
+    }
+
+    #[test]
+    fn per_player_analog_modes_follow_logical_slots() {
+        let configs = [
+            GamepadScratchConfig { analog_scratch: false, ..Default::default() },
+            GamepadScratchConfig::default(),
+        ];
+        let slots = GamepadSlotMap::from_device_ids([Some(DeviceId(30)), Some(DeviceId(20))]);
+        let mut processor = AnalogGamepadProcessor::new(configs, slots);
+        let mut output = GamepadPollOutput::default();
+
+        process_axis(&mut processor, DeviceId(30), 0.0, 1, &mut output);
+        process_axis(&mut processor, DeviceId(30), 0.02, 2, &mut output);
+        assert!(output.axis_ticks.is_empty());
+        assert!(output.buttons.is_empty());
+
+        process_axis(&mut processor, DeviceId(20), 0.0, 3, &mut output);
+        process_axis(&mut processor, DeviceId(20), 0.02, 4, &mut output);
+        assert_eq!(output.axis_ticks.len(), 1);
+        assert_eq!(button_events(&output.buttons), vec![("Axis1+".to_string(), true)]);
+    }
+
+    #[test]
+    fn changing_analog_mode_releases_old_state_and_applies_current_endpoint() {
+        let analog = GamepadScratchConfig::default();
+        let off = GamepadScratchConfig { analog_scratch: false, ..Default::default() };
+        let mut processor = AnalogGamepadProcessor::new([off, analog], GamepadSlotMap::default());
+        let mut output = GamepadPollOutput::default();
+
+        process_axis(&mut processor, DeviceId(16), 0.95, 1, &mut output);
+        output.buttons.clear();
+        processor.set_config([analog, analog], GamepadSlotMap::default());
+        processor.check_timeouts(Instant::now(), &mut output.buttons);
+        assert_eq!(button_events(&output.buttons), vec![("Axis1+".to_string(), false)]);
+
+        output.buttons.clear();
+        processor.set_config([off, analog], GamepadSlotMap::default());
+        processor.check_timeouts(Instant::now(), &mut output.buttons);
+        assert_eq!(button_events(&output.buttons), vec![("Axis1+".to_string(), true)]);
+    }
+
+    #[test]
     fn scratch_requires_two_ticks_to_press() {
         let mut state = ScratchState::default();
         let mut events = Vec::new();
@@ -750,13 +1038,19 @@ mod tests {
 
     #[test]
     fn analog_config_updates_without_resetting_axis_state() {
-        let mut processor = AnalogGamepadProcessor::new(1.0, 100);
+        let mut processor = AnalogGamepadProcessor::new(
+            [GamepadScratchConfig::default(); 2],
+            GamepadSlotMap::default(),
+        );
         processor.axis_prev.insert((DeviceId(16), 1), 0.5);
 
-        processor.set_config(2.0, 250);
+        let configs = [
+            GamepadScratchConfig { sensitivity: 2.0, threshold: 250, ..Default::default() },
+            GamepadScratchConfig::default(),
+        ];
+        processor.set_config(configs, GamepadSlotMap::default());
 
-        assert_eq!(processor.tick_max_size, BASE_TICK_MAX_SIZE / 2.0);
-        assert_eq!(processor.scratch_threshold, 250);
+        assert_eq!(processor.configs[0], configs[0]);
         assert_eq!(processor.axis_prev.get(&(DeviceId(16), 1)), Some(&0.5));
     }
 

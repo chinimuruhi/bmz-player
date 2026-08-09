@@ -6,7 +6,7 @@ pub fn settings_adjust_step(id: SettingsEntryId) -> i32 {
         SettingsEntryId::Sudden | SettingsEntryId::Lift | SettingsEntryId::Hidden => 25,
         SettingsEntryId::TargetGreenNumber => 10,
         SettingsEntryId::MisslayerDurationMs => 50,
-        SettingsEntryId::AnalogScratchThreshold => 10,
+        SettingsEntryId::AnalogScratchThreshold1P | SettingsEntryId::AnalogScratchThreshold2P => 10,
         _ => 1,
     }
 }
@@ -67,11 +67,23 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::SelectInputMode => {
             profile.input.select_input_mode.display_label().to_string()
         }
-        SettingsEntryId::AnalogScratchSensitivity => {
-            format!("{:.1}", profile.input.analog_scratch_sensitivity)
+        SettingsEntryId::AnalogScratch1P => {
+            format_bool_on_off(profile.input.gamepad1.analog_scratch)
         }
-        SettingsEntryId::AnalogScratchThreshold => {
-            format!("{} ticks", profile.input.analog_scratch_threshold)
+        SettingsEntryId::AnalogScratchSensitivity1P => {
+            format!("{:.1}", profile.input.gamepad1.analog_scratch_sensitivity)
+        }
+        SettingsEntryId::AnalogScratchThreshold1P => {
+            format!("{} ticks", profile.input.gamepad1.analog_scratch_threshold)
+        }
+        SettingsEntryId::AnalogScratch2P => {
+            format_bool_on_off(profile.input.gamepad2.analog_scratch)
+        }
+        SettingsEntryId::AnalogScratchSensitivity2P => {
+            format!("{:.1}", profile.input.gamepad2.analog_scratch_sensitivity)
+        }
+        SettingsEntryId::AnalogScratchThreshold2P => {
+            format!("{} ticks", profile.input.gamepad2.analog_scratch_threshold)
         }
         SettingsEntryId::AnalogTicksPerScroll => {
             format!("{} ticks", profile.input.analog_ticks_per_scroll)

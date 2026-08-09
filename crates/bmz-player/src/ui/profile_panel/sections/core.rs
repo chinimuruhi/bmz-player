@@ -145,14 +145,24 @@ pub(in crate::ui::profile_panel) fn build_profile_input_section(
     egui::CollapsingHeader::new(tr!(text, "profile-input-title")).id_salt("profile_input").show(
         ui,
         |ui| {
-            ui.add(
-                egui::Slider::new(&mut profile.input.analog_scratch_sensitivity, 0.1..=5.0)
-                    .text(tr!(text, "profile-input-analog-sensitivity")),
-            );
-            ui.add(
-                egui::Slider::new(&mut profile.input.analog_scratch_threshold, 1..=1000)
-                    .text(tr!(text, "profile-input-analog-stop-threshold")),
-            );
+            for (label, config) in [
+                (tr!(text, "settings-input-controller-1p"), &mut profile.input.gamepad1),
+                (tr!(text, "settings-input-controller-2p"), &mut profile.input.gamepad2),
+            ] {
+                ui.label(label);
+                ui.checkbox(&mut config.analog_scratch, tr!(text, "profile-input-analog-scratch"));
+                ui.add_enabled(
+                    config.analog_scratch,
+                    egui::Slider::new(&mut config.analog_scratch_sensitivity, 0.1..=5.0)
+                        .text(tr!(text, "profile-input-analog-sensitivity")),
+                );
+                ui.add_enabled(
+                    config.analog_scratch,
+                    egui::Slider::new(&mut config.analog_scratch_threshold, 1..=1000)
+                        .text(tr!(text, "profile-input-analog-stop-threshold")),
+                );
+                ui.separator();
+            }
             ui.add(
                 egui::Slider::new(
                     &mut profile.input.keyboard_release_bounce_ms,
