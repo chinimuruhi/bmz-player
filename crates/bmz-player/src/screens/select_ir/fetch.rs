@@ -61,7 +61,7 @@ pub(super) fn spawn_course_fetch(
                     .fetch_course_ranking(
                         &target.rian_course_hash_v1,
                         crate::ir::rian_ir::body_for_rule_mode(target.rule_mode),
-                        20,
+                        crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT,
                     )
                     .await;
             }

@@ -28,6 +28,8 @@ use super::types::{
 pub const RIAN_IR_PROVIDER: &str = "rian-ir";
 pub const RIAN_IR_DEFAULT_BASE_URL: &str = "https://rianir.link/api/";
 pub const RIAN_IR_PUBLIC_BASE_URL: &str = "https://rianir.link/";
+/// rianIR の `get_score.php` / `get_course_score.php` が返すランキング上限。
+pub const RIAN_IR_RANKING_LIMIT: u32 = 100;
 
 /// Build the public rianIR ranking page for a chart.
 ///
@@ -590,6 +592,33 @@ mod tests {
         assert_eq!(entry.score.ex_score, 1999);
         assert_eq!(entry.score.judges.unwrap().fast.empty_poor, 1);
         assert_eq!(ranking.ranking.self_summary.as_ref().unwrap().rank, 1);
+    }
+
+    #[test]
+    fn ranking_conversion_keeps_top_100_and_self_at_rank_100() {
+        let resources = (1..=101)
+            .map(|rank| RianRankingResource {
+                id: format!("score-{rank}"),
+                attributes: serde_json::from_value(json!({
+                    "player_name": format!("login-{rank}"),
+                    "display_name": format!("Player {rank}"),
+                    "ex_score": 10_000 - rank,
+                }))
+                .unwrap(),
+            })
+            .collect();
+
+        let ranking = convert_score_ranking(
+            &"ab".repeat(32),
+            resources,
+            RIAN_IR_RANKING_LIMIT,
+            Some("login-100"),
+        );
+
+        assert_eq!(ranking.ranking.entries.len(), 100);
+        assert_eq!(ranking.ranking.entries.last().unwrap().rank, 100);
+        assert_eq!(ranking.ranking.self_summary.as_ref().unwrap().rank, 100);
+        assert_eq!(ranking.ranking.pagination.unwrap().limit, 100);
     }
 
     #[test]

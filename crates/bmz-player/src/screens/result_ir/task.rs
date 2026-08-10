@@ -320,7 +320,7 @@ pub(super) async fn fetch_result_ranking(
                     .fetch_course_ranking(
                         rian_course_hash_v1,
                         crate::ir::rian_ir::body_for_rule_mode(*rule_mode),
-                        20,
+                        crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT,
                     )
                     .await
                     .map(|ranking| course_ranking_to_result_ir_ranking(&ranking));
@@ -356,7 +356,7 @@ pub(crate) async fn fetch_ranking(
                 &query.chart_sha256_hex,
                 crate::ir::rian_ir::body_for_rule_mode(query.rule_mode),
                 scope,
-                20,
+                crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT,
                 credentials.as_ref().map(|credentials| credentials.account_id.as_str()),
             )
             .await;
