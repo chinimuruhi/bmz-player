@@ -1,6 +1,7 @@
 use super::super::super::*;
 
 pub(in crate::skin::document_render) struct SelectSearchInputAnchor<'a> {
+    pub destination: &'a SkinDestinationDef,
     pub text: &'a SkinTextDef,
     pub frame: ResolvedSkinFrame,
 }
@@ -61,7 +62,7 @@ pub(in crate::skin::document_render) fn select_search_input_anchors<'a>(
         if !destination_mouse_rect_contains(destination, frame, state) {
             continue;
         }
-        anchors.push(SelectSearchInputAnchor { text, frame });
+        anchors.push(SelectSearchInputAnchor { destination, text, frame });
     }
 
     anchors

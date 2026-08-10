@@ -99,6 +99,11 @@ pub struct SelectSnapshot {
     pub search_word_alpha: f32,
     /// `search_word` 内に重ねる検索 caret の UTF-8 byte index。
     pub search_caret_byte_index: Option<usize>,
+    /// 検索入力モード中なら true。
+    ///
+    /// 非入力時の placeholder / feedback はスキン本来の destination 順で描画し、
+    /// 入力中の文字と caret だけを TextField 相当の最前面オーバーレイにする。
+    pub search_input_active: bool,
     /// Select skin mouse position in normalized screen coordinates.
     pub mouse_position: Option<(f32, f32)>,
     /// 選曲カーソル譜面の IR ランキング状態 (NUMBER_IR_* / OPTION_IR_*)。
@@ -198,6 +203,7 @@ impl Default for SelectSnapshot {
             search_word: String::new(),
             search_word_alpha: 1.0,
             search_caret_byte_index: None,
+            search_input_active: false,
             mouse_position: None,
             ir: ResultIrSnapshot::default(),
             rival: None,

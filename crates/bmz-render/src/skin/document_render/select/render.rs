@@ -142,6 +142,27 @@ macro_rules! skin_document_render_select_render_methods {
                 selected_row,
                 enabled_options,
             );
+            let search_input_render_item =
+                |anchor: &select::SelectSearchInputAnchor<'_>| -> Option<SkinRenderItem> {
+                    let mut item = self.text_render_item_with_draw_state(
+                        anchor.text,
+                        anchor.frame,
+                        Some(&state),
+                        &text,
+                    )?;
+                    if let SkinRenderItem::Text { style, caret, .. } = &mut item {
+                        // SkinTextInput uses the configured system font at the
+                        // destination height, independently of the skin text font.
+                        style.font_id = None;
+                        style.bitmap_size = None;
+                        style.size = anchor.frame.h.abs().max(1) as f32 / self.h.max(1) as f32;
+                        style.align = TextAlign::Left;
+                        if let Some(caret) = caret {
+                            caret.color = Color::rgb(1.0, 1.0, 1.0);
+                        }
+                    }
+                    Some(item)
+                };
             let mut items = Vec::new();
             for destination_index in 0..destination_count {
                 let Some(destination) = planning
@@ -164,11 +185,20 @@ macro_rules! skin_document_render_select_render_methods {
                     ));
                     continue;
                 }
-                // beatoraja keeps STRING_SEARCHWORD empty in the regular
-                // SkinText pass. Editing text and its caret are a separate
-                // TextField actor drawn after the skin. Its visibility was
-                // already evaluated while collecting `search_input_anchors`.
+                // beatoraja keeps STRING_SEARCHWORD empty in the regular SkinText
+                // pass. Outside input mode, place BMZ's placeholder/feedback at
+                // the destination's original z position so later skin objects
+                // (notably option panels) can cover it. While editing, the input
+                // and caret remain a separate TextField-like overlay after the skin.
                 if self.text.iter().any(|text| text.ref_id == 30 && text.id == destination.id) {
+                    if !snapshot.search_input_active
+                        && let Some(anchor) = search_input_anchors
+                            .iter()
+                            .find(|anchor| std::ptr::eq(anchor.destination, destination))
+                        && let Some(item) = search_input_render_item(anchor)
+                    {
+                        items.push(item);
+                    }
                     continue;
                 }
                 if !crate::select_settings_dest::test_select_destination_visible(
@@ -278,27 +308,12 @@ macro_rules! skin_document_render_select_render_methods {
                     items.extend(resolved);
                 }
             }
-            for anchor in search_input_anchors {
-                let Some(mut item) = self.text_render_item_with_draw_state(
-                    anchor.text,
-                    anchor.frame,
-                    Some(&state),
-                    &text,
-                ) else {
-                    continue;
-                };
-                if let SkinRenderItem::Text { style, caret, .. } = &mut item {
-                    // SkinTextInput uses the configured system font at the
-                    // destination height, independently of the skin text font.
-                    style.font_id = None;
-                    style.bitmap_size = None;
-                    style.size = anchor.frame.h.abs().max(1) as f32 / self.h.max(1) as f32;
-                    style.align = TextAlign::Left;
-                    if let Some(caret) = caret {
-                        caret.color = Color::rgb(1.0, 1.0, 1.0);
+            if snapshot.search_input_active {
+                for anchor in &search_input_anchors {
+                    if let Some(item) = search_input_render_item(anchor) {
+                        items.push(item);
                     }
                 }
-                items.push(item);
             }
             items
         }

@@ -221,6 +221,7 @@ fn select_search_input_overlay_does_not_repeat_the_skin_text_fade() {
         search_word: "query".to_string(),
         search_word_alpha: 0.8,
         search_caret_byte_index: Some(2),
+        search_input_active: true,
         ..SelectSnapshot::default()
     };
 
@@ -264,6 +265,52 @@ fn select_search_input_overlay_does_not_repeat_the_skin_text_fade() {
 }
 
 #[test]
+fn select_search_placeholder_keeps_its_destination_z_order() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"{
+            "type": 5,
+            "w": 100,
+            "h": 100,
+            "text": [
+                { "id": "before", "constantText": "before", "size": 10 },
+                { "id": "search", "font": "skin-font", "size": 10, "ref": 30 },
+                { "id": "panel", "constantText": "panel", "size": 10 }
+            ],
+            "destination": [
+                { "id": "before", "dst": [{ "x": 0, "y": 0, "w": 10, "h": 10 }]},
+                { "id": "search", "dst": [{ "x": 10, "y": 20, "w": 50, "h": 10 }]},
+                { "id": "panel", "dst": [{ "x": 0, "y": 0, "w": 100, "h": 100 }]}
+            ]
+        }"#,
+    )
+    .unwrap();
+    let snapshot = SelectSnapshot {
+        search_word: "placeholder".to_string(),
+        search_word_alpha: 0.45,
+        search_input_active: false,
+        ..SelectSnapshot::default()
+    };
+
+    let items = document.select_render_items(&HashMap::new(), &snapshot);
+    let texts = items
+        .iter()
+        .filter_map(|item| match item {
+            SkinRenderItem::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(texts, vec!["before", "placeholder", "panel"]);
+    assert!(matches!(
+        &items[1],
+        SkinRenderItem::Text { style, .. }
+            if style.font_id.is_none()
+                && style.bitmap_size.is_none()
+                && approx_eq(style.color.a, 0.45)
+    ));
+}
+
+#[test]
 fn select_search_input_overlay_keeps_empty_text_when_the_caret_is_visible() {
     let document: SkinDocument = serde_json::from_str(
         r#"{
@@ -280,6 +327,7 @@ fn select_search_input_overlay_keeps_empty_text_when_the_caret_is_visible() {
     let snapshot = SelectSnapshot {
         search_word: String::new(),
         search_caret_byte_index: Some(0),
+        search_input_active: true,
         ..SelectSnapshot::default()
     };
 
