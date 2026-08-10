@@ -736,6 +736,44 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
             )
         )));
     }
+    for (id, ref_id, left_x) in [
+        ("default_optionpanel_option_random", 344, 536),
+        ("default_optionpanel_option_random2", 345, 1166),
+    ] {
+        let imageset = decoded
+            .document
+            .imageset
+            .iter()
+            .find(|imageset| imageset.id == id)
+            .unwrap_or_else(|| panic!("Luxe Flat should decode {id}"));
+        assert_eq!(imageset.ref_id, ref_id);
+        assert_eq!(imageset.images.len(), 12);
+        assert!(decoded.document.destination.iter().any(|entry| matches!(
+            entry,
+            DestinationListEntry::Single(destination)
+                if destination.id == id
+                    && matches!(
+                        destination.dst.first(),
+                        Some(bmz_render::skin::SkinDstEntry::Frame(frame))
+                            if frame.x == Some(left_x)
+                                && frame.y == Some(153)
+                                && frame.w == Some(213)
+                                && frame.h == Some(658)
+                    )
+        )));
+    }
+    assert!(decoded.document.source.iter().any(|source| {
+        source.id == "src-default-optionpanel-panel1"
+            && source.path.ends_with("default_optionpanel/option1_panel_bmz.png")
+    }));
+    assert!(decoded.document.source.iter().any(|source| {
+        source.id == "option1_text"
+            && source.path.ends_with("default_optionpanel/option1_text_bmz.png")
+    }));
+    assert!(decoded.document.source.iter().any(|source| {
+        source.id == "src-default-optionpanel-random-cursor-bmz"
+            && source.path.ends_with("default_optionpanel/random_cursor_bmz.png")
+    }));
     let random_source = decoded
         .sources
         .iter()
@@ -743,6 +781,22 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
         .expect("Luxe Flat F-RANDOM source");
     assert_eq!((random_source.size.width, random_source.size.height), (138.0, 42.0));
     let random_texture = random_source.texture;
+    let option_panel_texture = decoded
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src-default-optionpanel-panel1")
+        .expect("Luxe Flat extended option panel source")
+        .texture;
+    let option_panel_random_source = decoded
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src-default-optionpanel-random-cursor-bmz")
+        .expect("Luxe Flat extended option panel cursor source");
+    assert_eq!(
+        (option_panel_random_source.size.width, option_panel_random_source.size.height),
+        (213.0, 1158.0)
+    );
+    let option_panel_random_texture = option_panel_random_source.texture;
     let document_textures =
         decoded.sources.iter().map(|source| bmz_render::skin::SkinDocumentTexture {
             source_id: source.source_id.clone(),
@@ -781,6 +835,40 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
     assert_eq!(hit.target, bmz_render::skin::SkinClickTarget::Event { event_id: 42, click: 0 });
     assert!((hit.rect.x - 69.0 / 1920.0).abs() < f32::EPSILON);
     assert!((hit.rect.width - 138.0 / 1920.0).abs() < f32::EPSILON);
+
+    let option_panel_snapshot = bmz_render::scene::SelectSnapshot {
+        time: bmz_core::time::TimeUs(300_000),
+        option_panel_time: bmz_core::time::TimeUs(300_000),
+        option_panel: 1,
+        arrange: "F-RANDOM".to_string(),
+        arrange_2p: "MF-RANDOM".to_string(),
+        ..Default::default()
+    };
+    let option_panel_items =
+        context.select_document_items_with_dynamic_timers(&option_panel_snapshot, None);
+    assert!(option_panel_items.iter().any(|item| matches!(
+        item,
+        bmz_render::skin::SkinRenderItem::Image { texture, rect, .. }
+            if *texture == option_panel_texture
+                && rect.x.abs() < 0.001
+                && rect.y.abs() < 0.001
+                && (rect.width - 1.0).abs() < 0.001
+                && (rect.height - 1.0).abs() < 0.001
+    )));
+    for (left_x, uv_y) in [(536.0, 41.0 / 1158.0), (1166.0, 0.0)] {
+        assert!(
+            option_panel_items.iter().any(|item| matches!(
+                item,
+                bmz_render::skin::SkinRenderItem::Image { texture, rect, uv, .. }
+                    if *texture == option_panel_random_texture
+                        && (rect.x - left_x / 1920.0).abs() < 0.001
+                        && (rect.y - 269.0 / 1080.0).abs() < 0.001
+                        && (rect.height - 658.0 / 1080.0).abs() < 0.001
+                        && (uv.y - uv_y).abs() < 0.001
+            )),
+            "Luxe Flat should render the extended option panel arrange cursor at x={left_x}"
+        );
+    }
 }
 
 #[test]
