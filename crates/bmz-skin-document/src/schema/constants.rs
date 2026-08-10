@@ -11,6 +11,9 @@ pub const SKIN_EXPR_DIFFICULTY_NAME: &str = "bmz:difficulty_name";
 pub const SKIN_EXPR_FAST_SLOW_BREAKDOWN_HEIGHT: &str = "bmz:fast_slow_breakdown_height";
 pub const SKIN_EXPR_DEFAULT_CHART_TOTAL_COUNT: &str = "bmz:default_chart_total_count";
 pub const SKIN_EXPR_DEFAULT_CHART_GAUGE: &str = "bmz:default_chart_gauge";
+pub const SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER: &str = "bmz:select_total_notes_ratio_integer";
+pub const SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_FRACTION: &str =
+    "bmz:select_total_notes_ratio_fraction";
 pub const SKIN_EXPR_COURSE_CLEAR_RATE: &str = "bmz:course_clear_rate";
 pub const SKIN_EXPR_GAUGE_PERCENT_INTEGER: &str = "bmz:gauge_percent_integer";
 pub const SKIN_EXPR_GAUGE_PERCENT_FRACTION: &str = "bmz:gauge_percent_fraction";

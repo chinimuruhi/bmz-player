@@ -128,6 +128,60 @@ unsafe extern "C-unwind" fn find_flag_score_upvalue(state: *mut mlua::lua_State)
     }
 }
 
+/// Returns the index and numeric value of a closure upvalue named `scorerate`.
+unsafe extern "C-unwind" fn find_scorerate_upvalue(state: *mut mlua::lua_State) -> c_int {
+    // SAFETY: see `find_result_mode_upvalue`; this callback only inspects the
+    // function passed in stack slot 1 and balances every pushed upvalue.
+    unsafe {
+        if mlua::ffi::lua_type(state, 1) != mlua::ffi::LUA_TFUNCTION {
+            return 0;
+        }
+        for index in 1..=255 {
+            let name = mlua::ffi::lua_getupvalue(state, 1, index);
+            if name.is_null() {
+                break;
+            }
+            let matches = CStr::from_ptr(name).to_bytes() == b"scorerate";
+            if matches && mlua::ffi::lua_type(state, -1) == mlua::ffi::LUA_TNUMBER {
+                let value = mlua::ffi::lua_tonumber(state, -1);
+                mlua::ffi::lua_pop(state, 1);
+                mlua::ffi::lua_pushinteger(state, i64::from(index));
+                mlua::ffi::lua_pushnumber(state, value);
+                return 2;
+            }
+            mlua::ffi::lua_pop(state, 1);
+        }
+        0
+    }
+}
+
+/// Returns the index and value of a closure upvalue named `rank_plus`.
+unsafe extern "C-unwind" fn find_rank_plus_upvalue(state: *mut mlua::lua_State) -> c_int {
+    // SAFETY: see `find_result_mode_upvalue`; this callback only inspects the
+    // function passed in stack slot 1 and balances every pushed upvalue.
+    unsafe {
+        if mlua::ffi::lua_type(state, 1) != mlua::ffi::LUA_TFUNCTION {
+            return 0;
+        }
+        for index in 1..=255 {
+            let name = mlua::ffi::lua_getupvalue(state, 1, index);
+            if name.is_null() {
+                break;
+            }
+            let matches = CStr::from_ptr(name).to_bytes() == b"rank_plus";
+            if matches && mlua::ffi::lua_type(state, -1) == mlua::ffi::LUA_TBOOLEAN {
+                let value = mlua::ffi::lua_toboolean(state, -1);
+                mlua::ffi::lua_pop(state, 1);
+                mlua::ffi::lua_pushinteger(state, i64::from(index));
+                mlua::ffi::lua_pushboolean(state, value);
+                return 2;
+            }
+            mlua::ffi::lua_pop(state, 1);
+        }
+        0
+    }
+}
+
 /// Replaces one integer closure upvalue and reports whether the index existed.
 unsafe extern "C-unwind" fn set_integer_upvalue(state: *mut mlua::lua_State) -> c_int {
     // SAFETY: arguments are validated before touching the stack. `lua_setupvalue`
@@ -178,6 +232,31 @@ unsafe extern "C-unwind" fn set_boolean_upvalue(state: *mut mlua::lua_State) -> 
     }
 }
 
+/// Replaces one numeric closure upvalue and reports whether the index existed.
+unsafe extern "C-unwind" fn set_number_upvalue(state: *mut mlua::lua_State) -> c_int {
+    // SAFETY: arguments are validated before touching the stack. `lua_setupvalue`
+    // consumes the pushed value and only mutates the supplied function.
+    unsafe {
+        if mlua::ffi::lua_type(state, 1) != mlua::ffi::LUA_TFUNCTION
+            || mlua::ffi::lua_isinteger(state, 2) == 0
+            || mlua::ffi::lua_type(state, 3) != mlua::ffi::LUA_TNUMBER
+        {
+            mlua::ffi::lua_pushboolean(state, 0);
+            return 1;
+        }
+        let index = mlua::ffi::lua_tointeger(state, 2);
+        let value = mlua::ffi::lua_tonumber(state, 3);
+        let Ok(index) = c_int::try_from(index) else {
+            mlua::ffi::lua_pushboolean(state, 0);
+            return 1;
+        };
+        mlua::ffi::lua_pushnumber(state, value);
+        let name = mlua::ffi::lua_setupvalue(state, 1, index);
+        mlua::ffi::lua_pushboolean(state, if name.is_null() { 0 } else { 1 });
+        1
+    }
+}
+
 pub(super) fn lua_result_mode_upvalue(lua: &Lua, function: &Function) -> Option<(i32, i32)> {
     // SAFETY: both callbacks obey Lua's C function ABI and access only their
     // call frame. They are retained by mlua for the duration of `call`.
@@ -208,6 +287,22 @@ pub(super) fn lua_flag_score_upvalue(lua: &Lua, function: &Function) -> Option<(
     Some((i32::try_from(index).ok()?, value))
 }
 
+pub(super) fn lua_scorerate_upvalue(lua: &Lua, function: &Function) -> Option<(i32, f64)> {
+    // SAFETY: the callback obeys Lua's C function ABI and accesses only its
+    // call frame. It is retained by mlua for the duration of `call`.
+    let helper = unsafe { lua.create_c_function(find_scorerate_upvalue).ok()? };
+    let (index, value) = helper.call::<(i64, f64)>(function.clone()).ok()?;
+    Some((i32::try_from(index).ok()?, value))
+}
+
+pub(super) fn lua_rank_plus_upvalue(lua: &Lua, function: &Function) -> Option<(i32, bool)> {
+    // SAFETY: the callback obeys Lua's C function ABI and accesses only its
+    // call frame. It is retained by mlua for the duration of `call`.
+    let helper = unsafe { lua.create_c_function(find_rank_plus_upvalue).ok()? };
+    let (index, value) = helper.call::<(i64, bool)>(function.clone()).ok()?;
+    Some((i32::try_from(index).ok()?, value))
+}
+
 pub(super) fn set_lua_boolean_upvalue(
     lua: &Lua,
     function: &Function,
@@ -217,6 +312,20 @@ pub(super) fn set_lua_boolean_upvalue(
     // SAFETY: see `lua_flag_score_upvalue`; Rust-side argument conversion
     // guarantees the callback receives a function, integer, and boolean.
     let Ok(helper) = (unsafe { lua.create_c_function(set_boolean_upvalue) }) else {
+        return false;
+    };
+    helper.call::<bool>((function.clone(), index, value)).unwrap_or(false)
+}
+
+pub(super) fn set_lua_number_upvalue(
+    lua: &Lua,
+    function: &Function,
+    index: i32,
+    value: f64,
+) -> bool {
+    // SAFETY: see `lua_scorerate_upvalue`; Rust-side argument conversion
+    // guarantees the callback receives a function, integer, and number.
+    let Ok(helper) = (unsafe { lua.create_c_function(set_number_upvalue) }) else {
         return false;
     };
     helper.call::<bool>((function.clone(), index, value)).unwrap_or(false)

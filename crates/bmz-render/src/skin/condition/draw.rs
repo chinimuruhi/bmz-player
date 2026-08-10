@@ -83,6 +83,21 @@ pub(in crate::skin) fn eval_skin_draw_term(term: &str, state: &SkinDrawState) ->
         let diff = nearest_grade_diff(state)?;
         return Some(diff.grade == grade && nearest_rank_sign_matches(diff.value, sign));
     }
+    if let Some(width) = parse_nearest_rank_label_width_predicate(term) {
+        let score = i64::from(state.select_ex_score.unwrap_or(state.ex_score));
+        let max_score =
+            i64::from(state.select_total_notes.max(state.total_notes)).checked_mul(2)?;
+        if max_score <= 0 {
+            return Some(false);
+        }
+        let score = score.clamp(0, max_score);
+        return Some(match width {
+            3 => score * 18 >= max_score * 15,
+            2 => score * 18 >= max_score * 13 && score * 18 < max_score * 15,
+            1 => score * 18 < max_score * 13,
+            _ => false,
+        });
+    }
     if let Some(stage) = parse_wmii_next_rank_stage_predicate(term) {
         return Some(wmii_next_rank_stage(state) == Some(stage));
     }
@@ -210,6 +225,16 @@ pub(in crate::skin) fn parse_nearest_rank_predicate(term: &str) -> Option<(&str,
 pub(in crate::skin) fn parse_nearest_rank_sign_predicate(term: &str) -> Option<&str> {
     let sign = term.strip_prefix("nearest_rank_sign(")?.strip_suffix(')')?.trim();
     matches!(sign, "plus" | "minus").then_some(sign)
+}
+
+pub(in crate::skin) fn parse_nearest_rank_label_width_predicate(term: &str) -> Option<i32> {
+    let width = term
+        .strip_prefix("nearest_rank_label_width(")?
+        .strip_suffix(')')?
+        .trim()
+        .parse::<i32>()
+        .ok()?;
+    (1..=3).contains(&width).then_some(width)
 }
 
 pub(in crate::skin) fn parse_wmii_next_rank_stage_predicate(term: &str) -> Option<i32> {

@@ -188,6 +188,15 @@ fn infers_wmii_result_score_runtime_expressions() {
         Some("bmz:nearest_rank_diff_abs")
     );
     assert_eq!(
+        infer_nearest_rank_diff_value_expr(
+            &functions.get::<Function>("luxe_diff").unwrap(),
+            Some("default_playerdata_diff_count"),
+            &probe,
+        )
+        .as_deref(),
+        Some("bmz:nearest_rank_diff_abs")
+    );
+    assert_eq!(
         infer_result_score_draw(
             &functions.get::<Function>("aaa_minus").unwrap(),
             Some("nextRankAAA"),
@@ -217,6 +226,111 @@ fn infers_wmii_result_score_runtime_expressions() {
     assert_eq!(
         infer_text_concat_expr(&functions.get::<Function>("text").unwrap(), &probe).as_deref(),
         Some("bmz:text_concat:1001:1002")
+    );
+}
+
+#[test]
+fn infers_luxe_flat_select_rank_and_diff_layout_from_score_rate_state() {
+    let lua = Lua::new();
+    let probe = Arc::new(Mutex::new(MainStateProbe::default()));
+    let functions = lua
+        .load(
+            r#"
+                flag_score = false
+                local rank_plus = false
+                local scorerate = 0
+                local rivalscore = 0
+                local rival_scorerate = 0
+                return {
+                    max_minus = function()
+                        return rank_plus and flag_score
+                            and scorerate < 18/18 and scorerate >= 17/18
+                    end,
+                    f_plus = function()
+                        return rank_plus and flag_score
+                            and scorerate < 2/18 and scorerate >= 0/18
+                    end,
+                    wide = function()
+                        return rank_plus and flag_score and scorerate >= 15/18
+                    end,
+                    rival = function()
+                        return rank_plus and rivalscore > 0
+                            and rival_scorerate < 18/18 and rival_scorerate >= 17/18
+                    end,
+                }
+            "#,
+        )
+        .eval::<Table>()
+        .unwrap();
+
+    assert_eq!(
+        infer_luxe_flat_select_score_draw(
+            &lua,
+            &functions.get::<Function>("max_minus").unwrap(),
+            Some("diff_rank_max"),
+            &probe,
+        )
+        .as_deref(),
+        Some("select_score_available() and nearest_rank(MAX,minus)")
+    );
+    assert_eq!(
+        infer_luxe_flat_select_score_draw(
+            &lua,
+            &functions.get::<Function>("f_plus").unwrap(),
+            Some("diff_rank_f_plus"),
+            &probe,
+        )
+        .as_deref(),
+        Some("select_score_available() and nearest_rank(F,plus)")
+    );
+    assert_eq!(
+        infer_luxe_flat_select_score_draw(
+            &lua,
+            &functions.get::<Function>("wide").unwrap(),
+            Some("default_playerdata_diff_count"),
+            &probe,
+        )
+        .as_deref(),
+        Some("select_score_available() and nearest_rank_label_width(3)")
+    );
+    assert_eq!(
+        infer_luxe_flat_select_score_draw(
+            &lua,
+            &functions.get::<Function>("rival").unwrap(),
+            Some("diff_rank_max"),
+            &probe,
+        ),
+        None
+    );
+    assert!(!lua.globals().get::<bool>("flag_score").unwrap());
+}
+
+#[test]
+fn infers_luxe_flat_total_notes_ratio_values() {
+    let lua = Lua::new();
+    let probe = Arc::new(Mutex::new(MainStateProbe::default()));
+    lua.globals().set("main_state", create_main_state_stub(&lua, probe.clone()).unwrap()).unwrap();
+    let ratio = lua
+        .load(
+            r#"
+                return function()
+                    local total = main_state.number(368)
+                    local notes = main_state.number(74)
+                    if notes > 0 then return total / notes end
+                    return 0
+                end
+            "#,
+        )
+        .eval::<Function>()
+        .unwrap();
+
+    assert_eq!(
+        infer_bmz_builtin_value_expr(&ratio, Some("tn_count"), &probe).as_deref(),
+        Some(SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER)
+    );
+    assert_eq!(
+        infer_bmz_builtin_value_expr(&ratio, Some("tn_dot_count"), &probe).as_deref(),
+        Some(SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_FRACTION)
     );
 }
 

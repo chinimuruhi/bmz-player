@@ -136,6 +136,35 @@ fn infers_loading_or_loaded_before_ready_draw_condition() {
 }
 
 #[test]
+fn infers_option_and_multiple_positive_numbers_draw_condition() {
+    let lua = Lua::new();
+    let probe = Arc::new(Mutex::new(MainStateProbe::default()));
+    let main_state = create_main_state_stub(&lua, probe.clone()).unwrap();
+    lua.globals().set("main_state", main_state).unwrap();
+    let function = lua
+        .load(
+            r#"
+                return function()
+                    return main_state.option(2)
+                        and (main_state.number(74) > 0
+                            or main_state.number(92) > 0
+                            or main_state.number(368) > 0)
+                end
+                "#,
+        )
+        .eval::<Function>()
+        .unwrap();
+
+    assert_eq!(
+        infer_boolean_predicate(&function, &probe, None),
+        Some(
+            "option(2) and number(74) > 0 or option(2) and number(92) > 0 or option(2) and number(368) > 0"
+                .to_string()
+        )
+    );
+}
+
+#[test]
 fn infers_keybeam_hold_draw_condition() {
     let lua = Lua::new();
     let probe = Arc::new(Mutex::new(MainStateProbe::default()));

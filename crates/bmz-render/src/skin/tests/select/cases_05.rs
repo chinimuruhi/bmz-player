@@ -1,6 +1,49 @@
 use super::*;
 
 #[test]
+fn luxe_flat_select_score_and_chart_values_use_runtime_metadata() {
+    let state = SkinDrawState {
+        select_screen: true,
+        select_row_kind: SelectRowKind::Song,
+        select_in_library: true,
+        select_ex_score: Some(2_890),
+        select_play_count: 2,
+        select_total_notes: 1_498,
+        select_chart_total_gauge: 290.0,
+        select_length_ms: 152_000,
+        ..SkinDrawState::default()
+    };
+
+    let diff = SkinValueDef {
+        value_expr: "bmz:nearest_rank_diff_abs".to_string(),
+        ..SkinValueDef::default()
+    };
+    let ratio_integer = SkinValueDef {
+        value_expr: SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER.to_string(),
+        ..SkinValueDef::default()
+    };
+    let ratio_fraction = SkinValueDef {
+        value_expr: SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_FRACTION.to_string(),
+        ..SkinValueDef::default()
+    };
+
+    assert_eq!(skin_value_number(&diff, &state), Some(106));
+    assert_eq!(skin_value_number(&ratio_integer, &state), Some(0));
+    assert_eq!(skin_value_number(&ratio_fraction, &state), Some(193));
+    assert_eq!(skin_state_number(1163, &state), Some(2));
+    assert_eq!(skin_state_number(1164, &state), Some(32));
+    assert!(eval_skin_draw_condition(
+        "select_score_available() and nearest_rank(MAX,minus)",
+        &state
+    ));
+    assert!(!eval_skin_draw_condition("select_score_available() and nearest_rank(F,plus)", &state));
+    assert!(eval_skin_draw_condition(
+        "select_score_available() and nearest_rank_label_width(3)",
+        &state
+    ));
+}
+
+#[test]
 fn select_course_keeps_score_totals_but_hides_per_chart_details() {
     let state = SkinDrawState {
         select_screen: true,

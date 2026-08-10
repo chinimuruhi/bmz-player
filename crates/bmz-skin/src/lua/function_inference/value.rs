@@ -36,6 +36,20 @@ pub(in crate::lua) fn infer_bmz_builtin_value_expr(
         Some("val-gauge-percent-fraction") => Some(SKIN_EXPR_GAUGE_PERCENT_FRACTION.to_string()),
         Some("val-gauge-amount-integer") => Some(SKIN_EXPR_GAUGE_AMOUNT_INTEGER.to_string()),
         Some("val-gauge-amount-fraction") => Some(SKIN_EXPR_GAUGE_AMOUNT_FRACTION.to_string()),
+        Some("tn_count") | Some("tn_dot_count") => {
+            let refs = collect_number_refs(function, main_state_probe)?;
+            if !refs.contains(&74) || !refs.contains(&368) {
+                return None;
+            }
+            Some(
+                if object_id == Some("tn_dot_count") {
+                    SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_FRACTION
+                } else {
+                    SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER
+                }
+                .to_string(),
+            )
+        }
         _ => {
             let refs = collect_number_refs(function, main_state_probe)?;
             if refs.iter().any(|ref_id| matches!(ref_id, 160 | 90 | 91 | 314 | 14)) {

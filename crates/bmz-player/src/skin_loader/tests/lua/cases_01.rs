@@ -743,6 +743,44 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
     }
 
     let decoded = decode_beatoraja_skin(&skin_path, SkinKind::Select).unwrap();
+    for (id, value_expr) in [
+        ("default_playerdata_diff_count", "bmz:nearest_rank_diff_abs"),
+        ("tn_count", SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER),
+        ("tn_dot_count", SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_FRACTION),
+    ] {
+        assert!(
+            decoded
+                .document
+                .value
+                .iter()
+                .any(|value| { value.id == id && value.value_expr == value_expr }),
+            "Luxe Flat should compile {id} to {value_expr}"
+        );
+    }
+    for id in ["songtime_m_count", "songtime_s_count", "tn_count", "tn_dot_count"] {
+        assert!(
+            decoded.document.destination.iter().any(|entry| matches!(
+                entry,
+                DestinationListEntry::Single(destination)
+                    if destination.id == id
+                        && destination.draw.contains("option(2)")
+                        && destination.draw.contains("number(74) > 0")
+                        && destination.draw.contains("number(92) > 0")
+                        && destination.draw.contains("number(368) > 0")
+            )),
+            "Luxe Flat should retain the runtime chart-data guard for {id}"
+        );
+    }
+    assert!(
+        decoded.document.destination.iter().any(|entry| matches!(
+            entry,
+            DestinationListEntry::Single(destination)
+                if destination.id == "diff_rank_max"
+                    && destination.draw
+                        == "select_score_available() and nearest_rank(MAX,minus)"
+        )),
+        "Luxe Flat should compile the local MAX- score-grade destination"
+    );
     for ref_id in 27..=29 {
         assert!(
             decoded.document.value.iter().any(|value| value.ref_id == ref_id),

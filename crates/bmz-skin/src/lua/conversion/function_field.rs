@@ -275,6 +275,7 @@ fn infer_draw_field(
 ) -> Result<()> {
     let object_id = metadata.object_id.as_deref();
     let draw = infer_result_panel_draw_condition(lua, function, object_id, main_state_probe)
+        .or_else(|| infer_luxe_flat_select_score_draw(lua, function, object_id, main_state_probe))
         .or_else(|| infer_result_score_draw(function, object_id, main_state_probe))
         .or_else(|| {
             metadata.gauge_lead_glow.as_ref().map(|(group, below_border, part)| {

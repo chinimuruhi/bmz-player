@@ -8,7 +8,8 @@ use bmz_render::plan::{DrawCommand, DrawPlan};
 use bmz_render::renderer::Renderer;
 use bmz_render::scene::{AppSceneSnapshot, SelectRowSnapshot, SelectSnapshot};
 use bmz_render::skin::{
-    DestinationListEntry, DynamicTimerRuntime, SKIN_REF_BMZ_SELECT_SESSION_MODE, SkinContext,
+    DestinationListEntry, DynamicTimerRuntime, SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_FRACTION,
+    SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER, SKIN_REF_BMZ_SELECT_SESSION_MODE, SkinContext,
     SkinDocumentRenderExt, SkinDocumentTexture, SkinDrawState, SkinImageSize, SkinManifest,
     SkinRenderItem, SkinTextState,
 };

@@ -110,6 +110,12 @@ pub(in crate::skin) fn skin_builtin_value_i64(expr: &str, state: &SkinDrawState)
     if expr.trim() == "bmz:wmii_next_rank_diff" {
         return wmii_next_rank_diff(state);
     }
+    if expr.trim() == SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER {
+        return select_total_notes_ratio_parts(state).map(|parts| parts.0);
+    }
+    if expr.trim() == SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_FRACTION {
+        return select_total_notes_ratio_parts(state).map(|parts| parts.1);
+    }
     let number = skin_builtin_value_f32(expr, state)?;
     Some(match expr.trim() {
         SKIN_EXPR_DEFAULT_CHART_TOTAL_COUNT | SKIN_EXPR_DEFAULT_CHART_GAUGE => {
@@ -117,6 +123,16 @@ pub(in crate::skin) fn skin_builtin_value_i64(expr: &str, state: &SkinDrawState)
         }
         _ => integer_property_value(number),
     })
+}
+
+pub(in crate::skin) fn select_total_notes_ratio_parts(state: &SkinDrawState) -> Option<(i64, i64)> {
+    let total = skin_state_number(368, state)?.max(0);
+    let notes = skin_state_number(74, state)?;
+    if notes <= 0 {
+        return Some((0, 0));
+    }
+    let scaled = i128::from(total).checked_mul(1_000)?.checked_div(i128::from(notes))?;
+    Some((i64::try_from(scaled / 1_000).ok()?, i64::try_from(scaled % 1_000).ok()?))
 }
 
 pub(in crate::skin) fn skin_value_number(

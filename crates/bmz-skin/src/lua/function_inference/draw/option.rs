@@ -39,6 +39,60 @@ pub(in crate::lua) fn infer_main_state_option_number_draw_condition(
     )?);
     number_refs.sort_unstable();
     number_refs.dedup();
+    if (2..=8).contains(&number_refs.len()) {
+        let option_values = |value| BTreeMap::from([(option_id, value)]);
+        let number_values = |active_ref: Option<i32>, value: i32| {
+            number_refs
+                .iter()
+                .copied()
+                .map(|ref_id| (ref_id, if active_ref == Some(ref_id) { value } else { 0 }))
+                .collect::<BTreeMap<_, _>>()
+        };
+        for option_value in [false, true] {
+            let all_zero = call_draw_with_numbers_and_options(
+                function,
+                main_state_probe,
+                number_values(None, 0),
+                option_values(option_value),
+            )?;
+            if all_zero {
+                return None;
+            }
+            let all_positive = call_draw_with_numbers_and_options(
+                function,
+                main_state_probe,
+                number_refs.iter().copied().map(|ref_id| (ref_id, 5)).collect(),
+                option_values(option_value),
+            )?;
+            if all_positive != option_value {
+                return None;
+            }
+            for ref_id in &number_refs {
+                let positive = call_draw_with_numbers_and_options(
+                    function,
+                    main_state_probe,
+                    number_values(Some(*ref_id), 5),
+                    option_values(option_value),
+                )?;
+                let negative = call_draw_with_numbers_and_options(
+                    function,
+                    main_state_probe,
+                    number_values(Some(*ref_id), -5),
+                    option_values(option_value),
+                )?;
+                if positive != option_value || negative {
+                    return None;
+                }
+            }
+        }
+        return Some(
+            number_refs
+                .iter()
+                .map(|ref_id| format!("option({option_id}) and number({ref_id}) > 0"))
+                .collect::<Vec<_>>()
+                .join(" or "),
+        );
+    }
     let number_ref = single_number_call(&number_refs)?;
 
     let false_zero =
