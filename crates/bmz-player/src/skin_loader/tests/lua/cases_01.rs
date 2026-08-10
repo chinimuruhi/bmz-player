@@ -404,6 +404,13 @@ fn m_select_lua_select_skin_renders_items_when_available() {
         .find(|source| source.source_id == "src-default-stateplayoption-random-bmz")
         .expect("m-select F-RANDOM source")
         .texture;
+    let option_source = decoded
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src-default-stateplayoption-parts")
+        .expect("m-select play option source");
+    let option_texture = option_source.texture;
+    let option_source_height = option_source.size.height as f32;
     let option_panel_texture = decoded
         .sources
         .iter()
@@ -486,7 +493,7 @@ fn m_select_lua_select_skin_renders_items_when_available() {
         arrange_2p: "MF-RANDOM".to_string(),
         gauge: "EX-HARD".to_string(),
         double_option: "BATTLE".to_string(),
-        hs_fix: "CONSTANT".to_string(),
+        hs_fix: "MIN BPM".to_string(),
         rows: vec![bmz_render::scene::SelectRowSnapshot {
             title: "Song".to_string(),
             ..Default::default()
@@ -502,13 +509,25 @@ fn m_select_lua_select_skin_renders_items_when_available() {
                 .any(|item| matches!(item, bmz_render::skin::SkinRenderItem::Text { text, .. } if text == "Song")),
             "m_select select skin should render the song title text"
         );
-    for label in ["EX-HARD", "BATTLE", "CONSTANT"] {
+    for label in ["EX-HARD", "BATTLE", "MIN BPM"] {
         assert!(
-                items.iter().any(
-                    |item| matches!(item, bmz_render::skin::SkinRenderItem::Text { text, .. } if text == label)
-                ),
-                "m_select should render the dynamic option label {label}"
-            );
+            items.iter().all(
+                |item| !matches!(item, bmz_render::skin::SkinRenderItem::Text { text, .. } if text == label)
+            ),
+            "m-select should not render the option label {label} as text"
+        );
+    }
+    for (left_x, source_y) in [(628.0, 76.0), (794.0, 38.0), (960.0, 76.0)] {
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                bmz_render::skin::SkinRenderItem::Image { texture, rect, uv, .. }
+                    if *texture == option_texture
+                        && (rect.x - left_x / 1920.0).abs() < 0.001
+                        && (uv.y - source_y / option_source_height).abs() < 0.001
+            )),
+            "m-select should render the option sprite at x={left_x}"
+        );
     }
     for (left_x, uv_y) in [(462.0, 0.0), (1126.0, 0.5)] {
         assert!(
@@ -730,13 +749,25 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
             "Luxe Flat should retain operating-time ref {ref_id}"
         );
     }
-    for (id, center_x) in
-        [("bmz_select_gauge", 302), ("bmz_select_double_option", 446), ("bmz_select_hs_fix", 613)]
-    {
+    for id in ["bmz_select_gauge", "bmz_select_double_option", "bmz_select_hs_fix"] {
         assert!(
-            decoded.document.text.iter().any(|text| text.id == id),
-            "Luxe Flat should decode dynamic {id} text"
+            decoded.document.text.iter().all(|text| text.id != id),
+            "Luxe Flat should use option images instead of dynamic {id} text"
         );
+    }
+    for (id, ref_id, image_count, left_x, width) in [
+        ("default_stateplayoption_option_gauge", 40, 6, 254, 96),
+        ("default_stateplayoption_option_dp", 54, 4, 381, 129),
+        ("default_stateplayoption_option_hsfix", 55, 5, 550, 126),
+    ] {
+        let imageset = decoded
+            .document
+            .imageset
+            .iter()
+            .find(|imageset| imageset.id == id)
+            .unwrap_or_else(|| panic!("Luxe Flat should decode {id}"));
+        assert_eq!(imageset.ref_id, ref_id);
+        assert_eq!(imageset.images.len(), image_count);
         assert!(decoded.document.destination.iter().any(|entry| matches!(
             entry,
             DestinationListEntry::Single(destination)
@@ -745,7 +776,7 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
                     && matches!(
                         destination.dst.first(),
                         Some(bmz_render::skin::SkinDstEntry::Frame(frame))
-                            if frame.x == Some(center_x)
+                            if frame.x == Some(left_x) && frame.w == Some(width)
             )
         )));
     }

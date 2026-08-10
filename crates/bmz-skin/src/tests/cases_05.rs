@@ -346,17 +346,25 @@ fn m_select_lua_select_skin_loads_when_available() {
             "m-select should retain operating-time ref {ref_id}"
         );
     }
-    for (id, center_x) in
-        [("bmz_select_gauge", 711), ("bmz_select_double_option", 877), ("bmz_select_hs_fix", 1043)]
-    {
+    for id in ["bmz_select_gauge", "bmz_select_double_option", "bmz_select_hs_fix"] {
         assert!(
-            loaded
-                .document
-                .text
-                .iter()
-                .any(|text| text.id == id && text.constant_text.is_empty() && text.overflow == 1),
-            "m-select should decode dynamic {id} text"
+            loaded.document.text.iter().all(|text| text.id != id),
+            "m-select should use option images instead of dynamic {id} text"
         );
+    }
+    for (id, ref_id, image_count, left_x) in [
+        ("default_stateplayoption_option_gauge", 40, 6, 628),
+        ("default_stateplayoption_option_dp", 54, 4, 794),
+        ("default_stateplayoption_option_hsfix", 55, 5, 960),
+    ] {
+        let imageset = loaded
+            .document
+            .imageset
+            .iter()
+            .find(|imageset| imageset.id == id)
+            .unwrap_or_else(|| panic!("m-select should decode {id}"));
+        assert_eq!(imageset.ref_id, ref_id);
+        assert_eq!(imageset.images.len(), image_count);
         assert!(loaded.document.destination.iter().any(|entry| matches!(
             entry,
             bmz_skin_document::DestinationListEntry::Single(destination)
@@ -365,7 +373,7 @@ fn m_select_lua_select_skin_loads_when_available() {
                     && matches!(
                         destination.dst.first(),
                         Some(bmz_skin_document::SkinDstEntry::Frame(frame))
-                            if frame.x == Some(center_x)
+                            if frame.x == Some(left_x) && frame.w == Some(166)
             )
         )));
     }
