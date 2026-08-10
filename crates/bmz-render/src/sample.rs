@@ -59,6 +59,8 @@ pub fn sample_select_scene() -> AppSceneSnapshot {
         arrange_2p: "NORMAL".to_string(),
         lane_shuffle_pattern: Vec::new(),
         target: "NONE".to_string(),
+        rival_name: String::new(),
+        chart_replication_mode: "RIVALCHART".to_string(),
         gauge: "NORMAL".to_string(),
         gauge_auto_shift: "OFF".to_string(),
         bottom_shiftable_gauge: "A-EASY".to_string(),

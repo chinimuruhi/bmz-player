@@ -40,6 +40,8 @@ pub struct SelectSnapshot {
     /// 選曲中に配置が確定している場合だけ `pattern[表示先レーン] = 元レーン` を格納する。
     pub lane_shuffle_pattern: Vec<u8>,
     pub target: String,
+    /// beatoraja STRING_CHARTREPLICATION (86)。
+    pub chart_replication_mode: String,
     pub gauge: String,
     pub gauge_auto_shift: String,
     pub bottom_shiftable_gauge: String,
@@ -104,6 +106,8 @@ pub struct SelectSnapshot {
     /// 選曲カーソル譜面の IR ライバルベスト
     /// (STRING_RIVAL=1 / NUMBER_RIVAL_*=271,275,276 / OPTION_COMPARE_RIVAL=624,625)。
     pub rival: Option<SelectRivalSnapshot>,
+    /// 選択ライバル名。未プレイ譜面でも STRING_RIVAL (1) へ表示する。
+    pub rival_name: String,
     /// beatoraja IndexType autosave_replay1..4 (321..324) image row indices.
     pub replay_slot_rule_indices: [i64; 4],
     pub player_stats: PlayerStatsSnapshot,
@@ -156,6 +160,7 @@ impl Default for SelectSnapshot {
             arrange_2p: String::new(),
             lane_shuffle_pattern: Vec::new(),
             target: String::new(),
+            chart_replication_mode: String::new(),
             gauge: String::new(),
             gauge_auto_shift: String::new(),
             bottom_shiftable_gauge: String::new(),
@@ -196,6 +201,7 @@ impl Default for SelectSnapshot {
             mouse_position: None,
             ir: ResultIrSnapshot::default(),
             rival: None,
+            rival_name: String::new(),
             replay_slot_rule_indices: [0; 4],
             player_stats: PlayerStatsSnapshot::default(),
         }

@@ -118,8 +118,16 @@ pub fn apply_placeholder_session_visuals(
     snapshot.bga_enabled =
         bga_enabled_from_profile(profile, snapshot.autoplay, snapshot.replay_playback);
     snapshot.bga_stretch = bga_stretch_from_profile(profile);
-    snapshot.target_ex_score = options.target.target_ex_score(snapshot.total_notes);
-    snapshot.target = options.target.as_string();
+    snapshot.target_ex_score = options
+        .resolved_target
+        .as_ref()
+        .map(|target| target.ex_score)
+        .or_else(|| options.target.target_ex_score(snapshot.total_notes));
+    snapshot.target = options
+        .resolved_target
+        .as_ref()
+        .map(|target| target.name.clone())
+        .unwrap_or_else(|| options.target.as_string());
 
     snapshot.note_display_duration_ms =
         crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(

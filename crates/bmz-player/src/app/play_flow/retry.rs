@@ -13,6 +13,7 @@ impl WinitApp {
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
+        self.apply_active_rival_play_overrides(chart_id, &mut options);
         if options.chart_zero_time == TimeUs(0) {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }
@@ -498,6 +499,7 @@ impl WinitApp {
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
+        self.apply_active_rival_play_overrides(chart_id, &mut options);
         if options.chart_zero_time == TimeUs(0) {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }

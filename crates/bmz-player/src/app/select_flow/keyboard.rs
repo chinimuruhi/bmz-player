@@ -349,12 +349,20 @@ impl WinitApp {
                 PhysicalKey::Code(KeyCode::F3) => self.handle_select_f3_action(),
                 PhysicalKey::Code(KeyCode::F10) => self.start_autoplay_folder_selected(),
                 PhysicalKey::Code(KeyCode::F11) => self.open_primary_ir_for_selected(),
+                PhysicalKey::Code(KeyCode::Digit7 | KeyCode::Numpad7) => self.cycle_active_rival(1),
                 PhysicalKey::Code(KeyCode::Numpad9) => self.open_selected_chart_documents(),
                 _ => {}
             }
             if matches!(
                 event.physical_key,
-                PhysicalKey::Code(KeyCode::F3 | KeyCode::F10 | KeyCode::F11 | KeyCode::Numpad9)
+                PhysicalKey::Code(
+                    KeyCode::F3
+                        | KeyCode::F10
+                        | KeyCode::F11
+                        | KeyCode::Digit7
+                        | KeyCode::Numpad7
+                        | KeyCode::Numpad9
+                )
             ) {
                 return;
             }

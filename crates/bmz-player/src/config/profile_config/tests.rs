@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn chart_replication_mode_uses_beatoraja_names_and_defaults_to_rival_chart() {
+    #[derive(Serialize, Deserialize)]
+    struct ModeWrapper {
+        mode: ChartReplicationModeConfig,
+    }
+
+    let encoded =
+        toml::to_string(&ModeWrapper { mode: ChartReplicationModeConfig::RivalOption }).unwrap();
+    assert_eq!(encoded.trim(), "mode = \"RIVALOPTION\"");
+    assert_eq!(
+        toml::from_str::<ModeWrapper>("mode = \"RIVALCHART\"").unwrap().mode,
+        ChartReplicationModeConfig::RivalChart
+    );
+
+    let profile = ProfileConfig::new_default("default", "Player", 0);
+    let mut value = toml::Value::try_from(&profile).unwrap();
+    value
+        .get_mut("rival")
+        .and_then(toml::Value::as_table_mut)
+        .unwrap()
+        .remove("chart_replication_mode");
+    let decoded: ProfileConfig = value.try_into().unwrap();
+    assert_eq!(decoded.rival.chart_replication_mode, ChartReplicationModeConfig::RivalChart);
+}
+
+#[test]
 fn legacy_score_judge_algorithm_is_loaded_as_duration() {
     let judge: JudgeConfig = toml::from_str(
         r#"

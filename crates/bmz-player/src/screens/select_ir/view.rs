@@ -201,7 +201,52 @@ impl SelectIrRanking {
         selected: Option<[u8; 32]>,
     ) -> Option<SelectRivalSnapshot> {
         enabled_provider(ir_config)?;
+        if self.active_rival.is_some() {
+            let sha256 = selected?;
+            let score = self
+                .active_rival_scores
+                .iter()
+                .find_map(|((hash, _), score)| (*hash == sha256).then_some(score))?;
+            return Some(SelectRivalSnapshot {
+                display_name: self.active_rival.as_ref()?.display_name.clone(),
+                ex_score: score.ex_score,
+                max_combo: score.max_combo,
+                bp: score.min_bp.max(0) as u32,
+                judge_counts: None,
+            });
+        }
         self.cache.get(&selected?).and_then(|entry| entry.rival.clone())
+    }
+
+    pub fn active_rival_name(&self) -> Option<&str> {
+        self.active_rival.as_ref().map(|rival| rival.display_name.as_str())
+    }
+
+    pub fn active_rival_score(
+        &self,
+        chart_sha256: [u8; 32],
+        ln_mode: u8,
+    ) -> Option<&IrRivalScoreRecord> {
+        self.active_rival_scores.get(&(chart_sha256, ln_mode))
+    }
+
+    pub fn active_rival_snapshot(
+        &self,
+        chart_sha256: [u8; 32],
+        ln_mode: u8,
+    ) -> Option<SelectRivalSnapshot> {
+        let score = self.active_rival_score(chart_sha256, ln_mode)?;
+        Some(SelectRivalSnapshot {
+            display_name: self.active_rival.as_ref()?.display_name.clone(),
+            ex_score: score.ex_score,
+            max_combo: score.max_combo,
+            bp: score.min_bp.max(0) as u32,
+            judge_counts: None,
+        })
+    }
+
+    pub fn active_rival_display_name(&self) -> Option<&str> {
+        self.active_rival_name()
     }
 
     pub fn target_ex_score_for(

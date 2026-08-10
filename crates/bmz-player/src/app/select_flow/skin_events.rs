@@ -57,6 +57,7 @@ impl WinitApp {
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
             }
             77 => self.cycle_select_target(arg),
+            79 => self.cycle_active_rival(arg),
             78 => self.cycle_select_gauge_auto_shift(arg),
             89 => self.toggle_favorite_song_selected(),
             90 => self.toggle_favorite_chart_selected(),
@@ -88,6 +89,7 @@ impl WinitApp {
                     !self.boot.profile_config.lane.hispeed_auto_adjust;
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
             }
+            344 => self.cycle_chart_replication_mode(arg),
             _ => {
                 tracing::debug!(event_id, arg, "unsupported select skin event");
             }
@@ -180,6 +182,82 @@ impl WinitApp {
     pub(super) fn cycle_select_target(&mut self, arg: i32) {
         let cycle = if arg >= 0 { TargetCycle::Next } else { TargetCycle::Previous };
         self.apply_target_option_cycle(cycle);
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_active_rival(&mut self, arg: i32) {
+        let Some(provider) =
+            crate::ir::provider_key::primary_provider_config(&self.boot.profile_config.ir)
+        else {
+            return;
+        };
+        if !crate::ir::rian_ir::is_rian_ir_provider(&provider.provider) {
+            return;
+        }
+        let Some(provider_key) = crate::ir::provider_key::configured_provider_key(provider) else {
+            return;
+        };
+        let ids: Vec<String> = self
+            .boot
+            .profile_config
+            .rival
+            .entries
+            .iter()
+            .filter(|entry| {
+                matches!(entry.source, RivalSourceConfig::Ir)
+                    && entry.ir_service == provider_key
+                    && !entry.ir_user_id.is_empty()
+            })
+            .map(|entry| entry.id.clone())
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+
+        let current = self.boot.profile_config.rival.active_rival.clone();
+        let position = if current.is_empty() {
+            0
+        } else {
+            ids.iter().position(|id| id == &current).map(|index| index + 1).unwrap_or(0)
+        };
+        let count = ids.len() + 1;
+        let next = if arg >= 0 { (position + 1) % count } else { (position + count - 1) % count };
+        self.boot.profile_config.rival.active_rival =
+            if next == 0 { String::new() } else { ids[next - 1].clone() };
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        if let Err(error) =
+            save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
+        {
+            self.boot.profile_config.rival.active_rival = current;
+            tracing::error!(%error, "failed to save active rival");
+            return;
+        }
+        let target = crate::screens::select_ir::SelectRivalFetchTarget::from_profile(
+            &self.boot.profile_config,
+        );
+        self.select.select_ir.update_rival(target, &self.boot.profile_paths.root_dir);
+        tracing::info!(
+            rival = %self.boot.profile_config.rival.active_rival,
+            "active rival changed"
+        );
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_chart_replication_mode(&mut self, arg: i32) {
+        let previous = self.boot.profile_config.rival.chart_replication_mode;
+        self.boot.profile_config.rival.chart_replication_mode = previous.cycle(arg >= 0);
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        if let Err(error) =
+            save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
+        {
+            self.boot.profile_config.rival.chart_replication_mode = previous;
+            tracing::error!(%error, "failed to save chart replication mode");
+            return;
+        }
+        tracing::info!(
+            mode = self.boot.profile_config.rival.chart_replication_mode.as_str(),
+            "chart replication mode changed"
+        );
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
     }
 

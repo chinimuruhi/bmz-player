@@ -119,6 +119,7 @@ pub struct RunningPlaySession {
     pub target: String,
     /// 実譜面と実スコアキーが確定してから EX 目標値を解決するための設定値。
     pub target_option: TargetOption,
+    pub resolved_target: Option<crate::select_options::ResolvedTarget>,
     pub applied_arrange: AppliedArrange,
     pub practice_mode: bool,
     pub bga_frames: BgaFrameCatalog,
@@ -270,7 +271,11 @@ pub fn open_prepared_play_audio(
     let audio = open_app_audio_output(runtime, prepared.audio);
     let mut session = prepared.session;
     session.audio_clock = audio.clock();
-    let target_ex_score = prepared.target_option.target_ex_score(session.scored_total_notes);
+    let target_ex_score = prepared
+        .resolved_target
+        .as_ref()
+        .map(|target| target.ex_score)
+        .or_else(|| prepared.target_option.target_ex_score(session.scored_total_notes));
 
     RunningPlaySession {
         render_snapshot_cache: prepared.render_snapshot_cache,
@@ -290,6 +295,7 @@ pub fn open_prepared_play_audio(
         target_ex_score,
         target: prepared.target,
         target_option: prepared.target_option,
+        resolved_target: prepared.resolved_target,
         applied_arrange: prepared.applied_arrange,
         practice_mode: prepared.practice_mode,
         bga_frames: BgaFrameCatalog::new(),

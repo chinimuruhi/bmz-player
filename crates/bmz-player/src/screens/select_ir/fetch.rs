@@ -83,6 +83,82 @@ pub(super) fn spawn_course_fetch(
     });
 }
 
+pub(super) fn spawn_rival_fetch(
+    target: SelectRivalFetchTarget,
+    profile_root: &Path,
+    requested_at: Instant,
+    sender: Sender<RivalFetchResult>,
+) {
+    let network_db_path = profile_root.join("network.db");
+    tokio::spawn(async move {
+        let result = async {
+            crate::storage::migration::migrate_network_db(&network_db_path)?;
+            let mut database = crate::storage::network_db::NetworkDatabase::open(&network_db_path)?;
+            let cache = database.rival_score_cache_state(
+                &target.provider,
+                &target.rival_id,
+                &target.body,
+            )?;
+            let response = crate::ir::rian_ir::RianIrClient::new(&target.base_url)?
+                .fetch_rival_scores(
+                    &target.rival_id,
+                    &target.body,
+                    (!cache.etag.is_empty()).then_some(cache.etag.as_str()),
+                )
+                .await?;
+            if response.not_modified {
+                return database.rival_scores(
+                    &target.provider,
+                    &target.rival_id,
+                    &target.body,
+                );
+            }
+            let scores = response
+                .scores
+                .into_iter()
+                .filter_map(|score| {
+                    let chart_sha256 = match hex_to_hash::<32>(&score.sha256) {
+                        Ok(hash) => hash,
+                        Err(error) => {
+                            tracing::warn!(hash = %score.sha256, %error, "discarding invalid rival score hash");
+                            return None;
+                        }
+                    };
+                    Some(IrRivalScoreRecord {
+                        chart_sha256,
+                        ln_mode: score.ln_mode,
+                        ex_score: score.ex_score,
+                        clear_type: score.clear_type,
+                        max_combo: score.max_combo,
+                        min_bp: score.min_bp,
+                        play_option: score.play_option,
+                        arrange_1p: score.arrange_1p,
+                        arrange_2p: score.arrange_2p,
+                        double_option: score.double_option,
+                        play_seed: score.play_seed,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let fetched_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs().min(i64::MAX as u64) as i64)
+                .unwrap_or(0);
+            database.replace_rival_scores(
+                &target.provider,
+                &target.rival_id,
+                &target.body,
+                &scores,
+                &response.etag,
+                fetched_at,
+            )?;
+            anyhow::Ok(scores)
+        }
+        .await
+        .map_err(|error| format!("{error:#}"));
+        let _ = sender.send((target, requested_at, result));
+    });
+}
+
 /// rivals scope ランキングの先頭 (ライバル中ベスト) をスキン用に変換する。
 pub(super) fn top_rival_snapshot(rivals: &IrRankingResult) -> Option<SelectRivalSnapshot> {
     let entry = rivals.ranking.entries.first()?;

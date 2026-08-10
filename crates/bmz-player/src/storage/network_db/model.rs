@@ -96,4 +96,26 @@ pub struct IrLocalScoreCleanupReport {
     pub removed_jobs: u32,
     pub removed_submissions: u32,
 }
+
+/// rianIR の軽量ライバル全曲APIから取得した、譜面/LNモード単位のベスト。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IrRivalScoreRecord {
+    pub chart_sha256: [u8; 32],
+    pub ln_mode: u8,
+    pub ex_score: u32,
+    pub clear_type: i32,
+    pub max_combo: u32,
+    pub min_bp: i32,
+    pub play_option: i32,
+    pub arrange_1p: String,
+    pub arrange_2p: String,
+    pub double_option: String,
+    pub play_seed: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IrRivalScoreCacheState {
+    pub etag: String,
+    pub fetched_at: i64,
+}
 use super::*;

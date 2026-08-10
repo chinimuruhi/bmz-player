@@ -61,6 +61,7 @@ F1メニューの「Random Trainer」では、7K・1Pの通常`RANDOM`で使う�
 | Ctrl+F3 / Ctrl+Shift+F3 | MD5 / SHA256 をクリップボードへコピー（従来互換） |
 | F10 | 選択中フォルダ内の譜面を Autoplay |
 | F11 | 選択中譜面のプライマリIRページを開く |
+| 7 / Numpad7 | rianIRの選択ライバルを `NONE → 登録順` で切替 |
 | Numpad9 | 選択中譜面と同じフォルダの `.txt` 曲テキストを開く |
 | F8 | favorite song を登録 / 解除 |
 | F9 | favorite chart を登録 / 解除 |
@@ -78,6 +79,10 @@ E1 / E2 / E1+E2 を hold している間は、選曲オプションパネルを�
 スキンでは、曲行を選択中かつオプションパネル・検索・設定編集を開いていないときに、E3で
 `RANKING`（全体）と `RIVAL`（自分 + IRライバル）を切り替えます。Rival scope 非対応時は
 何もしません。
+`7`（テンキーの `7` も可）で選んだrianIRライバルに対象譜面のスコアがあれば、
+そのEXスコアをプレイ時ターゲットとして自動使用します。未プレイ譜面ではbeatorajaと同じく、
+通常のTARGET設定へフォールバックします。ライバル一覧は `ir rivals` でプライマリIRから
+プロファイルへ同期します。rianIRでのライバル追加・解除はWebサイト側で行います。
 `RANDOM SELECT` 行は設定フォルダの `選曲 > RANDOM SELECT` から表示を切り替えられます。
 favorite 操作は invisible を使わず、登録済みなら解除、未登録なら登録します。
 

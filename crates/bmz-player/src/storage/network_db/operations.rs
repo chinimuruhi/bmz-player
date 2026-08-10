@@ -14,6 +14,122 @@ impl NetworkDatabase {
         &self.conn
     }
 
+    pub fn rival_score_cache_state(
+        &self,
+        provider: &str,
+        rival_id: &str,
+        body: &str,
+    ) -> Result<IrRivalScoreCacheState> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT etag, fetched_at FROM ir_rival_score_sync
+                 WHERE provider = ?1 AND rival_id = ?2 AND body = ?3",
+                params![provider, rival_id, body],
+                |row| Ok(IrRivalScoreCacheState { etag: row.get(0)?, fetched_at: row.get(1)? }),
+            )
+            .optional()?
+            .unwrap_or_default())
+    }
+
+    pub fn rival_scores(
+        &self,
+        provider: &str,
+        rival_id: &str,
+        body: &str,
+    ) -> Result<Vec<IrRivalScoreRecord>> {
+        let mut statement = self.conn.prepare(
+            "SELECT chart_sha256, ln_mode, ex_score, clear_type, max_combo, min_bp,
+                    play_option, arrange_1p, arrange_2p, double_option, play_seed
+             FROM ir_rival_scores
+             WHERE provider = ?1 AND rival_id = ?2 AND body = ?3
+             ORDER BY chart_sha256, ln_mode",
+        )?;
+        statement
+            .query_map(params![provider, rival_id, body], |row| {
+                let hash: String = row.get(0)?;
+                let chart_sha256 = hex_to_hash::<32>(&hash).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?;
+                Ok(IrRivalScoreRecord {
+                    chart_sha256,
+                    ln_mode: row.get::<_, i64>(1)?.clamp(0, u8::MAX as i64) as u8,
+                    ex_score: row.get::<_, i64>(2)?.clamp(0, u32::MAX as i64) as u32,
+                    clear_type: row.get(3)?,
+                    max_combo: row.get::<_, i64>(4)?.clamp(0, u32::MAX as i64) as u32,
+                    min_bp: row.get::<_, i64>(5)?.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+                    play_option: row.get(6)?,
+                    arrange_1p: row.get(7)?,
+                    arrange_2p: row.get(8)?,
+                    double_option: row.get(9)?,
+                    play_seed: row.get(10)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    /// サーバー応答は全件 snapshot なので、同じ rival/body の旧キャッシュを
+    /// 1 transaction で置き換える。304 の場合は呼ばない。
+    pub fn replace_rival_scores(
+        &mut self,
+        provider: &str,
+        rival_id: &str,
+        body: &str,
+        records: &[IrRivalScoreRecord],
+        etag: &str,
+        fetched_at: i64,
+    ) -> Result<()> {
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "DELETE FROM ir_rival_scores
+             WHERE provider = ?1 AND rival_id = ?2 AND body = ?3",
+            params![provider, rival_id, body],
+        )?;
+        {
+            let mut insert = tx.prepare_cached(
+                "INSERT INTO ir_rival_scores (
+                    provider, rival_id, body, chart_sha256, ln_mode, ex_score,
+                    clear_type, max_combo, min_bp, play_option, arrange_1p,
+                    arrange_2p, double_option, play_seed, fetched_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            )?;
+            for record in records {
+                insert.execute(params![
+                    provider,
+                    rival_id,
+                    body,
+                    hash_to_hex(&record.chart_sha256),
+                    record.ln_mode,
+                    record.ex_score,
+                    record.clear_type,
+                    record.max_combo,
+                    record.min_bp,
+                    record.play_option,
+                    record.arrange_1p,
+                    record.arrange_2p,
+                    record.double_option,
+                    record.play_seed,
+                    fetched_at,
+                ])?;
+            }
+        }
+        tx.execute(
+            "INSERT INTO ir_rival_score_sync (provider, rival_id, body, etag, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(provider, rival_id, body) DO UPDATE SET
+                 etag = excluded.etag,
+                 fetched_at = excluded.fetched_at",
+            params![provider, rival_id, body, etag, fetched_at],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn enqueue_ir_score_job(&mut self, job: &NewIrScoreJob) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO ir_score_jobs (

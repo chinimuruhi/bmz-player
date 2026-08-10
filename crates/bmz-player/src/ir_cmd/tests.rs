@@ -33,6 +33,7 @@ fn sync_ir_rivals_adds_updates_and_prunes() {
         &[ir_rival("p1", "Alice"), ir_rival("p2", "Bob")],
     ));
     assert_eq!(profile.rival.entries.len(), 2);
+    profile.rival.active_rival = profile.rival.entries[1].id.clone();
 
     // 変化なしなら false。
     assert!(!sync_ir_rivals_into_profile(
@@ -48,6 +49,7 @@ fn sync_ir_rivals_adds_updates_and_prunes() {
     assert_eq!(profile.rival.entries.len(), 1);
     assert_eq!(profile.rival.entries[0].display_name, "Alice2");
     assert_eq!(profile.rival.entries[0].ir_user_id, "p1");
+    assert!(profile.rival.active_rival.is_empty());
 }
 
 #[test]

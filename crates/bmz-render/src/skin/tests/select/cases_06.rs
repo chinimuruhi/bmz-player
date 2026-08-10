@@ -160,6 +160,7 @@ fn skin_state_text_formats_select_option_fields() {
         select_mode: "7K",
         select_sort: "LEVEL",
         select_ln_mode: "AUTO(LN)",
+        select_chart_replication: "RIVALOPTION",
         select_bga: "AUTO",
         select_judge_timing_auto_adjust: "ON",
         ..SkinTextState::default()
@@ -178,6 +179,7 @@ fn skin_state_text_formats_select_option_fields() {
     assert_eq!(skin_state_text(&make_text("bmz_select_mode"), &state), "7K");
     assert_eq!(skin_state_text(&make_text("bmz_select_sort"), &state), "LEVEL");
     assert_eq!(skin_state_text(&make_text("bmz_select_ln_mode"), &state), "AUTO(LN)");
+    assert_eq!(skin_state_text(&make_text("bmz_select_chart_replication"), &state), "RIVALOPTION");
     assert_eq!(skin_state_text(&make_text("bmz_select_bga"), &state), "AUTO");
     assert_eq!(skin_state_text(&make_text("bmz_select_judge_timing_auto_adjust"), &state), "ON");
 }

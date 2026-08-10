@@ -15,7 +15,7 @@ use bmz_render::scene::{
     SelectRivalJudgeCounts, SelectRivalSnapshot,
 };
 
-use crate::config::profile_config::IrConfig;
+use crate::config::profile_config::{IrConfig, ProfileConfig, RivalSourceConfig};
 use crate::ir::bmz_official::{BmzOfficialIrClient, IrCourseRankingRequest};
 use crate::ir::types::{IrCourseRankingResult, IrRankingResult, IrRankingScope};
 use crate::ln_policy::LnScorePolicy;
@@ -26,6 +26,7 @@ use crate::screens::result_ir::{
 use crate::select_options::DoubleOptionScoreBucket;
 use crate::select_options::TargetOption;
 use crate::storage::common::{hash_to_hex, hex_to_hash};
+use crate::storage::network_db::IrRivalScoreRecord;
 
 /// カーソルがとどまってから取得を始めるまでの待ち時間。
 /// 連打スクロールで全行を取得しに行かないためのデバウンス。
@@ -41,6 +42,55 @@ type FetchResult = (
 );
 type CourseFetchResult =
     (String, SelectCourseIrTarget, Instant, Result<IrCourseRankingResult, String>);
+type RivalFetchResult = (SelectRivalFetchTarget, Instant, Result<Vec<IrRivalScoreRecord>, String>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectRivalFetchTarget {
+    pub provider: String,
+    pub base_url: String,
+    pub rival_id: String,
+    pub display_name: String,
+    pub body: String,
+}
+
+impl SelectRivalFetchTarget {
+    pub fn from_profile(profile: &ProfileConfig) -> Option<Self> {
+        let provider = crate::ir::provider_key::primary_provider_config(&profile.ir)?;
+        if !crate::ir::rian_ir::is_rian_ir_provider(&provider.provider) {
+            return None;
+        }
+        let provider_key = crate::ir::provider_key::configured_provider_key(provider)?.to_string();
+        let active = profile.rival.active_rival.trim();
+        if active.is_empty() {
+            return None;
+        }
+        let rival = profile.rival.entries.iter().find(|entry| {
+            entry.id == active
+                && matches!(entry.source, RivalSourceConfig::Ir)
+                && entry.ir_service == provider_key
+                && !entry.ir_user_id.is_empty()
+        })?;
+        Some(Self {
+            provider: provider_key,
+            base_url: provider.base_url.clone(),
+            rival_id: rival.ir_user_id.clone(),
+            display_name: rival.display_name.clone(),
+            body: crate::ir::rian_ir::body_for_rule_mode(profile.play.rule_mode).to_string(),
+        })
+    }
+}
+
+pub fn rian_ln_mode_for_chart(
+    profile: crate::ln_policy::ChartLnProfile,
+    policy: LnScorePolicy,
+) -> u8 {
+    match crate::ln_policy::played_ln_mode(profile, policy) {
+        None => 0,
+        Some(bmz_chart::model::LongNoteMode::Ln) => 1,
+        Some(bmz_chart::model::LongNoteMode::Cn) => 2,
+        Some(bmz_chart::model::LongNoteMode::Hcn) => 3,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SelectCourseIrTarget {
@@ -95,12 +145,19 @@ pub struct SelectIrRanking {
     course_sender: Sender<CourseFetchResult>,
     course_receiver: Receiver<CourseFetchResult>,
     active_scope: SelectIrRankingScope,
+    active_rival: Option<SelectRivalFetchTarget>,
+    active_rival_scores: HashMap<([u8; 32], u8), IrRivalScoreRecord>,
+    rival_in_flight: Option<(SelectRivalFetchTarget, Instant)>,
+    rival_pending: Option<Instant>,
+    rival_sender: Sender<RivalFetchResult>,
+    rival_receiver: Receiver<RivalFetchResult>,
 }
 
 impl Default for SelectIrRanking {
     fn default() -> Self {
         let (sender, receiver) = channel();
         let (course_sender, course_receiver) = channel();
+        let (rival_sender, rival_receiver) = channel();
         Self {
             cache: HashMap::new(),
             in_flight: None,
@@ -114,6 +171,12 @@ impl Default for SelectIrRanking {
             course_sender,
             course_receiver,
             active_scope: SelectIrRankingScope::Global,
+            active_rival: None,
+            active_rival_scores: HashMap::new(),
+            rival_in_flight: None,
+            rival_pending: None,
+            rival_sender,
+            rival_receiver,
         }
     }
 }

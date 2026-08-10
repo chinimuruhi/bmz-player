@@ -112,6 +112,7 @@ pub(super) fn skin_state_text_with_draw_state(
         "bmz_select_sort" => return state.select_sort.to_string(),
         "bmz_select_ln_mode" => return state.select_ln_mode.to_string(),
         "bmz_select_bga" => return state.select_bga.to_string(),
+        "bmz_select_chart_replication" => return state.select_chart_replication.to_string(),
         "bmz_select_judge_timing_auto_adjust" => {
             return state.select_judge_timing_auto_adjust.to_string();
         }
@@ -144,6 +145,7 @@ pub(super) fn skin_main_state_text(
         16 => full_label(state.artist, state.subartist),
         17 => state.table_level.to_string(),
         30 => state.search_word.to_string(),
+        86 => state.select_chart_replication.to_string(),
         120..=129 => ir_ranking_entry(state.ir_ranking, ref_id - 120)
             .map(|entry| entry.player_name.as_str().to_string())
             .unwrap_or_default(),

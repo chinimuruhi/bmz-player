@@ -11,7 +11,39 @@ pub enum HispeedDirectionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RivalConfig {
     pub active_rival: String,
+    #[serde(default)]
+    pub chart_replication_mode: ChartReplicationModeConfig,
     pub entries: Vec<RivalEntry>,
+}
+
+/// beatoraja `MusicSelector.ChartReplicationMode` のユーザー選択可能な3値。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChartReplicationModeConfig {
+    #[serde(rename = "NONE")]
+    None,
+    #[default]
+    #[serde(rename = "RIVALCHART")]
+    RivalChart,
+    #[serde(rename = "RIVALOPTION")]
+    RivalOption,
+}
+
+impl ChartReplicationModeConfig {
+    pub const CYCLE_ORDER: [Self; 3] = [Self::None, Self::RivalChart, Self::RivalOption];
+
+    pub fn cycle(self, forward: bool) -> Self {
+        let index = Self::CYCLE_ORDER.iter().position(|mode| *mode == self).unwrap_or(0);
+        let offset = if forward { 1 } else { Self::CYCLE_ORDER.len() - 1 };
+        Self::CYCLE_ORDER[(index + offset) % Self::CYCLE_ORDER.len()]
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "NONE",
+            Self::RivalChart => "RIVALCHART",
+            Self::RivalOption => "RIVALOPTION",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

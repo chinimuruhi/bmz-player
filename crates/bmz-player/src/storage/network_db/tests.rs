@@ -26,6 +26,34 @@ fn enqueue_test_job(db: &mut NetworkDatabase, local_score_id: i64, now: i64) -> 
 }
 
 #[test]
+fn rival_score_cache_replaces_one_rival_snapshot() {
+    let mut db = open_network_db();
+    let first = IrRivalScoreRecord {
+        chart_sha256: [7; 32],
+        ln_mode: 1,
+        ex_score: 1234,
+        clear_type: 5,
+        max_combo: 500,
+        min_bp: 12,
+        play_option: 0,
+        arrange_1p: "f-random".to_string(),
+        arrange_2p: "normal".to_string(),
+        double_option: "off".to_string(),
+        play_seed: Some(42),
+    };
+    db.replace_rival_scores("rian-ir", "42", "beatoraja", std::slice::from_ref(&first), "v1", 10)
+        .unwrap();
+    assert_eq!(db.rival_scores("rian-ir", "42", "beatoraja").unwrap(), vec![first]);
+    assert_eq!(
+        db.rival_score_cache_state("rian-ir", "42", "beatoraja").unwrap(),
+        IrRivalScoreCacheState { etag: "v1".to_string(), fetched_at: 10 }
+    );
+
+    db.replace_rival_scores("rian-ir", "42", "beatoraja", &[], "v2", 20).unwrap();
+    assert!(db.rival_scores("rian-ir", "42", "beatoraja").unwrap().is_empty());
+}
+
+#[test]
 fn ir_score_jobs_round_trip_and_dedupe_by_provider_account_kind_score() {
     let mut db = open_network_db();
     let job = NewIrScoreJob {

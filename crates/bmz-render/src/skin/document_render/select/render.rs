@@ -67,6 +67,7 @@ macro_rules! skin_document_render_select_render_methods {
                 select_sort: &snapshot.select_sort,
                 select_ln_mode: &snapshot.select_ln_mode,
                 select_bga: &snapshot.bga,
+                select_chart_replication: &snapshot.chart_replication_mode,
                 select_judge_timing_auto_adjust: if snapshot.judge_timing_auto_adjust {
                     "ON"
                 } else {
@@ -97,11 +98,7 @@ macro_rules! skin_document_render_select_render_methods {
                 search_word: &snapshot.search_word,
                 search_word_alpha: snapshot.search_word_alpha,
                 search_caret_byte_index: snapshot.search_caret_byte_index,
-                rival: snapshot
-                    .rival
-                    .as_ref()
-                    .map(|rival| rival.display_name.as_str())
-                    .unwrap_or(""),
+                rival: &snapshot.rival_name,
                 ir_ranking: &snapshot.ir,
                 ..SkinTextState::default()
             };

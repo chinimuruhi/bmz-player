@@ -61,6 +61,10 @@ rianIR は BMZ 公式 IR とは別 provider とする。credential、送信 queu
 - rianIR向けlocal score backfillの新規投入・既存queue送信の無効化
 - Battle / Battle ASの非送信
 - rianIR成功後にBMZ公式IR用replay/evidence jobを作らないcapability分離
+- `ir rivals` によるrianIRライバル一覧のプロファイル同期
+- 選択中ライバル1人分だけの全曲ベスト取得、`network.db`キャッシュ、ETag再検証
+- 選曲中の7キー切替と、ライバルスコアのプレイ時ターゲット自動適用
+- `NONE` / `RIVALCHART` / `RIVALOPTION` の譜面再現モード
 
 初回loginは次を使う。rianIRでは `--id` がログインIDであり、表示名やメールアドレス
 ではない。`--email` は既存CLIとの後方互換aliasとして残す。
@@ -257,6 +261,43 @@ SP は `arrange_1p`、DP は `arrange_1p` と `arrange_2p` を送る。
 使わない。
 
 random seed は beatoraja 互換の side 別 24 bit seed を使う。
+
+## Rival Target and Cache Contract
+
+rianIRの `GET /api/score/get_rivals.php?id=...` はライバル関係の一覧同期に使う。
+BMZから追加・解除は行わず、`ir rivals` 実行時にprimary rianIRの一覧で
+`profile.rival.entries` の同一provider分だけを更新する。
+
+選択ライバルのスコアは、追加した軽量endpoint
+`GET /api/score/get_rival_scores.php?rival_id=...&body=...` から取得する。
+全ライバルを起動時に取得せず、7キーで現在選ばれた1人だけを取得して
+profileの `network.db` に保存する。レスポンスは次のフィールドだけを返す。
+
+| field | 用途 |
+| --- | --- |
+| `sha256`, `ln_mode` | 譜面・実効LNモード単位のキー |
+| `ex_score` | 自動ターゲット |
+| `clear_type`, `max_combo`, `min_bp` | 選曲スキンのライバル値 |
+| `play_option` | 旧クライアント用配置fallback |
+| `arrange_1p`, `arrange_2p`, `double_option` | 配置のcanonical値 |
+| `play_seed` | `RIVALCHART`の24bit side別seed |
+
+ghost、判定内訳、履歴、曲メタデータ、`min_cb`は取得しない。サーバーは
+譜面/LNモードごとに最高EXの行（同点なら最新id）の配置とseedを返し、
+clear / max combo / min BPだけを全履歴から集約する。ETagが一致した場合は304を返す。
+
+選択ライバルが対象譜面をプレイ済みなら、そのEXスコアと表示名をターゲットにする。
+未プレイならライバルターゲットを作らず、beatorajaと同じく通常のTARGET設定を使う。
+譜面再現モードは次の3値で、既定値は `RIVALCHART`。
+
+| mode | 動作 |
+| --- | --- |
+| `NONE` | ターゲットだけ適用し、現在の配置を維持 |
+| `RIVALOPTION` | ライバルの配置種別だけ適用し、seedは新規抽選 |
+| `RIVALCHART` | ライバルの配置種別と`play_seed`を適用 |
+
+structured配置をlegacy `play_option`より優先するため、BMZから送信された
+F-RANDOM / MF-RANDOMも再現できる。ghostによる進行ターゲットは実装対象外。
 
 ```text
 SP: play_seed = p1_seed

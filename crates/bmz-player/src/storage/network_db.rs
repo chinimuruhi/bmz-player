@@ -26,8 +26,8 @@ mod operations;
 mod rows;
 
 pub use model::{
-    IrJobKind, IrLocalScoreCleanupReport, IrScoreJobRecord, IrSubmittedScoreLink, NewIrScoreJob,
-    NewIrScoreSubmission,
+    IrJobKind, IrLocalScoreCleanupReport, IrRivalScoreCacheState, IrRivalScoreRecord,
+    IrScoreJobRecord, IrSubmittedScoreLink, NewIrScoreJob, NewIrScoreSubmission,
 };
 
 #[cfg(test)]

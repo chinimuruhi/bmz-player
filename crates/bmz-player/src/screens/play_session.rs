@@ -56,7 +56,9 @@ use crate::random_option_seed::{JavaRandom, RandomOptionSeed, RandomOptionSeeds}
 use crate::screens::practice::{
     PracticeProperty, apply_practice_property, apply_practice_start_gauge,
 };
-use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
+use crate::select_options::{
+    ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
+};
 use crate::skin_loader::play_skin_selection_for_session;
 use crate::storage::library_db::ChartNormalizationAnalysis;
 use crate::storage::library_db::LibraryDatabase;
@@ -78,6 +80,7 @@ pub struct PlaySessionOptions {
     pub double_option: DoubleOption,
     pub hs_fix: HsFixOption,
     pub target: TargetOption,
+    pub resolved_target: Option<ResolvedTarget>,
     /// beatoraja-compatible 24-bit RANDOM option seed for the 1P side.
     pub arrange_seed: Option<i64>,
     /// beatoraja-compatible 24-bit RANDOM option seed for the 2P side.
@@ -172,6 +175,7 @@ pub struct PreparedPlaySession {
     pub score_key: ScoreKey,
     pub target_option: TargetOption,
     pub target: String,
+    pub resolved_target: Option<ResolvedTarget>,
     pub practice_mode: bool,
 }
 
@@ -230,6 +234,7 @@ impl Default for PlaySessionOptions {
             double_option: DoubleOption::Off,
             hs_fix: HsFixOption::Off,
             target: TargetOption::None,
+            resolved_target: None,
             arrange_seed: None,
             arrange_seed_2p: None,
             random_trainer_seed: None,

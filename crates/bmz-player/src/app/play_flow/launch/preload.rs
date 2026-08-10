@@ -1,9 +1,76 @@
 use super::*;
 
 impl WinitApp {
-    pub(super) fn begin_decide_for_chart(&mut self, chart_id: i64, options: PlayStartOptions) {
+    pub(super) fn begin_decide_for_chart(&mut self, chart_id: i64, mut options: PlayStartOptions) {
+        self.apply_active_rival_play_overrides(chart_id, &mut options);
         let snapshot = self.decide_snapshot_for_chart(chart_id);
         self.begin_decide_for_chart_with_snapshot(chart_id, options, snapshot, None, None);
+    }
+
+    pub(super) fn apply_active_rival_play_overrides(
+        &self,
+        chart_id: i64,
+        options: &mut PlayStartOptions,
+    ) {
+        if options.session_mode != SessionMode::Normal
+            || options.autoplay
+            || options.practice_mode
+            || options.replay_player.is_some()
+            || self.play.active_course.is_some()
+        {
+            return;
+        }
+        let Some(chart) = self
+            .boot
+            .library_db
+            .list_charts_by_ids(&[chart_id])
+            .ok()
+            .and_then(|mut charts| charts.pop())
+        else {
+            return;
+        };
+        let policy = crate::ln_policy::score_ln_policy(
+            self.boot.profile_config.play.ln_mode_policy,
+            chart.ln_profile,
+        );
+        let ln_mode = crate::screens::select_ir::rian_ln_mode_for_chart(chart.ln_profile, policy);
+        let Some(score) = self.select.select_ir.active_rival_score(chart.sha256, ln_mode).cloned()
+        else {
+            // beatoraja: 選択ライバルが未プレイなら通常ターゲットへ戻す。
+            return;
+        };
+        if let Some(name) = self.select.select_ir.active_rival_display_name() {
+            options.resolved_target =
+                Some(ResolvedTarget { name: name.to_string(), ex_score: score.ex_score });
+        }
+
+        use crate::config::profile_config::ChartReplicationModeConfig;
+        let replication = self.boot.profile_config.rival.chart_replication_mode;
+        if replication == ChartReplicationModeConfig::None {
+            return;
+        }
+        let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
+        let (arrange, arrange_2p, double_option) = rival_arrange_options(&score);
+        options.arrange = arrange;
+        options.arrange_2p = arrange_2p;
+        options.double_option = double_option.normalize_for_key_mode(key_mode);
+        options.arrange_pattern = None;
+        options.random_trainer_seed = None;
+
+        if replication == ChartReplicationModeConfig::RivalChart
+            && let Some(packed) = score.play_seed.and_then(|seed| u64::try_from(seed).ok())
+        {
+            let is_double = matches!(key_mode, KeyMode::K10 | KeyMode::K14);
+            if let Some(seeds) =
+                crate::random_option_seed::RandomOptionSeeds::unpack(packed, is_double)
+            {
+                options.arrange_seed = Some(i64::from(seeds.p1.value()));
+                options.arrange_seed_2p = seeds.p2.map(|seed| i64::from(seed.value()));
+                options.legacy_arrange_seed = false;
+            } else {
+                tracing::warn!(packed, ?key_mode, "ignoring invalid rival play seed");
+            }
+        }
     }
 
     pub(super) fn begin_course_decide_for_chart(
@@ -307,5 +374,106 @@ impl WinitApp {
         snapshot.table_text_secondary = secondary;
         snapshot.table_text_fallback = fallback;
         snapshot
+    }
+}
+
+fn rival_arrange_options(
+    score: &crate::storage::network_db::IrRivalScoreRecord,
+) -> (ArrangeOption, ArrangeOption, DoubleOption) {
+    if !score.arrange_1p.trim().is_empty() {
+        return (
+            arrange_option_from_rian(&score.arrange_1p),
+            arrange_option_from_rian(&score.arrange_2p),
+            double_option_from_rian(&score.double_option),
+        );
+    }
+    let packed = score.play_option.max(0);
+    (
+        arrange_option_from_beatoraja_id(packed % 10),
+        arrange_option_from_beatoraja_id((packed / 10) % 10),
+        if (packed / 100) % 10 == 1 { DoubleOption::Flip } else { DoubleOption::Off },
+    )
+}
+
+fn arrange_option_from_rian(value: &str) -> ArrangeOption {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "mirror" => ArrangeOption::Mirror,
+        "random" => ArrangeOption::Random,
+        "r-random" => ArrangeOption::RRandom,
+        "s-random" => ArrangeOption::SRandom,
+        "spiral" => ArrangeOption::Spiral,
+        "h-random" => ArrangeOption::HRandom,
+        "all-scratch" => ArrangeOption::AllScratch,
+        "random-ex" => ArrangeOption::RandomEx,
+        "s-random-ex" => ArrangeOption::SRandomEx,
+        "f-random" => ArrangeOption::FRandom,
+        "mf-random" => ArrangeOption::MFRandom,
+        _ => ArrangeOption::Normal,
+    }
+}
+
+fn arrange_option_from_beatoraja_id(value: i32) -> ArrangeOption {
+    match value {
+        1 => ArrangeOption::Mirror,
+        2 => ArrangeOption::Random,
+        3 => ArrangeOption::RRandom,
+        4 => ArrangeOption::SRandom,
+        5 => ArrangeOption::Spiral,
+        6 => ArrangeOption::HRandom,
+        7 => ArrangeOption::AllScratch,
+        8 => ArrangeOption::RandomEx,
+        9 => ArrangeOption::SRandomEx,
+        _ => ArrangeOption::Normal,
+    }
+}
+
+fn double_option_from_rian(value: &str) -> DoubleOption {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "flip" => DoubleOption::Flip,
+        _ => DoubleOption::Off,
+    }
+}
+
+#[cfg(test)]
+mod rival_replication_tests {
+    use super::*;
+    use crate::storage::network_db::IrRivalScoreRecord;
+
+    fn rival_score(play_option: i32, arrange_1p: &str) -> IrRivalScoreRecord {
+        IrRivalScoreRecord {
+            chart_sha256: [7; 32],
+            ln_mode: 1,
+            ex_score: 1234,
+            clear_type: 5,
+            max_combo: 600,
+            min_bp: 10,
+            play_option,
+            arrange_1p: arrange_1p.to_string(),
+            arrange_2p: String::new(),
+            double_option: "off".to_string(),
+            play_seed: Some(42),
+        }
+    }
+
+    #[test]
+    fn structured_f_random_wins_over_legacy_play_option() {
+        let score = rival_score(0, "f-random");
+
+        assert_eq!(
+            rival_arrange_options(&score),
+            (ArrangeOption::FRandom, ArrangeOption::Normal, DoubleOption::Off)
+        );
+    }
+
+    #[test]
+    fn legacy_play_option_is_used_when_structured_option_is_missing() {
+        let mut score = rival_score(121, "");
+        score.arrange_2p.clear();
+        score.double_option.clear();
+
+        assert_eq!(
+            rival_arrange_options(&score),
+            (ArrangeOption::Mirror, ArrangeOption::Random, DoubleOption::Flip)
+        );
     }
 }

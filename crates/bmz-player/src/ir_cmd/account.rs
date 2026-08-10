@@ -75,6 +75,24 @@ pub(super) async fn rivals(
     let provider_key = crate::ir::provider_key::configured_provider_key(&provider)
         .context("IR provider key is not set; log in again")?
         .to_string();
+    if crate::ir::rian_ir::is_rian_ir_provider(&provider.provider) {
+        if action.is_some() {
+            bail!("rianIR rivals can be added or removed only on the rianIR website");
+        }
+        let account_id = provider.account_id.trim();
+        if account_id.is_empty() {
+            bail!("rianIR account ID is not set; log in again");
+        }
+        let rivals = crate::ir::rian_ir::RianIrClient::new(&provider.base_url)?
+            .fetch_rivals(account_id)
+            .await?;
+        if sync_ir_rivals_into_profile(profile, &provider_key, &rivals) {
+            profile.updated_at = now_unix_seconds();
+            save_profile_config(&profile_paths.profile_toml, profile)?;
+        }
+        print_rivals(&rivals);
+        return Ok(());
+    }
     let credentials = ensure_fresh_credentials(
         profile_paths.root_dir.as_path(),
         &provider_key,
@@ -102,11 +120,16 @@ pub(super) async fn rivals(
         save_profile_config(&profile_paths.profile_toml, profile)?;
     }
 
-    if response.rivals.is_empty() {
+    print_rivals(&response.rivals);
+    Ok(())
+}
+
+fn print_rivals(rivals: &[crate::ir::types::IrRivalEntry]) {
+    if rivals.is_empty() {
         println!("no rivals registered");
-        return Ok(());
+        return;
     }
-    for rival in &response.rivals {
+    for rival in rivals {
         let name = rival
             .profile
             .as_ref()
@@ -115,7 +138,6 @@ pub(super) async fn rivals(
             .unwrap_or("(no name)");
         println!("- {name} ({})", rival.player_id);
     }
-    Ok(())
 }
 
 /// IR のライバル一覧をプロファイルの `RivalConfig` に同期する。
@@ -135,6 +157,12 @@ pub fn sync_ir_rivals_into_profile(
     // サーバーに存在しない IR エントリを削除する。
     let server_ids: std::collections::BTreeSet<&str> =
         rivals.iter().map(|rival| rival.player_id.as_str()).collect();
+    let active_will_be_removed = profile.rival.entries.iter().any(|entry| {
+        entry.id == profile.rival.active_rival
+            && matches!(entry.source, RivalSourceConfig::Ir)
+            && entry.ir_service == provider
+            && !server_ids.contains(entry.ir_user_id.as_str())
+    });
     let before = profile.rival.entries.len();
     profile.rival.entries.retain(|entry| {
         !(matches!(entry.source, RivalSourceConfig::Ir)
@@ -142,6 +170,10 @@ pub fn sync_ir_rivals_into_profile(
             && !server_ids.contains(entry.ir_user_id.as_str()))
     });
     changed |= profile.rival.entries.len() != before;
+    if active_will_be_removed {
+        profile.rival.active_rival.clear();
+        changed = true;
+    }
 
     for rival in rivals {
         let display_name = rival

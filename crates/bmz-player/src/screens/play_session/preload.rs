@@ -448,6 +448,7 @@ pub fn build_practice_prepared_from_preloaded(
         score_key: preloaded.score_key,
         target_option: TargetOption::None,
         target,
+        resolved_target: None,
         practice_mode,
     }
 }
@@ -460,7 +461,11 @@ pub fn build_prepared_play_session_from_preloaded(
 ) -> PreparedPlaySession {
     options.double_option = preloaded.applied_arrange.double_option;
     let target_option = options.target;
-    let target = options.target.as_string();
+    let resolved_target = options.resolved_target.clone();
+    let target = resolved_target
+        .as_ref()
+        .map(|target| target.name.clone())
+        .unwrap_or_else(|| options.target.as_string());
     let practice_mode = options.practice_mode;
     let session =
         build_game_session_with_input_backend(preloaded.chart, profile, options, input_backend);
@@ -477,6 +482,7 @@ pub fn build_prepared_play_session_from_preloaded(
         score_key: preloaded.score_key,
         target_option,
         target,
+        resolved_target,
         practice_mode,
     }
 }

@@ -1,5 +1,12 @@
 use bmz_core::lane::KeyMode;
 
+/// 通常の選択肢を増やさず、プレイ開始時にだけ固定するターゲット。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedTarget {
+    pub name: String,
+    pub ex_score: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum ArrangeOption {

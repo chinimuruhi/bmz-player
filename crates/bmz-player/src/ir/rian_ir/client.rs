@@ -38,6 +38,25 @@ impl RianIrClient {
         })
     }
 
+    pub async fn fetch_rivals(&self, player_id: &str) -> Result<Vec<IrRivalEntry>> {
+        let mut url = self.endpoint("score/get_rivals.php")?;
+        url.query_pairs_mut().append_pair("id", player_id);
+        let response = self.http.get(url).send().await.context("failed to fetch rianIR rivals")?;
+        let decoded: RianRankingResponse = decode_response(response, "rianIR rivals").await?;
+        Ok(decoded
+            .data
+            .into_iter()
+            .filter_map(|resource| {
+                let display_name = string_attr(&resource.attributes, "player_name");
+                (!resource.id.is_empty()).then_some(IrRivalEntry {
+                    player_id: resource.id,
+                    relation_type: "rival".to_string(),
+                    profile: Some(IrRivalProfile { display_name, bio: None }),
+                })
+            })
+            .collect())
+    }
+
     pub async fn submit_score(
         &self,
         payload: &IrScoreSubmission,
@@ -132,6 +151,68 @@ impl RianIrClient {
         let decoded: RianRankingResponse =
             decode_response(response, "rianIR course ranking").await?;
         Ok(convert_course_ranking(course_hash, decoded.data, limit))
+    }
+
+    pub async fn fetch_rival_scores(
+        &self,
+        rival_id: &str,
+        body: &str,
+        etag: Option<&str>,
+    ) -> Result<RianRivalScoresResponse> {
+        let mut url = self.endpoint("score/get_rival_scores.php")?;
+        url.query_pairs_mut().append_pair("rival_id", rival_id).append_pair("body", body);
+        let mut request = self.http.get(url);
+        if let Some(etag) = etag.filter(|value| !value.is_empty()) {
+            request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+        }
+        let response = request.send().await.context("failed to fetch rianIR rival scores")?;
+        if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(RianRivalScoresResponse {
+                scores: Vec::new(),
+                etag: etag.unwrap_or_default().to_string(),
+                not_modified: true,
+            });
+        }
+        let response_etag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let decoded: RianRankingResponse = decode_response(response, "rianIR rival scores").await?;
+        let scores = decoded
+            .data
+            .into_iter()
+            .filter_map(|resource| {
+                let attributes = resource.attributes;
+                let sha256 = string_attr(&attributes, "sha256");
+                if sha256.len() != 64 {
+                    tracing::warn!(%sha256, "discarding rianIR rival score with invalid hash");
+                    return None;
+                }
+                Some(RianRivalScore {
+                    sha256,
+                    ln_mode: int_attr(&attributes, "ln_mode").clamp(0, u8::MAX as i64) as u8,
+                    ex_score: uint_attr(&attributes, "ex_score"),
+                    clear_type: int_attr(&attributes, "clear_type")
+                        .clamp(i32::MIN as i64, i32::MAX as i64)
+                        as i32,
+                    max_combo: uint_attr(&attributes, "max_combo"),
+                    min_bp: int_attr(&attributes, "min_bp").clamp(i32::MIN as i64, i32::MAX as i64)
+                        as i32,
+                    play_option: int_attr(&attributes, "play_option")
+                        .clamp(i32::MIN as i64, i32::MAX as i64)
+                        as i32,
+                    arrange_1p: string_attr(&attributes, "arrange_1p"),
+                    arrange_2p: string_attr(&attributes, "arrange_2p"),
+                    double_option: string_attr(&attributes, "double_option"),
+                    play_seed: attributes
+                        .get("play_seed")
+                        .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok())),
+                })
+            })
+            .collect();
+        Ok(RianRivalScoresResponse { scores, etag: response_etag, not_modified: false })
     }
 
     pub async fn fetch_tables(&self, player_id: &str) -> Result<Vec<RianTableResource>> {

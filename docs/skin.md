@@ -116,6 +116,25 @@ BMZ 対応 select skin で4種類を区別する場合は、BMZ 拡張 ref `1970
 `2=AUTO BATTLE`, `3=BATTLE` を返す。BMZ デフォルトスキンの play mode panel も
 この ref を使用する。
 
+### Select Rival and Chart Replication
+
+beatoraja互換の選曲イベントを次のように扱う。
+
+| event id | action |
+| ---: | --- |
+| 79 | primary IRに属するライバルを `NONE → 登録順` で切替 |
+| 344 | `NONE → RIVALCHART → RIVALOPTION` で譜面再現モードを切替 |
+
+正方向の引数で次、負方向で前へ進む。イベント79で選んだライバルに選択譜面の
+スコアがあれば、プレイ開始時のターゲットへ自動設定する。未プレイ譜面では通常の
+TARGET設定を使う。`STRING_RIVAL` (`ref=1`) は選択ライバル名を返し、譜面未プレイでも
+名前は維持する。
+
+譜面再現モード名はbeatoraja互換の `STRING_CHART_REPLICATION_MODE` (`ref=86`) と、
+BMZの動的text id `bmz_select_chart_replication` から `NONE` / `RIVALCHART` /
+`RIVALOPTION` として取得できる。`RIVALOPTION`は配置種別だけ、`RIVALCHART`は配置種別と
+ライバルのside別24bit seedを適用する。ghostは使用しない。
+
 ### BMZ Dynamic Select Option Panels
 
 選曲オプションの現在値は、状態ごとの画像セルを用意せず `text.id` から直接描画できる。
@@ -136,6 +155,7 @@ skin 側のスプライト行追加は不要。
 | `bmz_select_sort` | sort |
 | `bmz_select_ln_mode` | LN mode |
 | `bmz_select_bga` | BGA |
+| `bmz_select_chart_replication` | chart replication (`NONE` / `RIVALCHART` / `RIVALOPTION`) |
 | `bmz_select_judge_timing_auto_adjust` | judge timing auto adjust (`ON` / `OFF`) |
 
 BMZ 拡張の `panel` は画像を使わない単色矩形で、`color`, `borderColor` は

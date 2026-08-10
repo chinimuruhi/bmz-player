@@ -497,7 +497,11 @@ impl ProfileConfig {
                 target_green_number: 300,
             },
             input: crate::config::play_input::default_profile_input(),
-            rival: RivalConfig { active_rival: String::new(), entries: Vec::new() },
+            rival: RivalConfig {
+                active_rival: String::new(),
+                chart_replication_mode: ChartReplicationModeConfig::default(),
+                entries: Vec::new(),
+            },
             replay: ReplayConfig {
                 auto_save: true,
                 compress: false,

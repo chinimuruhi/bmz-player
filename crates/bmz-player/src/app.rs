@@ -74,7 +74,7 @@ use crate::config::profile_config::{
     DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig,
     HispeedModeConfig, HsFixConfig, InputActionConfig, JudgeAlgorithmConfig, LaneEffectConfig,
     LaneViewConfig, PlayDefaultsConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
-    SkinConfig, SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs,
+    RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs,
     default_hispeed_step_nhs, normalize_hispeed_step, replay_slot_rule_indices,
 };
 use crate::config::save::{save_app_config, save_profile_config};
@@ -139,7 +139,9 @@ use crate::screens::settings_model::{
     in_settings_stack, load_settings_items_for_locale, settings_breadcrumb_for_locale,
     settings_root_item_for_locale,
 };
-use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
+use crate::select_options::{
+    ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
+};
 use crate::skin_loader::{
     BeatorajaSkinDecodeRequest, DecodedSkin, PreparedSource, SharedSkinGpuTextureCache,
     SkinFontCacheKey, SkinKind, UploadedSkin, decode_beatoraja_skin_request,

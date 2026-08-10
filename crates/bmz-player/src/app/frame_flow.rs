@@ -363,6 +363,10 @@ impl WinitApp {
         if scene_kind != AppSceneKind::Select {
             return;
         }
+        let rival_target = crate::screens::select_ir::SelectRivalFetchTarget::from_profile(
+            &self.boot.profile_config,
+        );
+        self.select.select_ir.update_rival(rival_target, &self.boot.profile_paths.root_dir);
         let selected_course = self.selected_course_ir_target();
         let ir_config = self.boot.profile_config.ir.clone();
         if let Some(course) = selected_course {

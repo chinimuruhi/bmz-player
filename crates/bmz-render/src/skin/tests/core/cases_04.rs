@@ -176,6 +176,7 @@ fn skin_state_text_maps_string_refs() {
         subartist: "Feat. X",
         genre: "TRANCE",
         target: "RANK_AAA",
+        select_chart_replication: "RIVALCHART",
         ir_ranking: &ir_ranking,
         course_titles: [
             "Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5", "Stage 6", "Stage 7", "Stage 8",
@@ -215,6 +216,8 @@ fn skin_state_text_maps_string_refs() {
     assert_eq!(skin_state_text(&make_text(2), &state), "BMZ Player");
     // STRING_TARGET (3)
     assert_eq!(skin_state_text(&make_text(3), &state), "RANK AAA");
+    // STRING_CHART_REPLICATION_MODE (86)
+    assert_eq!(skin_state_text(&make_text(86), &state), "RIVALCHART");
     // STRING_TARGETNAME_P1/N1 (209/210)
     assert_eq!(skin_state_text(&make_text(209), &state), "RANK AAA-");
     assert_eq!(skin_state_text(&make_text(210), &state), "RANK MAX-");

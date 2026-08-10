@@ -22,7 +22,7 @@ use super::types::{
     IrCourseRankingEntry, IrCourseRankingResult, IrCourseRankingScore, IrJudgePayload,
     IrJudgeSidePayload, IrPlayerInfo, IrRankingBody, IrRankingChartRef, IrRankingEntry,
     IrRankingPagination, IrRankingPlayer, IrRankingResult, IrRankingScope, IrRankingScore,
-    IrRankingSelfRef, IrScoreSubmission, IrSubmitResponse,
+    IrRankingSelfRef, IrRivalEntry, IrRivalProfile, IrScoreSubmission, IrSubmitResponse,
 };
 
 pub const RIAN_IR_PROVIDER: &str = "rian-ir";
@@ -165,6 +165,28 @@ pub struct RianTableCourse {
 struct RianTablesResponse {
     #[serde(default)]
     data: Vec<RianTableResource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RianRivalScore {
+    pub sha256: String,
+    pub ln_mode: u8,
+    pub ex_score: u32,
+    pub clear_type: i32,
+    pub max_combo: u32,
+    pub min_bp: i32,
+    pub play_option: i32,
+    pub arrange_1p: String,
+    pub arrange_2p: String,
+    pub double_option: String,
+    pub play_seed: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RianRivalScoresResponse {
+    pub scores: Vec<RianRivalScore>,
+    pub etag: String,
+    pub not_modified: bool,
 }
 
 mod client;
@@ -655,5 +677,26 @@ mod tests {
 
         assert_eq!(response.data[0].attributes.folders[0].charts[0].level, json!("Top 20"));
         assert_eq!(response.data[0].attributes.courses[0].constraint, vec!["grade", "ln"]);
+    }
+
+    #[test]
+    fn compact_rival_score_attributes_keep_structured_f_random() {
+        let attributes: Map<String, Value> = serde_json::from_value(json!({
+            "sha256": "ab".repeat(32),
+            "ln_mode": "1",
+            "ex_score": "1900",
+            "clear_type": "5",
+            "max_combo": "800",
+            "min_bp": "9",
+            "play_option": "0",
+            "arrange_1p": "f-random",
+            "arrange_2p": "normal",
+            "double_option": "off",
+            "play_seed": "123456"
+        }))
+        .unwrap();
+        assert_eq!(string_attr(&attributes, "arrange_1p"), "f-random");
+        assert_eq!(int_attr(&attributes, "play_option"), 0);
+        assert_eq!(int_attr(&attributes, "play_seed"), 123456);
     }
 }

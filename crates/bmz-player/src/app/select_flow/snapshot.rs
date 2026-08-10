@@ -5,6 +5,30 @@ impl WinitApp {
         let locale = self.boot.profile_config.ui.locale();
         let text = Localizer::new(locale);
         let selected = self.select.select_items.get(self.select.selected_index);
+        let active_rival_name =
+            self.select.select_ir.active_rival_display_name().map(str::to_string);
+        let rival = match selected {
+            Some(SelectItem::Chart(row)) if active_rival_name.is_some() => {
+                row.score_sha256().and_then(|sha256| {
+                    let policy = crate::ln_policy::score_ln_policy(
+                        self.boot.profile_config.play.ln_mode_policy,
+                        row.chart.as_ref().map(|chart| chart.ln_profile).unwrap_or_default(),
+                    );
+                    let ln_mode = crate::screens::select_ir::rian_ln_mode_for_chart(
+                        row.chart.as_ref().map(|chart| chart.ln_profile).unwrap_or_default(),
+                        policy,
+                    );
+                    self.select.select_ir.active_rival_snapshot(sha256, ln_mode)
+                })
+            }
+            _ => self
+                .select
+                .select_ir
+                .rival_for(&self.boot.profile_config.ir, self.selected_chart_sha256()),
+        };
+        let rival_name = active_rival_name
+            .or_else(|| rival.as_ref().map(|rival| rival.display_name.clone()))
+            .unwrap_or_default();
         let selected_course_ir = self.selected_course_ir_target();
         let select_ir_scope_binding = self
             .renderer
@@ -99,6 +123,13 @@ impl WinitApp {
             // リプレイ／ライバル配置をここへ渡す。
             lane_shuffle_pattern: Vec::new(),
             target: self.select.target_option.as_string(),
+            chart_replication_mode: self
+                .boot
+                .profile_config
+                .rival
+                .chart_replication_mode
+                .as_str()
+                .to_string(),
             gauge: gauge_option_as_str(self.select.gauge_option).to_string(),
             gauge_auto_shift: gauge_auto_shift_as_str(self.select.gauge_auto_shift_option)
                 .to_string(),
@@ -193,10 +224,8 @@ impl WinitApp {
                         .course_snapshot_for(&self.boot.profile_config.ir, Some(target))
                 },
             ),
-            rival: self
-                .select
-                .select_ir
-                .rival_for(&self.boot.profile_config.ir, self.selected_chart_sha256()),
+            rival,
+            rival_name,
             replay_slot_rule_indices: replay_slot_rule_indices(
                 &self.boot.profile_config.replay.slot_rules,
             ),

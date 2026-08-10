@@ -23,7 +23,9 @@ use crate::screens::play_session::{
     build_prepared_play_session_from_preloaded,
     load_prepared_play_session_for_chart_with_input_backend,
 };
-use crate::select_options::{ArrangeOption, DoubleOption, HsFixOption, SessionMode, TargetOption};
+use crate::select_options::{
+    ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
+};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::score_db::ScoreDatabase;
 
@@ -44,6 +46,7 @@ pub struct PlayStartOptions {
     pub double_option: DoubleOption,
     pub hs_fix: HsFixOption,
     pub target: TargetOption,
+    pub resolved_target: Option<ResolvedTarget>,
     pub arrange_seed: Option<i64>,
     pub arrange_seed_2p: Option<i64>,
     /// Fresh play 用 Random Trainer seed。7K の通常 RANDOM かつ記録済み pattern が
@@ -128,6 +131,7 @@ pub fn play_session_options_from_start(
         double_option: start_options.double_option,
         hs_fix: start_options.hs_fix,
         target: start_options.target,
+        resolved_target: start_options.resolved_target,
         arrange_seed: start_options.arrange_seed,
         arrange_seed_2p: start_options.arrange_seed_2p,
         random_trainer_seed: start_options.random_trainer_seed,
@@ -271,6 +275,9 @@ pub fn open_prepared_winit_play_session(
 }
 
 fn resolve_local_target_ex_score(running: &mut RunningPlaySession) {
+    if running.resolved_target.is_some() {
+        return;
+    }
     running.target_ex_score = running
         .target_option
         .target_ex_score_with_best(running.session.scored_total_notes, running.best_ex_score);

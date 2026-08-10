@@ -216,8 +216,16 @@ impl WinitApp {
             options.session_mode.is_battle(),
         );
         apply_play_arrange_to_snapshot(snapshot, &prepared.applied_arrange);
-        snapshot.target = options.target.as_string();
-        snapshot.target_ex_score = options.target.target_ex_score(snapshot.total_notes);
+        snapshot.target = options
+            .resolved_target
+            .as_ref()
+            .map(|target| target.name.clone())
+            .unwrap_or_else(|| options.target.as_string());
+        snapshot.target_ex_score = options
+            .resolved_target
+            .as_ref()
+            .map(|target| target.ex_score)
+            .or_else(|| options.target.target_ex_score(snapshot.total_notes));
 
         if let Some(pending) =
             self.play.pending_play_start.as_mut().filter(|pending| pending.chart_id == chart_id)
@@ -315,6 +323,19 @@ impl WinitApp {
     }
 
     pub(super) fn refresh_play_target_from_source(&mut self) {
+        if self
+            .play
+            .active_play
+            .as_ref()
+            .is_some_and(|active| active.running.resolved_target.is_some())
+            || self
+                .play
+                .preloaded_play_session
+                .as_ref()
+                .is_some_and(|preloaded| preloaded.session_options.resolved_target.is_some())
+        {
+            return;
+        }
         let source = self
             .play
             .active_play
@@ -337,7 +358,6 @@ impl WinitApp {
         if !target.uses_ir_ranking() {
             return;
         }
-
         let context = select_ir_cache_context(
             self.boot.profile_config.play.ln_mode_policy,
             score_key.ln_policy,

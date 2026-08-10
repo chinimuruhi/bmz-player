@@ -1,6 +1,77 @@
 use super::*;
 
 impl SelectIrRanking {
+    /// 選択中のrianIRライバルだけを全曲キャッシュする。切り替え直後は
+    /// network.db の値を即時利用し、通信更新はデバウンスして1本だけ実行する。
+    pub fn update_rival(&mut self, target: Option<SelectRivalFetchTarget>, profile_root: &Path) {
+        while let Ok((result_target, requested_at, result)) = self.rival_receiver.try_recv() {
+            if self.rival_in_flight.as_ref().is_some_and(|(target, _)| target == &result_target) {
+                self.rival_in_flight = None;
+            }
+            if self.active_rival.as_ref() != Some(&result_target) {
+                tracing::debug!(rival = %result_target.rival_id, "discarding stale rival score fetch");
+                continue;
+            }
+            match result {
+                Ok(scores) => {
+                    self.active_rival_scores = scores
+                        .into_iter()
+                        .map(|score| ((score.chart_sha256, score.ln_mode), score))
+                        .collect();
+                    tracing::info!(
+                        rival = %result_target.rival_id,
+                        scores = self.active_rival_scores.len(),
+                        elapsed_ms = requested_at.elapsed().as_millis(),
+                        "rival score cache updated"
+                    );
+                }
+                Err(error) => tracing::warn!(
+                    rival = %result_target.rival_id,
+                    %error,
+                    "failed to refresh rival score cache; keeping local cache"
+                ),
+            }
+        }
+
+        if self.active_rival != target {
+            self.active_rival = target.clone();
+            self.active_rival_scores.clear();
+            self.rival_pending = target.as_ref().map(|_| Instant::now());
+            if let Some(target) = &target {
+                let path = profile_root.join("network.db");
+                match crate::storage::network_db::NetworkDatabase::open(&path).and_then(|db| {
+                    db.rival_scores(&target.provider, &target.rival_id, &target.body)
+                }) {
+                    Ok(scores) => {
+                        self.active_rival_scores = scores
+                            .into_iter()
+                            .map(|score| ((score.chart_sha256, score.ln_mode), score))
+                            .collect();
+                    }
+                    Err(error) => tracing::debug!(%error, "rival score disk cache is unavailable"),
+                }
+            }
+        }
+
+        let Some(target) = target else {
+            self.rival_pending = None;
+            return;
+        };
+        if self.rival_in_flight.is_some() {
+            return;
+        }
+        let Some(since) = self.rival_pending else {
+            return;
+        };
+        if since.elapsed() < FETCH_DEBOUNCE {
+            return;
+        }
+        self.rival_pending = None;
+        let requested_at = Instant::now();
+        self.rival_in_flight = Some((target.clone(), requested_at));
+        spawn_rival_fetch(target, profile_root, requested_at, self.rival_sender.clone());
+    }
+
     /// 毎フレーム呼ぶ。取得完了の取り込みと、カーソル譜面の取得予約を行う。
     /// `context` は rule mode / 解決済み LN policy / DOUBLE など
     /// ランキング条件を表す文字列。変わったらキャッシュを破棄する。
