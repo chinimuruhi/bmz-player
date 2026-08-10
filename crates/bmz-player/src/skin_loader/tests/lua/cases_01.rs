@@ -833,6 +833,24 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
         source.id == "src-default-optionpanel-random-cursor-bmz"
             && source.path.ends_with("default_optionpanel/random_cursor_bmz.png")
     }));
+    let option_panel_image = image::open(
+        skin_path
+            .parent()
+            .expect("Luxe Flat skin directory")
+            .join("select_skinparts/default_optionpanel/option1_panel_bmz.png"),
+    )
+    .expect("Luxe Flat extended option panel image")
+    .into_rgba8();
+    for x in (560..=724).chain(1190..=1354) {
+        let background = option_panel_image.get_pixel(x, 910);
+        assert_eq!(background, option_panel_image.get_pixel(x, 912));
+        assert_eq!(
+            background,
+            option_panel_image.get_pixel(x, 911),
+            "Luxe Flat should not leave a black seam below MF-RANDOM at x={x}"
+        );
+        assert_ne!(*background, image::Rgba([0, 0, 0, 255]));
+    }
     let random_source = decoded
         .sources
         .iter()
