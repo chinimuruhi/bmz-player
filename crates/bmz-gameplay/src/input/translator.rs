@@ -82,9 +82,6 @@ pub fn keyboard_control(name: impl Into<String>) -> PhysicalControl {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicU64;
-
     use bmz_audio::clock::AudioClock;
     use bmz_core::input::{InputDeviceKind, InputKind};
     use bmz_core::lane::Lane;
@@ -95,13 +92,7 @@ mod tests {
 
     #[test]
     fn translator_uses_monotonic_timestamp_anchor() {
-        let clock = AudioClock {
-            sample_rate: 48_000,
-            start_output_frame: 0,
-            chart_zero_time_us: 0,
-            current_frame: Arc::new(AtomicU64::new(0)),
-            running: false,
-        };
+        let clock = AudioClock::stopped(48_000);
         let ctx = InputTimingContext {
             audio_clock: &clock,
             offsets: PlayOffsets { input_offset_us: 500, visual_offset_us: 0 },
@@ -140,13 +131,7 @@ mod tests {
 
     #[test]
     fn translator_marks_gamepad_controls_as_controller() {
-        let clock = AudioClock {
-            sample_rate: 48_000,
-            start_output_frame: 0,
-            chart_zero_time_us: 0,
-            current_frame: Arc::new(AtomicU64::new(0)),
-            running: false,
-        };
+        let clock = AudioClock::stopped(48_000);
         let ctx = InputTimingContext {
             audio_clock: &clock,
             offsets: PlayOffsets { input_offset_us: 0, visual_offset_us: 0 },

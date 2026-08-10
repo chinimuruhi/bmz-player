@@ -153,13 +153,11 @@ impl CpalOutputSource {
     }
 
     pub fn play(&mut self, chart_zero_time: TimeUs) {
-        self.clock.chart_zero_time_us = chart_zero_time.0;
-        self.clock.start_output_frame = self.clock.current_frame.load(Ordering::Relaxed);
-        self.clock.running = true;
+        self.clock.start(chart_zero_time);
     }
 
     pub fn pause(&mut self) {
-        self.clock.running = false;
+        self.clock.pause();
     }
 
     pub fn clock(&self) -> AudioClock {
@@ -200,13 +198,11 @@ impl CpalCommandedOutputSource {
     }
 
     pub fn play(&mut self, chart_zero_time: TimeUs) {
-        self.clock.chart_zero_time_us = chart_zero_time.0;
-        self.clock.start_output_frame = self.clock.current_frame.load(Ordering::Relaxed);
-        self.clock.running = true;
+        self.clock.start(chart_zero_time);
     }
 
     pub fn pause(&mut self) {
-        self.clock.running = false;
+        self.clock.pause();
     }
 
     pub fn clock(&self) -> AudioClock {

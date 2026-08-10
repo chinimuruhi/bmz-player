@@ -149,13 +149,7 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         primary_key_mode: chart.metadata.key_mode,
         scored_total_notes: scored_note_count(&chart),
         timing_map,
-        audio_clock: AudioClock {
-            sample_rate: 48_000,
-            start_output_frame: 0,
-            chart_zero_time_us: 0,
-            current_frame: Arc::new(AtomicU64::new(0)),
-            running: false,
-        },
+        audio_clock: AudioClock::stopped(48_000),
         input_system: InputSystem {
             backend: Box::new(NullInputBackend),
             translator: Box::new(DefaultInputTranslator {

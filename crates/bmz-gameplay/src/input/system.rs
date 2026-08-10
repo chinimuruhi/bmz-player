@@ -121,9 +121,6 @@ fn u128_to_u64_saturating(value: u128) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicU64;
-
     use bmz_audio::clock::AudioClock;
     use bmz_core::input::InputKind;
     use bmz_core::lane::Lane;
@@ -135,13 +132,7 @@ mod tests {
     use crate::session::PlayOffsets;
 
     fn test_clock() -> AudioClock {
-        AudioClock {
-            sample_rate: 48_000,
-            start_output_frame: 0,
-            chart_zero_time_us: 0,
-            current_frame: Arc::new(AtomicU64::new(0)),
-            running: false,
-        }
+        AudioClock::stopped(48_000)
     }
 
     fn test_ctx<'a>(clock: &'a AudioClock) -> InputTimingContext<'a> {
