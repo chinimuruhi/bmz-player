@@ -269,7 +269,8 @@ BMZから追加・解除は行わず、`ir rivals` 実行時にprimary rianIRの
 `profile.rival.entries` の同一provider分だけを更新する。
 
 選択ライバルのスコアは、追加した軽量endpoint
-`GET /api/score/get_rival_scores.php?rival_id=...&body=...` から取得する。
+`GET|POST /api/score/get_rival_scores.php` から取得する。`rival_id` と `body` は
+クエリまたはJSONボディで渡せる。
 全ライバルを起動時に取得せず、7キーで現在選ばれた1人だけを取得して
 profileの `network.db` に保存する。レスポンスは次のフィールドだけを返す。
 
