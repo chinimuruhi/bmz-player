@@ -430,6 +430,18 @@ fn m_select_lua_select_skin_renders_items_when_available() {
     )
     .expect("m-select extended option panel image")
     .into_rgba8();
+    let target_panel_bounds = option_panel_image
+        .enumerate_pixels()
+        .filter_map(|(x, y, pixel)| (x < 301 && pixel.0[3] > 0).then_some((x, y)))
+        .fold(None::<(u32, u32, u32, u32)>, |bounds, (x, y)| {
+            Some(match bounds {
+                None => (x, y, x, y),
+                Some((min_x, min_y, max_x, max_y)) => {
+                    (min_x.min(x), min_y.min(y), max_x.max(x), max_y.max(y))
+                }
+            })
+        });
+    assert_eq!(target_panel_bounds, Some((16, 97, 298, 1005)));
     let target_cursor_bounds = option_panel_image
         .enumerate_pixels()
         .filter_map(|(x, y, pixel)| {
