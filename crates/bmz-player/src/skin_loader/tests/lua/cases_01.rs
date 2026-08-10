@@ -404,6 +404,18 @@ fn m_select_lua_select_skin_renders_items_when_available() {
         .find(|source| source.source_id == "src-default-stateplayoption-random-bmz")
         .expect("m-select F-RANDOM source")
         .texture;
+    let option_panel_texture = decoded
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src-default-optionpanel-panel1")
+        .expect("m-select extended option panel source")
+        .texture;
+    let option_panel_random_texture = decoded
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src-default-optionpanel-random-cursor-bmz")
+        .expect("m-select extended option panel cursor source")
+        .texture;
     let document_textures =
         decoded.sources.iter().map(|source| bmz_render::skin::SkinDocumentTexture {
             source_id: source.source_id.clone(),
@@ -420,6 +432,9 @@ fn m_select_lua_select_skin_renders_items_when_available() {
     );
     assert!(context.document().is_some_and(|document| document.skin_type == 5));
     let snapshot = bmz_render::scene::SelectSnapshot {
+        time: bmz_core::time::TimeUs(300_000),
+        option_panel_time: bmz_core::time::TimeUs(300_000),
+        option_panel: 1,
         arrange: "F-RANDOM".to_string(),
         arrange_2p: "MF-RANDOM".to_string(),
         gauge: "EX-HARD".to_string(),
@@ -458,6 +473,29 @@ fn m_select_lua_select_skin_renders_items_when_available() {
                         && (uv.y - uv_y).abs() < 0.001
             )),
             "m-select should render the extended arrange image at x={left_x}"
+        );
+    }
+    assert!(items.iter().any(|item| matches!(
+        item,
+        bmz_render::skin::SkinRenderItem::Image { texture, rect, .. }
+            if *texture == option_panel_texture
+                && rect.x.abs() < 0.001
+                && (rect.y - (-22.0 / 1080.0)).abs() < 0.001
+                && (rect.width - 1315.0 / 1920.0).abs() < 0.001
+                && (rect.height - 1124.0 / 1080.0).abs() < 0.001
+    )));
+    for (left_x, uv_y) in [(318.0, 50.0 / 1150.0), (1118.0, 0.0)] {
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                bmz_render::skin::SkinRenderItem::Image { texture, rect, uv, .. }
+                    if *texture == option_panel_random_texture
+                        && (rect.x - left_x / 1920.0).abs() < 0.001
+                        && (rect.y - 440.0 / 1080.0).abs() < 0.001
+                        && (rect.height - 600.0 / 1080.0).abs() < 0.001
+                        && (uv.y - uv_y).abs() < 0.001
+            )),
+            "m-select should render the extended option panel arrange cursor at x={left_x}"
         );
     }
     for x in [503.0, 586.0] {

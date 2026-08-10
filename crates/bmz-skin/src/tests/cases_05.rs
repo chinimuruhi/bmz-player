@@ -390,9 +390,56 @@ fn m_select_lua_select_skin_loads_when_available() {
                         destination.dst.first(),
                         Some(bmz_skin_document::SkinDstEntry::Frame(frame))
                             if frame.x == Some(left_x) && frame.w == Some(166)
+            )
+        )));
+    }
+    for (id, ref_id, left_x) in [
+        ("default_optionpanel_option_random", 344, 318),
+        ("default_optionpanel_option_random2", 345, 1118),
+    ] {
+        let imageset = loaded
+            .document
+            .imageset
+            .iter()
+            .find(|imageset| imageset.id == id)
+            .unwrap_or_else(|| panic!("m-select should decode {id}"));
+        assert_eq!(imageset.ref_id, ref_id);
+        assert_eq!(imageset.images.len(), 12);
+        assert!(loaded.document.destination.iter().any(|entry| matches!(
+            entry,
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id == id
+                    && matches!(
+                        destination.dst.first(),
+                        Some(bmz_skin_document::SkinDstEntry::Frame(frame))
+                            if frame.x == Some(left_x)
+                                && frame.y == Some(40)
+                                && frame.w == Some(170)
+                                && frame.h == Some(600)
                     )
         )));
     }
+    assert!(loaded.document.source.iter().any(|source| {
+        source.id == "src-default-optionpanel-panel1"
+            && source.path.ends_with("default_optionpanel4/panel1_bmz.png")
+    }));
+    assert!(loaded.document.source.iter().any(|source| {
+        source.id == "src-default-optionpanel-random-cursor-bmz"
+            && source.path.ends_with("default_optionpanel4/random_cursor_bmz.png")
+    }));
+    assert!(loaded.document.image.iter().any(|image| {
+        image.id == "default_optionpanel_option_panel1" && image.w == 1315 && image.h == 1124
+    }));
+    assert!(loaded.document.destination.iter().any(|entry| matches!(
+        entry,
+        bmz_skin_document::DestinationListEntry::Single(destination)
+            if destination.id == "default_optionpanel_option_panel1"
+                && matches!(
+                    destination.dst.first(),
+                    Some(bmz_skin_document::SkinDstEntry::Frame(frame))
+                        if frame.y == Some(-22) && frame.w == Some(1315) && frame.h == Some(1124)
+                )
+    )));
     assert!(
         loaded
             .document
