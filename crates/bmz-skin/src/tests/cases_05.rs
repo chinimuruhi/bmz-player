@@ -346,13 +346,9 @@ fn m_select_lua_select_skin_loads_when_available() {
             "m-select should retain operating-time ref {ref_id}"
         );
     }
-    for (id, center_x) in [
-        ("bmz_select_arrange", 545),
-        ("bmz_select_gauge", 711),
-        ("bmz_select_double_option", 877),
-        ("bmz_select_hs_fix", 1043),
-        ("bmz_select_arrange_2p", 1209),
-    ] {
+    for (id, center_x) in
+        [("bmz_select_gauge", 711), ("bmz_select_double_option", 877), ("bmz_select_hs_fix", 1043)]
+    {
         assert!(
             loaded
                 .document
@@ -371,6 +367,30 @@ fn m_select_lua_select_skin_loads_when_available() {
                         Some(bmz_skin_document::SkinDstEntry::Frame(frame))
                             if frame.x == Some(center_x)
             )
+        )));
+    }
+    for (id, ref_id, left_x) in [
+        ("default_stateplayoption_random", 344, 462),
+        ("default_stateplayoption_random_2p", 345, 1126),
+    ] {
+        let imageset = loaded
+            .document
+            .imageset
+            .iter()
+            .find(|imageset| imageset.id == id)
+            .unwrap_or_else(|| panic!("m-select should decode {id}"));
+        assert_eq!(imageset.ref_id, ref_id);
+        assert_eq!(imageset.images.len(), 12);
+        assert!(loaded.document.destination.iter().any(|entry| matches!(
+            entry,
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id == id
+                    && destination.act.is_none()
+                    && matches!(
+                        destination.dst.first(),
+                        Some(bmz_skin_document::SkinDstEntry::Frame(frame))
+                            if frame.x == Some(left_x) && frame.w == Some(166)
+                    )
         )));
     }
     assert!(
@@ -394,13 +414,6 @@ fn m_select_lua_select_skin_loads_when_available() {
                     )
         )));
     }
-    assert!(
-        loaded
-            .document
-            .imageset
-            .iter()
-            .all(|imageset| { !imageset.id.starts_with("default_stateplayoption_option_") })
-    );
 }
 
 #[test]

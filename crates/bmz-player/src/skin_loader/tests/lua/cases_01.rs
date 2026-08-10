@@ -398,6 +398,12 @@ fn m_select_lua_select_skin_renders_items_when_available() {
         text.id == "defaultNotesProcessingCounter_notes"
             || text.id == "defaultNotesProcessingCounter_stroke"
     }));
+    let random_texture = decoded
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src-default-stateplayoption-random-bmz")
+        .expect("m-select F-RANDOM source")
+        .texture;
     let document_textures =
         decoded.sources.iter().map(|source| bmz_render::skin::SkinDocumentTexture {
             source_id: source.source_id.clone(),
@@ -434,13 +440,25 @@ fn m_select_lua_select_skin_renders_items_when_available() {
                 .any(|item| matches!(item, bmz_render::skin::SkinRenderItem::Text { text, .. } if text == "Song")),
             "m_select select skin should render the song title text"
         );
-    for label in ["F-RANDOM", "MF-RANDOM", "EX-HARD", "BATTLE", "CONSTANT"] {
+    for label in ["EX-HARD", "BATTLE", "CONSTANT"] {
         assert!(
                 items.iter().any(
                     |item| matches!(item, bmz_render::skin::SkinRenderItem::Text { text, .. } if text == label)
                 ),
                 "m_select should render the dynamic option label {label}"
             );
+    }
+    for (left_x, uv_y) in [(462.0, 0.0), (1126.0, 0.5)] {
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                bmz_render::skin::SkinRenderItem::Image { texture, rect, uv, .. }
+                    if *texture == random_texture
+                        && (rect.x - left_x / 1920.0).abs() < 0.001
+                        && (uv.y - uv_y).abs() < 0.001
+            )),
+            "m-select should render the extended arrange image at x={left_x}"
+        );
     }
     for x in [503.0, 586.0] {
         let hit = context
@@ -615,13 +633,9 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
             "Luxe Flat should retain operating-time ref {ref_id}"
         );
     }
-    for (id, center_x) in [
-        ("bmz_select_arrange", 138),
-        ("bmz_select_gauge", 302),
-        ("bmz_select_double_option", 446),
-        ("bmz_select_hs_fix", 613),
-        ("bmz_select_arrange_2p", 790),
-    ] {
+    for (id, center_x) in
+        [("bmz_select_gauge", 302), ("bmz_select_double_option", 446), ("bmz_select_hs_fix", 613)]
+    {
         assert!(
             decoded.document.text.iter().any(|text| text.id == id),
             "Luxe Flat should decode dynamic {id} text"
@@ -636,6 +650,30 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
                         Some(bmz_render::skin::SkinDstEntry::Frame(frame))
                             if frame.x == Some(center_x)
             )
+        )));
+    }
+    for (id, ref_id, left_x) in [
+        ("default_stateplayoption_random", 344, 69),
+        ("default_stateplayoption_random_2p", 345, 721),
+    ] {
+        let imageset = decoded
+            .document
+            .imageset
+            .iter()
+            .find(|imageset| imageset.id == id)
+            .unwrap_or_else(|| panic!("Luxe Flat should decode {id}"));
+        assert_eq!(imageset.ref_id, ref_id);
+        assert_eq!(imageset.images.len(), 12);
+        assert!(decoded.document.destination.iter().any(|entry| matches!(
+            entry,
+            DestinationListEntry::Single(destination)
+                if destination.id == id
+                    && destination.act.is_none()
+                    && matches!(
+                        destination.dst.first(),
+                        Some(bmz_render::skin::SkinDstEntry::Frame(frame))
+                            if frame.x == Some(left_x) && frame.w == Some(138)
+                    )
         )));
     }
     assert!(
@@ -660,6 +698,13 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
             )
         )));
     }
+    let random_source = decoded
+        .sources
+        .iter()
+        .find(|source| source.source_id == "src-default-stateplayoption-random-bmz")
+        .expect("Luxe Flat F-RANDOM source");
+    assert_eq!((random_source.size.width, random_source.size.height), (138.0, 42.0));
+    let random_texture = random_source.texture;
     let document_textures =
         decoded.sources.iter().map(|source| bmz_render::skin::SkinDocumentTexture {
             source_id: source.source_id.clone(),
@@ -674,8 +719,26 @@ fn luxe_flat_lua_select_skin_keeps_operating_time_refs_when_available() {
         decoded.document,
         document_textures,
     );
+    let snapshot = bmz_render::scene::SelectSnapshot {
+        arrange: "F-RANDOM".to_string(),
+        arrange_2p: "MF-RANDOM".to_string(),
+        ..Default::default()
+    };
+    let items = context.select_document_items_with_dynamic_timers(&snapshot, None);
+    for (left_x, uv_y) in [(69.0, 0.0), (721.0, 0.5)] {
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                bmz_render::skin::SkinRenderItem::Image { texture, rect, uv, .. }
+                    if *texture == random_texture
+                        && (rect.x - left_x / 1920.0).abs() < 0.001
+                        && (uv.y - uv_y).abs() < 0.001
+            )),
+            "Luxe Flat should render the extended arrange image at x={left_x}"
+        );
+    }
     let hit = context
-        .select_click_hit(&bmz_render::scene::SelectSnapshot::default(), 100.0 / 1920.0, 0.98)
+        .select_click_hit(&snapshot, 100.0 / 1920.0, 0.98)
         .expect("Luxe Flat arrange cell should be clickable from its left half");
     assert_eq!(hit.target, bmz_render::skin::SkinClickTarget::Event { event_id: 42, click: 0 });
     assert!((hit.rect.x - 69.0 / 1920.0).abs() < f32::EPSILON);
