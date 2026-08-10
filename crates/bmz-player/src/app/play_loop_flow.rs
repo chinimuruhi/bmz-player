@@ -46,9 +46,10 @@ impl WinitApp {
                         | bmz_gameplay::session::PlayState::Failed
                 ) =>
             {
+                let result_settled_at = frame.render_snapshot.time;
                 let result_settled = bmz_gameplay::session::result_is_settled(
                     &active_play.running.session,
-                    frame.render_snapshot.time,
+                    result_settled_at,
                 );
                 active_play.running.result_graph.record_frame(&frame);
                 let fallback_mine_hits =
@@ -79,7 +80,7 @@ impl WinitApp {
                 self.play.last_play_snapshot = Some(snapshot);
                 self.play_landmine_se(fallback_mine_hits);
                 if result_settled {
-                    self.finalize_settled_play_result_once();
+                    self.finalize_settled_play_result_once(result_settled_at);
                 }
             }
             Ok(frame) => {
@@ -199,7 +200,7 @@ impl WinitApp {
 
     /// Play画面を `Playing` のまま維持し、判定確定後の保存・IRだけを先行する。
     /// 実際の `Finished` 遷移と退出演出は gameplay の従来の終了条件に任せる。
-    fn finalize_settled_play_result_once(&mut self) {
+    fn finalize_settled_play_result_once(&mut self, settled_at: TimeUs) {
         let finish_mode = if self.play.active_course.is_some() {
             crate::screens::play_finish::FinishResultMode::CourseStage
         } else {
@@ -218,7 +219,7 @@ impl WinitApp {
             let play_duration_ms =
                 (active_play.running.audio.clock().elapsed_since(TimeUs(0)).0.max(0) / 1_000)
                     as u64;
-            match crate::screens::play_finish::finish_session_result_once(
+            match crate::screens::play_finish::finish_settled_session_result_once(
                 &mut active_play.running.finished,
                 &mut self.boot.score_db,
                 &mut self.boot.network_db,
@@ -238,6 +239,7 @@ impl WinitApp {
                     practice_mode: active_play.running.practice_mode,
                     finish_mode,
                 },
+                settled_at,
             ) {
                 Ok(mut finished) => {
                     let graph = Arc::new(

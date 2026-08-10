@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 use bmz_core::clear::ClearType;
 use bmz_core::input::InputDeviceKind;
+use bmz_core::time::TimeUs;
 use bmz_gameplay::gauge::GaugeCarryValue;
 #[cfg(test)]
 use bmz_gameplay::judge::model::JudgeWindows;
@@ -131,6 +132,15 @@ pub fn finish_session_result(
     network_db: &mut NetworkDatabase,
     request: FinishSessionResultRequest<'_>,
 ) -> Result<FinishedPlaySession> {
+    finish_session_result_when(score_db, network_db, request, FinishSessionReadiness::Terminal)
+}
+
+fn finish_session_result_when(
+    score_db: &mut ScoreDatabase,
+    network_db: &mut NetworkDatabase,
+    request: FinishSessionResultRequest<'_>,
+    readiness: FinishSessionReadiness,
+) -> Result<FinishedPlaySession> {
     let FinishSessionResultRequest {
         profile_paths,
         replay_config,
@@ -146,7 +156,7 @@ pub fn finish_session_result(
         practice_mode,
         finish_mode,
     } = request;
-    ensure_storable_state(session.state)?;
+    ensure_storable_session(session, readiness)?;
     let result = play_result_from_session(session);
     let summary_clear_type = finish_mode.summary_clear_type(result.clear_type);
     let replay_playback = session.replay_player.is_some() && session.replay_lane_mask.is_none();
@@ -462,11 +472,44 @@ pub fn finish_session_result_once(
     network_db: &mut NetworkDatabase,
     request: FinishSessionResultOnceRequest<'_>,
 ) -> Result<FinishedPlaySession> {
+    finish_session_result_once_when(
+        cached,
+        score_db,
+        network_db,
+        request,
+        FinishSessionReadiness::Terminal,
+    )
+}
+
+/// 判定結果が確定済みなら、Play の終了演出を待たずに結果を一度だけ保存する。
+pub fn finish_settled_session_result_once(
+    cached: &mut Option<FinishedPlaySession>,
+    score_db: &mut ScoreDatabase,
+    network_db: &mut NetworkDatabase,
+    request: FinishSessionResultOnceRequest<'_>,
+    settled_at: TimeUs,
+) -> Result<FinishedPlaySession> {
+    finish_session_result_once_when(
+        cached,
+        score_db,
+        network_db,
+        request,
+        FinishSessionReadiness::SettledAt(settled_at),
+    )
+}
+
+fn finish_session_result_once_when(
+    cached: &mut Option<FinishedPlaySession>,
+    score_db: &mut ScoreDatabase,
+    network_db: &mut NetworkDatabase,
+    request: FinishSessionResultOnceRequest<'_>,
+    readiness: FinishSessionReadiness,
+) -> Result<FinishedPlaySession> {
     if let Some(finished) = cached.clone() {
         return Ok(finished);
     }
 
-    let mut finished = finish_session_result(
+    let mut finished = finish_session_result_when(
         score_db,
         network_db,
         FinishSessionResultRequest {
@@ -484,6 +527,7 @@ pub fn finish_session_result_once(
             practice_mode: request.practice_mode,
             finish_mode: request.finish_mode,
         },
+        readiness,
     )?;
     finished.summary.target_name = request.target_name.replace('_', " ");
     *cached = Some(finished.clone());
@@ -507,10 +551,25 @@ pub struct FinishSessionResultOnceRequest<'a> {
     pub finish_mode: FinishResultMode,
 }
 
-fn ensure_storable_state(state: PlayState) -> Result<()> {
-    match state {
-        PlayState::Finished | PlayState::Failed => Ok(()),
-        PlayState::Ready | PlayState::Playing => bail!("play session is not finished yet"),
+#[derive(Debug, Clone, Copy)]
+enum FinishSessionReadiness {
+    Terminal,
+    SettledAt(TimeUs),
+}
+
+fn ensure_storable_session(session: &GameSession, readiness: FinishSessionReadiness) -> Result<()> {
+    if matches!(session.state, PlayState::Finished | PlayState::Failed) {
+        return Ok(());
+    }
+    match readiness {
+        FinishSessionReadiness::SettledAt(now)
+            if session.state == PlayState::Playing
+                && bmz_gameplay::session::result_is_settled(session, now) =>
+        {
+            Ok(())
+        }
+        FinishSessionReadiness::SettledAt(_) => bail!("play session result is not settled yet"),
+        FinishSessionReadiness::Terminal => bail!("play session is not finished yet"),
     }
 }
 

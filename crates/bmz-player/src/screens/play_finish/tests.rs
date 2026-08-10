@@ -629,6 +629,74 @@ fn store_session_result_rejects_unfinished_session() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn finish_settled_session_result_accepts_playing_session_after_judgement() {
+    let root = make_temp_dir("settled-session");
+    let paths = ProfilePaths {
+        root_dir: root.clone(),
+        profile_toml: root.join("profile.toml"),
+        collection_db: root.join("collection.db"),
+        score_db: root.join("score.db"),
+        network_db: root.join("network.db"),
+        replay_dir: root.join("replay"),
+    };
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut score_db = ScoreDatabase::from_connection(conn);
+    let mut network_db = open_network_db();
+    let replay_config = ReplayConfig {
+        auto_save: true,
+        compress: false,
+        slot_rules: crate::config::profile_config::default_slot_rules(),
+    };
+    let mut session = session();
+    session.state = PlayState::Playing;
+    session.judge.process_input(
+        &session.chart,
+        bmz_core::input::InputEvent {
+            lane: Lane::Key1,
+            kind: InputKind::Press,
+            time: TimeUs(0),
+            source: InputSource::Human,
+            device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
+        },
+    );
+    let settled_at = TimeUs(i64::MAX);
+    assert!(bmz_gameplay::session::result_is_settled(&session, settled_at));
+
+    let mut cached = None;
+    let finished = finish_settled_session_result_once(
+        &mut cached,
+        &mut score_db,
+        &mut network_db,
+        FinishSessionResultOnceRequest {
+            profile_paths: &paths,
+            replay_config: &replay_config,
+            ir_config: &crate::config::profile_config::IrConfig::default(),
+            session: &session,
+            source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
+            played_at: 1_700_000_111,
+            applied_arrange: &AppliedArrange::default(),
+            target_ex_score: None,
+            target_name: "RANK_AAA",
+            score_key: score_key(&session),
+            practice_mode: true,
+            finish_mode: FinishResultMode::Normal,
+        },
+        settled_at,
+    )
+    .unwrap();
+
+    assert!(cached.is_some());
+    assert_eq!(finished.summary.target_name, "RANK AAA");
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 fn session() -> GameSession {
     let chart = Arc::new(chart());
     let timing_map = bmz_chart::timing::TimingMap::from_chart_timing_events(
