@@ -461,7 +461,7 @@ fn antique_play_lua_places_split_fast_slow_beside_the_key_label_when_available()
         assert!(matches!(
             destination.dst.last(),
             Some(bmz_render::skin::SkinDstEntry::Frame(frame))
-                if frame.time == Some(500)
+                    if frame.time == Some(800)
         ));
     };
 
