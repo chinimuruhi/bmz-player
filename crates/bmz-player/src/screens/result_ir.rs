@@ -336,6 +336,7 @@ impl ResultIrState {
         snapshot.connect_begin_ms = self.ir_connect_begin_at.map(elapsed_since_ms);
         snapshot.connect_success_ms = self.ir_connect_success_at.map(elapsed_since_ms);
         snapshot.connect_fail_ms = self.ir_connect_fail_at.map(elapsed_since_ms);
+        snapshot.online = true;
         snapshot.provider_name = self.provider_name;
         snapshot.user_name = self.user_name;
         snapshot.scope = match tab {

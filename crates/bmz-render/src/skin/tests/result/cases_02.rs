@@ -344,10 +344,11 @@ fn ir_skin_properties_use_offline_defaults() {
 }
 
 #[test]
-fn ir_online_property_enables_result_submission_destinations() {
+fn ir_online_property_is_independent_from_ranking_state() {
     let state = SkinDrawState {
         ir_ranking: crate::scene::ResultIrSnapshot {
-            state: crate::scene::ResultIrState::Loading,
+            online: true,
+            state: crate::scene::ResultIrState::Offline,
             ..Default::default()
         },
         ..SkinDrawState::default()

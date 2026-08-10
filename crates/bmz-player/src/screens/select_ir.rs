@@ -228,7 +228,7 @@ mod tests {
                 provider_key: "bmz-official".to_string(),
                 base_url: "http://localhost:0".to_string(),
                 enabled,
-                account_display_name: String::new(),
+                account_display_name: "Player".to_string(),
                 account_id: String::new(),
                 send_policy: IrSendPolicyConfig::default(),
                 role: IrProviderRoleConfig::default(),
@@ -322,18 +322,25 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_is_offline_without_provider_and_waiting_when_uncached() {
+    fn snapshot_keeps_provider_online_without_a_ranking_target() {
         let select_ir = SelectIrRanking::default();
         let sha = [7u8; 32];
 
         let offline = select_ir.snapshot_for(&ir_config(false), Some(sha));
+        assert!(!offline.online);
         assert_eq!(offline.state, SkinIrState::Offline);
 
         let waiting = select_ir.snapshot_for(&ir_config(true), Some(sha));
+        assert!(waiting.online);
         assert_eq!(waiting.state, SkinIrState::Waiting);
+        assert_eq!(waiting.provider_name.as_str(), "BMZ IR");
+        assert_eq!(waiting.user_name.as_str(), "Player");
 
         let none = select_ir.snapshot_for(&ir_config(true), None);
+        assert!(none.online);
         assert_eq!(none.state, SkinIrState::Offline);
+        assert_eq!(none.provider_name.as_str(), "BMZ IR");
+        assert_eq!(none.user_name.as_str(), "Player");
     }
 
     #[test]

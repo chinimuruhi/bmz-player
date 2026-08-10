@@ -130,8 +130,8 @@ pub(in crate::skin) fn test_skin_op(
         // OPTION_OFFLINE / OPTION_ONLINE. beatoraja は設定済み IR 接続の有無を
         // 返す。結果スキンでは 51 が IR 送信完了/失敗の timer 173/174 を
         // 描画する前提条件としても使われる。
-        50 => matches!(state.ir_ranking.state, crate::scene::ResultIrState::Offline),
-        51 => !matches!(state.ir_ranking.state, crate::scene::ResultIrState::Offline),
+        50 => !state.ir_ranking.online,
+        51 => state.ir_ranking.online,
         21 => state.select_option_panel == 1,
         22 => state.select_option_panel == 2,
         23 => state.select_option_panel == 3,

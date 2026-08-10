@@ -176,7 +176,7 @@ pub(super) fn skin_main_state_text(
         1003 => state.table_text_fallback.to_string(),
         1010 => format!("bmz-player {}", env!("CARGO_PKG_VERSION")),
         1020 => {
-            if matches!(state.ir_ranking.state, crate::scene::ResultIrState::Offline) {
+            if !state.ir_ranking.online {
                 String::new()
             } else {
                 state.ir_ranking.provider_name.as_str().to_string()

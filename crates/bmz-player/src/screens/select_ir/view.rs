@@ -47,7 +47,7 @@ impl SelectIrRanking {
             return ResultIrSnapshot::default();
         }
         let Some(sha256) = selected else {
-            return ResultIrSnapshot::default();
+            return snapshot_with_provider(ResultIrSnapshot::default(), ir_config);
         };
         let scope = if requested_scope == SelectIrRankingScope::SelfAndRivals
             && self.supports_scope(ir_config, Some(sha256), requested_scope)
@@ -99,7 +99,7 @@ impl SelectIrRanking {
         snapshot.global_scope_supported = true;
         snapshot.rival_scope_supported =
             self.supports_scope(ir_config, Some(sha256), SelectIrRankingScope::SelfAndRivals);
-        snapshot
+        snapshot_with_provider(snapshot, ir_config)
     }
 
     pub fn active_scope(&self) -> SelectIrRankingScope {
@@ -154,7 +154,7 @@ impl SelectIrRanking {
             return ResultIrSnapshot::default();
         }
         let Some(target) = selected else {
-            return ResultIrSnapshot::default();
+            return snapshot_with_provider(ResultIrSnapshot::default(), ir_config);
         };
         let mut snapshot = self
             .course_cache
@@ -191,7 +191,7 @@ impl SelectIrRanking {
         snapshot.scope = SkinIrScope::Global;
         snapshot.global_scope_supported = true;
         snapshot.rival_scope_supported = false;
-        snapshot
+        snapshot_with_provider(snapshot, ir_config)
     }
 
     /// 選択中譜面のライバルベスト (最上位 1 名)。未取得 / IR 未設定なら None。
@@ -297,4 +297,20 @@ impl SelectIrRanking {
             self.pending = None;
         }
     }
+}
+
+fn snapshot_with_provider(
+    mut snapshot: ResultIrSnapshot,
+    ir_config: &IrConfig,
+) -> ResultIrSnapshot {
+    let Some(provider) = crate::ir::provider_key::primary_provider_config(ir_config) else {
+        return snapshot;
+    };
+    snapshot.online = true;
+    if let Some(name) = crate::ir::provider_key::configured_provider_display_name(provider) {
+        snapshot.provider_name = bmz_render::scene::ResultIrRankingName::from_display_name(name);
+    }
+    snapshot.user_name =
+        bmz_render::scene::ResultIrRankingName::from_display_name(&provider.account_display_name);
+    snapshot
 }

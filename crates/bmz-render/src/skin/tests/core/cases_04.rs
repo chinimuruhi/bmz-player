@@ -146,6 +146,7 @@ fn skin_state_float_expr_evaluates_option_weighted_terms() {
 #[test]
 fn skin_state_text_maps_string_refs() {
     let ir_ranking = crate::scene::ResultIrSnapshot {
+        online: true,
         state: crate::scene::ResultIrState::Loaded,
         provider_name: crate::scene::ResultIrRankingName::from_display_name("rianIR"),
         user_name: crate::scene::ResultIrRankingName::from_display_name("hyrorre"),
@@ -232,6 +233,14 @@ fn skin_state_text_maps_string_refs() {
     // STRING_IR_NAME / STRING_IR_USERNAME
     assert_eq!(skin_state_text(&make_text(1020), &state), "rianIR");
     assert_eq!(skin_state_text(&make_text(1021), &state), "hyrorre");
+    let idle_ir_ranking = crate::scene::ResultIrSnapshot {
+        online: true,
+        state: crate::scene::ResultIrState::Offline,
+        provider_name: crate::scene::ResultIrRankingName::from_display_name("rianIR"),
+        ..Default::default()
+    };
+    let idle_ir_state = SkinTextState { ir_ranking: &idle_ir_ranking, ..state.clone() };
+    assert_eq!(skin_state_text(&make_text(1020), &idle_ir_state), "rianIR");
     // Unknown ref → empty
     assert_eq!(skin_state_text(&make_text(99), &state), "");
 

@@ -54,9 +54,11 @@ impl ResultIrRankingEntrySnapshot {
 /// リザルト画面の IR ランキング表示状態。
 ///
 /// beatoraja の `NUMBER_IR_*` / `OPTION_IR_*` skin property に対応する。
-/// IR 未設定なら `Offline` (beatoraja の STATE_OFFLINE と同じく値は非表示)。
+/// 接続状態は選択中譜面のランキング取得状態とは独立して保持する。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResultIrSnapshot {
+    /// primary IR が設定済みか。OPTION_OFFLINE / OPTION_ONLINE (50/51) に使う。
+    pub online: bool,
     pub state: ResultIrState,
     /// STRING_IR_NAME=1020。primary IRの表示名。
     pub provider_name: ResultIrRankingName,
@@ -91,6 +93,7 @@ pub struct ResultIrSnapshot {
 
 impl ResultIrSnapshot {
     pub const EMPTY: Self = Self {
+        online: false,
         state: ResultIrState::Offline,
         provider_name: ResultIrRankingName::EMPTY,
         user_name: ResultIrRankingName::EMPTY,
@@ -136,7 +139,7 @@ impl ResultIrScope {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ResultIrState {
-    /// IR 未設定 / 未接続。
+    /// IR 未設定、または現在行にランキング対象がない。
     #[default]
     Offline,
     /// 送信・ランキング取得中 (OPTION_IR_LOADING=601)。
