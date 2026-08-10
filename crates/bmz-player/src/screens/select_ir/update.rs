@@ -2,11 +2,14 @@ use super::*;
 
 impl SelectIrRanking {
     /// 選択中のrianIRライバルだけを全曲キャッシュする。切り替え直後は
-    /// network.db の値を即時利用し、通信更新はデバウンスして1本だけ実行する。
+    /// network.db の値を即時利用し、通信更新は起動中の取得条件ごとに1回だけ実行する。
     pub fn update_rival(&mut self, target: Option<SelectRivalFetchTarget>, profile_root: &Path) {
         while let Ok((result_target, requested_at, result)) = self.rival_receiver.try_recv() {
             if self.rival_in_flight.as_ref().is_some_and(|(target, _)| target == &result_target) {
                 self.rival_in_flight = None;
+            }
+            if result.is_ok() {
+                self.rival_fetched_this_session.insert((&result_target).into());
             }
             if self.active_rival.as_ref() != Some(&result_target) {
                 tracing::debug!(rival = %result_target.rival_id, "discarding stale rival score fetch");
@@ -14,6 +17,7 @@ impl SelectIrRanking {
             }
             match result {
                 Ok(scores) => {
+                    self.rival_pending = None;
                     self.active_rival_scores = scores
                         .into_iter()
                         .map(|score| ((score.chart_sha256, score.ln_mode), score))
@@ -36,7 +40,12 @@ impl SelectIrRanking {
         if self.active_rival != target {
             self.active_rival = target.clone();
             self.active_rival_scores.clear();
-            self.rival_pending = target.as_ref().map(|_| Instant::now());
+            self.rival_pending = target
+                .as_ref()
+                .filter(|target| {
+                    !self.rival_fetched_this_session.contains(&SelectRivalFetchKey::from(*target))
+                })
+                .map(|_| Instant::now());
             if let Some(target) = &target {
                 let path = profile_root.join("network.db");
                 match crate::storage::network_db::NetworkDatabase::open(&path).and_then(|db| {

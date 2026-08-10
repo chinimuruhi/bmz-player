@@ -4,7 +4,7 @@
 //! 一定時間とどまったらグローバルランキングを取得し、`NUMBER_IR_RANK` /
 //! `NUMBER_IR_TOTALPLAYER` / `OPTION_IR_*` skin property へ供給する。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
@@ -51,6 +51,25 @@ pub struct SelectRivalFetchTarget {
     pub rival_id: String,
     pub display_name: String,
     pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SelectRivalFetchKey {
+    provider: String,
+    base_url: String,
+    rival_id: String,
+    body: String,
+}
+
+impl From<&SelectRivalFetchTarget> for SelectRivalFetchKey {
+    fn from(target: &SelectRivalFetchTarget) -> Self {
+        Self {
+            provider: target.provider.clone(),
+            base_url: target.base_url.clone(),
+            rival_id: target.rival_id.clone(),
+            body: target.body.clone(),
+        }
+    }
 }
 
 impl SelectRivalFetchTarget {
@@ -149,6 +168,7 @@ pub struct SelectIrRanking {
     active_rival_scores: HashMap<([u8; 32], u8), IrRivalScoreRecord>,
     rival_in_flight: Option<(SelectRivalFetchTarget, Instant)>,
     rival_pending: Option<Instant>,
+    rival_fetched_this_session: HashSet<SelectRivalFetchKey>,
     rival_sender: Sender<RivalFetchResult>,
     rival_receiver: Receiver<RivalFetchResult>,
 }
@@ -175,6 +195,7 @@ impl Default for SelectIrRanking {
             active_rival_scores: HashMap::new(),
             rival_in_flight: None,
             rival_pending: None,
+            rival_fetched_this_session: HashSet::new(),
             rival_sender,
             rival_receiver,
         }
@@ -284,6 +305,20 @@ mod tests {
         let mut ranking = raw_global_ranking(sha256, rank, ex_score, total);
         ranking.ranking.scope = IrRankingScope::SelfAndRivals;
         ranking
+    }
+
+    fn rival_fetch_target(rival_id: &str, body: &str) -> SelectRivalFetchTarget {
+        SelectRivalFetchTarget {
+            provider: "rianir".to_string(),
+            base_url: "https://ir.example.test/api/".to_string(),
+            rival_id: rival_id.to_string(),
+            display_name: format!("Rival {rival_id}"),
+            body: body.to_string(),
+        }
+    }
+
+    fn missing_profile_root(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("bmz-select-ir-{name}-{}", std::process::id()))
     }
 
     #[test]
@@ -516,6 +551,104 @@ mod tests {
             rival.judge_counts,
             Some(SelectRivalJudgeCounts { pgreat: 900, great: 50, good: 7, bad: 3, poor: 3 })
         );
+    }
+
+    #[test]
+    fn successful_rival_fetch_is_not_scheduled_again_this_session() {
+        let mut select_ir = SelectIrRanking::default();
+        let first = rival_fetch_target("1001", "beatoraja");
+        let second = rival_fetch_target("1002", "beatoraja");
+        let requested_at = Instant::now();
+        let root = missing_profile_root("reuse-success");
+
+        select_ir.active_rival = Some(first.clone());
+        select_ir.rival_in_flight = Some((first.clone(), requested_at));
+        select_ir.rival_sender.send((first.clone(), requested_at, Ok(Vec::new()))).unwrap();
+        select_ir.update_rival(Some(first.clone()), &root);
+
+        assert!(select_ir.rival_fetched_this_session.contains(&SelectRivalFetchKey::from(&first)));
+        assert!(select_ir.rival_pending.is_none());
+        assert!(select_ir.rival_in_flight.is_none());
+
+        select_ir.update_rival(Some(second), &root);
+        assert!(select_ir.rival_pending.is_some());
+
+        select_ir.update_rival(Some(first), &root);
+        assert!(select_ir.rival_pending.is_none());
+        assert!(select_ir.rival_in_flight.is_none());
+    }
+
+    #[test]
+    fn first_rival_selection_still_schedules_session_refresh() {
+        let mut select_ir = SelectIrRanking::default();
+        let target = rival_fetch_target("1001", "beatoraja");
+        let root = missing_profile_root("first-refresh");
+
+        select_ir.update_rival(Some(target), &root);
+
+        assert!(select_ir.rival_fetched_this_session.is_empty());
+        assert!(select_ir.rival_pending.is_some());
+        assert!(select_ir.rival_in_flight.is_none());
+    }
+
+    #[test]
+    fn stale_successful_rival_fetch_is_reused_when_selected_again() {
+        let mut select_ir = SelectIrRanking::default();
+        let first = rival_fetch_target("1001", "beatoraja");
+        let second = rival_fetch_target("1002", "beatoraja");
+        let requested_at = Instant::now();
+        let root = missing_profile_root("reuse-stale");
+
+        select_ir.active_rival = Some(second.clone());
+        select_ir.rival_in_flight = Some((first.clone(), requested_at));
+        select_ir.rival_sender.send((first.clone(), requested_at, Ok(Vec::new()))).unwrap();
+        select_ir.update_rival(Some(second), &root);
+
+        assert!(select_ir.rival_fetched_this_session.contains(&SelectRivalFetchKey::from(&first)));
+        select_ir.update_rival(Some(first), &root);
+        assert!(select_ir.rival_pending.is_none());
+    }
+
+    #[test]
+    fn failed_rival_fetch_is_scheduled_after_reselection() {
+        let mut select_ir = SelectIrRanking::default();
+        let first = rival_fetch_target("1001", "beatoraja");
+        let second = rival_fetch_target("1002", "beatoraja");
+        let requested_at = Instant::now();
+        let root = missing_profile_root("retry-failure");
+
+        select_ir.active_rival = Some(first.clone());
+        select_ir.rival_in_flight = Some((first.clone(), requested_at));
+        select_ir
+            .rival_sender
+            .send((first.clone(), requested_at, Err("offline".to_string())))
+            .unwrap();
+        select_ir.update_rival(Some(first.clone()), &root);
+
+        assert!(select_ir.rival_fetched_this_session.is_empty());
+        select_ir.update_rival(Some(second), &root);
+        select_ir.update_rival(Some(first), &root);
+        assert!(select_ir.rival_pending.is_some());
+    }
+
+    #[test]
+    fn rival_fetch_session_key_includes_body_and_base_url() {
+        let mut select_ir = SelectIrRanking::default();
+        let fetched = rival_fetch_target("1001", "beatoraja");
+        let mut other_body = fetched.clone();
+        other_body.body = "DX MODE".to_string();
+        let mut other_base_url = fetched.clone();
+        other_base_url.base_url = "https://other.example.test/api/".to_string();
+        let root = missing_profile_root("cache-key");
+
+        select_ir.rival_fetched_this_session.insert((&fetched).into());
+        select_ir.active_rival = Some(fetched);
+
+        select_ir.update_rival(Some(other_body), &root);
+        assert!(select_ir.rival_pending.is_some());
+
+        select_ir.update_rival(Some(other_base_url), &root);
+        assert!(select_ir.rival_pending.is_some());
     }
 
     #[test]
