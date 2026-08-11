@@ -11,7 +11,6 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
-        self.result.last_play_session_mode = options.session_mode;
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
@@ -45,7 +44,6 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
-        self.result.last_play_session_mode = options.session_mode;
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
@@ -186,6 +184,9 @@ impl WinitApp {
         options: PlayStartOptions,
         mut snapshot: RenderSnapshot,
     ) {
+        // Decide / retry / direct boot のどの経路でも、Play 入場後の常時表示が
+        // pending state の破棄に左右されないよう、ここで今回の mode を記録する。
+        self.result.last_play_session_mode = options.session_mode;
         // リザルトの非同期 IR state は今回の試行だけを表す。retry 中にも残すと
         // 同じ chart hash の前回スコアを次の Result で表示し得るため、Play へ
         // 入る時点で直ちに手放す（バックグラウンド送信自体は継続する）。

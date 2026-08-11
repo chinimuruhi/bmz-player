@@ -1,12 +1,22 @@
 use super::*;
-use crate::app::scene_state::session_mode_overlay_suffix;
+use crate::app::scene_state::playback_overlay_suffix;
 
 #[test]
-fn session_mode_overlay_suffix_distinguishes_all_modes() {
-    assert_eq!(session_mode_overlay_suffix(SessionMode::Normal), None);
-    assert_eq!(session_mode_overlay_suffix(SessionMode::Autoplay), Some("autoplay"));
-    assert_eq!(session_mode_overlay_suffix(SessionMode::AutoplayBattle), Some("auto battle"));
-    assert_eq!(session_mode_overlay_suffix(SessionMode::GhostBattle), Some("battle"));
+fn playback_overlay_suffix_distinguishes_all_modes() {
+    assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, false), None);
+    assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, false), Some("autoplay"));
+    assert_eq!(
+        playback_overlay_suffix(SessionMode::AutoplayBattle, true, false),
+        Some("auto battle")
+    );
+    assert_eq!(playback_overlay_suffix(SessionMode::GhostBattle, false, false), Some("battle"));
+}
+
+#[test]
+fn playback_overlay_suffix_uses_effective_playback_flags() {
+    assert_eq!(playback_overlay_suffix(SessionMode::Normal, true, false), Some("autoplay"));
+    assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, true), Some("replay"));
+    assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, true), Some("replay"));
 }
 
 #[test]

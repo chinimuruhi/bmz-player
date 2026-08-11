@@ -295,7 +295,8 @@ impl WinitApp {
     pub(super) fn always_overlay_text(&self) -> String {
         let player_name = env!("CARGO_PKG_NAME");
         let player_version = env!("CARGO_PKG_VERSION");
-        match session_mode_overlay_suffix(self.session_mode_for_overlay()) {
+        let (autoplay, replay_playback) = self.playback_flags_for_overlay();
+        match playback_overlay_suffix(self.session_mode_for_overlay(), autoplay, replay_playback) {
             Some(suffix) => format!("{player_name} {player_version} {suffix}"),
             None => format!("{player_name} {player_version}"),
         }
@@ -324,6 +325,33 @@ impl WinitApp {
                 .map(|pending| pending.options.session_mode)
                 .unwrap_or(self.select.session_mode),
             AppViewState::Select => self.select.session_mode,
+        }
+    }
+
+    pub(super) fn playback_flags_for_overlay(&self) -> (bool, bool) {
+        match self.view_state() {
+            AppViewState::Play => self
+                .play
+                .last_play_snapshot
+                .as_ref()
+                .map(|snapshot| (snapshot.autoplay, snapshot.replay_playback))
+                .unwrap_or_default(),
+            AppViewState::Decide => self
+                .play
+                .pending_decide
+                .as_ref()
+                .map(|pending| {
+                    let mode = pending.options.session_mode;
+                    let replay_playback =
+                        pending.options.replay_player.is_some() && mode != SessionMode::GhostBattle;
+                    let autoplay = !replay_playback
+                        && (mode.primary_autoplay()
+                            || pending.options.autoplay
+                            || self.boot.profile_config.play.auto_play);
+                    (autoplay, replay_playback)
+                })
+                .unwrap_or_default(),
+            AppViewState::Select | AppViewState::Result => (false, false),
         }
     }
 
@@ -456,8 +484,16 @@ impl WinitApp {
     }
 }
 
-pub(super) const fn session_mode_overlay_suffix(mode: SessionMode) -> Option<&'static str> {
+pub(super) const fn playback_overlay_suffix(
+    mode: SessionMode,
+    autoplay: bool,
+    replay_playback: bool,
+) -> Option<&'static str> {
+    if replay_playback {
+        return Some("replay");
+    }
     match mode {
+        SessionMode::Normal if autoplay => Some("autoplay"),
         SessionMode::Normal => None,
         SessionMode::Autoplay => Some("autoplay"),
         SessionMode::AutoplayBattle => Some("auto battle"),
