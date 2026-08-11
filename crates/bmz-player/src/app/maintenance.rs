@@ -55,8 +55,10 @@ impl WinitApp {
         self.poll_pending_song_scan();
         self.poll_pending_update_check();
         self.poll_pending_update_download();
+        self.poll_pending_rival_sync();
 
         self.start_startup_table_fetch_after_first_frame();
+        self.start_startup_rival_sync_after_first_frame();
         self.start_queued_table_fetch_if_idle();
         self.start_queued_rian_table_fetch_if_idle();
         self.maybe_start_periodic_rian_table_fetch();

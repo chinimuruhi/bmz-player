@@ -33,12 +33,14 @@ pub(super) async fn login(
         None => prompt_password()?,
     };
 
-    let tokens = if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+    let is_rian_ir = crate::ir::rian_ir::is_rian_ir_provider(provider);
+    let tokens = if is_rian_ir {
         crate::ir::rian_ir::RianIrClient::new(&base_url)?.login(email, &password).await?
     } else {
         BmzOfficialIrClient::anonymous(&base_url)?.login(email, &password).await?
     };
     let provider_key = tokens.provider_key.clone();
+    let account_id = tokens.player.id.clone();
     let display_name = tokens.player.display_name.clone().unwrap_or_default();
     let now = now_unix_seconds();
 
@@ -87,12 +89,26 @@ pub(super) async fn login(
     entry.base_url = base_url;
     entry.provider_key = provider_key.clone();
     entry.enabled = true;
-    entry.account_id = tokens.player.id;
+    entry.account_id = account_id.clone();
     entry.account_display_name = display_name.clone();
     entry.last_login_at = Some(now);
     if profile.ir.primary_provider.is_empty() {
-        profile.ir.primary_provider = provider_key;
+        profile.ir.primary_provider = provider_key.clone();
         entry.role = IrProviderRoleConfig::Primary;
+    }
+    if is_rian_ir {
+        match crate::ir::rian_ir::RianIrClient::new(&entry.base_url)?
+            .fetch_rivals(&account_id)
+            .await
+        {
+            Ok(rivals) => {
+                sync_ir_rivals_into_profile(profile, &provider_key, &rivals);
+                tracing::info!(rivals = rivals.len(), "rianIR rivals synced after login");
+            }
+            Err(error) => {
+                tracing::warn!(%error, "rianIR rival sync after login failed; login remains valid");
+            }
+        }
     }
     profile.updated_at = now;
     save_profile_config(&profile_paths.profile_toml, profile)?;

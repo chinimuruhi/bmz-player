@@ -224,6 +224,9 @@ pub(super) struct AppJobs {
     pub(super) pending_update_download: Option<Receiver<Result<DownloadedUpdate>>>,
     pub(super) update_prompt: Option<UpdatePrompt>,
     pub(super) update_dismissed_session_version: Option<String>,
+    /// 起動時に1回だけ実行するrianIRライバル一覧同期。
+    pub(super) startup_rival_sync: Option<RianRivalSyncRequest>,
+    pub(super) pending_rival_sync: Option<Receiver<RianRivalSyncWorkerResult>>,
     /// worker群へ、Selectかつ直接起動待ちでない期間だけ実行許可を通知する。
     pub(super) maintenance_select_tx: tokio::sync::watch::Sender<bool>,
 }

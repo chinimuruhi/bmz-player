@@ -303,7 +303,7 @@ impl WinitApp {
                     identity: worker_identity,
                     result,
                 });
-                let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
+                let _ = event_proxy.send_event(AppUserEvent::TableFetch);
             })
             .expect("failed to spawn rianIR table fetch thread");
         self.jobs.table_fetch.pending_rian = Some(rx);
@@ -496,12 +496,12 @@ impl WinitApp {
                         maintenance_allowed,
                         |outcome| {
                             let _ = progress_tx.send(TableFetchWorkerEvent::Downloaded(outcome));
-                            let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
+                            let _ = event_proxy.send_event(AppUserEvent::TableFetch);
                         },
                     ))
                 })();
                 let _ = tx.send(TableFetchWorkerEvent::Finished(result));
-                let _ = event_proxy.send_event(AppUserEvent::TableFetchReady);
+                let _ = event_proxy.send_event(AppUserEvent::TableFetch);
             })
             .expect("failed to spawn table fetch thread");
         self.jobs.table_fetch.pending_urls = urls.iter().cloned().collect();

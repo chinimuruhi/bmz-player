@@ -21,6 +21,7 @@ impl WinitApp {
         // ネットワークへ出る前に、DBから必要なURLだけ選定しておく。実際の取得は
         // 最初の描画後に開始するため、初回起動でもウィンドウ表示を待たせない。
         let startup_table_fetch_urls = startup_difficulty_table_fetch_urls_for_boot(&boot);
+        let startup_rival_sync = RianRivalSyncRequest::from_profile(&boot.profile_config);
 
         let folder_stack = initial_folder_stack(&boot.app_config);
         let initial_mode_filter =
@@ -288,6 +289,8 @@ impl WinitApp {
                 pending_update_download: None,
                 update_prompt: None,
                 update_dismissed_session_version: None,
+                startup_rival_sync,
+                pending_rival_sync: None,
                 maintenance_select_tx,
             },
             integrations: IntegrationRuntimeState {

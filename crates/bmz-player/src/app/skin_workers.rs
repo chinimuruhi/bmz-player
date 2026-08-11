@@ -133,6 +133,6 @@ pub(super) fn skin_upload_worker(
             // main 側受信端が drop された (アプリ終了)。
             break;
         }
-        let _ = event_proxy.send_event(AppUserEvent::SkinUploadReady { sent_at: Instant::now() });
+        let _ = event_proxy.send_event(AppUserEvent::SkinUpload { sent_at: Instant::now() });
     }
 }

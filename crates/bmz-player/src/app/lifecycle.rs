@@ -325,7 +325,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppUserEvent) {
         match event {
-            AppUserEvent::SkinUploadReady { sent_at } => {
+            AppUserEvent::SkinUpload { sent_at } => {
                 let event_received_at = Instant::now();
                 let pending_before = self.has_pending_skin_reload();
                 let drain_start = Instant::now();
@@ -343,7 +343,11 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     "skin upload ready event timings"
                 );
             }
-            AppUserEvent::TableFetchReady => {
+            AppUserEvent::TableFetch => {
+                self.poll_select_maintenance();
+                self.request_redraw();
+            }
+            AppUserEvent::RivalSync => {
                 self.poll_select_maintenance();
                 self.request_redraw();
             }

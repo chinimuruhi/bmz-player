@@ -239,6 +239,7 @@ mod result_runtime;
 mod result_support;
 #[path = "app/result_support/timing.rs"]
 mod result_timing_support;
+mod rival_sync;
 mod runtime_state;
 mod scene_input;
 mod select_assets;
@@ -322,6 +323,7 @@ use result_runtime::{
 };
 use result_support::*;
 use result_timing_support::*;
+use rival_sync::*;
 use scene_input::{
     DecideAction, ResultAction, SelectAction, SelectMove, decide_action as scene_decide_action,
     result_action as scene_result_action, select_action as scene_select_action,
@@ -361,8 +363,9 @@ const SAMPLE_PLAYABLE_TITLE: &str = "BMZ Sample Playable";
 
 #[derive(Debug, Clone, Copy)]
 enum AppUserEvent {
-    SkinUploadReady { sent_at: Instant },
-    TableFetchReady,
+    SkinUpload { sent_at: Instant },
+    TableFetch,
+    RivalSync,
 }
 
 pub async fn run() -> Result<()> {
