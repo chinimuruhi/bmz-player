@@ -231,8 +231,9 @@ pub(in crate::skin) fn test_skin_op(
         43 => state.gauge_type >= 3,
         1046 => matches!(state.gauge_type, 0 | 1 | 4 | 5 | 7 | 8),
         // OPTION_NOT_COMPARE_RIVAL / OPTION_COMPARE_RIVAL。
-        624 => state.rival_ex_score.is_none(),
-        625 => state.rival_ex_score.is_some(),
+        // beatoraja は選択中ライバルの有無で判定し、対象譜面のスコア有無は見ない。
+        624 => !state.rival_selected,
+        625 => state.rival_selected,
         // OPTION_IR_LOADING / LOADED / NOPLAYER / FAILED (601..604)。
         601 => matches!(state.ir_ranking.state, crate::scene::ResultIrState::Loading),
         602 => matches!(state.ir_ranking.state, crate::scene::ResultIrState::Loaded),

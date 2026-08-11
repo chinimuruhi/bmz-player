@@ -210,6 +210,7 @@ impl SelectIrRanking {
             return Some(SelectRivalSnapshot {
                 display_name: self.active_rival.as_ref()?.display_name.clone(),
                 ex_score: score.ex_score,
+                clear_index: rival_clear_index(score.clear_type),
                 max_combo: score.max_combo,
                 bp: score.min_bp.max(0) as u32,
                 judge_counts: None,
@@ -239,6 +240,7 @@ impl SelectIrRanking {
         Some(SelectRivalSnapshot {
             display_name: self.active_rival.as_ref()?.display_name.clone(),
             ex_score: score.ex_score,
+            clear_index: rival_clear_index(score.clear_type),
             max_combo: score.max_combo,
             bp: score.min_bp.max(0) as u32,
             judge_counts: None,
@@ -297,6 +299,10 @@ impl SelectIrRanking {
             self.pending = None;
         }
     }
+}
+
+pub(super) fn rival_clear_index(clear_type: i32) -> i64 {
+    i64::from(clear_type).clamp(0, bmz_core::clear::ClearType::Max as i64)
 }
 
 fn snapshot_with_provider(

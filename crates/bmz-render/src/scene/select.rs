@@ -109,8 +109,11 @@ pub struct SelectSnapshot {
     /// 選曲カーソル譜面の IR ランキング状態 (NUMBER_IR_* / OPTION_IR_*)。
     pub ir: ResultIrSnapshot,
     /// 選曲カーソル譜面の IR ライバルベスト
-    /// (STRING_RIVAL=1 / NUMBER_RIVAL_*=271,275,276 / OPTION_COMPARE_RIVAL=624,625)。
+    /// (NUMBER_RIVAL_*=271,275,276)。
     pub rival: Option<SelectRivalSnapshot>,
+    /// beatoraja の `MusicSelector.getRival() != null` に相当する選択状態。
+    /// 対象譜面にライバルスコアがなくても true のままにする。
+    pub rival_selected: bool,
     /// 選択ライバル名。未プレイ譜面でも STRING_RIVAL (1) へ表示する。
     pub rival_name: String,
     /// beatoraja IndexType autosave_replay1..4 (321..324) image row indices.
@@ -123,6 +126,8 @@ pub struct SelectSnapshot {
 pub struct SelectRivalSnapshot {
     pub display_name: String,
     pub ex_score: u32,
+    /// beatoraja ClearType index (0=NO PLAY .. 10=MAX)。
+    pub clear_index: i64,
     pub max_combo: u32,
     pub bp: u32,
     /// EXスコア元プレイの PGREAT/GREAT/GOOD/BAD/POOR 内訳。
@@ -207,6 +212,7 @@ impl Default for SelectSnapshot {
             mouse_position: None,
             ir: ResultIrSnapshot::default(),
             rival: None,
+            rival_selected: false,
             rival_name: String::new(),
             replay_slot_rule_indices: [0; 4],
             player_stats: PlayerStatsSnapshot::default(),
@@ -235,6 +241,9 @@ pub struct SelectRowSnapshot {
     pub max_bpm: f32,
     pub length_ms: i64,
     pub clear_type: String,
+    /// 選択中ライバルの beatoraja ClearType index (0=NO PLAY .. 10=MAX)。
+    /// ライバル未プレイ譜面も 0。
+    pub rival_clear_index: usize,
     pub ex_score: Option<u32>,
     pub max_combo: Option<u32>,
     pub gauge_value: Option<f32>,
@@ -309,6 +318,7 @@ impl Default for SelectRowSnapshot {
             max_bpm: 0.0,
             length_ms: 0,
             clear_type: String::new(),
+            rival_clear_index: 0,
             ex_score: None,
             max_combo: None,
             gauge_value: None,

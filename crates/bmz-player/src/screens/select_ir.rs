@@ -364,6 +364,7 @@ mod tests {
                 rival: Some(SelectRivalSnapshot {
                     display_name: "RivalOne".to_string(),
                     ex_score: 1500,
+                    clear_index: 6,
                     max_combo: 700,
                     bp: 12,
                     judge_counts: None,
@@ -506,6 +507,7 @@ mod tests {
                 rival: Some(SelectRivalSnapshot {
                     display_name: "RivalOne".to_string(),
                     ex_score: 1500,
+                    clear_index: 6,
                     max_combo: 700,
                     bp: 12,
                     judge_counts: None,
@@ -554,10 +556,48 @@ mod tests {
         });
 
         let rival = top_rival_snapshot(&ranking).unwrap();
+        assert_eq!(rival.clear_index, 6);
         assert_eq!(
             rival.judge_counts,
             Some(SelectRivalJudgeCounts { pgreat: 900, great: 50, good: 7, bad: 3, poor: 3 })
         );
+    }
+
+    #[test]
+    fn rian_rival_clear_index_is_bounded_to_skin_range() {
+        assert_eq!(view::rival_clear_index(-1), 0);
+        assert_eq!(view::rival_clear_index(6), 6);
+        assert_eq!(view::rival_clear_index(11), 10);
+    }
+
+    #[test]
+    fn active_rian_rival_snapshot_exposes_bp_and_clear() {
+        let mut select_ir = SelectIrRanking::default();
+        let target = rival_fetch_target("160", "beatoraja");
+        let sha256 = [7u8; 32];
+        select_ir.active_rival = Some(target);
+        select_ir.active_rival_scores.insert(
+            (sha256, 2),
+            IrRivalScoreRecord {
+                chart_sha256: sha256,
+                ln_mode: 2,
+                ex_score: 1500,
+                clear_type: 6,
+                max_combo: 700,
+                min_bp: 12,
+                play_option: 0,
+                arrange_1p: String::new(),
+                arrange_2p: String::new(),
+                double_option: String::new(),
+                play_seed: None,
+            },
+        );
+
+        let rival = select_ir.active_rival_snapshot(sha256, 2).unwrap();
+        assert_eq!(rival.display_name, "Rival 160");
+        assert_eq!(rival.ex_score, 1500);
+        assert_eq!(rival.clear_index, 6);
+        assert_eq!(rival.bp, 12);
     }
 
     #[test]

@@ -55,15 +55,36 @@ macro_rules! skin_document_render_select_songlist_methods {
                 }
                 if select_row_shows_lamp(row) {
                     let clear_index = select_row_clear_index(row);
-                    items.extend(self.select_songlist_child_items_by_index(
-                        &songlist.lamp,
-                        clear_index,
-                        row_origin,
-                        images,
-                        enabled_options,
-                        &row_state,
-                        sources,
-                    ));
+                    if snapshot.rival_selected {
+                        items.extend(self.select_songlist_child_items_by_index(
+                            &songlist.playerlamp,
+                            clear_index,
+                            row_origin,
+                            images,
+                            enabled_options,
+                            &row_state,
+                            sources,
+                        ));
+                        items.extend(self.select_songlist_child_items_by_index(
+                            &songlist.rivallamp,
+                            row.rival_clear_index,
+                            row_origin,
+                            images,
+                            enabled_options,
+                            &row_state,
+                            sources,
+                        ));
+                    } else {
+                        items.extend(self.select_songlist_child_items_by_index(
+                            &songlist.lamp,
+                            clear_index,
+                            row_origin,
+                            images,
+                            enabled_options,
+                            &row_state,
+                            sources,
+                        ));
+                    }
                 }
                 if select_row_shows_score_decorations(row) {
                     if select_row_shows_level(row) {

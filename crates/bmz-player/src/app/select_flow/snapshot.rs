@@ -26,6 +26,7 @@ impl WinitApp {
                 .select_ir
                 .rival_for(&self.boot.profile_config.ir, self.selected_chart_sha256()),
         };
+        let rival_selected = active_rival_name.is_some() || rival.is_some();
         let rival_name = active_rival_name
             .or_else(|| rival.as_ref().map(|rival| rival.display_name.clone()))
             .unwrap_or_default();
@@ -109,13 +110,14 @@ impl WinitApp {
                 .unwrap_or_default(),
             hispeed: self.boot.profile_config.lane.hispeed,
             note_display_duration_ms,
-            rows: select_snapshot_rows(
+            rows: select_snapshot_rows_with_rival(
                 &self.select.select_items,
                 self.select.selected_index,
                 25,
                 &self.boot.profile_config,
                 self.select.key_config_edit.as_ref(),
                 &chart_distributions,
+                Some(&self.select.select_ir),
             ),
             arrange: self.select.arrange_option.as_str().to_string(),
             arrange_2p: self.select.arrange_option_2p.as_str().to_string(),
@@ -226,6 +228,7 @@ impl WinitApp {
                 },
             ),
             rival,
+            rival_selected,
             rival_name,
             replay_slot_rule_indices: replay_slot_rule_indices(
                 &self.boot.profile_config.replay.slot_rules,

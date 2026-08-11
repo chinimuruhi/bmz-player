@@ -201,6 +201,100 @@ fn skin_gauge_sprite_selects_exhard_nodes_and_tip_frame() {
 }
 
 #[test]
+fn select_songlist_uses_player_and_rival_lamps_while_rival_is_selected() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+        {
+            "type": 5,
+            "w": 100,
+            "h": 100,
+            "source": [{ "id": 1, "path": "lamp.png" }],
+            "image": [
+                { "id": "bar", "src": 1, "x": 0, "y": 0, "w": 4, "h": 4 },
+                { "id": "lamp-none", "src": 1, "x": 0, "y": 0, "w": 4, "h": 4 },
+                { "id": "lamp-failed", "src": 1, "x": 4, "y": 0, "w": 4, "h": 4 },
+                { "id": "lamp-assist", "src": 1, "x": 8, "y": 0, "w": 4, "h": 4 },
+                { "id": "lamp-light-assist", "src": 1, "x": 12, "y": 0, "w": 4, "h": 4 },
+                { "id": "lamp-easy", "src": 1, "x": 16, "y": 0, "w": 4, "h": 4 },
+                { "id": "lamp-normal", "src": 1, "x": 20, "y": 0, "w": 4, "h": 4 }
+            ],
+            "songlist": {
+                "id": "songlist",
+                "center": 0,
+                "liston": [{ "id": "bar", "dst": [{ "x": 10, "y": 50, "w": 40, "h": 10 }] }],
+                "lamp": [
+                    { "id": "lamp-none", "dst": [{ "x": 1, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-failed", "dst": [{ "x": 1, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-assist", "dst": [{ "x": 1, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-light-assist", "dst": [{ "x": 1, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-easy", "dst": [{ "x": 1, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-normal", "dst": [{ "x": 1, "y": 1, "w": 4, "h": 4 }] }
+                ],
+                "playerlamp": [
+                    { "id": "lamp-none", "dst": [{ "x": 10, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-failed", "dst": [{ "x": 10, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-assist", "dst": [{ "x": 10, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-light-assist", "dst": [{ "x": 10, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-easy", "dst": [{ "x": 10, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-normal", "dst": [{ "x": 10, "y": 1, "w": 4, "h": 4 }] }
+                ],
+                "rivallamp": [
+                    { "id": "lamp-none", "dst": [{ "x": 20, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-failed", "dst": [{ "x": 20, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-assist", "dst": [{ "x": 20, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-light-assist", "dst": [{ "x": 20, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-easy", "dst": [{ "x": 20, "y": 1, "w": 4, "h": 4 }] },
+                    { "id": "lamp-normal", "dst": [{ "x": 20, "y": 1, "w": 4, "h": 4 }] }
+                ]
+            },
+            "destination": [{ "id": "songlist" }]
+        }
+        "#,
+    )
+    .unwrap();
+    let sources = mock_source("1", 24.0, 4.0);
+    let row = SelectRowSnapshot {
+        clear_type: "Normal".to_string(),
+        rival_clear_index: 4,
+        kind: SelectRowKind::Song,
+        ..SelectRowSnapshot::default()
+    };
+
+    let rival_items = document.select_render_items(
+        &sources,
+        &SelectSnapshot {
+            rows: vec![row.clone()],
+            rival_selected: true,
+            ..SelectSnapshot::default()
+        },
+    );
+    assert!(rival_items.iter().any(|item| matches!(item, SkinRenderItem::Image {
+        rect: Rect { x, .. },
+        uv: TextureRegion { x: u, .. },
+        ..
+    } if approx_eq(*x, 0.2) && approx_eq(*u, 20.0 / 24.0))));
+    assert!(rival_items.iter().any(|item| matches!(item, SkinRenderItem::Image {
+        rect: Rect { x, .. },
+        uv: TextureRegion { x: u, .. },
+        ..
+    } if approx_eq(*x, 0.3) && approx_eq(*u, 16.0 / 24.0))));
+    assert!(!rival_items.iter().any(|item| matches!(item, SkinRenderItem::Image {
+        rect: Rect { x, .. },
+        ..
+    } if approx_eq(*x, 0.11))));
+
+    let solo_items = document.select_render_items(
+        &sources,
+        &SelectSnapshot { rows: vec![row], ..SelectSnapshot::default() },
+    );
+    assert!(solo_items.iter().any(|item| matches!(item, SkinRenderItem::Image {
+        rect: Rect { x, .. },
+        uv: TextureRegion { x: u, .. },
+        ..
+    } if approx_eq(*x, 0.11) && approx_eq(*u, 20.0 / 24.0))));
+}
+
+#[test]
 fn select_skin_document_renders_songlist_rows() {
     let document: SkinDocument = serde_json::from_str(
             r#"

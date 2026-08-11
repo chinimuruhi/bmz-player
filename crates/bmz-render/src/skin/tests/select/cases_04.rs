@@ -561,6 +561,7 @@ fn select_panel_on_and_off_timers_follow_each_panel_state() {
 #[test]
 fn rival_skin_properties_map_select_rival_best() {
     let state = SkinDrawState {
+        rival_selected: true,
         rival_ex_score: Some(1500),
         rival_max_combo: Some(700),
         rival_bp: Some(12),
@@ -584,6 +585,24 @@ fn rival_skin_properties_map_select_rival_best() {
     assert!(!test_skin_op(624, &[], &state));
     assert!(test_skin_op(625, &[], &state));
 
+    let total_only = SkinDrawState {
+        rival_bp: Some(12),
+        target_clear_index: Some(6),
+        ..SkinDrawState::default()
+    };
+    assert_eq!(skin_state_number(283, &total_only), Some(0));
+    assert_eq!(skin_state_number(284, &total_only), Some(12));
+    assert_eq!(skin_state_number(371, &total_only), Some(6));
+
+    let selected_without_score = SkinDrawState { rival_selected: true, ..SkinDrawState::default() };
+    assert!(!test_skin_op(624, &[], &selected_without_score));
+    assert!(test_skin_op(625, &[], &selected_without_score));
+
+    let score_without_selected =
+        SkinDrawState { rival_ex_score: Some(1500), ..SkinDrawState::default() };
+    assert!(test_skin_op(624, &[], &score_without_selected));
+    assert!(!test_skin_op(625, &[], &score_without_selected));
+
     let no_rival = SkinDrawState::default();
     assert_eq!(skin_state_number(271, &no_rival), None);
     assert_eq!(skin_state_number(280, &no_rival), None);
@@ -591,6 +610,64 @@ fn rival_skin_properties_map_select_rival_best() {
     assert_eq!(skin_state_float_number(285, &no_rival), None);
     assert!(test_skin_op(624, &[], &no_rival));
     assert!(!test_skin_op(625, &[], &no_rival));
+}
+
+#[test]
+fn select_compare_rival_option_stays_visible_without_chart_score() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+        {
+            "type": 5,
+            "w": 100,
+            "h": 100,
+            "source": [{ "id": 1, "path": "rival.png" }],
+            "image": [
+                { "id": "rival", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "rival-lose", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10 },
+                { "id": "rival-clear", "src": 1, "x": 0, "y": 0, "w": 10, "h": 110, "divy": 11, "ref": 371 }
+            ],
+            "destination": [
+                { "id": "rival", "op": [625], "dst": [{ "x": 10, "y": 20, "w": 10, "h": 10 }] },
+                { "id": "rival-lose", "op": [353], "dst": [{ "x": 30, "y": 20, "w": 10, "h": 10 }] },
+                { "id": "rival-clear", "op": [625], "dst": [{ "x": 50, "y": 20, "w": 10, "h": 10 }] }
+            ]
+        }
+        "#,
+    )
+    .unwrap();
+    let sources = mock_source("1", 10.0, 110.0);
+
+    let selected_without_score =
+        SelectSnapshot { rival_selected: true, ..SelectSnapshot::default() };
+    assert!(
+        document
+            .select_render_items(&sources, &selected_without_score)
+            .iter()
+            .any(|item| matches!(item, SkinRenderItem::Image { texture: SkinTextureId(9999), .. }))
+    );
+
+    let selected_with_score = SelectSnapshot {
+        rows: vec![SelectRowSnapshot { ex_score: Some(1400), ..SelectRowSnapshot::default() }],
+        rival: Some(crate::scene::SelectRivalSnapshot {
+            display_name: "Rival".to_string(),
+            ex_score: 1500,
+            clear_index: 6,
+            max_combo: 700,
+            bp: 12,
+            judge_counts: None,
+        }),
+        rival_selected: true,
+        ..SelectSnapshot::default()
+    };
+    let score_items = document.select_render_items(&sources, &selected_with_score);
+    assert_eq!(score_items.len(), 3);
+    assert!(score_items.iter().any(|item| matches!(item, SkinRenderItem::Image {
+        rect: Rect { x, .. },
+        uv: TextureRegion { y: v, .. },
+        ..
+    } if approx_eq(*x, 0.5) && approx_eq(*v, 60.0 / 110.0))));
+
+    assert!(document.select_render_items(&sources, &SelectSnapshot::default()).is_empty());
 }
 
 #[test]

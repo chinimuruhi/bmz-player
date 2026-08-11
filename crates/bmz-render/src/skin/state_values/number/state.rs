@@ -283,7 +283,17 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         275 => state.rival_max_combo,
         276 => state.rival_bp,
         280..=284 => {
-            state.rival_judge_counts.map(|counts| i64::from(counts[(ref_id - 280) as usize]))
+            if let Some(counts) = state.rival_judge_counts {
+                Some(i64::from(counts[(ref_id - 280) as usize]))
+            } else {
+                // rianIR の全曲ライバルスコアは判定内訳を持たない。BAD+POOR を
+                // MISSCOUNT として使うスキン向けに、合計 BP を POOR 側へ寄せる。
+                match ref_id {
+                    283 => state.rival_bp.map(|_| 0),
+                    284 => state.rival_bp,
+                    _ => None,
+                }
+            }
         }
         285..=289 => {
             let notes = state.select_total_notes.max(state.total_notes);

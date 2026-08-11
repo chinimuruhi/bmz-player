@@ -321,6 +321,8 @@ pub struct SkinDrawState {
     pub result_cb: Option<u32>,
     /// Result 画面の IR ランキング状態 (NUMBER_IR_* / OPTION_IR_*)。
     pub ir_ranking: crate::scene::ResultIrSnapshot,
+    /// Selectでライバルが選択されているか。譜面スコアの有無とは分離する。
+    pub rival_selected: bool,
     /// 選曲カーソル譜面の IR ライバルベスト EX (NUMBER_RIVAL_SCORE=271)。
     pub rival_ex_score: Option<i64>,
     /// 同 max combo (NUMBER_RIVAL_MAXCOMBO=275)。
@@ -597,6 +599,7 @@ impl Default for SkinDrawState {
             result_bp: None,
             result_cb: None,
             ir_ranking: crate::scene::ResultIrSnapshot::default(),
+            rival_selected: false,
             rival_ex_score: None,
             rival_max_combo: None,
             rival_bp: None,

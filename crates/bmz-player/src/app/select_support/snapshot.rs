@@ -63,8 +63,10 @@ struct SelectSnapshotRowContext<'a> {
     profile: &'a ProfileConfig,
     key_config_edit: Option<&'a KeyConfigEditSession>,
     chart_distributions: &'a HashMap<i64, Vec<ChartDistributionSecond>>,
+    select_ir: Option<&'a crate::screens::select_ir::SelectIrRanking>,
 }
 
+#[cfg(test)]
 pub(in crate::app) fn select_snapshot_rows(
     items: &[SelectItem],
     selected_index: usize,
@@ -73,7 +75,28 @@ pub(in crate::app) fn select_snapshot_rows(
     key_config_edit: Option<&KeyConfigEditSession>,
     chart_distributions: &HashMap<i64, Vec<ChartDistributionSecond>>,
 ) -> Vec<SelectRowSnapshot> {
-    let context = SelectSnapshotRowContext { profile, key_config_edit, chart_distributions };
+    select_snapshot_rows_with_rival(
+        items,
+        selected_index,
+        visible_limit,
+        profile,
+        key_config_edit,
+        chart_distributions,
+        None,
+    )
+}
+
+pub(in crate::app) fn select_snapshot_rows_with_rival(
+    items: &[SelectItem],
+    selected_index: usize,
+    visible_limit: usize,
+    profile: &ProfileConfig,
+    key_config_edit: Option<&KeyConfigEditSession>,
+    chart_distributions: &HashMap<i64, Vec<ChartDistributionSecond>>,
+    select_ir: Option<&crate::screens::select_ir::SelectIrRanking>,
+) -> Vec<SelectRowSnapshot> {
+    let context =
+        SelectSnapshotRowContext { profile, key_config_edit, chart_distributions, select_ir };
     select_visible_item_indices(items.len(), selected_index, visible_limit)
         .into_iter()
         .map(|index| select_snapshot_row(index, &items[index], &context))
@@ -160,6 +183,19 @@ fn select_chart_snapshot(
         .map(|chart| chart.scored_total_notes_for_setting(context.profile.play.ln_mode_policy))
         .unwrap_or(0);
     let distribution = chart.and_then(|chart| context.chart_distributions.get(&chart.chart_id));
+    let rival_clear_index = context
+        .select_ir
+        .filter(|select_ir| select_ir.active_rival_display_name().is_some())
+        .and_then(|select_ir| {
+            let chart_sha256 = row.score_sha256()?;
+            let ln_profile = chart.map(|chart| chart.ln_profile).unwrap_or_default();
+            let policy =
+                crate::ln_policy::score_ln_policy(context.profile.play.ln_mode_policy, ln_profile);
+            let ln_mode = crate::screens::select_ir::rian_ln_mode_for_chart(ln_profile, policy);
+            select_ir.active_rival_score(chart_sha256, ln_mode)
+        })
+        .map(|score| i64::from(score.clear_type).clamp(0, ClearType::Max as i64) as usize)
+        .unwrap_or(0);
 
     SelectRowSnapshot {
         index: index as u32,
@@ -180,6 +216,7 @@ fn select_chart_snapshot(
         max_bpm: chart.map(|chart| chart.max_bpm as f32).unwrap_or(0.0),
         length_ms: chart.map(|chart| chart.length_ms).unwrap_or(0),
         clear_type: score.map(|score| score.clear_type.clone()).unwrap_or_default(),
+        rival_clear_index,
         ex_score: score.map(|score| score.ex_score),
         max_combo: score.map(|score| score.max_combo),
         gauge_value: score.and_then(|score| score.gauge_value),

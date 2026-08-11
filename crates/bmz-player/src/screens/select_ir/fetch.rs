@@ -165,6 +165,8 @@ pub(super) fn top_rival_snapshot(rivals: &IrRankingResult) -> Option<SelectRival
     Some(SelectRivalSnapshot {
         display_name: entry.player.display_name.clone(),
         ex_score: entry.score.ex_score,
+        clear_index: bmz_core::clear::ClearType::from_label(&entry.score.clear)
+            .map_or(0, |clear| clear as i64),
         max_combo: entry.score.max_combo,
         bp: entry.score.min_bp,
         judge_counts: entry.score.judges.map(|judges| SelectRivalJudgeCounts {
