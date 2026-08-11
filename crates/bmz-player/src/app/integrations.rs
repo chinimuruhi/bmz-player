@@ -265,4 +265,14 @@ impl WinitApp {
             manager.stop(sound_type);
         }
     }
+
+    pub(super) fn stop_system_sound_with_fade_out(
+        &self,
+        sound_type: crate::system_sound::SoundType,
+        fade_out_frames: u32,
+    ) {
+        if let Some(manager) = &self.audio.system_sound {
+            manager.stop_with_fade_out(sound_type, fade_out_frames);
+        }
+    }
 }

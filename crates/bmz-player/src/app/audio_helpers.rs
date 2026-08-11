@@ -143,6 +143,11 @@ pub(super) fn duration_to_frames(duration: Duration, sample_rate: u32) -> u32 {
     frames.round().clamp(1.0, f64::from(u32::MAX)) as u32
 }
 
+pub(super) fn decide_bgm_fade_out_frames(chart_zero_time: TimeUs, sample_rate: u32) -> u32 {
+    let ready_lead_us = chart_zero_time.0.saturating_neg().max(0) as u64;
+    duration_to_frames(Duration::from_micros(ready_lead_us), sample_rate)
+}
+
 pub(super) fn result_exit_system_sounds() -> &'static [crate::system_sound::SoundType] {
     use crate::system_sound::SoundType;
     &[

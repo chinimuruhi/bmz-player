@@ -317,6 +317,12 @@ impl WinitApp {
             self.abort_pending_play_start();
             return;
         }
+        let decide_fade_out_frames =
+            decide_bgm_fade_out_frames(chart_zero_time, self.play_output_sample_rate());
+        self.stop_system_sound_with_fade_out(
+            crate::system_sound::SoundType::Decide,
+            decide_fade_out_frames,
+        );
         self.play.play_ready_sound_started_at = Some(Instant::now());
         self.play.pending_play_start = None;
         self.play_system_sound(crate::system_sound::SoundType::PlayReady);

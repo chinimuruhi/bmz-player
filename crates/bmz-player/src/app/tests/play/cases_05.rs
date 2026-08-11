@@ -130,13 +130,26 @@ fn arrange_option_maps_profile_random_defaults() {
 }
 
 #[test]
-fn play_scene_keeps_decide_bgm_until_chart_start() {
+fn play_scene_keeps_decide_bgm_for_ready_fade() {
     use crate::system_sound::SoundType;
 
     let sounds = system_bgm_stop_targets_on_scene_enter(AppSceneKind::Play);
 
     assert!(sounds.contains(&SoundType::Select));
     assert!(!sounds.contains(&SoundType::Decide));
+}
+
+#[test]
+fn decide_bgm_fade_out_spans_ready_to_chart_start() {
+    assert_eq!(decide_bgm_fade_out_frames(TimeUs(-1_500_000), 48_000), 72_000);
+    assert_eq!(decide_bgm_fade_out_frames(TimeUs(-6_500_000), 48_000), 312_000);
+}
+
+#[test]
+fn decide_bgm_fade_out_is_immediate_without_ready_lead() {
+    assert_eq!(decide_bgm_fade_out_frames(TimeUs(0), 48_000), 0);
+    assert_eq!(decide_bgm_fade_out_frames(TimeUs(500_000), 48_000), 0);
+    assert_eq!(decide_bgm_fade_out_frames(TimeUs(-1_500_000), 0), 0);
 }
 
 #[test]
