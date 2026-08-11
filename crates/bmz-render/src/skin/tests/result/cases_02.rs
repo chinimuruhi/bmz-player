@@ -259,6 +259,7 @@ fn wmii_ir_score_graph_and_user_highlight_use_ranking_snapshot() {
     let state = SkinDrawState {
         total_notes: 100,
         ir_ranking: crate::scene::ResultIrSnapshot {
+            online: true,
             state: crate::scene::ResultIrState::Loaded,
             user_name: crate::scene::ResultIrRankingName::from_display_name("Alice"),
             entries: [
