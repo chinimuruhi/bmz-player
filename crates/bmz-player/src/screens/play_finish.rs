@@ -1,19 +1,29 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::thread;
+use std::time::{Duration, Instant};
+
 use anyhow::{Result, bail};
+use bmz_chart::model::PlayableChart;
 use bmz_core::clear::ClearType;
+use bmz_core::ids::NoteId;
 use bmz_core::input::InputDeviceKind;
+use bmz_core::lane::KeyMode;
+use bmz_core::replay::ReplayEvent;
 use bmz_core::time::TimeUs;
-use bmz_gameplay::gauge::GaugeCarryValue;
+use bmz_gameplay::gauge::{GaugeCarryValue, GaugeState};
 #[cfg(test)]
 use bmz_gameplay::judge::model::JudgeWindows;
 use bmz_gameplay::result::PlayResult;
-use bmz_gameplay::session::{GameSession, PlayState};
+use bmz_gameplay::session::{GameSession, PlayState, ResultJudgementDetail};
 
 use crate::config::profile_config::{IrConfig, ReplayConfig};
 use crate::ir::payload::{IrSubmissionContext, build_score_submission};
 use crate::ln_policy::ChartLnProfile;
 use crate::paths::ProfilePaths;
 use crate::screens::play_session::AppliedArrange;
-use crate::screens::result_model::ResultSummary;
+use crate::screens::result_model::{ResultGraphCollector, ResultSummary};
 use crate::storage::network_db::{IrJobKind, NetworkDatabase, NewIrScoreJob};
 use crate::storage::play_result::{
     StorePlayResultMode, StorePlayResultRequest, StoredPlayResult, course_stage_clear_type,
@@ -127,6 +137,57 @@ pub struct FinishSessionResultRequest<'a> {
     pub finish_mode: FinishResultMode,
 }
 
+#[derive(Debug, Clone)]
+struct FinishSessionSnapshot {
+    chart: Arc<PlayableChart>,
+    result: PlayResult,
+    primary_key_mode: KeyMode,
+    replay_events: Vec<ReplayEvent>,
+    replay_playback: bool,
+    replay_lane_mask: bool,
+    rule_mode: bmz_gameplay::rule::RuleMode,
+    gauge_carry: Vec<GaugeCarryValue>,
+    course_combo: u32,
+    course_max_combo: u32,
+    result_judgements: HashMap<NoteId, ResultJudgementDetail>,
+    failed_gauge: Option<GaugeState>,
+}
+
+impl FinishSessionSnapshot {
+    fn from_session(session: &GameSession) -> Self {
+        Self {
+            chart: Arc::clone(&session.chart),
+            result: play_result_from_session(session),
+            primary_key_mode: session.primary_key_mode,
+            replay_events: session.replay_recorder.events.clone(),
+            replay_playback: session.replay_player.is_some() && session.replay_lane_mask.is_none(),
+            replay_lane_mask: session.replay_lane_mask.is_some(),
+            rule_mode: session.rule_mode,
+            gauge_carry: session.gauge.carry_values(),
+            course_combo: session.display_combo(),
+            course_max_combo: session.display_max_combo(),
+            result_judgements: session.result_judgements.clone(),
+            failed_gauge: (session.state == PlayState::Failed).then(|| session.gauge.clone()),
+        }
+    }
+}
+
+struct FinishSessionSnapshotResultRequest<'a> {
+    profile_paths: &'a ProfilePaths,
+    replay_config: &'a ReplayConfig,
+    ir_config: &'a IrConfig,
+    snapshot: &'a FinishSessionSnapshot,
+    played_at: i64,
+    applied_arrange: &'a AppliedArrange,
+    source_ln_profile: ChartLnProfile,
+    chart_length_ms: Option<u64>,
+    play_duration_ms: Option<u64>,
+    target_ex_score: Option<u32>,
+    score_key: ScoreKey,
+    practice_mode: bool,
+    finish_mode: FinishResultMode,
+}
+
 pub fn finish_session_result(
     score_db: &mut ScoreDatabase,
     network_db: &mut NetworkDatabase,
@@ -157,14 +218,56 @@ fn finish_session_result_when(
         finish_mode,
     } = request;
     ensure_storable_session(session, readiness)?;
-    let result = play_result_from_session(session);
+    let snapshot = FinishSessionSnapshot::from_session(session);
+    finish_session_snapshot_result(
+        score_db,
+        network_db,
+        FinishSessionSnapshotResultRequest {
+            profile_paths,
+            replay_config,
+            ir_config,
+            snapshot: &snapshot,
+            played_at,
+            applied_arrange,
+            source_ln_profile,
+            chart_length_ms,
+            play_duration_ms,
+            target_ex_score,
+            score_key,
+            practice_mode,
+            finish_mode,
+        },
+    )
+}
+
+fn finish_session_snapshot_result(
+    score_db: &mut ScoreDatabase,
+    network_db: &mut NetworkDatabase,
+    request: FinishSessionSnapshotResultRequest<'_>,
+) -> Result<FinishedPlaySession> {
+    let FinishSessionSnapshotResultRequest {
+        profile_paths,
+        replay_config,
+        ir_config,
+        snapshot,
+        played_at,
+        applied_arrange,
+        source_ln_profile,
+        chart_length_ms,
+        play_duration_ms,
+        target_ex_score,
+        score_key,
+        practice_mode,
+        finish_mode,
+    } = request;
+    let result = snapshot.result.clone();
     let summary_clear_type = finish_mode.summary_clear_type(result.clear_type);
-    let replay_playback = session.replay_player.is_some() && session.replay_lane_mask.is_none();
+    let replay_playback = snapshot.replay_playback;
     let previous_best =
         score_db.best_scores_for_charts(&[score_key]).ok().and_then(|mut bests| bests.pop());
     // オートプレイ / リプレイ再生 / プラクティス時はスコア・リプレイをDBに保存しない
     // （リザルト画面の表示のみ行う）。
-    let full_autoplay = session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full());
+    let full_autoplay = result.autoplay;
     let stored = if full_autoplay || replay_playback || practice_mode {
         StoredPlayResult {
             score_history_id: 0,
@@ -177,7 +280,7 @@ fn finish_session_result_when(
     } else {
         let arrange = applied_arrange.arrange;
         let arrange_seed = applied_arrange.seed;
-        let random_seed = applied_arrange.packed_beatoraja_seed(session.primary_key_mode);
+        let random_seed = applied_arrange.packed_beatoraja_seed(snapshot.primary_key_mode);
         let arrange_pattern = applied_arrange.pattern.clone();
         store_play_result(
             score_db,
@@ -186,15 +289,15 @@ fn finish_session_result_when(
             &result,
             StorePlayResultRequest {
                 played_at,
-                playtime_seconds: chart_playtime_seconds(&session.chart),
+                playtime_seconds: chart_playtime_seconds(&snapshot.chart),
                 ln_policy: score_key.ln_policy,
                 double_option: score_key.double_option,
                 applied_double_option: applied_arrange.double_option,
                 random_seed,
                 gauge_option: String::new(),
-                rule_mode: session.rule_mode.as_str().to_string(),
+                rule_mode: snapshot.rule_mode.as_str().to_string(),
                 assist_mask: 0,
-                replay_events: session.replay_recorder.events.clone(),
+                replay_events: snapshot.replay_events.clone(),
                 arrange,
                 arrange_2p: applied_arrange.arrange_2p,
                 arrange_seed,
@@ -210,8 +313,8 @@ fn finish_session_result_when(
             },
         )?
     };
-    let mut summary = ResultSummary::from_play_result(&result, &stored, &session.chart);
-    summary.key_mode = session.primary_key_mode;
+    let mut summary = ResultSummary::from_play_result(&result, &stored, &snapshot.chart);
+    summary.key_mode = snapshot.primary_key_mode;
     summary.clear_type = summary_clear_type;
     summary.arrange = applied_arrange.arrange.as_str().to_string();
     summary.arrange_2p = applied_arrange.arrange_2p.as_str().to_string();
@@ -250,7 +353,7 @@ fn finish_session_result_when(
             network_db,
             ir_config,
             EnqueueIrJobsRequest {
-                session,
+                snapshot,
                 result: &ir_result,
                 stored: &stored,
                 played_at,
@@ -269,9 +372,9 @@ fn finish_session_result_when(
         result,
         stored,
         summary,
-        gauge_carry: session.gauge.carry_values(),
-        course_combo: session.display_combo(),
-        course_max_combo: session.display_max_combo(),
+        gauge_carry: snapshot.gauge_carry.clone(),
+        course_combo: snapshot.course_combo,
+        course_max_combo: snapshot.course_max_combo,
         replay_playback,
         arrange: applied_arrange.arrange,
         applied_arrange: applied_arrange.clone(),
@@ -303,7 +406,7 @@ fn clear_type_from_name(name: &str) -> Option<ClearType> {
 }
 
 struct EnqueueIrJobsRequest<'a> {
-    session: &'a GameSession,
+    snapshot: &'a FinishSessionSnapshot,
     result: &'a PlayResult,
     stored: &'a StoredPlayResult,
     played_at: i64,
@@ -322,7 +425,7 @@ fn enqueue_ir_jobs(
     request: EnqueueIrJobsRequest<'_>,
 ) {
     let EnqueueIrJobsRequest {
-        session,
+        snapshot,
         result,
         stored,
         played_at,
@@ -336,7 +439,7 @@ fn enqueue_ir_jobs(
     } = request;
     // Ghost Battle はローカルの1Pスコアとして保存するが、表示用に複製した
     // K10/K14 chart を外部IRへ通常譜面として送信しない。
-    if stored.score_history_id <= 0 || session.replay_lane_mask.is_some() {
+    if stored.score_history_id <= 0 || snapshot.replay_lane_mask {
         return;
     }
     let enabled: Vec<_> = ir_config
@@ -356,7 +459,7 @@ fn enqueue_ir_jobs(
         return;
     }
     let payload = build_score_submission(
-        &session.chart,
+        &snapshot.chart,
         result,
         IrSubmissionContext {
             played_at,
@@ -371,15 +474,15 @@ fn enqueue_ir_jobs(
             arrange_2p: applied_arrange.arrange_2p,
             double_option: score_key.double_option,
             applied_double_option: applied_arrange.double_option,
-            arrange_seed: applied_arrange.packed_beatoraja_seed(session.primary_key_mode),
-            random_seed: applied_arrange.packed_beatoraja_seed(session.primary_key_mode),
+            arrange_seed: applied_arrange.packed_beatoraja_seed(snapshot.primary_key_mode),
+            random_seed: applied_arrange.packed_beatoraja_seed(snapshot.primary_key_mode),
             seed_scheme: if applied_arrange.legacy_seed {
                 crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3.to_string()
             } else {
                 crate::storage::replay::SEED_SCHEME_BEATORAJA_24BIT_V1.to_string()
             },
             bms_random_choices: applied_arrange.bms_random_choices.clone(),
-            rule_mode: session.rule_mode.as_str().to_string(),
+            rule_mode: snapshot.rule_mode.as_str().to_string(),
             // 保存時に serialize 済みバイト列から計算した hash。プレイ終了
             // 直後のフレームでリプレイファイルを読み直さない。
             replay_hash: stored.replay_sha256.clone(),
@@ -395,7 +498,7 @@ fn enqueue_ir_jobs(
                 result.clear_type.as_str(),
                 chart_length_ms,
                 play_duration_ms,
-                session.chart.metadata.has_bms_random,
+                snapshot.chart.metadata.has_bms_random,
             )
         {
             let error = format!(
@@ -549,6 +652,106 @@ pub struct FinishSessionResultOnceRequest<'a> {
     pub score_key: ScoreKey,
     pub practice_mode: bool,
     pub finish_mode: FinishResultMode,
+}
+
+struct FinishSessionResultJob {
+    profile_paths: ProfilePaths,
+    replay_config: ReplayConfig,
+    ir_config: IrConfig,
+    snapshot: FinishSessionSnapshot,
+    played_at: i64,
+    applied_arrange: AppliedArrange,
+    source_ln_profile: ChartLnProfile,
+    chart_length_ms: Option<u64>,
+    play_duration_ms: Option<u64>,
+    target_ex_score: Option<u32>,
+    target_name: String,
+    score_key: ScoreKey,
+    practice_mode: bool,
+    finish_mode: FinishResultMode,
+    result_graph: ResultGraphCollector,
+}
+
+pub struct PendingFinishedPlaySession {
+    receiver: Receiver<Result<FinishedPlaySession>>,
+    started_at: Instant,
+}
+
+impl PendingFinishedPlaySession {
+    pub fn try_recv(&self) -> Result<Option<FinishedPlaySession>> {
+        match self.receiver.try_recv() {
+            Ok(result) => result.map(Some),
+            Err(TryRecvError::Empty) => Ok(None),
+            Err(TryRecvError::Disconnected) => bail!("play result save worker disconnected"),
+        }
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        self.started_at.elapsed()
+    }
+}
+
+/// 判定確定済みのセッションを不変スナップショット化し、結果保存を別スレッドで開始する。
+pub fn spawn_settled_session_result(
+    request: FinishSessionResultOnceRequest<'_>,
+    settled_at: TimeUs,
+    result_graph: ResultGraphCollector,
+) -> Result<PendingFinishedPlaySession> {
+    ensure_storable_session(request.session, FinishSessionReadiness::SettledAt(settled_at))?;
+    let job = FinishSessionResultJob {
+        profile_paths: request.profile_paths.clone(),
+        replay_config: request.replay_config.clone(),
+        ir_config: request.ir_config.clone(),
+        snapshot: FinishSessionSnapshot::from_session(request.session),
+        played_at: request.played_at,
+        applied_arrange: request.applied_arrange.clone(),
+        source_ln_profile: request.source_ln_profile,
+        chart_length_ms: request.chart_length_ms,
+        play_duration_ms: request.play_duration_ms,
+        target_ex_score: request.target_ex_score,
+        target_name: request.target_name.to_string(),
+        score_key: request.score_key,
+        practice_mode: request.practice_mode,
+        finish_mode: request.finish_mode,
+        result_graph,
+    };
+    let (sender, receiver) = mpsc::channel();
+    thread::Builder::new().name("bmz-play-result-save".to_string()).spawn(move || {
+        let result = finish_session_result_job(job);
+        let _ = sender.send(result);
+    })?;
+    Ok(PendingFinishedPlaySession { receiver, started_at: Instant::now() })
+}
+
+fn finish_session_result_job(job: FinishSessionResultJob) -> Result<FinishedPlaySession> {
+    let mut score_db = ScoreDatabase::open(&job.profile_paths.score_db)?;
+    let mut network_db = NetworkDatabase::open(&job.profile_paths.network_db)?;
+    let mut finished = finish_session_snapshot_result(
+        &mut score_db,
+        &mut network_db,
+        FinishSessionSnapshotResultRequest {
+            profile_paths: &job.profile_paths,
+            replay_config: &job.replay_config,
+            ir_config: &job.ir_config,
+            snapshot: &job.snapshot,
+            played_at: job.played_at,
+            applied_arrange: &job.applied_arrange,
+            source_ln_profile: job.source_ln_profile,
+            chart_length_ms: job.chart_length_ms,
+            play_duration_ms: job.play_duration_ms,
+            target_ex_score: job.target_ex_score,
+            score_key: job.score_key,
+            practice_mode: job.practice_mode,
+            finish_mode: job.finish_mode,
+        },
+    )?;
+    finished.summary.graph = Arc::new(job.result_graph.snapshot_for_result_parts(
+        &job.snapshot.chart,
+        &job.snapshot.result_judgements,
+        job.snapshot.failed_gauge.as_ref(),
+    ));
+    finished.summary.target_name = job.target_name.replace('_', " ");
+    Ok(finished)
 }
 
 #[derive(Debug, Clone, Copy)]

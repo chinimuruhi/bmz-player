@@ -32,6 +32,15 @@ impl WinitApp {
     }
 
     pub(super) fn finish_play_ending(&mut self) {
+        self.poll_pending_finished_play();
+        if self
+            .play
+            .active_play
+            .as_ref()
+            .is_some_and(|active| active.running.pending_finished.is_some())
+        {
+            return;
+        }
         let Some(mut ending) = self.play.play_ending.take() else {
             return;
         };
@@ -45,6 +54,9 @@ impl WinitApp {
         };
         let finished = match ending.finished.take() {
             Some(finished) => finished,
+            None if started.running.finished.is_some() => {
+                started.running.finished.clone().expect("checked above")
+            }
             None => {
                 let chart_length_ms = started.running.chart_length_ms;
                 let play_duration_ms = started.running.finish_play_duration_ms();

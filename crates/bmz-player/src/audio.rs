@@ -17,7 +17,7 @@ use crate::config::app_config::{
     AudioBackend, AudioBufferSizeMode, AudioConfig, AudioOutputMode, AudioSampleRateMode,
 };
 use crate::ln_policy::ChartLnProfile;
-use crate::screens::play_finish::FinishedPlaySession;
+use crate::screens::play_finish::{FinishedPlaySession, PendingFinishedPlaySession};
 use crate::screens::play_session::{AppliedArrange, PreparedPlaySession};
 use crate::screens::play_snapshot::{BgaFrameCatalog, PlayRenderSnapshotCache};
 use crate::screens::result_model::ResultGraphCollector;
@@ -107,6 +107,8 @@ pub struct RunningPlaySession {
     pub pending_keysound_volumes: Vec<(bmz_core::ids::SoundId, f32)>,
     pub sample_report: Vec<LoadedSampleReport>,
     pub finished: Option<FinishedPlaySession>,
+    pub pending_finished: Option<PendingFinishedPlaySession>,
+    pub finish_error: Option<String>,
     pub result_graph: ResultGraphCollector,
     pub score_key: ScoreKey,
     /// プレイ開始時に DB から取得したベスト EX スコア。未取得なら None。
@@ -288,6 +290,8 @@ pub fn open_prepared_play_audio(
         pending_keysound_volumes: Vec::new(),
         sample_report: prepared.sample_report,
         finished: None,
+        pending_finished: None,
+        finish_error: None,
         result_graph: ResultGraphCollector::default(),
         score_key,
         best_ex_score: None,

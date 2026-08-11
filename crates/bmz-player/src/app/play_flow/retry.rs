@@ -430,39 +430,45 @@ impl WinitApp {
             active_play.running.session.state = bmz_gameplay::session::PlayState::Finished;
             let chart_length_ms = active_play.running.chart_length_ms;
             let play_duration_ms = active_play.running.finish_play_duration_ms();
-            match crate::screens::play_finish::finish_session_result_once(
-                &mut active_play.running.finished,
-                &mut self.boot.score_db,
-                &mut self.boot.network_db,
-                crate::screens::play_finish::FinishSessionResultOnceRequest {
-                    profile_paths: &self.boot.profile_paths,
-                    replay_config: &self.boot.profile_config.replay,
-                    ir_config: &self.boot.profile_config.ir,
-                    session: &active_play.running.session,
-                    played_at: now_unix_seconds(),
-                    applied_arrange: &active_play.running.applied_arrange,
-                    source_ln_profile: active_play.running.source_ln_profile,
-                    chart_length_ms: Some(chart_length_ms),
-                    play_duration_ms: Some(play_duration_ms),
-                    target_ex_score: active_play.running.target_ex_score,
-                    target_name: &active_play.running.target,
-                    score_key: active_play.running.score_key,
-                    practice_mode: active_play.running.practice_mode,
-                    finish_mode,
-                },
-            ) {
-                Ok(mut finished) => {
-                    finished.summary.graph = Arc::new(
-                        active_play
-                            .running
-                            .result_graph
-                            .snapshot_for_session(&active_play.running.session),
-                    );
-                    Some(finished)
-                }
-                Err(error) => {
-                    tracing::error!(%error, "failed to finish play session on requested fadeout");
-                    None
+            if active_play.running.pending_finished.is_some() {
+                None
+            } else if let Some(finished) = active_play.running.finished.clone() {
+                Some(finished)
+            } else {
+                match crate::screens::play_finish::finish_session_result_once(
+                    &mut active_play.running.finished,
+                    &mut self.boot.score_db,
+                    &mut self.boot.network_db,
+                    crate::screens::play_finish::FinishSessionResultOnceRequest {
+                        profile_paths: &self.boot.profile_paths,
+                        replay_config: &self.boot.profile_config.replay,
+                        ir_config: &self.boot.profile_config.ir,
+                        session: &active_play.running.session,
+                        played_at: now_unix_seconds(),
+                        applied_arrange: &active_play.running.applied_arrange,
+                        source_ln_profile: active_play.running.source_ln_profile,
+                        chart_length_ms: Some(chart_length_ms),
+                        play_duration_ms: Some(play_duration_ms),
+                        target_ex_score: active_play.running.target_ex_score,
+                        target_name: &active_play.running.target,
+                        score_key: active_play.running.score_key,
+                        practice_mode: active_play.running.practice_mode,
+                        finish_mode,
+                    },
+                ) {
+                    Ok(mut finished) => {
+                        finished.summary.graph = Arc::new(
+                            active_play
+                                .running
+                                .result_graph
+                                .snapshot_for_session(&active_play.running.session),
+                        );
+                        Some(finished)
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, "failed to finish play session on requested fadeout");
+                        None
+                    }
                 }
             }
         };

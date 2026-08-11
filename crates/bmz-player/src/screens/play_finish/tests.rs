@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use bmz_chart::hash::compute_chart_identity;
 use bmz_chart::model::{ChartMetadata, NoteEvent, NoteKind, PlayableChart};
@@ -693,6 +694,78 @@ fn finish_settled_session_result_accepts_playing_session_after_judgement() {
 
     assert!(cached.is_some());
     assert_eq!(finished.summary.target_name, "RANK AAA");
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn spawned_settled_session_result_persists_on_background_worker() {
+    let root = make_temp_dir("spawned-settled-session");
+    let paths = ProfilePaths {
+        root_dir: root.clone(),
+        profile_toml: root.join("profile.toml"),
+        collection_db: root.join("collection.db"),
+        score_db: root.join("score.db"),
+        network_db: root.join("network.db"),
+        replay_dir: root.join("replay"),
+    };
+    crate::storage::migration::migrate_score_db(&paths.score_db).unwrap();
+    crate::storage::migration::migrate_network_db(&paths.network_db).unwrap();
+    let replay_config = ReplayConfig {
+        auto_save: true,
+        compress: false,
+        slot_rules: crate::config::profile_config::default_slot_rules(),
+    };
+    let mut session = session();
+    session.state = PlayState::Playing;
+    session.judge.process_input(
+        &session.chart,
+        bmz_core::input::InputEvent {
+            lane: Lane::Key1,
+            kind: InputKind::Press,
+            time: TimeUs(0),
+            source: InputSource::Human,
+            device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
+        },
+    );
+    let settled_at = TimeUs(i64::MAX);
+
+    let pending = spawn_settled_session_result(
+        FinishSessionResultOnceRequest {
+            profile_paths: &paths,
+            replay_config: &replay_config,
+            ir_config: &crate::config::profile_config::IrConfig::default(),
+            session: &session,
+            source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
+            played_at: 1_700_000_112,
+            applied_arrange: &AppliedArrange::default(),
+            target_ex_score: None,
+            target_name: "RANK_AAA",
+            score_key: score_key(&session),
+            practice_mode: false,
+            finish_mode: FinishResultMode::Normal,
+        },
+        settled_at,
+        crate::screens::result_model::ResultGraphCollector::default(),
+    )
+    .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let finished = loop {
+        if let Some(finished) = pending.try_recv().unwrap() {
+            break finished;
+        }
+        assert!(Instant::now() < deadline, "background result save timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    };
+
+    assert!(finished.stored.score_history_id > 0);
+    assert_eq!(finished.summary.target_name, "RANK AAA");
+    assert!(!finished.summary.graph.note_graph_buckets.is_empty());
+    assert!(root.join(&finished.stored.replay_path).is_file());
 
     std::fs::remove_dir_all(root).unwrap();
 }

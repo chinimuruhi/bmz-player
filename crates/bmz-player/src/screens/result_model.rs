@@ -244,17 +244,29 @@ impl ResultGraphCollector {
     }
 
     pub fn snapshot_for_session(&self, session: &GameSession) -> ResultGraphSnapshot {
+        self.snapshot_for_result_parts(
+            &session.chart,
+            &session.result_judgements,
+            (session.state == bmz_gameplay::session::PlayState::Failed).then_some(&session.gauge),
+        )
+    }
+
+    pub(crate) fn snapshot_for_result_parts(
+        &self,
+        chart: &PlayableChart,
+        result_judgements: &HashMap<NoteId, ResultJudgementDetail>,
+        failed_gauge: Option<&bmz_gameplay::gauge::GaugeState>,
+    ) -> ResultGraphSnapshot {
         let mut graph = self.graph.clone();
-        if session.state == bmz_gameplay::session::PlayState::Failed {
+        if let Some(gauge) = failed_gauge {
             fill_failed_gauge_tail(
                 &mut graph,
-                &session.gauge,
+                gauge,
                 self.next_gauge_sample_ms,
-                clamp_us_to_ms(session.chart.end_time.0)
-                    .saturating_add(RESULT_GAUGE_GRAPH_SAMPLE_MS),
+                clamp_us_to_ms(chart.end_time.0).saturating_add(RESULT_GAUGE_GRAPH_SAMPLE_MS),
             );
         }
-        populate_result_note_graphs(&mut graph, &session.chart, &session.result_judgements);
+        populate_result_note_graphs(&mut graph, chart, result_judgements);
         graph.refresh_timing_metrics();
         graph
     }

@@ -2,6 +2,7 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn advance_active_play(&mut self) {
+        self.poll_pending_finished_play();
         if self.play.play_ending.is_some() {
             self.update_play_ending_snapshot();
             return;
@@ -111,39 +112,45 @@ impl WinitApp {
                 };
                 let chart_length_ms = active_play.running.chart_length_ms;
                 let play_duration_ms = active_play.running.finish_play_duration_ms();
-                let early_finished = match crate::screens::play_finish::finish_session_result_once(
-                    &mut active_play.running.finished,
-                    &mut self.boot.score_db,
-                    &mut self.boot.network_db,
-                    crate::screens::play_finish::FinishSessionResultOnceRequest {
-                        profile_paths: &self.boot.profile_paths,
-                        replay_config: &self.boot.profile_config.replay,
-                        ir_config: &self.boot.profile_config.ir,
-                        session: &active_play.running.session,
-                        played_at: now_unix_seconds(),
-                        applied_arrange: &active_play.running.applied_arrange,
-                        source_ln_profile: active_play.running.source_ln_profile,
-                        chart_length_ms: Some(chart_length_ms),
-                        play_duration_ms: Some(play_duration_ms),
-                        target_ex_score: active_play.running.target_ex_score,
-                        target_name: &active_play.running.target,
-                        score_key: active_play.running.score_key,
-                        practice_mode: active_play.running.practice_mode,
-                        finish_mode,
-                    },
-                ) {
-                    Ok(mut finished) => {
-                        finished.summary.graph = Arc::new(
-                            active_play
-                                .running
-                                .result_graph
-                                .snapshot_for_session(&active_play.running.session),
-                        );
-                        Some(finished)
-                    }
-                    Err(error) => {
-                        tracing::error!(%error, "failed to finish play session at play end");
-                        None
+                let early_finished = if active_play.running.pending_finished.is_some() {
+                    None
+                } else if let Some(finished) = active_play.running.finished.clone() {
+                    Some(finished)
+                } else {
+                    match crate::screens::play_finish::finish_session_result_once(
+                        &mut active_play.running.finished,
+                        &mut self.boot.score_db,
+                        &mut self.boot.network_db,
+                        crate::screens::play_finish::FinishSessionResultOnceRequest {
+                            profile_paths: &self.boot.profile_paths,
+                            replay_config: &self.boot.profile_config.replay,
+                            ir_config: &self.boot.profile_config.ir,
+                            session: &active_play.running.session,
+                            played_at: now_unix_seconds(),
+                            applied_arrange: &active_play.running.applied_arrange,
+                            source_ln_profile: active_play.running.source_ln_profile,
+                            chart_length_ms: Some(chart_length_ms),
+                            play_duration_ms: Some(play_duration_ms),
+                            target_ex_score: active_play.running.target_ex_score,
+                            target_name: &active_play.running.target,
+                            score_key: active_play.running.score_key,
+                            practice_mode: active_play.running.practice_mode,
+                            finish_mode,
+                        },
+                    ) {
+                        Ok(mut finished) => {
+                            finished.summary.graph = Arc::new(
+                                active_play
+                                    .running
+                                    .result_graph
+                                    .snapshot_for_session(&active_play.running.session),
+                            );
+                            Some(finished)
+                        }
+                        Err(error) => {
+                            tracing::error!(%error, "failed to finish play session at play end");
+                            None
+                        }
                     }
                 };
                 let hispeed = Some(active_play.running.session.hispeed);
@@ -206,66 +213,96 @@ impl WinitApp {
         } else {
             crate::screens::play_finish::FinishResultMode::Normal
         };
-        let early_finished = {
+        let Some(active_play) = &mut self.play.active_play else {
+            return;
+        };
+        if active_play.running.finished.is_some()
+            || active_play.running.pending_finished.is_some()
+            || active_play.running.finish_error.is_some()
+            || active_play.running.practice_mode
+        {
+            return;
+        }
+        let chart_length_ms = active_play.running.chart_length_ms;
+        // 保存値は判定確定時刻を使うが、RunningPlaySession の terminal duration は
+        // 従来どおり実際に Finished/Failed へ入った時点まで凍結しない。
+        let play_duration_ms =
+            (active_play.running.audio.clock().elapsed_since(TimeUs(0)).0.max(0) / 1_000) as u64;
+        match crate::screens::play_finish::spawn_settled_session_result(
+            crate::screens::play_finish::FinishSessionResultOnceRequest {
+                profile_paths: &self.boot.profile_paths,
+                replay_config: &self.boot.profile_config.replay,
+                ir_config: &self.boot.profile_config.ir,
+                session: &active_play.running.session,
+                played_at: now_unix_seconds(),
+                applied_arrange: &active_play.running.applied_arrange,
+                source_ln_profile: active_play.running.source_ln_profile,
+                chart_length_ms: Some(chart_length_ms),
+                play_duration_ms: Some(play_duration_ms),
+                target_ex_score: active_play.running.target_ex_score,
+                target_name: &active_play.running.target,
+                score_key: active_play.running.score_key,
+                practice_mode: active_play.running.practice_mode,
+                finish_mode,
+            },
+            settled_at,
+            active_play.running.result_graph.clone(),
+        ) {
+            Ok(pending) => active_play.running.pending_finished = Some(pending),
+            Err(error) => {
+                active_play.running.finish_error = Some(error.to_string());
+                tracing::error!(%error, "failed to start settled play result save");
+            }
+        }
+    }
+
+    pub(super) fn poll_pending_finished_play(&mut self) {
+        let completed = {
             let Some(active_play) = &mut self.play.active_play else {
                 return;
             };
-            if active_play.running.finished.is_some() || active_play.running.practice_mode {
+            let Some(pending) = &active_play.running.pending_finished else {
                 return;
-            }
-            let chart_length_ms = active_play.running.chart_length_ms;
-            // 保存値は判定確定時刻を使うが、RunningPlaySession の terminal duration は
-            // 従来どおり実際に Finished/Failed へ入った時点まで凍結しない。
-            let play_duration_ms =
-                (active_play.running.audio.clock().elapsed_since(TimeUs(0)).0.max(0) / 1_000)
-                    as u64;
-            match crate::screens::play_finish::finish_settled_session_result_once(
-                &mut active_play.running.finished,
-                &mut self.boot.score_db,
-                &mut self.boot.network_db,
-                crate::screens::play_finish::FinishSessionResultOnceRequest {
-                    profile_paths: &self.boot.profile_paths,
-                    replay_config: &self.boot.profile_config.replay,
-                    ir_config: &self.boot.profile_config.ir,
-                    session: &active_play.running.session,
-                    played_at: now_unix_seconds(),
-                    applied_arrange: &active_play.running.applied_arrange,
-                    source_ln_profile: active_play.running.source_ln_profile,
-                    chart_length_ms: Some(chart_length_ms),
-                    play_duration_ms: Some(play_duration_ms),
-                    target_ex_score: active_play.running.target_ex_score,
-                    target_name: &active_play.running.target,
-                    score_key: active_play.running.score_key,
-                    practice_mode: active_play.running.practice_mode,
-                    finish_mode,
-                },
-                settled_at,
-            ) {
-                Ok(mut finished) => {
-                    let graph = Arc::new(
-                        active_play
-                            .running
-                            .result_graph
-                            .snapshot_for_session(&active_play.running.session),
-                    );
-                    finished.summary.graph = Arc::clone(&graph);
-                    if let Some(cached) = &mut active_play.running.finished {
-                        cached.summary.graph = graph;
-                    }
-                    Some(finished)
-                }
-                Err(error) => {
-                    tracing::error!(%error, "failed to finalize settled play result");
-                    None
-                }
+            };
+            let elapsed_ms = pending.elapsed().as_millis();
+            match pending.try_recv() {
+                Ok(Some(finished)) => Some((Ok(finished), elapsed_ms)),
+                Ok(None) => None,
+                Err(error) => Some((Err(error), elapsed_ms)),
             }
         };
-        if let Some(finished) = &early_finished {
-            if let Some(chart_id) = self.play.last_started_chart_id {
-                self.prepare_terminal_course_finish(chart_id, finished);
+        let Some((result, elapsed_ms)) = completed else {
+            return;
+        };
+        let finished = match result {
+            Ok(finished) => {
+                let Some(active_play) = &mut self.play.active_play else {
+                    return;
+                };
+                active_play.running.pending_finished = None;
+                active_play.running.finished = Some(finished.clone());
+                active_play.running.finish_error = None;
+                finished
             }
-            self.start_result_ir_for_finished_play(finished);
+            Err(error) => {
+                if let Some(active_play) = &mut self.play.active_play {
+                    active_play.running.pending_finished = None;
+                    active_play.running.finish_error = Some(error.to_string());
+                }
+                tracing::error!(%error, elapsed_ms, "background play result save failed");
+                return;
+            }
+        };
+        if let Some(ending) = &mut self.play.play_ending
+            && ending.finished.is_none()
+        {
+            ending.finished = Some(finished.clone());
         }
+        if let Some(chart_id) = self.play.last_started_chart_id {
+            self.prepare_terminal_course_finish(chart_id, &finished);
+        }
+        self.start_result_ir_for_finished_play(&finished);
+        tracing::info!(elapsed_ms, "background play result save completed");
     }
 
     pub(super) fn maybe_start_ready_phase(&mut self) {
