@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## v0.2.1
+
+### 改善
+
+- ノーツ落下の滑らかさを改善しました。
+  - 音声 callback の buffer 単位で階段状に進んでいたゲーム時刻を monotonic time から連続計算し、高FPS時のノート移動を滑らかにしました。
+
+- アナログスクラッチの ON / OFF 設定機能を追加しました。
+  - ON / OFF、感度、停止閾値を論理 controller slot ごとに保存し、従来の共通設定は両側へ移行します。
+  - OFF の場合はアナログ軸の端を通常ボタンとして扱い、回転 tick によるスクロールを無効にします。
+
+- rianIR のライバル機能を拡張しました。
+  - 初回 Select 描画後とログイン成功時にライバル一覧をバックグラウンド同期し、選曲中の7キーまたは skin event `79` で対象を切り替えられるようにしました。
+  - 選択したライバルの EX score をプレイ target として使用し、未プレイ譜面では通常 target へフォールバックします。譜面再現モード、ライバル名・clear・min BP・lamp も Select skin へ公開しました。
+
+- skin の互換性を改善しました。
+  - 未変換の `.lr2font` を Shift_JIS 対応の bitmap font として直接読み込み、`#S` / `#M` / `#T` / `#R` と `DST_TEXT` の描画サイズを扱えるようにしました。
+  - 同梱 mz-select / Luxez-Flat の RANDOM option panel を F-RANDOM / MF-RANDOM まで拡張し、既存の画像表示・選択枠・クリック範囲を維持しました。
+  - Luxez-Flat Select skin のスコア差分、TIME、TOTAL / NOTES 比率を実行時の譜面・スコア値から描画するようにしました。
+
+- Scratch と鍵盤の判定表示を分離できる BMZ skin 拡張を追加しました。 (S-FAST / S-SLOW)
+  - 3つの判定領域と Scratch / Keys を組み合わせた6チャンネルを追加し、最新判定を timer `19010..19015`、PGREAT / FAST / SLOW 状態を option `19020..19045`、タイミング差を ref `19050..19055` で公開しました。
+  - 従来の判定 timer・option・ref と800msの表示時間は変更せず、同梱 Antique skin で Scratch / Keys の FAST / SLOW を独立表示できるようにしました。
+
+- プレイ終了時の処理負荷を削減しました。
+  - 判定確定後のスコア、リプレイ、DB、リザルトグラフの保存を専用 worker へ移し、描画 thread を停止させず一度だけ保存するようにしました。
+
+### 修正
+
+- 10K / 14K / BATTLE で片側の判定が反対側の表示中コンボを書き換える問題を修正し、判定発生時のコンボを領域ごとに保持するようにしました。
+- ランキング対象がない選曲行でも IR 接続状態と provider・ユーザー名を維持し、ライバル未プレイ譜面でもライバル名と比較欄を表示するようにしました。
+- Select の検索ヒントが option panel の上へ重なる問題と、同梱 mz-select / Luxez-Flat の RANDOM ラベル、カーソル、枠、既存 option 画像の表示崩れを修正しました。
+- READY 中に decide BGM を譜面開始までフェードアウトし、autoplay / replay / battle のモード表示が Play 中に消えないようにしました。
+- コースリザルトのゲージグラフへステージ間の区切り線を追加しました。
+
+### テスト・開発環境
+
+- 1P / 2Pアナログスクラッチ、判定領域別timer・option・ref、rianIRライバル同期・target、LR2 bitmap font、バックグラウンド結果保存、同梱skin表示の回帰テストを追加・更新しました。
+- `README.md`、`docs/controls.md`、`docs/rian-ir.md`、`docs/skin.md` を更新しました。
+
 ## v0.2.0
 
 ### 改善
