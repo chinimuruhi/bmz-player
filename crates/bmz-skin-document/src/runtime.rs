@@ -21,6 +21,8 @@ pub struct ResultGaugeGraphPoint {
     pub max: f32,
     pub border: f32,
     pub gauge_type: i32,
+    /// Course result で、この点から次の曲の履歴が始まることを示す。
+    pub course_section_start: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

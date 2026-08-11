@@ -285,6 +285,7 @@ impl ResultGraphCollector {
                 max: snapshot.gauge_max,
                 border: snapshot.gauge_border,
                 gauge_type: snapshot.gauge_type,
+                course_section_start: false,
             });
         } else {
             self.graph.gauge_points.extend(
@@ -312,6 +313,7 @@ fn fill_failed_gauge_tail(
             max: gauge.definition.max,
             border: gauge.definition.border,
             gauge_type: gauge.definition.gauge_type as i32,
+            course_section_start: false,
         }));
         let next = next_sample_ms.saturating_add(RESULT_GAUGE_GRAPH_SAMPLE_MS);
         if next == next_sample_ms {

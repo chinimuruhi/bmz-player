@@ -260,6 +260,7 @@ fn result_graph_collector_records_each_gauge_type() {
                         max: 100.0,
                         border: 80.0,
                         gauge_type: GaugeType::Normal as i32,
+                        course_section_start: false,
                     },
                     ResultGaugeGraphPoint {
                         time_ms: 0,
@@ -267,6 +268,7 @@ fn result_graph_collector_records_each_gauge_type() {
                         max: 100.0,
                         border: 80.0,
                         gauge_type: GaugeType::Easy as i32,
+                        course_section_start: false,
                     },
                 ],
                 ..RenderSnapshot::default()

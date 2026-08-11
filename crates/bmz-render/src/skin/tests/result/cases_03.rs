@@ -71,6 +71,44 @@ fn result_gaugegraph_multiplies_color_alpha_by_destination_alpha() {
     assert!((colors.border_bg.a - frame_alpha).abs() < 1e-6);
     assert!((colors.graph_line.a - (64.0 / 255.0) * frame_alpha).abs() < 1e-6);
     assert!((colors.graph_bg.a - frame_alpha).abs() < 1e-6);
+    assert_eq!(colors.course_section_line, Color::rgba(1.0, 1.0, 1.0, frame_alpha));
+}
+
+#[test]
+fn result_gaugegraph_draws_white_course_section_line_at_stage_boundary() {
+    use crate::snapshot::ResultGaugeGraphPoint;
+
+    let points = [
+        ResultGaugeGraphPoint { value: 20.0, ..Default::default() },
+        ResultGaugeGraphPoint { value: 30.0, ..Default::default() },
+        ResultGaugeGraphPoint { value: 40.0, course_section_start: true, ..Default::default() },
+        ResultGaugeGraphPoint { value: 50.0, ..Default::default() },
+    ];
+    let section_color = Color::rgb(1.0, 1.0, 1.0);
+    let rects = gaugegraph_rect_batch(
+        &points,
+        GaugeGraphLayout {
+            rect: Rect { x: 10.0, y: 20.0, width: 100.0, height: 50.0 },
+            max: 100.0,
+            border: 80.0,
+            colors: GaugeGraphColors {
+                graph_bg: Color::rgb(0.1, 0.1, 0.1),
+                graph_line: Color::rgb(0.2, 0.2, 0.2),
+                border_bg: Color::rgb(0.3, 0.3, 0.3),
+                border_line: Color::rgb(0.4, 0.4, 0.4),
+                course_section_line: section_color,
+            },
+            line_width: 2.0,
+            line_height: 2.0,
+            render_progress: 1.0,
+            additive: false,
+        },
+    );
+    let section_lines =
+        rects.iter().filter(|command| command.color == section_color).collect::<Vec<_>>();
+
+    assert_eq!(section_lines.len(), 1);
+    assert_eq!(section_lines[0].rect, Rect { x: 35.0, y: 20.0, width: 1.0, height: 50.0 });
 }
 
 #[test]

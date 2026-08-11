@@ -133,6 +133,7 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
                     max: 100.0,
                     border: 20.0,
                     gauge_type: GaugeType::Normal as i32,
+                    course_section_start: false,
                 }],
                 timing_points: vec![bmz_render::snapshot::ResultTimingPoint {
                     time_ms: duration_ms,
@@ -275,6 +276,15 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
     assert_eq!(
         summary.graph.gauge_points.iter().map(|point| point.time_ms).collect::<Vec<_>>(),
         vec![1_000, 3_000]
+    );
+    assert_eq!(
+        summary
+            .graph
+            .gauge_points
+            .iter()
+            .map(|point| point.course_section_start)
+            .collect::<Vec<_>>(),
+        vec![false, true]
     );
     assert_eq!(
         summary.graph.timing_points.iter().map(|point| point.time_ms).collect::<Vec<_>>(),

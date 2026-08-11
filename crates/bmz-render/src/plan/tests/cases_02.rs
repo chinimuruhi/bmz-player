@@ -105,6 +105,7 @@ fn result_display_gauge_uses_selected_graph_history_tail() {
             max: 100.0,
             border: 0.0,
             gauge_type: GaugeType::ExHard as i32,
+            course_section_start: false,
         },
         ResultGaugeGraphPoint {
             time_ms: 1_000,
@@ -112,6 +113,7 @@ fn result_display_gauge_uses_selected_graph_history_tail() {
             max: 100.0,
             border: 80.0,
             gauge_type: GaugeType::Normal as i32,
+            course_section_start: false,
         },
         ResultGaugeGraphPoint {
             time_ms: 1_000,
@@ -119,6 +121,7 @@ fn result_display_gauge_uses_selected_graph_history_tail() {
             max: 100.0,
             border: 0.0,
             gauge_type: GaugeType::ExHard as i32,
+            course_section_start: false,
         },
     ];
 
@@ -251,6 +254,7 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
                     max: 100.0,
                     border: 60.0,
                     gauge_type: bmz_core::clear::GaugeType::AssistEasy as i32,
+                    course_section_start: false,
                 },
                 ResultGaugeGraphPoint {
                     time_ms: 1_000,
@@ -258,6 +262,7 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
                     max: 100.0,
                     border: 60.0,
                     gauge_type: bmz_core::clear::GaugeType::AssistEasy as i32,
+                    course_section_start: false,
                 },
             ],
             ..ResultGraphSnapshot::default()

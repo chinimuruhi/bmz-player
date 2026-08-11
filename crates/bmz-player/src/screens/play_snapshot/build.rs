@@ -188,6 +188,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             max: gauge.definition.max,
             border: gauge.definition.border,
             gauge_type: gauge.definition.gauge_type as i32,
+            course_section_start: false,
         })
         .collect();
     let opponent = session.opponent_score.as_ref().zip(session.opponent_gauge.as_ref()).map(

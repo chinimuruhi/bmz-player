@@ -6,6 +6,7 @@ pub(super) struct GaugeGraphColors {
     pub(super) graph_line: Color,
     pub(super) border_bg: Color,
     pub(super) border_line: Color,
+    pub(super) course_section_line: Color,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,6 +57,7 @@ pub(super) fn gaugegraph_colors(
         border_bg: with_frame_alpha(&colors[color_index][1], Color::rgb(0.0, 0.0, 0.0)),
         graph_line: with_frame_alpha(&colors[color_index][2], Color::rgb(0.0, 0.0, 0.0)),
         graph_bg: with_frame_alpha(&colors[color_index][3], Color::rgb(0.0, 0.0, 0.0)),
+        course_section_line: Color::rgba(1.0, 1.0, 1.0, frame_alpha),
     }
 }
 
@@ -140,7 +142,7 @@ pub(super) fn gaugegraph_rect_batch(
     } = layout;
     let border_y = rect.y + rect.height * (1.0 - (border / max).clamp(0.0, 1.0));
     let render_x = rect.x + rect.width * render_progress;
-    let mut rects = Vec::with_capacity(points.len().saturating_mul(2).saturating_add(3));
+    let mut rects = Vec::with_capacity(points.len().saturating_mul(3).saturating_add(3));
     // Additive black is a no-op in beatoraja. RectBatch has no blend field,
     // so emitting it as a normal rectangle would cover an earlier graph.
     if !additive || !is_additive_black(colors.graph_bg) {
@@ -164,6 +166,12 @@ pub(super) fn gaugegraph_rect_batch(
             (rect.x + gaugegraph_sample_ratio(index + 1, sample_count) * rect.width).min(render_x);
         let y1 = gaugegraph_y(rect, from.value, max);
         let y2 = gaugegraph_y(rect, to.value, max);
+        if to.course_section_start {
+            rects.push(RectCommand {
+                rect: Rect { x: x1, y: rect.y, width: line_width * 0.5, height: rect.height },
+                color: colors.course_section_line,
+            });
+        }
         if (x2 - x1).abs() <= f32::EPSILON {
             continue;
         }

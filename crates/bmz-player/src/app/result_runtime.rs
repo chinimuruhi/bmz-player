@@ -166,10 +166,13 @@ fn aggregate_course_result_graph(
     let mut offset_ms = 0_i32;
     let mut graph = bmz_render::snapshot::ResultGraphSnapshot::default();
 
-    for (entry, duration_ms) in entries.iter().zip(durations) {
+    for (entry_index, (entry, duration_ms)) in entries.iter().zip(durations).enumerate() {
+        let mut section_gauge_types = std::collections::HashSet::new();
         graph.gauge_points.extend(entry.graph.gauge_points.iter().map(|point| {
             let mut point = *point;
             point.time_ms = point.time_ms.saturating_add(offset_ms);
+            point.course_section_start |=
+                entry_index > 0 && section_gauge_types.insert(point.gauge_type);
             point
         }));
         graph.timing_points.extend(entry.graph.timing_points.iter().map(|point| {
@@ -374,6 +377,7 @@ fn debug_boot_result_graph(duration_ms: i32) -> bmz_render::snapshot::ResultGrap
                 max: 100.0,
                 border: 20.0,
                 gauge_type: GaugeType::Normal as i32,
+                course_section_start: false,
             })
             .collect(),
         judge_graph_buckets: (0..360)
