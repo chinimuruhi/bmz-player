@@ -1,6 +1,80 @@
 use super::*;
 
 #[test]
+fn lr2skin_decodes_native_lr2_bitmap_font() {
+    let root = unique_test_dir("bmz-native-lr2-font");
+    std::fs::create_dir_all(&root).unwrap();
+    let page = image::RgbaImage::from_raw(
+        2,
+        2,
+        vec![255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 128],
+    )
+    .expect("rgba buffer dimensions match pixels");
+    page.save_with_format(root.join("font_00.tga"), image::ImageFormat::Tga).unwrap();
+    std::fs::write(
+        root.join("font.lr2font"),
+        b"#S,16,\n#M,-1,\n#T,0,font_00.tga\n#R,65,0,0,0,1,2,\n",
+    )
+    .unwrap();
+    let skin_path = root.join("play.lr2skin");
+    std::fs::write(
+        &skin_path,
+        r#"
+#INFORMATION,0,Native LR2 Font Test,Author
+#RESOLUTION,100,100
+#LR2FONT,font.lr2font
+#SRC_TEXT,0,0,10,0,0
+#DST_TEXT,0,0,10,20,80,30,0,255,255,255,255,0,0,0,0,0,0,0,0,0,0
+"#,
+    )
+    .unwrap();
+
+    let decoded = decode_beatoraja_skin(&skin_path, SkinKind::Play).unwrap();
+
+    assert_eq!(decoded.document.font.len(), 1);
+    assert_eq!(decoded.document.font[0].path, "font.lr2font");
+    assert_eq!(decoded.document.text.len(), 1);
+    assert_eq!(decoded.document.text[0].font, "play:lr2font-0");
+    assert_eq!(decoded.document.text[0].size, 0);
+    let font = decoded.fonts.first().expect("native LR2 font should be decoded");
+    assert_eq!(font.stored_id, "play:lr2font-0");
+    let Some(DecodedFontData::Bitmap(font)) = font.data.as_ref() else {
+        panic!("native LR2 font should use bitmap font data");
+    };
+    assert_eq!(font.size, 16);
+    assert_eq!(font.glyphs[&'A'].xadvance, 0);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn openlr2_wmii_keeps_native_lr2_bitmap_font_references_when_available() {
+    let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/skins/WMII_FHD_LR2/play/FHDPLAY_AC.lr2skin");
+    if !skin_path.is_file() {
+        return;
+    }
+
+    let loaded = load_skin_document_uncached(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &LuaLoadRuntimeState::default(),
+    )
+    .unwrap();
+
+    assert!(loaded.document.font.iter().any(|font| {
+        font.id.starts_with("lr2font-")
+            && font.path.replace('\\', "/").ends_with("font/songTitle/font.lr2font")
+    }));
+    assert!(
+        loaded.document.text.iter().any(|text| {
+            text.ref_id == 12 && text.font.starts_with("lr2font-") && text.size == 0
+        })
+    );
+}
+
+#[test]
 fn wmii_fhd_lr2skin_renders_runtime_difficulty_badge_when_available() {
     let skin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC.lr2skin");

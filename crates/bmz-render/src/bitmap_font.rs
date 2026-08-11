@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
+use encoding_rs::SHIFT_JIS;
 
 use crate::assets::{RgbaImageAsset, load_png_rgba};
 
@@ -40,10 +41,134 @@ pub struct BitmapFontGlyph {
 pub fn load_bitmap_font(path: &Path) -> Result<BitmapFont> {
     let bytes = std::fs::read(path)
         .with_context(|| format!("failed to read bitmap font: {}", path.display()))?;
-    let text = String::from_utf8_lossy(&bytes);
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    parse_bitmap_font(&text, base_dir)
-        .with_context(|| format!("failed to parse bitmap font: {}", path.display()))
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("lr2font"))
+    {
+        let (text, _, _) = SHIFT_JIS.decode(&bytes);
+        parse_lr2_bitmap_font(&text, base_dir)
+    } else {
+        parse_bitmap_font(&String::from_utf8_lossy(&bytes), base_dir)
+    }
+    .with_context(|| format!("failed to parse bitmap font: {}", path.display()))
+}
+
+fn parse_lr2_bitmap_font(text: &str, base_dir: &Path) -> Result<BitmapFont> {
+    let mut size = 0;
+    let mut margin = 0;
+    let mut page_paths = HashMap::new();
+    let mut glyphs = HashMap::new();
+
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let line = line.trim_start_matches('\u{feff}');
+        let fields = line.split(',').map(str::trim).collect::<Vec<_>>();
+        let command = fields.first().and_then(|field| field.strip_prefix('#')).unwrap_or_default();
+        match command.to_ascii_uppercase().as_str() {
+            "S" => {
+                if let Some(value) = parse_lr2_font_i32(fields.get(1).copied()) {
+                    size = value;
+                }
+            }
+            "M" => {
+                if let Some(value) = parse_lr2_font_i32(fields.get(1).copied()) {
+                    margin = value;
+                }
+            }
+            "T" => {
+                let Some(page) = parse_lr2_font_i32(fields.get(1).copied()) else {
+                    continue;
+                };
+                let Some(file) = fields.get(2).filter(|file| !file.is_empty()) else {
+                    continue;
+                };
+                let path = resolve_case_insensitive_path(
+                    &base_dir.join(file.trim_matches('"').replace('\\', "/")),
+                );
+                if path.is_file() {
+                    page_paths.insert(page, path);
+                }
+            }
+            "R" => {
+                let values = (1..=6)
+                    .map(|index| parse_lr2_font_i32(fields.get(index).copied()).unwrap_or_default())
+                    .collect::<Vec<_>>();
+                let [code, page, x, y, width, height] = values.as_slice() else {
+                    continue;
+                };
+                if !page_paths.contains_key(page) || *x < 0 || *y < 0 || *width < 0 || *height < 0 {
+                    continue;
+                }
+                for ch in lr2_font_chars(*code) {
+                    glyphs.insert(
+                        ch,
+                        BitmapFontGlyph {
+                            id: ch,
+                            x: *x as u32,
+                            y: *y as u32,
+                            width: *width as u32,
+                            height: *height as u32,
+                            xoffset: 0,
+                            yoffset: 0,
+                            xadvance: width.saturating_add(margin),
+                            page: *page,
+                        },
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if size <= 0 {
+        bail!("LR2 bitmap font size must be positive");
+    }
+    if page_paths.is_empty() {
+        bail!("LR2 bitmap font has no pages");
+    }
+    let line_height = glyphs
+        .values()
+        .map(|glyph| glyph.height as i32)
+        .max()
+        .filter(|height| *height > 0)
+        .ok_or_else(|| anyhow!("LR2 bitmap font has no glyphs"))?;
+    let base = line_height;
+    let ascent = base as f32 - bitmap_font_cap_height(&glyphs, 0);
+
+    let mut pages = HashMap::new();
+    let mut scale_width = 0;
+    let mut scale_height = 0;
+    for (id, path) in page_paths {
+        let image = load_png_rgba(&path)
+            .with_context(|| format!("failed to load bitmap font page: {}", path.display()))?;
+        scale_width = scale_width.max(image.width);
+        scale_height = scale_height.max(image.height);
+        pages.insert(id, BitmapFontPage { id, path, image });
+    }
+
+    Ok(BitmapFont { size, line_height, base, ascent, scale_width, scale_height, pages, glyphs })
+}
+
+fn parse_lr2_font_i32(value: Option<&str>) -> Option<i32> {
+    value?.replace('!', "-").replace(' ', "").parse().ok()
+}
+
+fn lr2_font_chars(code: i32) -> Vec<char> {
+    if code == 288 {
+        return vec!['\u{301c}', '\u{ff5e}'];
+    }
+    let bytes = if code >= 8127 {
+        (code.wrapping_add(49281) as u16).to_be_bytes().to_vec()
+    } else if code >= 256 {
+        (code.wrapping_add(32832) as u16).to_be_bytes().to_vec()
+    } else if code >= 0 {
+        vec![code as u8]
+    } else {
+        return Vec::new();
+    };
+    let (decoded, had_errors) = SHIFT_JIS.decode_without_bom_handling(&bytes);
+    if had_errors { Vec::new() } else { decoded.chars().collect() }
 }
 
 fn parse_bitmap_font(text: &str, base_dir: &Path) -> Result<BitmapFont> {
@@ -283,6 +408,42 @@ char id=65 x=0 y=0 width=1 height=1 xoffset=1 yoffset=2 xadvance=9 page=0 chnl=0
         assert_eq!(font.pages[&0].image.width, 2);
         assert_eq!(font.pages[&0].image.height, 2);
         assert_eq!(font.glyphs[&'A'].xadvance, 9);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn lr2_bitmap_font_loads_shift_jis_definition_and_character_map() {
+        let root = temp_dir();
+        std::fs::create_dir_all(&root).unwrap();
+        let page_path = root.join("ページ.TGA");
+        write_test_tga(&page_path);
+        let definition = r#"// LR2 font
+#S,4,
+#M,2,
+#T,0,ページ.tga
+#R,65,0,0,0,1,2,
+#R,256,0,0,0,1,2,
+#R,288,0,0,0,1,2,
+#R,8127,0,0,0,1,2,
+"#;
+        let (encoded, _, had_errors) = SHIFT_JIS.encode(definition);
+        assert!(!had_errors);
+        std::fs::write(root.join("font.lr2font"), encoded.as_ref()).unwrap();
+
+        let font = load_bitmap_font(&root.join("font.lr2font")).unwrap();
+
+        assert_eq!(font.size, 4);
+        assert_eq!(font.line_height, 2);
+        assert_eq!(font.base, 2);
+        assert_eq!(font.ascent, 0.0);
+        assert_eq!(font.scale_width, 2);
+        assert_eq!(font.scale_height, 2);
+        assert_eq!(font.pages[&0].path, page_path);
+        assert_eq!(font.glyphs[&'A'].xadvance, 3);
+        assert!(font.glyphs.contains_key(&'\u{3000}'));
+        assert!(font.glyphs.contains_key(&'\u{301c}'));
+        assert!(font.glyphs.contains_key(&'\u{ff5e}'));
+        assert!(font.glyphs.contains_key(&'\u{6f3e}'));
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -6,7 +6,7 @@ pub(super) fn is_supported_font_path(path: &Path) -> bool {
             .and_then(|extension| extension.to_str())
             .map(|extension| extension.to_ascii_lowercase())
             .as_deref(),
-        Some("ttf" | "otf" | "ttc" | "fnt")
+        Some("ttf" | "otf" | "ttc" | "fnt" | "lr2font")
     )
 }
 
@@ -16,7 +16,7 @@ pub(super) fn is_bitmap_font_path(path: &Path) -> bool {
             .and_then(|extension| extension.to_str())
             .map(|extension| extension.to_ascii_lowercase())
             .as_deref(),
-        Some("fnt")
+        Some("fnt" | "lr2font")
     )
 }
 

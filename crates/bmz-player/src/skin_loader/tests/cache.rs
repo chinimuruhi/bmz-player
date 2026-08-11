@@ -542,8 +542,10 @@ fn supported_font_paths_include_vector_and_bitmap_fonts() {
     assert!(is_supported_font_path(Path::new("font.OTF")));
     assert!(is_supported_font_path(Path::new("font.ttc")));
     assert!(is_supported_font_path(Path::new("font.fnt")));
+    assert!(is_supported_font_path(Path::new("font.LR2FONT")));
     assert!(!is_supported_font_path(Path::new("font.png")));
     assert!(is_bitmap_font_path(Path::new("font.fnt")));
+    assert!(is_bitmap_font_path(Path::new("font.lr2font")));
     assert!(!is_bitmap_font_path(Path::new("font.ttf")));
 }
 

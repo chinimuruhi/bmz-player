@@ -10,6 +10,7 @@ ab_glyph.workspace = true
 bytemuck.workspace = true
 image.workspace = true
 flate2.workspace = true
+encoding_rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

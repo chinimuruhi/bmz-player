@@ -696,6 +696,7 @@ dependencies = [
  "clipboard-win",
  "egui",
  "egui-wgpu",
+ "encoding_rs",
  "flate2",
  "image",
  "libc",

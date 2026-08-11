@@ -363,6 +363,7 @@ fn text_render_item_separates_bitmap_font_size_from_destination_height() {
         "h": 100,
         "font": [
             { "id": "bitmap", "path": "artist.fnt" },
+            { "id": "lr2", "path": "artist.lr2font" },
             { "id": "vector", "path": "artist.ttf" }
         ]
     }))
@@ -383,14 +384,28 @@ fn text_render_item_separates_bitmap_font_size_from_destination_height() {
         constant_text: "Aoi".to_string(),
         ..SkinTextDef::default()
     };
+    let lr2_text = SkinTextDef {
+        id: "artist_lr2".to_string(),
+        font: "result:lr2".to_string(),
+        constant_text: "Aoi".to_string(),
+        ..SkinTextDef::default()
+    };
 
     let bitmap_item = document.text_render_item(&bitmap_text, frame, &state).unwrap();
+    let lr2_item = document.text_render_item(&lr2_text, frame, &state).unwrap();
     let vector_item = document.text_render_item(&vector_text, frame, &state).unwrap();
 
     match bitmap_item {
         SkinRenderItem::Text { style, .. } => {
             assert!(approx_eq(style.size, 0.28), "got {}", style.size);
             assert_eq!(style.bitmap_size, Some(0.17));
+        }
+        other => panic!("expected SkinRenderItem::Text, got {other:?}"),
+    }
+    match lr2_item {
+        SkinRenderItem::Text { style, .. } => {
+            assert!(approx_eq(style.size, 0.28), "got {}", style.size);
+            assert_eq!(style.bitmap_size, Some(0.28));
         }
         other => panic!("expected SkinRenderItem::Text, got {other:?}"),
     }

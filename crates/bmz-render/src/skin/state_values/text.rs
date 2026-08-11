@@ -20,7 +20,7 @@ pub(super) fn skin_text_bitmap_size(
     let font_id = text.font.rsplit_once(':').map_or(text.font.as_str(), |(_, id)| id);
     let font = fonts.iter().find(|font| font.id == text.font || font.id == font_id)?;
     let extension = Path::new(&font.path).extension()?.to_str()?;
-    if !extension.eq_ignore_ascii_case("fnt") {
+    if !extension.eq_ignore_ascii_case("fnt") && !extension.eq_ignore_ascii_case("lr2font") {
         return None;
     }
     let bitmap_size = if text.size > 0 { text.size } else { frame_h.abs().max(1) };

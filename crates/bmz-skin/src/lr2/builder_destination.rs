@@ -283,10 +283,10 @@ impl<'a> CsvBuilder<'a> {
         if let Some(Some(font_id)) = self.lr2font_ids.get(font_index.max(0) as usize)
             && self.fonts.iter().any(|font| {
                 font.get("id").and_then(JsonValue::as_str) == Some(font_id.as_str())
-                    && font
-                        .get("path")
-                        .and_then(JsonValue::as_str)
-                        .is_some_and(|path| path.to_ascii_lowercase().ends_with(".fnt"))
+                    && font.get("path").and_then(JsonValue::as_str).is_some_and(|path| {
+                        let path = path.to_ascii_lowercase();
+                        path.ends_with(".fnt") || path.ends_with(".lr2font")
+                    })
             })
         {
             return 0;
