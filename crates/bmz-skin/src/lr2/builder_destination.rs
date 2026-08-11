@@ -265,7 +265,7 @@ impl<'a> CsvBuilder<'a> {
         if self.skin_root.join(&fnt).is_file() || self.skin_file_dir.join(&fnt).is_file() {
             return self.relative_font_path_for_skin_file(&fnt);
         }
-        path
+        self.relative_font_path_for_skin_file(&path)
     }
 
     pub(super) fn relative_font_path_for_skin_file(&self, path: &str) -> String {

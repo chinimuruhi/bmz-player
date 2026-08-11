@@ -65,7 +65,7 @@ fn openlr2_wmii_keeps_native_lr2_bitmap_font_references_when_available() {
 
     assert!(loaded.document.font.iter().any(|font| {
         font.id.starts_with("lr2font-")
-            && font.path.replace('\\', "/").ends_with("font/songTitle/font.lr2font")
+            && font.path.replace('\\', "/").ends_with("../font/songTitle/font.lr2font")
     }));
     assert!(
         loaded.document.text.iter().any(|text| {
