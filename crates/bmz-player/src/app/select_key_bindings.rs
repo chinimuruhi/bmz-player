@@ -230,6 +230,7 @@ impl SelectKeyBindings {
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+2P K1/K2:2P ARR  {start_str}+K3/K4:GAUGE  \
              {start_str}+K5:HS-FIX  {start_str}+K6:DP OPT  {start_str}+K7:AUTOPLAY  \
+             BACK+K1..K7:ASSIST  \
              {start_str}+BACK+{key2_str}:GAS  {start_str}+UP/DOWN:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY"
         );
 
@@ -390,6 +391,7 @@ impl SelectKeyBindings {
             "F1 MENU  F3 FOLDER/HASH  F5 RELOAD  F10 AUTOPLAY  F11 IR  N9 TEXT   \
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+K3:GAUGE  {start_str}+K5:HS-FIX  \
+             BACK+K1..K7:ASSIST  \
              {start_str}+K8/K9:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY"
         );
 

@@ -301,7 +301,7 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         90 if state.result_favorite_chart.is_some() => {
             Some(i64::from(state.result_favorite_chart.unwrap_or(false)))
         }
-        301..=307 => Some(0),
+        301..=307 => Some(i64::from(state.assist_flags[(ref_id - 301) as usize])),
         308 if state.result_ln_mode_index.is_some() => {
             Some(state.result_ln_mode_index.unwrap_or_default() as i64)
         }
@@ -318,9 +318,12 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
             let slot = (ref_id - 321) as usize;
             Some(state.select_replay_slot_rule_indices[slot])
         }
-        // extranotedepth / minemode / scrollmode / longnotemode / seventonine / constant 等は
-        // profile 連携前のため 0 固定。value ref 350-353/360-361/400 とは衝突しない。
-        350..=353 | 360..=361 | 400 | 343 => Some(0),
+        350 => Some(i64::from(state.assist_extra_note_depth)),
+        351 => Some(state.assist_mine_mode),
+        352 => Some(state.assist_scroll_mode),
+        353 => Some(state.assist_long_note_mode),
+        // seventonine / constant / guide SE は未対応。
+        360..=361 | 400 | 343 => Some(0),
         370 if state.select_screen || state.result_failed.is_some() => {
             Some(state.select_clear_index)
         }

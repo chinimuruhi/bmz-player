@@ -89,6 +89,7 @@ pub struct PlayDefaultsConfig {
     #[serde(default)]
     pub grade_diff_display: ResultGradeDiffDisplay,
     pub lane_effect: LaneEffectConfig,
+    #[serde(default)]
     pub assist: AssistOptionConfig,
     /// 選曲画面で選んだセッション全体のモード。
     ///
@@ -312,12 +313,300 @@ pub enum LaneEffectConfig {
     HiddenSudden,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// beatoraja `PlayerConfig` のアシスト設定。
+///
+/// 選曲画面の7トグルは同時に有効化できるため、旧来の単一 enum ではなく
+/// 独立フラグと汎用 modifier mode を保持する。旧 profile の `None` /
+/// `AutoScratch` / `LegacyNote` 文字列も [`Deserialize`] で受け付ける。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct AssistOptionConfig {
+    #[serde(default)]
+    pub expand_judge: bool,
+    #[serde(default)]
+    pub judge_area: bool,
+    #[serde(default)]
+    pub mark_note: bool,
+    #[serde(default)]
+    pub bpm_guide: bool,
+    #[serde(default)]
+    pub scroll_mode: AssistScrollMode,
+    #[serde(default)]
+    pub long_note_mode: AssistLongNoteMode,
+    #[serde(default)]
+    pub mine_mode: AssistMineMode,
+    #[serde(default = "default_assist_judge_pgreat_rate")]
+    pub key_pgreat_rate: u16,
+    #[serde(default = "default_assist_judge_great_rate")]
+    pub key_great_rate: u16,
+    #[serde(default = "default_assist_judge_good_rate")]
+    pub key_good_rate: u16,
+    #[serde(default = "default_assist_judge_pgreat_rate")]
+    pub scratch_pgreat_rate: u16,
+    #[serde(default = "default_assist_judge_great_rate")]
+    pub scratch_great_rate: u16,
+    #[serde(default = "default_assist_judge_good_rate")]
+    pub scratch_good_rate: u16,
+    #[serde(default = "default_assist_long_note_margin_rate")]
+    pub long_note_margin_rate: u16,
+    #[serde(default = "default_assist_scroll_section")]
+    pub scroll_section: u16,
+    #[serde(default = "default_assist_scroll_rate")]
+    pub scroll_rate: f64,
+    #[serde(default = "default_assist_long_note_rate")]
+    pub long_note_rate: f64,
+    #[serde(default)]
+    pub extra_note_type: u8,
+    #[serde(default)]
+    pub extra_note_depth: u8,
+    #[serde(default)]
+    pub extra_note_scratch: bool,
+}
+
+impl AssistOptionConfig {
+    pub fn flags(self) -> [bool; 7] {
+        [
+            self.expand_judge,
+            self.scroll_mode == AssistScrollMode::Remove,
+            self.judge_area,
+            self.long_note_mode == AssistLongNoteMode::Remove,
+            self.mark_note,
+            self.bpm_guide,
+            self.mine_mode == AssistMineMode::Remove,
+        ]
+    }
+
+    pub fn any_enabled(self) -> bool {
+        self.flags().into_iter().any(|enabled| enabled)
+            || self.scroll_mode != AssistScrollMode::Off
+            || self.long_note_mode != AssistLongNoteMode::Off
+            || self.mine_mode != AssistMineMode::Off
+            || self.extra_note_depth > 0
+    }
+
+    pub fn toggle_beatoraja_button(&mut self, button_id: i32) -> bool {
+        match button_id {
+            301 => self.expand_judge = !self.expand_judge,
+            302 => {
+                self.scroll_mode = if self.scroll_mode == AssistScrollMode::Remove {
+                    AssistScrollMode::Off
+                } else {
+                    AssistScrollMode::Remove
+                };
+            }
+            303 => self.judge_area = !self.judge_area,
+            304 => {
+                self.long_note_mode = if self.long_note_mode == AssistLongNoteMode::Remove {
+                    AssistLongNoteMode::Off
+                } else {
+                    AssistLongNoteMode::Remove
+                };
+            }
+            305 => self.mark_note = !self.mark_note,
+            306 => self.bpm_guide = !self.bpm_guide,
+            307 => {
+                self.mine_mode = if self.mine_mode == AssistMineMode::Remove {
+                    AssistMineMode::Off
+                } else {
+                    AssistMineMode::Remove
+                };
+            }
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl Default for AssistOptionConfig {
+    fn default() -> Self {
+        Self {
+            expand_judge: false,
+            judge_area: false,
+            mark_note: false,
+            bpm_guide: false,
+            scroll_mode: AssistScrollMode::Off,
+            long_note_mode: AssistLongNoteMode::Off,
+            mine_mode: AssistMineMode::Off,
+            key_pgreat_rate: default_assist_judge_pgreat_rate(),
+            key_great_rate: default_assist_judge_great_rate(),
+            key_good_rate: default_assist_judge_good_rate(),
+            scratch_pgreat_rate: default_assist_judge_pgreat_rate(),
+            scratch_great_rate: default_assist_judge_great_rate(),
+            scratch_good_rate: default_assist_judge_good_rate(),
+            long_note_margin_rate: default_assist_long_note_margin_rate(),
+            scroll_section: default_assist_scroll_section(),
+            scroll_rate: default_assist_scroll_rate(),
+            long_note_rate: default_assist_long_note_rate(),
+            extra_note_type: 0,
+            extra_note_depth: 0,
+            extra_note_scratch: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub enum AssistOptionConfig {
+pub enum AssistScrollMode {
+    #[default]
+    Off,
+    Remove,
+    Add,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum AssistLongNoteMode {
+    #[default]
+    Off,
+    Remove,
+    AddLn,
+    AddCn,
+    AddHcn,
+    AddAll,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum AssistMineMode {
+    #[default]
+    Off,
+    Remove,
+    AddRandom,
+    AddNear,
+    AddBlank,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AssistOptionConfigRepr {
+    Legacy(LegacyAssistOptionConfig),
+    Current(AssistOptionConfigFields),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+enum LegacyAssistOptionConfig {
     None,
     AutoScratch,
     LegacyNote,
+}
+
+#[derive(Deserialize, Default)]
+struct AssistOptionConfigFields {
+    #[serde(default)]
+    expand_judge: bool,
+    #[serde(default)]
+    judge_area: bool,
+    #[serde(default)]
+    mark_note: bool,
+    #[serde(default)]
+    bpm_guide: bool,
+    #[serde(default)]
+    scroll_mode: AssistScrollMode,
+    #[serde(default)]
+    long_note_mode: AssistLongNoteMode,
+    #[serde(default)]
+    mine_mode: AssistMineMode,
+    #[serde(default = "default_assist_judge_pgreat_rate")]
+    key_pgreat_rate: u16,
+    #[serde(default = "default_assist_judge_great_rate")]
+    key_great_rate: u16,
+    #[serde(default = "default_assist_judge_good_rate")]
+    key_good_rate: u16,
+    #[serde(default = "default_assist_judge_pgreat_rate")]
+    scratch_pgreat_rate: u16,
+    #[serde(default = "default_assist_judge_great_rate")]
+    scratch_great_rate: u16,
+    #[serde(default = "default_assist_judge_good_rate")]
+    scratch_good_rate: u16,
+    #[serde(default = "default_assist_long_note_margin_rate")]
+    long_note_margin_rate: u16,
+    #[serde(default = "default_assist_scroll_section")]
+    scroll_section: u16,
+    #[serde(default = "default_assist_scroll_rate")]
+    scroll_rate: f64,
+    #[serde(default = "default_assist_long_note_rate")]
+    long_note_rate: f64,
+    #[serde(default)]
+    extra_note_type: u8,
+    #[serde(default)]
+    extra_note_depth: u8,
+    #[serde(default)]
+    extra_note_scratch: bool,
+}
+
+impl<'de> Deserialize<'de> for AssistOptionConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let repr = AssistOptionConfigRepr::deserialize(deserializer)?;
+        Ok(match repr {
+            AssistOptionConfigRepr::Legacy(LegacyAssistOptionConfig::LegacyNote) => {
+                Self { long_note_mode: AssistLongNoteMode::Remove, ..Self::default() }
+            }
+            AssistOptionConfigRepr::Legacy(
+                LegacyAssistOptionConfig::None | LegacyAssistOptionConfig::AutoScratch,
+            ) => Self::default(),
+            AssistOptionConfigRepr::Current(fields) => Self {
+                expand_judge: fields.expand_judge,
+                judge_area: fields.judge_area,
+                mark_note: fields.mark_note,
+                bpm_guide: fields.bpm_guide,
+                scroll_mode: fields.scroll_mode,
+                long_note_mode: fields.long_note_mode,
+                mine_mode: fields.mine_mode,
+                key_pgreat_rate: fields.key_pgreat_rate.clamp(25, 400),
+                key_great_rate: fields.key_great_rate.min(400),
+                key_good_rate: fields.key_good_rate.min(400),
+                scratch_pgreat_rate: fields.scratch_pgreat_rate.clamp(25, 400),
+                scratch_great_rate: fields.scratch_great_rate.min(400),
+                scratch_good_rate: fields.scratch_good_rate.min(400),
+                long_note_margin_rate: fields.long_note_margin_rate.min(400),
+                scroll_section: fields.scroll_section.clamp(1, 1024),
+                scroll_rate: if fields.scroll_rate.is_finite() {
+                    fields.scroll_rate.clamp(0.0, 1.0)
+                } else {
+                    default_assist_scroll_rate()
+                },
+                long_note_rate: if fields.long_note_rate.is_finite() {
+                    fields.long_note_rate.clamp(0.0, 1.0)
+                } else {
+                    default_assist_long_note_rate()
+                },
+                extra_note_type: fields.extra_note_type,
+                extra_note_depth: fields.extra_note_depth.min(100),
+                extra_note_scratch: fields.extra_note_scratch,
+            },
+        })
+    }
+}
+
+pub const fn default_assist_judge_pgreat_rate() -> u16 {
+    400
+}
+
+pub const fn default_assist_judge_great_rate() -> u16 {
+    400
+}
+
+pub const fn default_assist_judge_good_rate() -> u16 {
+    100
+}
+
+pub const fn default_assist_long_note_margin_rate() -> u16 {
+    100
+}
+
+pub const fn default_assist_scroll_section() -> u16 {
+    4
+}
+
+pub const fn default_assist_scroll_rate() -> f64 {
+    0.5
+}
+
+pub const fn default_assist_long_note_rate() -> f64 {
+    1.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

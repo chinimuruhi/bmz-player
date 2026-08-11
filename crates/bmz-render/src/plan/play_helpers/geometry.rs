@@ -93,25 +93,117 @@ pub(super) fn push_play_aux_lines(
     skin_state: &crate::skin::SkinDrawState,
     snapshot: &RenderSnapshot,
     key_mode: KeyMode,
+    board: Rect,
+    lift: f32,
     skin_offsets: &SkinOffsetValues,
 ) {
-    if !snapshot.practice_mode {
+    if snapshot.practice_mode {
+        for line in &snapshot.time_lines {
+            push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
+                skin.document_time_line_items(y, key_mode, skin_state)
+            });
+        }
+    }
+    if snapshot.practice_mode || snapshot.bpm_guide {
+        for line in &snapshot.bpm_lines {
+            push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
+                skin.document_bpm_line_items(y, key_mode, skin_state)
+            });
+            push_bpm_guide_label(commands, board, lift, line, Color::rgb(0.0, 0.75, 0.0));
+        }
+        for line in &snapshot.stop_lines {
+            push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
+                skin.document_stop_line_items(y, key_mode, skin_state)
+            });
+            push_bpm_guide_label(commands, board, lift, line, Color::rgb(0.75, 0.75, 0.0));
+        }
+    }
+}
+
+fn push_bpm_guide_label(
+    commands: &mut Vec<DrawCommand>,
+    board: Rect,
+    lift: f32,
+    line: &crate::snapshot::VisibleBarLine,
+    color: Color,
+) {
+    if line.label.is_empty() {
         return;
     }
-    for line in &snapshot.time_lines {
-        push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
-            skin.document_time_line_items(y, key_mode, skin_state)
-        });
+    commands.push(DrawCommand::Text {
+        origin: Point { x: board.x + 0.004, y: play_object_y(board, lift, line.y) - 0.003 },
+        text: line.label.clone(),
+        style: TextStyle {
+            font_id: None,
+            size: 0.018,
+            bitmap_size: None,
+            color,
+            layer: TextLayer::Skin,
+            align: TextAlign::Left,
+            max_width: board.width,
+            overflow: TextOverflow::Shrink,
+            wrapping: false,
+            outline: Some(TextOutline { color: Color::rgba(0.0, 0.0, 0.0, 0.9), width: 1.0 }),
+            shadow: None,
+        },
+        caret: None,
+        post_scale: Point { x: 1.0, y: 1.0 },
+    });
+}
+
+pub(super) fn push_judge_area(
+    commands: &mut Vec<DrawCommand>,
+    snapshot: &RenderSnapshot,
+    board: Rect,
+    lift: f32,
+    lane_width: f32,
+    active_lanes: &[Lane],
+) {
+    if !snapshot.judge_area {
+        return;
     }
-    for line in &snapshot.bpm_lines {
-        push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
-            skin.document_bpm_line_items(y, key_mode, skin_state)
-        });
+    let colors = [
+        Color::rgba(0.0, 0.0, 1.0, 0.125),
+        Color::rgba(0.0, 1.0, 0.0, 0.125),
+        Color::rgba(1.0, 1.0, 0.0, 0.125),
+        Color::rgba(1.0, 0.5, 0.0, 0.125),
+        Color::rgba(1.0, 0.0, 0.0, 0.125),
+    ];
+    for (display_index, &lane) in active_lanes.iter().enumerate() {
+        let edges = if matches!(lane, Lane::Scratch | Lane::Scratch2) {
+            snapshot.judge_area_scratch_y
+        } else {
+            snapshot.judge_area_key_y
+        };
+        let mut inner = judge_line_y(board, lift);
+        for (edge, color) in edges.into_iter().zip(colors) {
+            let outer = play_object_y(board, lift, edge);
+            commands.push(DrawCommand::Rect {
+                rect: Rect {
+                    x: board.x + display_index as f32 * lane_width,
+                    y: outer,
+                    width: lane_width,
+                    height: (inner - outer).max(0.0),
+                },
+                color,
+            });
+            inner = outer;
+        }
     }
-    for line in &snapshot.stop_lines {
-        push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
-            skin.document_stop_line_items(y, key_mode, skin_state)
-        });
+}
+
+/// beatoraja `SkinNote` が processed sprite 未指定時に生成する cyan 枠。
+pub(super) fn push_processed_note_fallback(commands: &mut Vec<DrawCommand>, rect: Rect) {
+    let border_x = (rect.width / 16.0).min(rect.width * 0.5);
+    let border_y = (rect.height / 4.0).min(rect.height * 0.5);
+    let color = Color::rgb(0.0, 1.0, 1.0);
+    for border in [
+        Rect { width: border_x, ..rect },
+        Rect { x: rect.x + rect.width - border_x, width: border_x, ..rect },
+        Rect { width: rect.width, height: border_y, ..rect },
+        Rect { y: rect.y + rect.height - border_y, width: rect.width, height: border_y, ..rect },
+    ] {
+        commands.push(DrawCommand::Rect { rect: border, color });
     }
 }
 

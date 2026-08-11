@@ -467,7 +467,7 @@ impl ProfileConfig {
                 target: TargetOptionConfig::None,
                 grade_diff_display: ResultGradeDiffDisplay::default(),
                 lane_effect: LaneEffectConfig::Off,
-                assist: AssistOptionConfig::None,
+                assist: AssistOptionConfig::default(),
                 session_mode: Some(SessionMode::Normal),
                 auto_play: false,
                 bga: default_bga_mode(),

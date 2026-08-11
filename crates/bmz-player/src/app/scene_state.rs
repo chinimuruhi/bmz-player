@@ -168,6 +168,12 @@ impl WinitApp {
                         slow_empty_poor: summary.fast_slow_counts.slow_empty_poor,
                     },
                     score_save_enabled,
+                    assist_flags: self.boot.profile_config.play.assist.flags(),
+                    assist_extra_note_depth: self.boot.profile_config.play.assist.extra_note_depth,
+                    assist_mine_mode: self.boot.profile_config.play.assist.mine_mode as i64,
+                    assist_scroll_mode: self.boot.profile_config.play.assist.scroll_mode as i64,
+                    assist_long_note_mode: self.boot.profile_config.play.assist.long_note_mode
+                        as i64,
                     score_history_id: summary.score_history_id,
                     replay_saved: !summary.replay_path.is_empty(),
                     replay_slots: summary.replay_slots,

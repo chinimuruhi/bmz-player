@@ -41,6 +41,11 @@ pub(super) fn build_play_skin_state(
         select_arrange_index: crate::skin::select_arrange_index(&snapshot.arrange),
         select_arrange_2p_index: crate::skin::select_arrange_index(&snapshot.arrange_2p),
         select_target_index: crate::skin::play_target_image_index(&snapshot.target),
+        assist_flags: snapshot.assist_flags,
+        assist_extra_note_depth: snapshot.assist_extra_note_depth,
+        assist_mine_mode: snapshot.assist_mine_mode,
+        assist_scroll_mode: snapshot.assist_scroll_mode,
+        assist_long_note_mode: snapshot.assist_long_note_mode,
         select_extended_arrange_index: crate::skin::extended_arrange_index(&snapshot.arrange),
         select_extended_arrange_2p_index: crate::skin::extended_arrange_index(&snapshot.arrange_2p),
         random_lane_refs: crate::skin::fixed_random_lane_refs(

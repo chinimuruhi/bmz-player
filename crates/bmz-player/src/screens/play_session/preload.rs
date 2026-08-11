@@ -170,6 +170,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         chart_length_ms,
         applied_arrange: imported.applied_arrange,
         score_key: imported.score_key,
+        assist_runtime: imported.assist_runtime,
     };
     let sound_counts = sound_preload_counts(&prepared_chart.chart);
     tracing::info!(
@@ -225,6 +226,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         render_snapshot_cache: prepared_chart.render_snapshot_cache,
         applied_arrange: prepared_chart.applied_arrange,
         score_key: prepared_chart.score_key,
+        assist_runtime: prepared_chart.assist_runtime,
     })
 }
 
@@ -243,6 +245,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
     render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     applied_arrange: AppliedArrange,
     score_key: ScoreKey,
+    assist_runtime: bmz_gameplay::session::AssistRuntime,
     on_progress: impl FnMut(usize, usize),
 ) -> PreloadedPlaySession {
     let sound_counts = sound_preload_counts(&chart);
@@ -268,6 +271,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
         render_snapshot_cache,
         applied_arrange,
         score_key,
+        assist_runtime,
     }
 }
 
@@ -276,6 +280,7 @@ pub(super) struct TransformedPlayChart {
     pub(super) source_ln_profile: ChartLnProfile,
     pub(super) applied_arrange: AppliedArrange,
     pub(super) score_key: ScoreKey,
+    pub(super) assist_runtime: bmz_gameplay::session::AssistRuntime,
 }
 
 pub fn load_source_chart_for_chart(
@@ -338,6 +343,11 @@ pub(super) fn load_transformed_chart_for_play(
         options.rule_mode,
     );
     apply_score_ln_policy_to_chart(ln_policy, &mut chart);
+    let assist_runtime = crate::assist::apply_chart_assists(
+        &mut chart,
+        options.assist,
+        options.arrange_seed.unwrap_or(0),
+    );
     apply_double_option(&mut chart, applied_double_option);
     if options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7) {
         apply_battle_double_option(&mut chart);
@@ -361,7 +371,13 @@ pub(super) fn load_transformed_chart_for_play(
     applied_arrange.double_option = applied_double_option;
     applied_arrange.bms_random_choices = import.bms_random_choices;
 
-    Ok(TransformedPlayChart { chart, source_ln_profile, applied_arrange, score_key })
+    Ok(TransformedPlayChart {
+        chart,
+        source_ln_profile,
+        applied_arrange,
+        score_key,
+        assist_runtime,
+    })
 }
 
 pub(super) fn effective_arrange_seed(
@@ -424,6 +440,7 @@ pub fn build_practice_prepared_from_preloaded(
     let mut chart = (*preloaded.chart).clone();
     let applied_arrange = apply_practice_property(&mut chart, property);
     options.practice_mode = true;
+    options.assist_runtime = preloaded.assist_runtime;
     options.autoplay = false;
     options.replay_player = None;
     options.gauge_override = Some(gauge_type_from_config(property.gauge));
@@ -460,6 +477,7 @@ pub fn build_prepared_play_session_from_preloaded(
     input_backend: Box<dyn InputBackend>,
 ) -> PreparedPlaySession {
     options.double_option = preloaded.applied_arrange.double_option;
+    options.assist_runtime = preloaded.assist_runtime;
     let target_option = options.target;
     let resolved_target = options.resolved_target.clone();
     let target = resolved_target

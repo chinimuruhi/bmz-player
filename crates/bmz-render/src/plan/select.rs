@@ -164,7 +164,22 @@ pub(super) fn push_select_option_panel(
                 "REPLAY   1 / 2 / 3 / 4".to_string(),
             ],
         ),
-        2 => ("ASSIST OPTIONS", vec![format!("ASSIST   {}", snapshot.assist)]),
+        2 => (
+            "ASSIST OPTIONS",
+            [
+                "K1 EXPAND JUDGE",
+                "K2 CONSTANT",
+                "K3 JUDGE AREA",
+                "K4 LEGACY NOTE",
+                "K5 MARK NOTE",
+                "K6 BPM GUIDE",
+                "K7 NO MINE",
+            ]
+            .into_iter()
+            .zip(snapshot.assist_flags)
+            .map(|(label, enabled)| format!("{label:<17} {}", if enabled { "ON" } else { "OFF" }))
+            .collect(),
+        ),
         3 => (
             "DETAIL OPTIONS",
             vec![

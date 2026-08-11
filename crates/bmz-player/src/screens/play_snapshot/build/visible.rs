@@ -16,6 +16,17 @@ pub(super) fn populate_visible_playfield(
     let cursor_tick = scroll.cursor_tick(scroll_time);
     let tick_upper_bound = scroll.simple_tick_upper_bound(cursor_tick);
 
+    if snapshot.judge_area {
+        snapshot.judge_area_key_y =
+            judge_area_edges(&scroll, cursor_tick, lane_render_now, session.judge.window_set.note);
+        snapshot.judge_area_scratch_y = judge_area_edges(
+            &scroll,
+            cursor_tick,
+            lane_render_now,
+            session.judge.window_set.scratch,
+        );
+    }
+
     populate_visible_notes(
         snapshot,
         session,
@@ -136,14 +147,18 @@ fn populate_visible_guide_lines(
     let tick_range = tick_upper_bound.map(|upper| (cursor_tick, upper));
     for bar in visible_bar_lines(&session.chart.bar_lines, scroll_time, tick_range) {
         if let Some(y) = scroll.note_y(bar.time, cursor_tick) {
-            snapshot.bar_lines.push(VisibleBarLine { time: bar.time, y });
+            snapshot.bar_lines.push(VisibleBarLine { time: bar.time, y, label: String::new() });
         }
     }
     for event in visible_timing_events(&session.chart.timing_events, scroll_time, tick_range) {
         let Some(y) = scroll.note_y(event.time, cursor_tick) else {
             continue;
         };
-        let line = VisibleBarLine { time: event.time, y };
+        let label = match event.kind {
+            TimingEventKind::BpmChange { bpm } => format!("BPM{}", bpm as i32),
+            TimingEventKind::Stop { duration_us } => format!("STOP {}ms", duration_us / 1_000),
+        };
+        let line = VisibleBarLine { time: event.time, y, label };
         match event.kind {
             TimingEventKind::BpmChange { .. } => snapshot.bpm_lines.push(line),
             TimingEventKind::Stop { .. } => snapshot.stop_lines.push(line),
@@ -156,9 +171,34 @@ fn populate_visible_guide_lines(
     {
         let time = TimeUs(second.saturating_mul(1_000_000));
         if let Some(y) = scroll.note_y(time, cursor_tick) {
-            snapshot.time_lines.push(VisibleBarLine { time, y });
+            snapshot.time_lines.push(VisibleBarLine {
+                time,
+                y,
+                label: format!("{:.1}s", time.0 as f64 / 1_000_000.0),
+            });
         }
     }
+}
+
+fn judge_area_edges(
+    scroll: &ScrollContext<'_>,
+    cursor_tick: f64,
+    now: TimeUs,
+    window: bmz_gameplay::judge::model::JudgeWindow,
+) -> [f32; 5] {
+    [
+        window.pgreat_us,
+        window.great_us,
+        window.good_us,
+        window.bad_fast_us,
+        window.empty_poor_fast_us.max(window.bad_fast_us),
+    ]
+    .map(|offset| {
+        scroll
+            .note_y(TimeUs(now.0.saturating_add(offset)), cursor_tick)
+            .unwrap_or_default()
+            .clamp(0.0, 1.0)
+    })
 }
 
 fn populate_visible_long_notes(

@@ -251,7 +251,6 @@ pub(in crate::app) fn apply_current_play_options_to_profile(
     profile.play.hs_fix = hs_fix_config_from_option(options.hs_fix);
     profile.play.session_mode = Some(options.session_mode);
     profile.play.auto_play = options.session_mode.primary_autoplay();
-    profile.play.assist = AssistOptionConfig::None;
     profile.updated_at = updated_at;
 }
 

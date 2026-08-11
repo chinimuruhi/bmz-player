@@ -306,6 +306,7 @@ impl WinitApp {
         PlayStartOptions {
             session_mode: self.select.session_mode,
             autoplay: self.select.session_mode.primary_autoplay(),
+            assist: self.boot.profile_config.play.assist,
             gauge: Some(self.select.gauge_option),
             gauge_auto_shift: self.select.gauge_auto_shift_option,
             bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,

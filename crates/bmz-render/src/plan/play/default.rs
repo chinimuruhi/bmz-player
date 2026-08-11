@@ -8,6 +8,14 @@ pub(super) fn push_default_playfield(
     layout: PlayfieldLayout<'_>,
 ) {
     push_board(commands, layout.board);
+    push_judge_area(
+        commands,
+        snapshot,
+        layout.board,
+        snapshot.lift,
+        layout.lane_width,
+        layout.active_lanes,
+    );
     for (display_index, &lane) in layout.active_lanes.iter().enumerate() {
         push_lane(commands, snapshot, skin.manifest(), layout, display_index, lane);
     }
@@ -38,6 +46,8 @@ pub(super) fn push_default_playfield(
         skin_state,
         snapshot,
         snapshot.key_mode,
+        layout.board,
+        snapshot.lift,
         &snapshot.skin_offsets,
     );
     push_judge_line(skin.manifest(), commands, layout.board, snapshot.lift);
@@ -91,7 +101,13 @@ fn push_lane(
         match note.kind {
             NoteVisualKind::LnStart => push_ln_start_skin(manifest, commands, lane, rect),
             NoteVisualKind::LnEnd => push_ln_end_skin(manifest, commands, lane, rect),
-            NoteVisualKind::Tap => push_default_note_skin(manifest, commands, lane, rect),
+            NoteVisualKind::Tap => {
+                if snapshot.mark_processed_note && note.processed_judge.is_some() {
+                    push_processed_note_fallback(commands, rect);
+                } else {
+                    push_default_note_skin(manifest, commands, lane, rect);
+                }
+            }
         }
     }
     for mine in &snapshot.visible_mines[lane_index] {

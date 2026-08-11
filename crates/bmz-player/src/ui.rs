@@ -27,13 +27,14 @@ use crate::config::app_config::{
 };
 use crate::config::play::{TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN};
 use crate::config::profile_config::{
-    BUILTIN_IR_PROVIDER_COUNT, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
-    DoubleOptionConfig, FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig,
-    HISPEED_STEP_MAX, HISPEED_STEP_MIN, HispeedModeConfig, HsFixConfig, IrConfig,
-    IrCredentialStoreConfig, IrProviderConfig, IrProviderRoleConfig, IrSendPolicyConfig,
-    JudgeAlgorithmConfig, LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX,
-    RandomOptionConfig, ReplaySlotRule, SkinConfig, SkinHistoryEntryConfig, SkinOffsetConfig,
-    TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
+    AssistLongNoteMode, AssistMineMode, AssistScrollMode, BUILTIN_IR_PROVIDER_COUNT,
+    BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig, DoubleOptionConfig,
+    FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX,
+    HISPEED_STEP_MIN, HispeedModeConfig, HsFixConfig, IrConfig, IrCredentialStoreConfig,
+    IrProviderConfig, IrProviderRoleConfig, IrSendPolicyConfig, JudgeAlgorithmConfig,
+    LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX, RandomOptionConfig, ReplaySlotRule,
+    SkinConfig, SkinHistoryEntryConfig, SkinOffsetConfig, TargetOptionConfig,
+    default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
     normalized_ir_base_url,
 };
 use crate::i18n::{AppLocale, FluentArgs, Localizer};

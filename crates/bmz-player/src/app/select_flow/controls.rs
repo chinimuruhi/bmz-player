@@ -670,6 +670,69 @@ impl WinitApp {
         }
     }
 
+    pub(super) fn apply_assist_option_control(&mut self, control: &str) -> bool {
+        let button_id = if self.select.select_keys.is_key1(control) {
+            301
+        } else if self.select.select_keys.is_key2(control) {
+            302
+        } else if self.select.select_keys.is_key3(control) {
+            303
+        } else if self.select.select_keys.is_key4(control) {
+            304
+        } else if self.select.select_keys.is_key5(control) {
+            305
+        } else if self.select.select_keys.is_key6(control) {
+            306
+        } else if self.select.select_keys.is_key7(control) {
+            307
+        } else {
+            return false;
+        };
+        let changed = self.boot.profile_config.play.assist.toggle_beatoraja_button(button_id);
+        if changed {
+            self.boot.profile_config.updated_at = now_unix_seconds();
+            self.invalidate_play_preload();
+        }
+        changed
+    }
+
+    pub(super) fn apply_gamepad_assist_option_control(
+        &mut self,
+        device: DeviceId,
+        control: &str,
+    ) -> bool {
+        let app_config = self.play_session_app_config();
+        let slots = crate::input::gamepad::GamepadSlotMap::from_runtime_or_legacy(
+            app_config.input.gamepad_slot_runtime_device_ids,
+            app_config.input.gamepad_slot_gilrs_ids,
+        );
+        let button_id = match select_option_lane_for_gamepad(
+            &self.boot.profile_config.input,
+            slots,
+            device,
+            control,
+        ) {
+            Some(Lane::Key1) => Some(301),
+            Some(Lane::Key2) => Some(302),
+            Some(Lane::Key3) => Some(303),
+            Some(Lane::Key4) => Some(304),
+            Some(Lane::Key5) => Some(305),
+            Some(Lane::Key6) => Some(306),
+            Some(Lane::Key7) => Some(307),
+            _ => None,
+        };
+        if let Some(button_id) = button_id {
+            let changed = self.boot.profile_config.play.assist.toggle_beatoraja_button(button_id);
+            if changed {
+                self.boot.profile_config.updated_at = now_unix_seconds();
+                self.invalidate_play_preload();
+            }
+            changed
+        } else {
+            self.apply_assist_option_control(control)
+        }
+    }
+
     pub(super) fn set_session_mode(&mut self, session_mode: SessionMode) {
         self.select.session_mode = session_mode;
         self.boot.profile_config.play.session_mode = Some(session_mode);

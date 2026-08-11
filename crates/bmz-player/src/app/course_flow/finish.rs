@@ -162,6 +162,8 @@ impl WinitApp {
         let any_autoplay = course.entry_results.iter().any(|entry| entry.finished.result.autoplay);
         let any_replay_playback =
             course.entry_results.iter().any(|entry| entry.finished.replay_playback);
+        let any_assist =
+            course.entry_results.iter().any(|entry| !entry.finished.assist.score_save_enabled());
         let history_ids: Vec<i64> = course
             .entry_results
             .iter()
@@ -200,7 +202,7 @@ impl WinitApp {
 
         // Autoplay / replay playback は単曲と同じく保存しない。それ以外はこの時点で
         // course score を確定し、同じ直後に IR job を enqueue する。
-        if !any_autoplay && !any_replay_playback {
+        if !any_autoplay && !any_replay_playback && !any_assist {
             if let Some((stored_course, identity)) = &course_identity {
                 let course_ln_policy = course_result.ln_policy;
                 let course_rule_mode = course_result.rule_mode;

@@ -258,6 +258,19 @@ pub struct RenderSnapshot {
     pub replay_playback: bool,
     /// プラクティス再生中かどうか。beatoraja OPTION_PRACTICE (1080) 用。
     pub practice_mode: bool,
+    /// beatoraja assist button 301..307 の選択状態。
+    pub assist_flags: [bool; 7],
+    pub assist_extra_note_depth: u8,
+    pub assist_mine_mode: i64,
+    pub assist_scroll_mode: i64,
+    pub assist_long_note_mode: i64,
+    /// 描画専用アシスト。判定・譜面変換とは独立して renderer が参照する。
+    pub judge_area: bool,
+    pub mark_processed_note: bool,
+    pub bpm_guide: bool,
+    /// JUDGE AREA のPGREAT/GREAT/GOOD/BAD/POOR外縁（判定ラインからの進捗）。
+    pub judge_area_key_y: [f32; 5],
+    pub judge_area_scratch_y: [f32; 5],
     /// このプレイがスコア保存対象か。beatoraja OPTION_SCORE_SAVE_ENABLED (61) 用。
     pub score_save_enabled: bool,
     /// OPTION_MODE_COURSE (290) とステージ別 op (280..283 / 289) 用。未対応時は None。
@@ -469,6 +482,7 @@ pub struct DisplayInput {
 pub struct VisibleBarLine {
     pub time: TimeUs,
     pub y: f32,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

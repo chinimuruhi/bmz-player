@@ -486,7 +486,7 @@ fn apply_current_play_options_updates_profile_defaults() {
     assert!(matches!(profile.play.double_option, DoubleOptionConfig::Flip));
     assert!(matches!(profile.play.hs_fix, HsFixConfig::MainBpm));
     assert!(profile.play.auto_play);
-    assert!(matches!(profile.play.assist, AssistOptionConfig::None));
+    assert_eq!(profile.play.assist, crate::config::profile_config::AssistOptionConfig::default());
     assert_eq!(profile.updated_at, 42);
 }
 

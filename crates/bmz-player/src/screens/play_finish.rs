@@ -16,7 +16,9 @@ use bmz_gameplay::gauge::{GaugeCarryValue, GaugeState};
 #[cfg(test)]
 use bmz_gameplay::judge::model::JudgeWindows;
 use bmz_gameplay::result::PlayResult;
-use bmz_gameplay::session::{GameSession, PlayState, ResultJudgementDetail};
+use bmz_gameplay::session::{
+    AssistLevel, AssistRuntime, GameSession, PlayState, ResultJudgementDetail,
+};
 
 use crate::config::profile_config::{IrConfig, ReplayConfig};
 use crate::ir::payload::{IrSubmissionContext, build_score_submission};
@@ -46,6 +48,7 @@ pub struct FinishedPlaySession {
     pub ln_policy: crate::ln_policy::LnScorePolicy,
     pub double_option: crate::select_options::DoubleOptionScoreBucket,
     pub rule_mode: bmz_gameplay::rule::RuleMode,
+    pub assist: AssistRuntime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,14 +80,22 @@ impl FinishResultMode {
 }
 
 pub fn play_result_from_session(session: &GameSession) -> PlayResult {
-    PlayResult::from_states_with_total_notes(
+    let mut result = PlayResult::from_states_with_total_notes(
         &session.chart,
         &session.score,
         &session.gauge,
         session.scored_total_notes,
         session.state,
         session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full()),
-    )
+    );
+    if !matches!(result.clear_type, ClearType::NoPlay | ClearType::Failed) {
+        result.clear_type = match session.assist.level {
+            AssistLevel::None => result.clear_type,
+            AssistLevel::LightAssist => ClearType::LightAssistEasy,
+            AssistLevel::Assist => ClearType::AssistEasy,
+        };
+    }
+    result
 }
 
 pub fn store_session_result(
@@ -151,6 +162,7 @@ struct FinishSessionSnapshot {
     course_max_combo: u32,
     result_judgements: HashMap<NoteId, ResultJudgementDetail>,
     failed_gauge: Option<GaugeState>,
+    assist: AssistRuntime,
 }
 
 impl FinishSessionSnapshot {
@@ -168,6 +180,7 @@ impl FinishSessionSnapshot {
             course_max_combo: session.display_max_combo(),
             result_judgements: session.result_judgements.clone(),
             failed_gauge: (session.state == PlayState::Failed).then(|| session.gauge.clone()),
+            assist: session.assist,
         }
     }
 }
@@ -268,7 +281,11 @@ fn finish_session_snapshot_result(
     // オートプレイ / リプレイ再生 / プラクティス時はスコア・リプレイをDBに保存しない
     // （リザルト画面の表示のみ行う）。
     let full_autoplay = result.autoplay;
-    let stored = if full_autoplay || replay_playback || practice_mode {
+    let stored = if full_autoplay
+        || replay_playback
+        || practice_mode
+        || !snapshot.assist.score_save_enabled()
+    {
         StoredPlayResult {
             score_history_id: 0,
             played_at,
@@ -296,7 +313,7 @@ fn finish_session_snapshot_result(
                 random_seed,
                 gauge_option: String::new(),
                 rule_mode: snapshot.rule_mode.as_str().to_string(),
-                assist_mask: 0,
+                assist_mask: snapshot.assist.configured_mask,
                 replay_events: snapshot.replay_events.clone(),
                 arrange,
                 arrange_2p: applied_arrange.arrange_2p,
@@ -346,7 +363,7 @@ fn finish_session_snapshot_result(
             }
         }
     }
-    if finish_mode.enqueue_score_ir() {
+    if finish_mode.enqueue_score_ir() && snapshot.assist.score_save_enabled() {
         let mut ir_result = result.clone();
         ir_result.clear_type = summary_clear_type;
         enqueue_ir_jobs(
@@ -381,6 +398,7 @@ fn finish_session_snapshot_result(
         ln_policy: score_key.ln_policy,
         double_option: score_key.double_option,
         rule_mode: score_key.rule_mode,
+        assist: snapshot.assist,
     })
 }
 

@@ -111,6 +111,14 @@ pub fn apply_placeholder_session_visuals(
         && (options.session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     snapshot.replay_playback = replay_playback;
     snapshot.practice_mode = options.practice_mode;
+    snapshot.assist_flags = options.assist.flags();
+    snapshot.assist_extra_note_depth = options.assist.extra_note_depth;
+    snapshot.assist_mine_mode = options.assist.mine_mode as i64;
+    snapshot.assist_scroll_mode = options.assist.scroll_mode as i64;
+    snapshot.assist_long_note_mode = options.assist.long_note_mode as i64;
+    snapshot.judge_area = options.assist.judge_area;
+    snapshot.mark_processed_note = options.assist.mark_note;
+    snapshot.bpm_guide = options.assist.bpm_guide;
     snapshot.score_save_enabled = options.session_mode.score_save_enabled()
         && !snapshot.autoplay
         && !snapshot.replay_playback
@@ -302,7 +310,10 @@ pub fn build_game_session_with_input_backend(
     // great_us and good_us.  Mirrors beatoraja JudgeManager's *JudgeWindowRate
     // = 0 path.
     let base_judge_windows = apply_judge_constraint_to_windows(
-        judge_windows_for_keymode_and_rule_mode(primary_key_mode, rule_mode),
+        crate::assist::apply_custom_judge_windows(
+            judge_windows_for_keymode_and_rule_mode(primary_key_mode, rule_mode),
+            options.assist,
+        ),
         options.judge_constraint,
     );
     let base_judge_window = base_judge_windows.note;
@@ -378,6 +389,7 @@ pub fn build_game_session_with_input_backend(
         chart,
         primary_key_mode,
         scored_total_notes,
+        assist: options.assist_runtime,
         timing_map,
         input_system,
         score: ScoreState::for_rule_mode(primary_key_mode, rule_mode),

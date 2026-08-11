@@ -178,11 +178,21 @@ pub(super) fn format_lane_effect(value: LaneEffectConfig) -> String {
 }
 
 pub(super) fn format_assist(value: AssistOptionConfig) -> String {
-    match value {
-        AssistOptionConfig::None => "NONE".to_string(),
-        AssistOptionConfig::AutoScratch => "AUTO SCRATCH".to_string(),
-        AssistOptionConfig::LegacyNote => "LEGACY NOTE".to_string(),
-    }
+    let labels = value
+        .flags()
+        .into_iter()
+        .zip([
+            "EXPAND JUDGE",
+            "CONSTANT",
+            "JUDGE AREA",
+            "LEGACY NOTE",
+            "MARK NOTE",
+            "BPM GUIDE",
+            "NO MINE",
+        ])
+        .filter_map(|(enabled, label)| enabled.then_some(label))
+        .collect::<Vec<_>>();
+    if labels.is_empty() { "NONE".to_string() } else { labels.join(" + ") }
 }
 
 pub(super) fn format_bga_mode(value: BgaModeConfig) -> String {
@@ -380,9 +390,12 @@ pub(super) fn cycle_lane_effect(current: LaneEffectConfig, forward: bool) -> Lan
 }
 
 pub(super) fn cycle_assist(current: AssistOptionConfig, forward: bool) -> AssistOptionConfig {
-    const VALUES: [AssistOptionConfig; 3] =
-        [AssistOptionConfig::None, AssistOptionConfig::AutoScratch, AssistOptionConfig::LegacyNote];
-    cycle_in_slice(&VALUES, current, forward)
+    let mut next = current;
+    // 旧設定一覧から編集された場合の互換操作。独立した7トグルは選曲スキンと
+    // profile UI で扱い、一覧の単一行では LEGACY NOTE を切り替える。
+    let _ = forward;
+    next.toggle_beatoraja_button(304);
+    next
 }
 
 pub(super) fn cycle_bga_mode(current: BgaModeConfig, forward: bool) -> BgaModeConfig {

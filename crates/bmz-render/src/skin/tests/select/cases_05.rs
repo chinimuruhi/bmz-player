@@ -76,6 +76,11 @@ fn skin_state_imageset_index_maps_select_options() {
         select_bga_index: 1,
         judge_timing_auto_adjust: true,
         select_judge_algorithm_index: 2,
+        assist_flags: [true, false, true, false, true, false, true],
+        assist_extra_note_depth: 4,
+        assist_mine_mode: 3,
+        assist_scroll_mode: 2,
+        assist_long_note_mode: 5,
         ..SkinDrawState::default()
     };
 
@@ -88,7 +93,13 @@ fn skin_state_imageset_index_maps_select_options() {
     assert_eq!(skin_state_imageset_index(75, &state), Some(1));
     assert_eq!(skin_state_imageset_index(72, &state), Some(1));
     assert_eq!(skin_state_imageset_index(340, &state), Some(2));
-    assert_eq!(skin_state_imageset_index(301, &state), Some(0));
+    for (ref_id, enabled) in (301..=307).zip([true, false, true, false, true, false, true]) {
+        assert_eq!(skin_state_imageset_index(ref_id, &state), Some(usize::from(enabled)));
+    }
+    assert_eq!(skin_state_imageset_index(350, &state), Some(4));
+    assert_eq!(skin_state_imageset_index(351, &state), Some(3));
+    assert_eq!(skin_state_imageset_index(352, &state), Some(2));
+    assert_eq!(skin_state_imageset_index(353, &state), Some(5));
     assert_eq!(skin_state_imageset_index(500, &state), None);
 }
 

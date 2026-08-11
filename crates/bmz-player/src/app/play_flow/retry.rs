@@ -144,6 +144,7 @@ impl WinitApp {
             chart_normalization_gain: active.running.session.audio_mix.chart_normalization_gain,
             applied_arrange,
             score_key,
+            assist_runtime: active.running.session.assist,
             bga_frames: active.running.bga_frames.clone(),
             bga_assets: active.running.session.chart.bga_assets.clone(),
             video_bga_decoders,
@@ -165,6 +166,7 @@ impl WinitApp {
             chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
             applied_arrange: Some(running.applied_arrange.clone()),
             score_key: Some(running.score_key),
+            assist_runtime: running.session.assist,
             bga_frames: running.bga_frames.clone(),
             bga_assets: running.session.chart.bga_assets.clone(),
             video_bga_decoders,
@@ -282,6 +284,7 @@ impl WinitApp {
         let applied_arrange =
             cache.applied_arrange.clone().expect("SameArrange cache includes applied arrange");
         let score_key = cache.score_key.expect("SameArrange cache includes score key");
+        let assist_runtime = cache.assist_runtime;
         let chart_normalization_gain = cache.chart_normalization_gain;
 
         self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
@@ -306,6 +309,7 @@ impl WinitApp {
             render_snapshot_cache: render_snapshot_cache.clone(),
             applied_arrange: applied_arrange.clone(),
             score_key,
+            assist_runtime,
         });
         let sample_rate = session_options.sample_rate;
         let (tx, rx) = mpsc::channel();
@@ -322,6 +326,7 @@ impl WinitApp {
                         render_snapshot_cache,
                         applied_arrange,
                         score_key,
+                        assist_runtime,
                         |loaded, total| {
                             worker_audio_progress.store(
                                 resource_load_progress_units(loaded, total),

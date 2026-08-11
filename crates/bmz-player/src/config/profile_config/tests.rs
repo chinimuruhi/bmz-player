@@ -67,6 +67,34 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
 }
 
 #[test]
+fn assist_config_migrates_legacy_value_and_roundtrips_all_modifiers() {
+    #[derive(Deserialize)]
+    struct AssistWrapper {
+        value: AssistOptionConfig,
+    }
+
+    let legacy = toml::from_str::<AssistWrapper>("value = \"LegacyNote\"").unwrap().value;
+    assert_eq!(legacy.long_note_mode, AssistLongNoteMode::Remove);
+
+    let config = AssistOptionConfig {
+        expand_judge: true,
+        judge_area: true,
+        mark_note: true,
+        bpm_guide: true,
+        scroll_mode: AssistScrollMode::Add,
+        long_note_mode: AssistLongNoteMode::AddAll,
+        mine_mode: AssistMineMode::AddNear,
+        key_pgreat_rate: 321,
+        extra_note_depth: 3,
+        extra_note_scratch: true,
+        ..Default::default()
+    };
+    let encoded = toml::to_string(&config).unwrap();
+    let decoded: AssistOptionConfig = toml::from_str(&encoded).unwrap();
+    assert_eq!(decoded, config);
+}
+
+#[test]
 fn lane_view_uses_mode_specific_hispeed_step_and_auto_adjust_defaults_for_old_profiles() {
     let lane: LaneViewConfig = toml::from_str(
         r#"

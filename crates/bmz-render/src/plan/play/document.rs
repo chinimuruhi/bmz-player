@@ -26,7 +26,17 @@ pub(super) fn push_document_playfield(
         skin_state,
         snapshot,
         snapshot.key_mode,
+        layout.board,
+        snapshot.lift,
         &snapshot.skin_offsets,
+    );
+    push_judge_area(
+        commands,
+        snapshot,
+        layout.board,
+        snapshot.lift,
+        layout.lane_width,
+        layout.active_lanes,
     );
     push_document_long_notes(commands, snapshot, skin, skin_state);
     for &lane in layout.active_lanes {
@@ -110,10 +120,18 @@ fn push_document_lane(
             NoteVisualKind::LnEnd => {
                 skin.document_ln_end_item(lane, snapshot.key_mode, rect, LongNoteMode::Ln)
             }
-            NoteVisualKind::Tap => skin.document_note_item(lane, snapshot.key_mode, rect),
+            NoteVisualKind::Tap => {
+                if snapshot.mark_processed_note && note.processed_judge.is_some() {
+                    skin.document_processed_note_item(lane, snapshot.key_mode, rect)
+                } else {
+                    skin.document_note_item(lane, snapshot.key_mode, rect)
+                }
+            }
         };
         if let Some(item) = item {
             append_document_item(commands, skin, skin_state, item);
+        } else if snapshot.mark_processed_note && note.processed_judge.is_some() {
+            push_processed_note_fallback(commands, rect);
         }
     }
 

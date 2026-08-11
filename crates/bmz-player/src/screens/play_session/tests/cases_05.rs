@@ -27,6 +27,7 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&chart),
         normal_applied_arrange(0, false),
         score_key,
+        Default::default(),
         |loaded, total| progress.push((loaded, total)),
     );
 

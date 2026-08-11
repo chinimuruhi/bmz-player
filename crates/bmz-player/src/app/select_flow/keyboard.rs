@@ -574,6 +574,13 @@ impl WinitApp {
                             self.play_system_sound(crate::system_sound::SoundType::OptionChange);
                         }
                     }
+                    2 => {
+                        if let Some(control) = physical_key_name(event.physical_key)
+                            && self.apply_assist_option_control(&control)
+                        {
+                            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+                        }
+                    }
                     3 => {
                         if let Some(control) = physical_key_name(event.physical_key)
                             && self.apply_detail_option_control(&control)

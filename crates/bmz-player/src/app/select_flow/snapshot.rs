@@ -142,6 +142,11 @@ impl WinitApp {
             double_option: self.select.double_option.as_str().to_string(),
             hs_fix: self.select.hs_fix_option.as_str().to_string(),
             assist: self.select.session_mode.as_str().to_string(),
+            assist_flags: self.boot.profile_config.play.assist.flags(),
+            assist_extra_note_depth: self.boot.profile_config.play.assist.extra_note_depth,
+            assist_mine_mode: self.boot.profile_config.play.assist.mine_mode as i64,
+            assist_scroll_mode: self.boot.profile_config.play.assist.scroll_mode as i64,
+            assist_long_note_mode: self.boot.profile_config.play.assist.long_note_mode as i64,
             select_mode: self.select.select_mode_filter.as_str().to_string(),
             select_sort: self.select.select_sort.as_str().to_string(),
             select_ln_mode: self

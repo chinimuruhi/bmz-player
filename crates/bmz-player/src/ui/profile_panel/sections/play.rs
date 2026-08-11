@@ -207,6 +207,124 @@ pub(in crate::ui::profile_panel) fn build_profile_play_section(
                 });
             profile.play.session_mode = Some(session_mode);
             profile.play.auto_play = session_mode.primary_autoplay();
+            egui::CollapsingHeader::new("ASSIST / MODIFIERS").id_salt("profile_play_assist").show(
+                ui,
+                |ui| {
+                    let assist = &mut profile.play.assist;
+                    ui.checkbox(&mut assist.expand_judge, "EXPAND JUDGE");
+                    ui.checkbox(&mut assist.judge_area, "JUDGE AREA");
+                    ui.checkbox(&mut assist.mark_note, "MARK NOTE");
+                    ui.checkbox(&mut assist.bpm_guide, "BPM GUIDE");
+
+                    egui::ComboBox::from_label("SCROLL")
+                        .selected_text(match assist.scroll_mode {
+                            AssistScrollMode::Off => "OFF",
+                            AssistScrollMode::Remove => "REMOVE (CONSTANT)",
+                            AssistScrollMode::Add => "ADD",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut assist.scroll_mode,
+                                AssistScrollMode::Off,
+                                "OFF",
+                            );
+                            ui.selectable_value(
+                                &mut assist.scroll_mode,
+                                AssistScrollMode::Remove,
+                                "REMOVE (CONSTANT)",
+                            );
+                            ui.selectable_value(
+                                &mut assist.scroll_mode,
+                                AssistScrollMode::Add,
+                                "ADD",
+                            );
+                        });
+                    if assist.scroll_mode == AssistScrollMode::Add {
+                        ui.add(
+                            egui::Slider::new(&mut assist.scroll_section, 1..=64)
+                                .text("SCROLL SECTION"),
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut assist.scroll_rate, 0.0..=1.0)
+                                .text("SCROLL RATE"),
+                        );
+                    }
+
+                    egui::ComboBox::from_label("LONGNOTE")
+                        .selected_text(match assist.long_note_mode {
+                            AssistLongNoteMode::Off => "OFF",
+                            AssistLongNoteMode::Remove => "REMOVE (LEGACY NOTE)",
+                            AssistLongNoteMode::AddLn => "ADD LN",
+                            AssistLongNoteMode::AddCn => "ADD CN",
+                            AssistLongNoteMode::AddHcn => "ADD HCN",
+                            AssistLongNoteMode::AddAll => "ADD ALL",
+                        })
+                        .show_ui(ui, |ui| {
+                            for (value, label) in [
+                                (AssistLongNoteMode::Off, "OFF"),
+                                (AssistLongNoteMode::Remove, "REMOVE (LEGACY NOTE)"),
+                                (AssistLongNoteMode::AddLn, "ADD LN"),
+                                (AssistLongNoteMode::AddCn, "ADD CN"),
+                                (AssistLongNoteMode::AddHcn, "ADD HCN"),
+                                (AssistLongNoteMode::AddAll, "ADD ALL"),
+                            ] {
+                                ui.selectable_value(&mut assist.long_note_mode, value, label);
+                            }
+                        });
+                    if assist.long_note_mode != AssistLongNoteMode::Off {
+                        ui.add(
+                            egui::Slider::new(&mut assist.long_note_rate, 0.0..=1.0)
+                                .text("LONGNOTE RATE"),
+                        );
+                    }
+
+                    egui::ComboBox::from_label("MINE")
+                        .selected_text(match assist.mine_mode {
+                            AssistMineMode::Off => "OFF",
+                            AssistMineMode::Remove => "REMOVE (NO MINE)",
+                            AssistMineMode::AddRandom => "ADD RANDOM",
+                            AssistMineMode::AddNear => "ADD NEAR",
+                            AssistMineMode::AddBlank => "ADD BLANK",
+                        })
+                        .show_ui(ui, |ui| {
+                            for (value, label) in [
+                                (AssistMineMode::Off, "OFF"),
+                                (AssistMineMode::Remove, "REMOVE (NO MINE)"),
+                                (AssistMineMode::AddRandom, "ADD RANDOM"),
+                                (AssistMineMode::AddNear, "ADD NEAR"),
+                                (AssistMineMode::AddBlank, "ADD BLANK"),
+                            ] {
+                                ui.selectable_value(&mut assist.mine_mode, value, label);
+                            }
+                        });
+
+                    ui.add(
+                        egui::Slider::new(&mut assist.extra_note_depth, 0..=16)
+                            .text("EXTRA NOTE DEPTH"),
+                    );
+                    ui.checkbox(&mut assist.extra_note_scratch, "EXTRA NOTE SCRATCH");
+                    ui.add(
+                        egui::Slider::new(&mut assist.extra_note_type, 0..=2)
+                            .text("EXTRA NOTE TYPE (beatoraja reserved)"),
+                    );
+
+                    if assist.expand_judge {
+                        ui.separator();
+                        ui.label("JUDGE WINDOW RATE (%)");
+                        for (value, label) in [
+                            (&mut assist.key_pgreat_rate, "KEY PGREAT"),
+                            (&mut assist.key_great_rate, "KEY GREAT"),
+                            (&mut assist.key_good_rate, "KEY GOOD"),
+                            (&mut assist.scratch_pgreat_rate, "SCRATCH PGREAT"),
+                            (&mut assist.scratch_great_rate, "SCRATCH GREAT"),
+                            (&mut assist.scratch_good_rate, "SCRATCH GOOD"),
+                            (&mut assist.long_note_margin_rate, "LN MARGIN"),
+                        ] {
+                            ui.add(egui::Slider::new(value, 0..=400).text(label));
+                        }
+                    }
+                },
+            );
             ui.checkbox(&mut profile.play.show_ln_tail_cap, tr!(text, "profile-play-ln-tail-cap"));
             ui.add(
                 egui::Slider::new(&mut profile.play.misslayer_duration_ms, 0..=5000)

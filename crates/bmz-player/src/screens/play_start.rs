@@ -15,7 +15,9 @@ use crate::config::app_config::AppConfig;
 use crate::config::play::{
     bottom_shiftable_gauge_from_config, gauge_auto_shift_from_config, gauge_type_from_config,
 };
-use crate::config::profile_config::{GaugeAutoShiftConfig, GaugeTypeConfig, ProfileConfig};
+use crate::config::profile_config::{
+    AssistOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, ProfileConfig,
+};
 use crate::input::gamepad::GamepadSlotMap;
 use crate::input::shared::SharedInputBackend;
 use crate::screens::play_session::{
@@ -35,6 +37,7 @@ pub struct PlayStartOptions {
     pub autoplay: bool,
     /// Practice mode: section play without result DB update (CLI entry only for now).
     pub practice_mode: bool,
+    pub assist: AssistOptionConfig,
     pub replay_player: Option<ReplayPlayer>,
     pub chart_zero_time: TimeUs,
     /// Override profile gauge type. None means use the profile default.
@@ -119,6 +122,8 @@ pub fn play_session_options_from_start(
         session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
         practice_mode: start_options.practice_mode,
+        assist: start_options.assist,
+        assist_runtime: Default::default(),
         replay_player: start_options.replay_player,
         sample_rate: app_config.audio.sample_rate,
         gauge_override,

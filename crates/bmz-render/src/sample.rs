@@ -68,6 +68,11 @@ pub fn sample_select_scene() -> AppSceneSnapshot {
         double_option: "OFF".to_string(),
         hs_fix: "OFF".to_string(),
         assist: "NORMAL".to_string(),
+        assist_flags: [false; 7],
+        assist_extra_note_depth: 0,
+        assist_mine_mode: 0,
+        assist_scroll_mode: 0,
+        assist_long_note_mode: 0,
         select_mode: "ALL".to_string(),
         select_sort: "TITLE".to_string(),
         select_ln_mode: "LN".to_string(),
@@ -141,8 +146,16 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(12_000_000), y: 0.25 });
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(13_000_000), y: 0.78 });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(12_000_000),
+        y: 0.25,
+        label: String::new(),
+    });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(13_000_000),
+        y: 0.78,
+        label: String::new(),
+    });
     // ホールド中のロングノート（Key4）と上空に伸びるロングノート（Key6）
     snapshot.visible_long_notes.push(VisibleLongNote {
         lane: Lane::Key4,
@@ -233,6 +246,11 @@ pub fn sample_result_scene() -> AppSceneSnapshot {
             slow_empty_poor: 4,
         },
         score_save_enabled: true,
+        assist_flags: [false; 7],
+        assist_extra_note_depth: 0,
+        assist_mine_mode: 0,
+        assist_scroll_mode: 0,
+        assist_long_note_mode: 0,
         score_history_id: 42,
         replay_saved: true,
         replay_slots: [true, false, false, false],

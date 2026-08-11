@@ -207,6 +207,11 @@ pub struct ResultSnapshot {
     pub fast_slow_counts: FastSlowJudgeCounts,
     /// 今回のリザルトがスコア保存対象か。
     pub score_save_enabled: bool,
+    pub assist_flags: [bool; 7],
+    pub assist_extra_note_depth: u8,
+    pub assist_mine_mode: i64,
+    pub assist_scroll_mode: i64,
+    pub assist_long_note_mode: i64,
     pub score_history_id: i64,
     pub replay_saved: bool,
     pub replay_slots: [bool; 4],

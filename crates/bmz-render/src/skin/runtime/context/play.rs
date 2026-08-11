@@ -11,6 +11,16 @@ impl SkinContext {
         document.note_image_render_item(lane, key_mode, rect, &self.document_sources)
     }
 
+    pub fn document_processed_note_item(
+        &self,
+        lane: Lane,
+        key_mode: KeyMode,
+        rect: Rect,
+    ) -> Option<SkinRenderItem> {
+        let document = self.document.as_ref()?;
+        document.note_processed_render_item(lane, key_mode, rect, &self.document_sources)
+    }
+
     pub fn document_ln_start_item(
         &self,
         lane: Lane,

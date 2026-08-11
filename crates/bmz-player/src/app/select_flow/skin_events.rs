@@ -64,6 +64,13 @@ impl WinitApp {
             341 => self.cycle_select_bottom_shiftable_gauge(arg),
             340 => self.cycle_select_judge_algorithm(arg),
             308 => self.cycle_select_ln_mode(arg),
+            301..=307 => {
+                if self.boot.profile_config.play.assist.toggle_beatoraja_button(event_id) {
+                    self.boot.profile_config.updated_at = now_unix_seconds();
+                    self.invalidate_play_preload();
+                    self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+                }
+            }
             312 => {
                 // BMZ only exposes beatoraja's default sorter set for now.
                 self.cycle_select_sort(arg);

@@ -182,6 +182,11 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
         skin_input: Default::default(),
         skin_offsets: Default::default(),
         hispeed_auto_adjust: false,
+        assist_flags: [false; 7],
+        assist_extra_note_depth: 0,
+        assist_mine_mode: 0,
+        assist_scroll_mode: 0,
+        assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
         arrange: "NORMAL".to_string(),
@@ -333,6 +338,11 @@ fn result_plan_renders_timing_distribution_from_result_graph_data() {
         skin_input: Default::default(),
         skin_offsets: Default::default(),
         hispeed_auto_adjust: false,
+        assist_flags: [false; 7],
+        assist_extra_note_depth: 0,
+        assist_mine_mode: 0,
+        assist_scroll_mode: 0,
+        assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
         arrange: "NORMAL".to_string(),
@@ -535,7 +545,7 @@ fn play_skin_document_renders_bar_lines_in_note_area() {
     };
     let skin = SkinContext::from_manifest_and_document(manifest, document, [source_texture]);
     let mut snapshot = RenderSnapshot::default();
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5 });
+    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -643,7 +653,7 @@ fn play_skin_document_applies_bar_line_offset_height_and_alpha() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 3, a: -50, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5 });
+    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -667,7 +677,7 @@ fn default_play_bar_line_applies_height_and_alpha_offset() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 4, a: -128, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5 });
+    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
 
     let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
 
@@ -716,7 +726,7 @@ fn play_skin_document_applies_declared_notes_offset_to_bar_lines() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 5, a: -50, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5 });
+    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -755,7 +765,7 @@ fn play_skin_document_without_group_does_not_fallback_to_bar_line_rect() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 4, a: -128, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5 });
+    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -805,7 +815,7 @@ fn play_skin_document_applies_bar_line_alpha_after_global_offset() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { a: -64, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5 });
+    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),

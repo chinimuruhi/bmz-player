@@ -73,6 +73,36 @@ pub struct BgmScheduler {
     pub next_index: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AssistLevel {
+    #[default]
+    None,
+    LightAssist,
+    Assist,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AssistRuntime {
+    /// 選択されたアシスト。beatoraja button 301..307 を bit 0..6 に対応させる。
+    pub configured_mask: u32,
+    /// 実際に譜面・判定へ効果が出たアシスト。
+    pub effective_mask: u32,
+    pub level: AssistLevel,
+    pub judge_area: bool,
+    pub mark_note: bool,
+    pub bpm_guide: bool,
+    pub extra_note_depth: u8,
+    pub mine_mode: i64,
+    pub scroll_mode: i64,
+    pub long_note_mode: i64,
+}
+
+impl AssistRuntime {
+    pub const fn score_save_enabled(self) -> bool {
+        matches!(self.level, AssistLevel::None)
+    }
+}
+
 pub struct GameSession {
     pub chart: Arc<PlayableChart>,
     /// 判定窓・スコア・ゲージ規則に使う元譜面側のキーモード。
@@ -81,6 +111,7 @@ pub struct GameSession {
     /// LN policy / course override 適用後の譜面で実際にスコア対象となるノート数。
     /// Tap と LongStart に加えて、CN / HCN の LongEnd を数える。
     pub scored_total_notes: u32,
+    pub assist: AssistRuntime,
     /// `chart` の BPM 変化と STOP を取り込んだ tick<->time マップ。
     /// スクロール位置を BPM に追従させるために使う。
     pub timing_map: TimingMap,

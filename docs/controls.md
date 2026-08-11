@@ -26,8 +26,8 @@ backend変更は次回起動時、1P / 2Pのコントローラ割り当て変更
 無視され、次回保存時に削除されます。
 キー設定の `KEYBOARD` と `KEYBOARD SUB` は独立したスロットとして保存されるため、
 `KEYBOARD` を未割り当てにしたまま `KEYBOARD SUB` だけを使用することもできます。
-`AUTO SCRATCH` / `LEGACY NOTE` を選ぶ旧ASSIST設定は、仕様を確定して実装するまで
-F1メニューとゲーム内設定の両方で非表示にします。既存profileの保存値は保持します。
+F1メニューのプロファイル設定では、beatoraja互換の7アシストと
+SCROLL / LONGNOTE / MINE / EXTRA NOTEモディファイアを設定できます。
 `RULE MODE` / `LN MODE` を変更すると、選曲一覧のスコア・リプレイ・フォルダ集計を
 新しいスコア文脈で即時再読込し、変更前のプリロードとリトライ用cacheは破棄します。
 譜面・プレビュー音量正規化は実行中にも切り替えられ、OFFにしても解析済みゲインを保持するため、
@@ -96,13 +96,13 @@ favorite 操作は invisible を使わず、登録済みなら解除、未登録
 
 | Key | 通常 | E1 hold | E2 hold | E1+E2 hold |
 | --- | --- | --- | --- | --- |
-| KEY1 | 決定 / 開く / 曲開始 | 1P RANDOM 次 | - | BGA 切替 |
-| KEY2 | 戻る / 閉じる | 1P RANDOM 前 | - | GAUGE AUTO SHIFT 切替 |
-| KEY3 | 決定 / 開く / 曲開始 | GAUGE 次 | - | JUDGE AUTO ADJUST 切替 |
-| KEY4 | 戻る / 閉じる | GAUGE 前 | - | GREEN NUMBER -1 |
-| KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | ASSIST 次 | VISUAL OFFSET -1 ms |
-| KEY6 | 戻る / 閉じる | DP OPTION 次 | - | GREEN NUMBER +1 |
-| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → AUTOPLAY → AUTOPLAY BATTLE → GHOST BATTLE） | - | VISUAL OFFSET +1 ms |
+| KEY1 | 決定 / 開く / 曲開始 | 1P RANDOM 次 | EXPAND JUDGE 切替 | BGA 切替 |
+| KEY2 | 戻る / 閉じる | 1P RANDOM 前 | CONSTANT 切替 | GAUGE AUTO SHIFT 切替 |
+| KEY3 | 決定 / 開く / 曲開始 | GAUGE 次 | JUDGE AREA 切替 | JUDGE AUTO ADJUST 切替 |
+| KEY4 | 戻る / 閉じる | GAUGE 前 | LEGACY NOTE 切替 | GREEN NUMBER -1 |
+| KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | MARK NOTE 切替 | VISUAL OFFSET -1 ms |
+| KEY6 | 戻る / 閉じる | DP OPTION 次 | BPM GUIDE 切替 | GREEN NUMBER +1 |
+| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → AUTOPLAY → AUTOPLAY BATTLE → GHOST BATTLE） | NO MINE 切替 | VISUAL OFFSET +1 ms |
 | 2P KEY1 | 決定 / 開く / 曲開始 | 2P RANDOM 次 | - | BGA 切替 |
 | 2P KEY2 | 戻る / 閉じる | 2P RANDOM 前 | - | GAUGE AUTO SHIFT 切替 |
 | 2P KEY3 | 決定 / 開く / 曲開始 | GAUGE 次 | - | JUDGE AUTO ADJUST 切替 |
@@ -118,13 +118,13 @@ favorite 操作は invisible を使わず、登録済みなら解除、未登録
 
 | Key | 通常 | E1 hold | E2 hold | E1+E2 hold |
 | --- | --- | --- | --- | --- |
-| KEY1 | - | 1P RANDOM 次 | - | BGA 切替 |
-| KEY2 | - | 1P RANDOM 前 | - | GAUGE AUTO SHIFT 切替 |
-| KEY3 | 戻る / 閉じる | GAUGE 次 | ASSIST 次 | JUDGE AUTO ADJUST 切替 |
-| KEY4 | カーソル下 | GAUGE 前 | - | GREEN NUMBER -1 |
-| KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | - | VISUAL OFFSET -1 ms |
-| KEY6 | カーソル上 | DP OPTION 次 | - | GREEN NUMBER +1 |
-| KEY7 | 決定 / 開く / 曲開始 | AUTOPLAY 切替 | - | VISUAL OFFSET +1 ms |
+| KEY1 | - | 1P RANDOM 次 | EXPAND JUDGE 切替 | BGA 切替 |
+| KEY2 | - | 1P RANDOM 前 | CONSTANT 切替 | GAUGE AUTO SHIFT 切替 |
+| KEY3 | 戻る / 閉じる | GAUGE 次 | JUDGE AREA 切替 | JUDGE AUTO ADJUST 切替 |
+| KEY4 | カーソル下 | GAUGE 前 | LEGACY NOTE 切替 | GREEN NUMBER -1 |
+| KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | MARK NOTE 切替 | VISUAL OFFSET -1 ms |
+| KEY6 | カーソル上 | DP OPTION 次 | BPM GUIDE 切替 | GREEN NUMBER +1 |
+| KEY7 | 決定 / 開く / 曲開始 | AUTOPLAY 切替 | NO MINE 切替 | VISUAL OFFSET +1 ms |
 | KEY8 | - | TARGET 前 | - | - |
 | KEY9 | - | TARGET 次 | - | - |
 | Up / Down | カーソル移動 | TARGET 前 / 次 | - | - |

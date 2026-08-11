@@ -12,6 +12,19 @@ macro_rules! skin_document_render_play_note_methods {
             self.note_part_render_item(image_id, rect, 0, sources)
         }
 
+        fn note_processed_render_item(
+            &self,
+            lane: Lane,
+            key_mode: KeyMode,
+            rect: Rect,
+            sources: &HashMap<String, SkinDocumentTexture>,
+        ) -> Option<SkinRenderItem> {
+            let note = self.note.as_ref()?;
+            let index = beatoraja_note_index(lane, key_mode);
+            let image_id = note.processed.get(index)?;
+            self.note_part_render_item(image_id, rect, 0, sources)
+        }
+
         /// LN START（ヘッドキャップ）画像を描画する。
         /// HCN モードでは `hcnstart`（beatoraja: `longImage[5]`）を優先し、
         /// `lnstart` → `note` の順にフォールバックする。

@@ -86,6 +86,64 @@ fn play_result_from_session_uses_session_state() {
 }
 
 #[test]
+fn play_result_uses_assist_clear_lamp_for_successful_play() {
+    let mut session = session();
+    session.gauge.set_initial_value(100.0);
+    session.assist.level = bmz_gameplay::session::AssistLevel::LightAssist;
+    assert_eq!(play_result_from_session(&session).clear_type, ClearType::LightAssistEasy);
+    session.assist.level = bmz_gameplay::session::AssistLevel::Assist;
+    assert_eq!(play_result_from_session(&session).clear_type, ClearType::AssistEasy);
+}
+
+#[test]
+fn effective_assist_skips_score_replay_and_ir_persistence() {
+    let root = make_temp_dir("finish-assist");
+    let paths = ProfilePaths {
+        root_dir: root.clone(),
+        profile_toml: root.join("profile.toml"),
+        collection_db: root.join("collection.db"),
+        score_db: root.join("score.db"),
+        network_db: root.join("network.db"),
+        replay_dir: root.join("replay"),
+    };
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut score_db = ScoreDatabase::from_connection(conn);
+    let mut network_db = open_network_db();
+    let mut session = session();
+    session.assist.level = bmz_gameplay::session::AssistLevel::Assist;
+    session.assist.configured_mask = crate::assist::EXPAND_JUDGE_MASK;
+
+    let stored = store_session_result(
+        &mut score_db,
+        &mut network_db,
+        &paths,
+        &ReplayConfig {
+            auto_save: true,
+            compress: false,
+            slot_rules: crate::config::profile_config::default_slot_rules(),
+        },
+        &IrConfig::default(),
+        &session,
+        1_700_000_100,
+        &AppliedArrange::default(),
+        score_key(&session),
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(stored.score_history_id, 0);
+    assert!(stored.replay_path.is_empty());
+    let job_count: i64 = network_db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM ir_score_jobs", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(job_count, 0);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn store_session_result_writes_replay_events() {
     let root = make_temp_dir("finish-session");
     let paths = ProfilePaths {
@@ -780,6 +838,7 @@ fn session() -> GameSession {
         chart: Arc::clone(&chart),
         primary_key_mode: chart.metadata.key_mode,
         scored_total_notes: bmz_gameplay::score::scored_note_count(&chart),
+        assist: Default::default(),
         timing_map,
         audio_clock: bmz_audio::clock::AudioClock::stopped(48_000),
         input_system: InputSystem {

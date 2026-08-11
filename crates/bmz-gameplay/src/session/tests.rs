@@ -148,6 +148,7 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         chart: Arc::clone(&chart),
         primary_key_mode: chart.metadata.key_mode,
         scored_total_notes: scored_note_count(&chart),
+        assist: Default::default(),
         timing_map,
         audio_clock: AudioClock::stopped(48_000),
         input_system: InputSystem {

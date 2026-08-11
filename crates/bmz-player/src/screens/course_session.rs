@@ -380,6 +380,7 @@ mod tests {
                         ln_policy: crate::ln_policy::LnScorePolicy::ForceLn,
                         double_option: crate::select_options::DoubleOptionScoreBucket::Off,
                         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
+                        assist: Default::default(),
                     },
                 }
             })
@@ -514,6 +515,7 @@ mod tests {
                         ln_policy: crate::ln_policy::LnScorePolicy::ForceLn,
                         double_option: crate::select_options::DoubleOptionScoreBucket::Off,
                         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
+                        assist: Default::default(),
                     },
                 }
             })

@@ -35,7 +35,8 @@ use bmz_gameplay::replay::{ReplayPlayer, ReplayRecorder};
 use bmz_gameplay::rule::RuleMode;
 use bmz_gameplay::score::{ScoreState, scored_note_count};
 use bmz_gameplay::session::{
-    BgmScheduler, GameSession, HispeedMode, InputOffsetAutoAdjustState, PlaySkinOffset, PlayState,
+    AssistRuntime, BgmScheduler, GameSession, HispeedMode, InputOffsetAutoAdjustState,
+    PlaySkinOffset, PlayState,
 };
 use std::sync::Arc;
 
@@ -45,7 +46,8 @@ use crate::config::play::{
     lane_unit_to_f32, play_offsets_from_profile,
 };
 use crate::config::profile_config::{
-    BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig, LaneEffectConfig, ProfileConfig,
+    AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig, LaneEffectConfig,
+    ProfileConfig,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::ln_policy::{
@@ -70,6 +72,9 @@ pub struct PlaySessionOptions {
     pub autoplay: bool,
     /// Practice section play: no score / replay persistence (like autoplay).
     pub practice_mode: bool,
+    pub assist: AssistOptionConfig,
+    /// 譜面変換時に確定した実効 assist。preload 後に内部で設定する。
+    pub assist_runtime: AssistRuntime,
     pub replay_player: Option<ReplayPlayer>,
     pub sample_rate: u32,
     pub gauge_override: Option<GaugeType>,
@@ -191,6 +196,7 @@ pub struct PreparedPlayChart {
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
+    pub assist_runtime: AssistRuntime,
 }
 
 pub struct PreloadedPlaySession {
@@ -203,6 +209,7 @@ pub struct PreloadedPlaySession {
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
+    pub assist_runtime: AssistRuntime,
 }
 
 impl PreloadedPlaySession {
@@ -214,6 +221,7 @@ impl PreloadedPlaySession {
             render_snapshot_cache: self.render_snapshot_cache.clone(),
             applied_arrange: self.applied_arrange.clone(),
             score_key: self.score_key,
+            assist_runtime: self.assist_runtime,
         }
     }
 }
@@ -224,6 +232,8 @@ impl Default for PlaySessionOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
             practice_mode: false,
+            assist: AssistOptionConfig::default(),
+            assist_runtime: AssistRuntime::default(),
             replay_player: None,
             sample_rate: 48_000,
             gauge_override: None,

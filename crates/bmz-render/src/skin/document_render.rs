@@ -334,6 +334,14 @@ pub trait SkinDocumentRenderExt {
         sources: &HashMap<String, SkinDocumentTexture>,
     ) -> Option<SkinRenderItem>;
 
+    fn note_processed_render_item(
+        &self,
+        lane: Lane,
+        key_mode: KeyMode,
+        rect: Rect,
+        sources: &HashMap<String, SkinDocumentTexture>,
+    ) -> Option<SkinRenderItem>;
+
     fn note_ln_start_render_item(
         &self,
         lane: Lane,

@@ -87,7 +87,7 @@ fn play_plan_includes_lanes_notes_and_bar_lines() {
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(900), y: 0.25 });
+    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(900), y: 0.25, label: String::new() });
 
     let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
 
@@ -96,6 +96,33 @@ fn play_plan_includes_lanes_notes_and_bar_lines() {
         command,
         DrawCommand::Image { texture, tint, .. }
             if *texture == DEFAULT_NOTE_TEXTURE && *tint == skin_image_tint(Lane::Key1)
+    )));
+}
+
+#[test]
+fn play_plan_renders_judge_area_and_processed_note_fallback() {
+    let mut snapshot = RenderSnapshot::default();
+    snapshot.judge_area = true;
+    snapshot.judge_area_key_y = [0.02, 0.04, 0.08, 0.12, 0.2];
+    snapshot.judge_area_scratch_y = [0.03, 0.06, 0.1, 0.15, 0.25];
+    snapshot.mark_processed_note = true;
+    snapshot.visible_notes[Lane::Key1.index()].push(VisibleNote {
+        lane: Lane::Key1,
+        time: TimeUs(1_000),
+        y: 0.5,
+        kind: NoteVisualKind::Tap,
+        processed_judge: Some(Judge::PGreat),
+    });
+
+    let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
+
+    assert!(plan.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Rect { color, .. } if *color == Color::rgba(0.0, 0.0, 1.0, 0.125)
+    )));
+    assert!(plan.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Rect { color, .. } if *color == Color::rgb(0.0, 1.0, 1.0)
     )));
 }
 
@@ -177,6 +204,11 @@ fn result_plan_uses_skin_document_for_result_and_course_result_types() {
             skin_input: Default::default(),
             skin_offsets: Default::default(),
             hispeed_auto_adjust: false,
+            assist_flags: [false; 7],
+            assist_extra_note_depth: 0,
+            assist_mine_mode: 0,
+            assist_scroll_mode: 0,
+            assist_long_note_mode: 0,
             clear_type: ClearType::Normal,
             result_failed: false,
             arrange: "NORMAL".to_string(),
@@ -407,6 +439,11 @@ fn result_plan_supplies_result_judge_graph_data_to_skin_document() {
         skin_input: Default::default(),
         skin_offsets: Default::default(),
         hispeed_auto_adjust: false,
+        assist_flags: [false; 7],
+        assist_extra_note_depth: 0,
+        assist_mine_mode: 0,
+        assist_scroll_mode: 0,
+        assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
         arrange: "NORMAL".to_string(),

@@ -19,6 +19,7 @@ macro_rules! eprintln {
 }
 
 pub mod app;
+pub mod assist;
 pub mod audio;
 pub mod bootstrap;
 pub mod chart_asset;
