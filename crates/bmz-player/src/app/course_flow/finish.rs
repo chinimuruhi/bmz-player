@@ -128,6 +128,11 @@ impl WinitApp {
     fn prepare_course_finish(&mut self, course: ActiveCourseSession) -> PreparedCourseFinish {
         let course_id = course.course_id;
         let course_identity = self.course_identity_with_stored(course_id);
+        let any_autoplay = course.entry_results.iter().any(|entry| entry.finished.result.autoplay);
+        let any_replay_playback =
+            course.entry_results.iter().any(|entry| entry.finished.replay_playback);
+        let any_assist =
+            course.entry_results.iter().any(|entry| !entry.finished.assist.score_update_enabled());
 
         // `into_result` が entry_results を消費する前に保存用の情報を取り出す。
         let chart_records: Vec<crate::storage::score_db::CourseScoreChartRecord> = course
@@ -139,8 +144,8 @@ impl WinitApp {
                 Some(crate::storage::score_db::CourseScoreChartRecord {
                     position: index as i64,
                     chart_sha256,
-                    ex_score: entry.finished.result.score.ex_score(),
-                    max_combo: entry.finished.result.score.max_combo,
+                    ex_score: if any_assist { 0 } else { entry.finished.result.score.ex_score() },
+                    max_combo: if any_assist { 0 } else { entry.finished.result.score.max_combo },
                     clear_type: entry.finished.result.clear_type.as_str().to_string(),
                     gauge_value: entry.finished.result.gauge_value,
                 })
@@ -151,6 +156,9 @@ impl WinitApp {
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| {
+                if any_assist {
+                    return None;
+                }
                 let chart_sha256 = course_identity.as_ref()?.1.chart_sha256s.get(index).copied()?;
                 Some(crate::storage::score_db::CourseReplayRecord {
                     position: index as i64,
@@ -159,11 +167,6 @@ impl WinitApp {
                 })
             })
             .collect();
-        let any_autoplay = course.entry_results.iter().any(|entry| entry.finished.result.autoplay);
-        let any_replay_playback =
-            course.entry_results.iter().any(|entry| entry.finished.replay_playback);
-        let any_assist =
-            course.entry_results.iter().any(|entry| !entry.finished.assist.score_save_enabled());
         let history_ids: Vec<i64> = course
             .entry_results
             .iter()
@@ -200,9 +203,9 @@ impl WinitApp {
             "course finished"
         );
 
-        // Autoplay / replay playback は単曲と同じく保存しない。それ以外はこの時点で
-        // course score を確定し、同じ直後に IR job を enqueue する。
-        if !any_autoplay && !any_replay_playback && !any_assist {
+        // Autoplay / replay playback は単曲と同じく保存しない。アシスト時は
+        // クリアランプと回数だけを残し、数値・リプレイ・IR・トロフィーは更新しない。
+        if !any_autoplay && !any_replay_playback {
             if let Some((stored_course, identity)) = &course_identity {
                 let course_ln_policy = course_result.ln_policy;
                 let course_rule_mode = course_result.rule_mode;
@@ -225,12 +228,16 @@ impl WinitApp {
                     .as_ref()
                     .map(|finished| finished.stored.played_at)
                     .unwrap_or_else(now_unix_seconds);
-                let achieved_trophies: Vec<String> = course_result
-                    .trophy_results
-                    .iter()
-                    .filter(|trophy| trophy.achieved)
-                    .map(|trophy| trophy.name.clone())
-                    .collect();
+                let achieved_trophies: Vec<String> = if any_assist {
+                    Vec::new()
+                } else {
+                    course_result
+                        .trophy_results
+                        .iter()
+                        .filter(|trophy| trophy.achieved)
+                        .map(|trophy| trophy.name.clone())
+                        .collect()
+                };
                 let trophies_json =
                     serde_json::to_string(&achieved_trophies).unwrap_or_else(|_| "[]".to_string());
                 let insert = crate::storage::score_db::CourseScoreInsert {
@@ -243,15 +250,15 @@ impl WinitApp {
                     kind: identity.definition.kind.clone(),
                     constraints_json: identity.constraints_json.clone(),
                     chart_sha256s_json: identity.chart_sha256s_json.clone(),
-                    ex_score: course_result.total_ex_score,
+                    ex_score: if any_assist { 0 } else { course_result.total_ex_score },
                     max_ex_score: course_result.max_ex_score,
                     clear_type: final_clear_type.as_str().to_string(),
                     gauge_type: course_result.final_gauge_type.as_str().to_string(),
                     gauge_value: course_result.final_gauge_value,
-                    max_combo,
-                    bp: course_result.bp,
+                    max_combo: if any_assist { 0 } else { max_combo },
+                    bp: if any_assist { 0 } else { course_result.bp },
                     course_failed: course_result.course_failed,
-                    course_clear: course_result.course_clear,
+                    course_clear: !any_assist && course_result.course_clear,
                     arrange: course_arrange,
                     trophies_json,
                     played_at,
@@ -261,10 +268,11 @@ impl WinitApp {
                 };
                 match self.boot.score_db.insert_course_score(&insert) {
                     Ok(course_score_id) => {
-                        if let Err(error) = self
-                            .boot
-                            .score_db
-                            .tag_score_history_with_course(&history_ids, course_score_id)
+                        if !any_assist
+                            && let Err(error) = self
+                                .boot
+                                .score_db
+                                .tag_score_history_with_course(&history_ids, course_score_id)
                         {
                             tracing::warn!(
                                 %error,
@@ -274,36 +282,40 @@ impl WinitApp {
                             );
                         }
 
-                        self.enqueue_ir_course_job(EnqueueIrCourseJobRequest {
-                            course_id,
-                            course_score_id,
-                            course_result: &course_result,
-                            rule_mode: course_rule_mode,
-                            device_type: last_finished
-                                .as_ref()
-                                .map(|finished| finished.stored.device_type),
-                            gauge: &insert.gauge_type,
-                            played_at,
-                            arrange: &insert.arrange,
-                            random_seed: course_result
-                                .entry_arranges
-                                .first()
-                                .and_then(|arrange| arrange.packed_beatoraja_seed_from_sides()),
-                        });
+                        if !any_assist {
+                            self.enqueue_ir_course_job(EnqueueIrCourseJobRequest {
+                                course_id,
+                                course_score_id,
+                                course_result: &course_result,
+                                rule_mode: course_rule_mode,
+                                device_type: last_finished
+                                    .as_ref()
+                                    .map(|finished| finished.stored.device_type),
+                                gauge: &insert.gauge_type,
+                                played_at,
+                                arrange: &insert.arrange,
+                                random_seed: course_result
+                                    .entry_arranges
+                                    .first()
+                                    .and_then(|arrange| arrange.packed_beatoraja_seed_from_sides()),
+                            });
+                        }
 
                         course_result.course_score_id = Some(course_score_id);
                         course_result.course_played_at = Some(played_at);
-                        course_result.saved_replay_slots = self.update_course_replay_slots(
-                            &identity.course_hash,
-                            course_ln_policy,
-                            course_rule_mode,
-                            course_score_id,
-                            played_at,
-                            course_result.total_ex_score,
-                            course_result.bp,
-                            max_combo,
-                            final_clear_type as u8,
-                        );
+                        if !any_assist {
+                            course_result.saved_replay_slots = self.update_course_replay_slots(
+                                &identity.course_hash,
+                                course_ln_policy,
+                                course_rule_mode,
+                                course_score_id,
+                                played_at,
+                                course_result.total_ex_score,
+                                course_result.bp,
+                                max_combo,
+                                final_clear_type as u8,
+                            );
+                        }
                         course_result.replay_slots = self
                             .boot
                             .score_db

@@ -96,7 +96,7 @@ fn play_result_uses_assist_clear_lamp_for_successful_play() {
 }
 
 #[test]
-fn effective_assist_skips_score_replay_and_ir_persistence() {
+fn effective_assist_persists_only_clear_lamp_and_counts() {
     let root = make_temp_dir("finish-assist");
     let paths = ProfilePaths {
         root_dir: root.clone(),
@@ -112,6 +112,7 @@ fn effective_assist_skips_score_replay_and_ir_persistence() {
     let mut score_db = ScoreDatabase::from_connection(conn);
     let mut network_db = open_network_db();
     let mut session = session();
+    session.gauge.set_initial_value(100.0);
     session.assist.level = bmz_gameplay::session::AssistLevel::Assist;
     session.assist.configured_mask = crate::assist::EXPAND_JUDGE_MASK;
 
@@ -135,6 +136,13 @@ fn effective_assist_skips_score_replay_and_ir_persistence() {
 
     assert_eq!(stored.score_history_id, 0);
     assert!(stored.replay_path.is_empty());
+    let best = score_db.best_scores_for_charts(&[score_key(&session)]).unwrap().pop().unwrap();
+    assert_eq!(best.clear_type, "AssistEasy");
+    assert_eq!(best.ex_score, 0);
+    assert_eq!(best.max_combo, 0);
+    assert_eq!(best.play_count, 1);
+    assert_eq!(best.clear_count, 1);
+    assert!(score_db.recent_history(10, 0).unwrap().is_empty());
     let job_count: i64 = network_db
         .conn()
         .query_row("SELECT COUNT(*) FROM ir_score_jobs", [], |row| row.get(0))

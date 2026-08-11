@@ -29,6 +29,64 @@ fn score_best_keeps_independent_bp_cb_and_max_combo_records() {
 }
 
 #[test]
+fn clear_only_update_changes_lamp_and_counts_without_numeric_score_or_history() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut db = ScoreDatabase { conn };
+
+    let mut baseline = record(20, ClearType::NoPlay);
+    baseline.score.max_combo = 30;
+    baseline.score.judges.fast_bad = 4;
+    db.insert_score(&baseline).unwrap();
+
+    let mut assisted = record(200, ClearType::LightAssistEasy);
+    assisted.score.max_combo = 100;
+    db.update_score_clear_only(&assisted).unwrap();
+
+    let best = db.best_scores_for_charts(&[key([7; 32])]).unwrap().pop().unwrap();
+    assert_eq!(best.clear_type, "LightAssistEasy");
+    assert_eq!(best.ex_score, 20);
+    assert_eq!(best.max_combo, 30);
+    assert_eq!(best.bp, 4);
+    assert_eq!(best.cb, 4);
+    assert_eq!(best.play_count, 2);
+    assert_eq!(best.clear_count, 1);
+    assert_eq!(db.recent_history(10, 0).unwrap().len(), 1);
+
+    let mut lower_lamp = record(400, ClearType::AssistEasy);
+    lower_lamp.score.max_combo = 200;
+    db.update_score_clear_only(&lower_lamp).unwrap();
+    let best = db.best_scores_for_charts(&[key([7; 32])]).unwrap().pop().unwrap();
+    assert_eq!(best.clear_type, "LightAssistEasy");
+    assert_eq!(best.ex_score, 20);
+    assert_eq!(best.max_combo, 30);
+    assert_eq!(best.play_count, 3);
+    assert_eq!(best.clear_count, 2);
+}
+
+#[test]
+fn clear_only_update_creates_neutral_best_row() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut db = ScoreDatabase { conn };
+
+    let assisted = record(200, ClearType::AssistEasy);
+    db.update_score_clear_only(&assisted).unwrap();
+
+    let best = db.best_scores_for_charts(&[key([7; 32])]).unwrap().pop().unwrap();
+    assert_eq!(best.clear_type, "AssistEasy");
+    assert_eq!(best.ex_score, 0);
+    assert_eq!(best.max_combo, 0);
+    assert_eq!(best.bp, 0);
+    assert_eq!(best.cb, 0);
+    assert_eq!(best.play_count, 1);
+    assert_eq!(best.clear_count, 1);
+    assert!(db.recent_history(10, 0).unwrap().is_empty());
+}
+
+#[test]
 fn failed_score_counts_unprocessed_notes_for_bp_and_cb_records() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();

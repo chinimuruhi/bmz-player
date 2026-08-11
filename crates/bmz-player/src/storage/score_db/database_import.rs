@@ -49,6 +49,17 @@ impl ScoreDatabase {
         Ok(history_id)
     }
 
+    /// beatoraja の `updateScore=false` 相当。
+    ///
+    /// score history、数値ベスト、プレイヤー統計は更新せず、曲別の
+    /// プレイ回数・クリア回数とクリアランプだけを更新する。
+    pub fn update_score_clear_only(&mut self, record: &ScoreRecord) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        upsert_score_best_clear_only(&tx, record)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Returns whether an imported score with the same persisted score contents
     /// and provenance already exists. `played_at` is intentionally excluded:
     /// LR2 does not retain a per-score timestamp, and re-importing a source

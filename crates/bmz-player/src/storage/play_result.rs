@@ -49,6 +49,9 @@ pub struct StorePlayResultRequest {
     pub bms_random_choices: Vec<i32>,
     pub seed_scheme: String,
     pub arrange_pattern: Option<Vec<u8>>,
+    /// false の場合は beatoraja の `updateScore=false` と同様に、
+    /// クリアランプとプレイ回数だけを更新する。
+    pub update_score: bool,
     pub mode: StorePlayResultMode,
 }
 
@@ -115,28 +118,29 @@ pub fn store_play_result(
         .unwrap_or(bmz_gameplay::rule::RuleMode::Beatoraja);
     let device_type = classify_replay_device_type(&replay_events);
 
-    let (replay_path, replay_sha256) = if should_save_replay(replay_config, result) {
-        let file_name = replay_file_name(result.chart_sha256, request.played_at);
-        let path = profile_paths.replay_dir.join(&file_name);
-        let replay = ReplayFile::new_with_policy(
-            result.chart_sha256,
-            request.ln_policy,
-            request.double_option,
-            request.played_at,
-            request.random_seed,
-            arrange,
-            arrange_2p,
-            arrange_seed,
-            arrange_pattern.clone(),
-            replay_events.clone(),
-        )
-        .with_randomization(arrange_seed_2p, bms_random_choices.clone())
-        .with_seed_scheme(request.seed_scheme.clone());
-        let hash = save_replay_with_hash(&path, &replay)?;
-        (format!("replay/{file_name}"), Some(hash))
-    } else {
-        (String::new(), None)
-    };
+    let (replay_path, replay_sha256) =
+        if request.update_score && should_save_replay(replay_config, result) {
+            let file_name = replay_file_name(result.chart_sha256, request.played_at);
+            let path = profile_paths.replay_dir.join(&file_name);
+            let replay = ReplayFile::new_with_policy(
+                result.chart_sha256,
+                request.ln_policy,
+                request.double_option,
+                request.played_at,
+                request.random_seed,
+                arrange,
+                arrange_2p,
+                arrange_seed,
+                arrange_pattern.clone(),
+                replay_events.clone(),
+            )
+            .with_randomization(arrange_seed_2p, bms_random_choices.clone())
+            .with_seed_scheme(request.seed_scheme.clone());
+            let hash = save_replay_with_hash(&path, &replay)?;
+            (format!("replay/{file_name}"), Some(hash))
+        } else {
+            (String::new(), None)
+        };
 
     let mut record = ScoreRecord::from_play_result(
         result,
@@ -158,11 +162,18 @@ pub fn store_play_result(
         .with_playtime_seconds(request.playtime_seconds),
     );
     record.clear_type = request.mode.stored_clear_type(result.clear_type);
-    let score_history_id =
-        score_db.insert_score_with_mode(&record, request.mode.score_insert_mode())?;
+    let score_history_id = if request.update_score {
+        score_db.insert_score_with_mode(&record, request.mode.score_insert_mode())?
+    } else {
+        score_db.update_score_clear_only(&record)?;
+        0
+    };
 
     let mut slot_paths: [Option<String>; 4] = [None, None, None, None];
-    if request.mode.save_replay_slots() && should_save_replay(replay_config, result) {
+    if request.update_score
+        && request.mode.save_replay_slots()
+        && should_save_replay(replay_config, result)
+    {
         let candidate = candidate_metrics(result);
         for (slot_index, &rule) in replay_config.slot_rules.iter().enumerate() {
             let slot = slot_index as u8;

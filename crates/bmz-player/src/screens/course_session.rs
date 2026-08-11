@@ -1,6 +1,7 @@
 use bmz_core::clear::{ClearType, GaugeType};
 use bmz_core::course::{CourseDefinition, CourseEntry, CourseKind};
 use bmz_gameplay::rule::RuleMode;
+use bmz_gameplay::session::AssistLevel;
 
 use crate::ln_policy::{LnPolicySetting, LnScorePolicy};
 use crate::screens::play_finish::FinishedPlaySession;
@@ -158,10 +159,20 @@ impl ActiveCourseSession {
             });
 
         let last_result = self.entry_results.last().map(|r| &r.finished.result);
+        let assist_level = self
+            .entry_results
+            .iter()
+            .map(|entry| entry.finished.assist.level)
+            .max()
+            .unwrap_or(AssistLevel::None);
         let final_clear_type = if course_failed {
             ClearType::Failed
         } else {
-            last_result.map(|r| r.clear_type).unwrap_or(ClearType::NoPlay)
+            match assist_level {
+                AssistLevel::Assist => ClearType::AssistEasy,
+                AssistLevel::LightAssist => ClearType::LightAssistEasy,
+                AssistLevel::None => last_result.map(|r| r.clear_type).unwrap_or(ClearType::NoPlay),
+            }
         };
         let final_gauge_type = last_result.map(|r| r.gauge_type).unwrap_or(GaugeType::Normal);
         let final_gauge_value = last_result.map(|r| r.gauge_value).unwrap_or(0.0);
@@ -436,6 +447,54 @@ mod tests {
         assert_eq!(result.bp, 0);
         assert_eq!(result.ln_policy, LnScorePolicy::ForceCn);
         assert_eq!(result.course_ln_mode, Some(bmz_chart::model::LongNoteMode::Ln));
+    }
+
+    #[test]
+    fn into_result_keeps_strongest_assist_across_course_for_every_rule_mode() {
+        use bmz_gameplay::session::AssistLevel;
+
+        for rule_mode in [RuleMode::Beatoraja, RuleMode::Lr2Oraja, RuleMode::Dx] {
+            let mut light = make_session(
+                1,
+                vec![
+                    (make_score(100, 0), 100),
+                    (make_score(100, 0), 100),
+                    (make_score(100, 0), 100),
+                ],
+            );
+            light.rule_mode = rule_mode;
+            light.entry_results[1].finished.assist.level = AssistLevel::LightAssist;
+            assert_eq!(light.into_result().final_clear_type, ClearType::LightAssistEasy);
+
+            let mut assist = make_session(
+                1,
+                vec![
+                    (make_score(100, 0), 100),
+                    (make_score(100, 0), 100),
+                    (make_score(100, 0), 100),
+                ],
+            );
+            assist.rule_mode = rule_mode;
+            assist.entry_results[0].finished.assist.level = AssistLevel::LightAssist;
+            assist.entry_results[1].finished.assist.level = AssistLevel::Assist;
+            assist.entry_results[2].finished.assist.level = AssistLevel::LightAssist;
+            assert_eq!(assist.into_result().final_clear_type, ClearType::AssistEasy);
+        }
+    }
+
+    #[test]
+    fn failed_course_overrides_assist_clear() {
+        use bmz_gameplay::session::AssistLevel;
+
+        let mut session = make_partial_session(
+            2,
+            vec![
+                (make_score(100, 0), 100, ClearType::Normal),
+                (make_score(0, 100), 100, ClearType::Failed),
+            ],
+        );
+        session.entry_results[0].finished.assist.level = AssistLevel::Assist;
+        assert_eq!(session.into_result().final_clear_type, ClearType::Failed);
     }
 
     #[test]

@@ -519,6 +519,101 @@ pub(super) fn upsert_score_best(
     Ok(())
 }
 
+/// 数値スコアを無効化したプレイについて、ランプと回数だけを更新する。
+///
+/// 新規キーには中立値の score_best 行を作る。後から通常プレイが記録されると
+/// [`upsert_score_best`] が数値項目と `best_score_history_id` を通常どおり埋める。
+pub(super) fn upsert_score_best_clear_only(conn: &Connection, record: &ScoreRecord) -> Result<()> {
+    let clear_increment = u32::from(is_counted_clear(record.clear_type));
+    let rule_mode = record_rule_mode(record);
+    let chart_sha256 = hash_to_hex(&record.chart_sha256);
+    let inserted = conn.execute(
+        "INSERT INTO score_best (
+            chart_sha256, ln_policy, double_option, rule_mode,
+            clear_type, gauge_type, gauge_value,
+            ex_score, bp, cb, max_combo,
+            fast_pgreat, slow_pgreat, fast_great, slow_great,
+            fast_good, slow_good, fast_bad, slow_bad,
+            fast_poor, slow_poor, fast_empty_poor, slow_empty_poor,
+            played_at, replay_path, ghost, device_type,
+            best_score_history_id, play_count, clear_count
+        ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            ?8, '', '', ?9,
+            NULL, 1, ?10
+        )
+        ON CONFLICT(chart_sha256, ln_policy, double_option, rule_mode) DO NOTHING",
+        params![
+            chart_sha256,
+            record.ln_policy.as_str(),
+            record.double_option.as_str(),
+            rule_mode.as_str(),
+            record.clear_type.as_str(),
+            gauge_type_str(record.gauge_type),
+            record.gauge_value,
+            record.played_at,
+            record.device_type.as_str(),
+            clear_increment,
+        ],
+    )?;
+    if inserted > 0 {
+        return Ok(());
+    }
+
+    conn.execute(
+        "UPDATE score_best
+         SET play_count = play_count + 1,
+             clear_count = clear_count + ?2
+         WHERE chart_sha256 = ?1 AND ln_policy = ?3 AND double_option = ?4
+           AND rule_mode = ?5",
+        params![
+            chart_sha256,
+            clear_increment,
+            record.ln_policy.as_str(),
+            record.double_option.as_str(),
+            rule_mode.as_str(),
+        ],
+    )?;
+
+    let current_clear: String = conn.query_row(
+        "SELECT clear_type
+         FROM score_best
+         WHERE chart_sha256 = ?1 AND ln_policy = ?2 AND double_option = ?3
+           AND rule_mode = ?4",
+        params![
+            chart_sha256,
+            record.ln_policy.as_str(),
+            record.double_option.as_str(),
+            rule_mode.as_str(),
+        ],
+        |row| row.get(0),
+    )?;
+    if record.clear_type as u8 > clear_rank_from_name(&current_clear) {
+        conn.execute(
+            "UPDATE score_best
+             SET clear_type = ?2,
+                 gauge_type = ?3,
+                 gauge_value = ?4
+             WHERE chart_sha256 = ?1 AND ln_policy = ?5 AND double_option = ?6
+               AND rule_mode = ?7",
+            params![
+                chart_sha256,
+                record.clear_type.as_str(),
+                gauge_type_str(record.gauge_type),
+                record.gauge_value,
+                record.ln_policy.as_str(),
+                record.double_option.as_str(),
+                rule_mode.as_str(),
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 pub(super) fn gauge_type_str(gauge_type: Option<GaugeType>) -> &'static str {
     gauge_type.map(GaugeType::as_str).unwrap_or("")
 }

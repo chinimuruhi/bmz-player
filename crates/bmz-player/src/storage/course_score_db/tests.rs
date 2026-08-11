@@ -196,6 +196,50 @@ fn best_and_latest_are_scoped_by_course_hash() {
 }
 
 #[test]
+fn assist_course_record_updates_clear_without_overwriting_numeric_best() {
+    let mut conn = open_conn();
+    let mut baseline = sample_score("course-assist", 500, "Failed", 10);
+    baseline.trophies_json = "[]".to_owned();
+    baseline.achieved_trophies.clear();
+    baseline.replays.clear();
+    insert_course_score(&mut conn, &baseline).unwrap();
+
+    let mut assist = sample_score("course-assist", 0, "LightAssistEasy", 20);
+    assist.max_combo = 0;
+    assist.bp = 0;
+    assist.course_clear = false;
+    assist.trophies_json = "[]".to_owned();
+    assist.achieved_trophies.clear();
+    assist.replays.clear();
+    for chart in &mut assist.charts {
+        chart.ex_score = 0;
+        chart.max_combo = 0;
+    }
+    let assist_id = insert_course_score(&mut conn, &assist).unwrap();
+
+    let best_score =
+        best_course_score(&conn, "course-assist", LN_POLICY, RuleMode::Beatoraja).unwrap().unwrap();
+    assert_eq!(best_score.ex_score, 500);
+    assert_eq!(best_score.clear_type, "Failed");
+
+    assert_eq!(
+        best_course_clear(&conn, "course-assist", LN_POLICY, RuleMode::Beatoraja,).unwrap(),
+        Some(ClearType::LightAssistEasy)
+    );
+    let assist_entry = course_score_entry_by_id(&conn, assist_id).unwrap().unwrap();
+    assert_eq!(assist_entry.clear_type, "LightAssistEasy");
+    assert_eq!(assist_entry.ex_score, 0);
+    assert_eq!(assist_entry.max_combo, 0);
+    assert_eq!(assist_entry.bp, 0);
+    assert!(!assist_entry.course_clear);
+    assert!(assist_entry.achieved_trophies.is_empty());
+
+    let charts = list_course_score_charts(&conn, assist_id).unwrap();
+    assert!(charts.iter().all(|chart| chart.ex_score == 0 && chart.max_combo == 0));
+    assert!(list_course_replays(&conn, assist_id).unwrap().is_empty());
+}
+
+#[test]
 fn replay_slots_are_keyed_by_course_hash() {
     let mut conn = open_conn();
     let score_id =

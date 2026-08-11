@@ -350,7 +350,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         judge_area_scratch_y: [0.0; 5],
         score_save_enabled: !(session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full())
             || session.replay_player.is_some() && session.replay_lane_mask.is_none())
-            && session.assist.score_save_enabled(),
+            && session.assist.score_update_enabled(),
         course_stage: None,
         course_titles: Default::default(),
         table_text_primary: String::new(),

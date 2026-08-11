@@ -415,7 +415,7 @@ fn apply_running_play_mode_to_snapshot(
     snapshot.score_save_enabled = !snapshot.autoplay
         && !snapshot.replay_playback
         && !running.practice_mode
-        && running.session.assist.score_save_enabled();
+        && running.session.assist.score_update_enabled();
 }
 
 /// `play_ending` 中に skin 側へ渡す壁時計ベースの timer 値。

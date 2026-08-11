@@ -61,6 +61,7 @@ fn store_play_result_writes_replay_and_score() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::Normal,
         },
     )
@@ -125,6 +126,7 @@ fn store_play_result_skips_autoplay_replay_by_default() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::Normal,
         },
     )
@@ -185,6 +187,7 @@ fn save_existing_replay_to_slot_overwrites_requested_slot() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::Normal,
         },
     )
@@ -260,6 +263,7 @@ fn store_play_result_saves_failed_replay_for_non_autoplay() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::Normal,
         },
     )
@@ -317,6 +321,7 @@ fn store_play_result_course_stage_updates_single_best_with_rounded_clear() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::CourseStage,
         },
     )
@@ -406,6 +411,7 @@ fn store_play_result_writes_history_and_default_slot_files() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::Normal,
         },
     )
@@ -442,6 +448,7 @@ fn store_play_result_writes_history_and_default_slot_files() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::Normal,
         },
     )
@@ -502,6 +509,7 @@ fn store_play_result_skips_slots_for_autoplay_when_disabled() {
             bms_random_choices: Vec::new(),
             seed_scheme: String::new(),
             arrange_pattern: None,
+            update_score: true,
             mode: StorePlayResultMode::Normal,
         },
     )

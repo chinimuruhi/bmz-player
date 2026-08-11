@@ -281,11 +281,7 @@ fn finish_session_snapshot_result(
     // オートプレイ / リプレイ再生 / プラクティス時はスコア・リプレイをDBに保存しない
     // （リザルト画面の表示のみ行う）。
     let full_autoplay = result.autoplay;
-    let stored = if full_autoplay
-        || replay_playback
-        || practice_mode
-        || !snapshot.assist.score_save_enabled()
-    {
+    let stored = if full_autoplay || replay_playback || practice_mode {
         StoredPlayResult {
             score_history_id: 0,
             played_at,
@@ -326,6 +322,7 @@ fn finish_session_snapshot_result(
                     crate::storage::replay::SEED_SCHEME_BEATORAJA_24BIT_V1.to_string()
                 },
                 arrange_pattern,
+                update_score: snapshot.assist.score_update_enabled(),
                 mode: finish_mode.store_mode(),
             },
         )?
@@ -363,7 +360,7 @@ fn finish_session_snapshot_result(
             }
         }
     }
-    if finish_mode.enqueue_score_ir() && snapshot.assist.score_save_enabled() {
+    if finish_mode.enqueue_score_ir() && snapshot.assist.score_update_enabled() {
         let mut ir_result = result.clone();
         ir_result.clear_type = summary_clear_type;
         enqueue_ir_jobs(

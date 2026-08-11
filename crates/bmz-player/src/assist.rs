@@ -727,7 +727,7 @@ mod tests {
             1,
         );
         assert_eq!(runtime.level, AssistLevel::None);
-        assert!(runtime.score_save_enabled());
+        assert!(runtime.score_update_enabled());
         assert!(runtime.judge_area && runtime.mark_note && runtime.bpm_guide);
     }
 
