@@ -41,6 +41,7 @@ pub(super) struct SelectKeyBindings {
     favorite_song_controls: Vec<String>,
     favorite_chart_controls: Vec<String>,
     same_folder_controls: Vec<String>,
+    difficulty_filter_controls: Vec<String>,
     cycle_bga: Option<String>,
     key_hint: String,
     option_hint: String,
@@ -154,6 +155,10 @@ impl SelectKeyBindings {
             actions_for(InputActionConfig::SelectSameFolder),
             "Numpad8",
         );
+        let difficulty_filter_controls = select_controls_with_default(
+            actions_for(InputActionConfig::SelectDifficultyFilter),
+            "Numpad0",
+        );
         let mut scratch_up_controls = Vec::new();
         let mut scratch_down_controls = Vec::new();
         let mut select_scratch_up_controls = Vec::new();
@@ -266,6 +271,7 @@ impl SelectKeyBindings {
             favorite_song_controls,
             favorite_chart_controls,
             same_folder_controls,
+            difficulty_filter_controls,
             cycle_bga,
             key_hint,
             option_hint,
@@ -344,6 +350,10 @@ impl SelectKeyBindings {
         let same_folder_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectSameFolder),
             "Numpad8",
+        );
+        let difficulty_filter_controls = select_controls_with_default(
+            actions_for(InputActionConfig::SelectDifficultyFilter),
+            "Numpad0",
         );
         let cycle_bga = select_control_with_lane_fallback(
             actions_for(InputActionConfig::SelectOptionBga),
@@ -427,6 +437,7 @@ impl SelectKeyBindings {
             favorite_song_controls,
             favorite_chart_controls,
             same_folder_controls,
+            difficulty_filter_controls,
             cycle_bga,
             key_hint,
             option_hint,
@@ -615,6 +626,10 @@ impl SelectKeyBindings {
 
     pub(super) fn is_same_folder(&self, control: &str) -> bool {
         contains(&self.same_folder_controls, control)
+    }
+
+    pub(super) fn is_difficulty_filter(&self, control: &str) -> bool {
+        contains(&self.difficulty_filter_controls, control)
     }
 }
 

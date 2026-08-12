@@ -55,6 +55,8 @@ pub struct SelectSnapshot {
     pub assist_scroll_mode: i64,
     pub assist_long_note_mode: i64,
     pub select_mode: String,
+    /// LR2-style difficulty filter: 0=ALL, 1=BEGINNER .. 5=INSANE.
+    pub select_difficulty_filter: u8,
     pub select_sort: String,
     pub select_ln_mode: String,
     pub judge_algorithm: String,
@@ -189,6 +191,7 @@ impl Default for SelectSnapshot {
             assist_scroll_mode: 0,
             assist_long_note_mode: 0,
             select_mode: String::new(),
+            select_difficulty_filter: 0,
             select_sort: String::new(),
             select_ln_mode: String::new(),
             judge_algorithm: String::new(),

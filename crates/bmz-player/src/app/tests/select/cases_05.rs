@@ -33,6 +33,8 @@ fn select_move_scroll_direction_matches_row_movement() {
 fn select_skin_event_state_cycles_supported_mode_filters() {
     assert_eq!(SelectModeFilter::All.next(), SelectModeFilter::K7);
     assert_eq!(SelectModeFilter::All.previous(), SelectModeFilter::K10);
+    assert_eq!(SelectDifficultyFilter::All.next(), SelectDifficultyFilter::Beginner);
+    assert_eq!(SelectDifficultyFilter::All.previous(), SelectDifficultyFilter::Insane);
     assert_eq!(SelectSort::Title.next(), SelectSort::Artist);
     assert_eq!(SelectSort::Title.previous(), SelectSort::Bp);
     assert_eq!(
@@ -170,6 +172,55 @@ fn select_mode_filter_roundtrips_through_str() {
     assert_eq!(SelectModeFilter::from_str_or_default("24K"), SelectModeFilter::All);
     assert_eq!(SelectModeFilter::from_str_or_default("24K_DOUBLE"), SelectModeFilter::All);
     assert_eq!(SelectModeFilter::from_str_or_default("unknown"), SelectModeFilter::All);
+}
+
+#[test]
+fn select_difficulty_filter_roundtrips_through_str() {
+    for filter in SelectDifficultyFilter::ORDER {
+        assert_eq!(SelectDifficultyFilter::from_str_or_default(filter.as_str()), filter);
+    }
+    assert_eq!(SelectDifficultyFilter::from_str_or_default("unknown"), SelectDifficultyFilter::All);
+}
+
+#[test]
+fn select_difficulty_filter_keeps_matching_charts_per_song_folder() {
+    let mut beginner = select_chart_row(1);
+    beginner.chart.as_mut().unwrap().folder_path = "song-a".to_string();
+    beginner.chart.as_mut().unwrap().difficulty_name = "BEGINNER".to_string();
+    let mut normal = select_chart_row(2);
+    normal.chart.as_mut().unwrap().folder_path = "song-a".to_string();
+    normal.chart.as_mut().unwrap().difficulty_name = "NORMAL".to_string();
+    let mut hyper = select_chart_row(3);
+    hyper.chart.as_mut().unwrap().folder_path = "song-b".to_string();
+    hyper.chart.as_mut().unwrap().difficulty_name = "HYPER".to_string();
+    let mut another = select_chart_row(4);
+    another.chart.as_mut().unwrap().folder_path = "song-b".to_string();
+    another.chart.as_mut().unwrap().difficulty_name = "ANOTHER".to_string();
+    let mut items = vec![
+        SelectItem::Chart(beginner),
+        SelectItem::Chart(normal),
+        SelectItem::Chart(hyper),
+        SelectItem::Chart(another),
+    ];
+
+    apply_select_difficulty_filter(&mut items, SelectDifficultyFilter::Normal);
+
+    assert_eq!(
+        items.iter().map(SelectItem::display_name).collect::<Vec<_>>(),
+        ["Title 2", "Title 4"]
+    );
+}
+
+#[test]
+fn select_difficulty_filter_keeps_unknown_when_it_is_only_chart() {
+    let mut unknown = select_chart_row(1);
+    unknown.chart.as_mut().unwrap().folder_path = "song-a".to_string();
+    unknown.chart.as_mut().unwrap().difficulty_name.clear();
+    let mut items = vec![SelectItem::Chart(unknown)];
+
+    apply_select_difficulty_filter(&mut items, SelectDifficultyFilter::Insane);
+
+    assert_eq!(items.len(), 1);
 }
 
 #[test]

@@ -27,11 +27,13 @@ pub(in crate::app) fn load_items_for_stack(
     stack: &[String],
     search_history: &[String],
     mode_filter: SelectModeFilter,
+    difficulty_filter: SelectDifficultyFilter,
     sort: SelectSort,
 ) -> (Vec<SelectItem>, SelectModeFilter) {
     let mut items = build_select_items_for_stack(boot, stack, search_history);
     let resolved = resolve_non_empty_mode_filter(&items, mode_filter);
     apply_select_mode_filter(&mut items, resolved);
+    apply_select_difficulty_filter(&mut items, difficulty_filter);
     apply_select_sort(&mut items, sort);
     if let Err(error) = apply_collection_flags(&boot.library_db, &boot.collection_db, &mut items) {
         tracing::error!(%error, "failed to apply collection flags to select items");

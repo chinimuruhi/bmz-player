@@ -145,6 +145,7 @@ pub(in crate::skin) fn skin_state_event_index(event_id: i32, state: &SkinDrawSta
             state.result_ln_mode_index.unwrap_or_default() as i32
         }
         308 => state.select_ln_mode_index as i32,
+        309 => state.select_difficulty_filter_index as i32,
         340 => state.select_judge_algorithm_index as i32,
         341 => state.select_bottom_shiftable_gauge_index as i32,
         344 => extended_arrange_ref_index(state) as i32,

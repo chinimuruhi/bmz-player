@@ -176,6 +176,8 @@ pub enum InputActionConfig {
     SelectFavoriteChart,
     #[serde(rename = "SameFolder")]
     SelectSameFolder,
+    #[serde(rename = "DifficultyFilter")]
+    SelectDifficultyFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

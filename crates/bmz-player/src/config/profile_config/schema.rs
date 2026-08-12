@@ -43,13 +43,15 @@ pub struct StatisticsConfig {
     pub day_start_hour: u8,
 }
 
-/// 選曲画面の表示状態。フィルター (5K/7K など) とソートを永続化する。
-/// 値は app 層の `SelectModeFilter` / `SelectSort` の `as_str()` を文字列で保持し、
+/// 選曲画面の表示状態。キーモード・譜面難易度フィルターとソートを永続化する。
+/// 値は app 層の各 enum の `as_str()` を文字列で保持し、
 /// 読込時に未知の値なら既定へフォールバックする。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectStateConfig {
     #[serde(default = "default_select_mode_filter")]
     pub mode_filter: String,
+    #[serde(default = "default_select_difficulty_filter")]
+    pub difficulty_filter: String,
     #[serde(default = "default_select_sort")]
     pub sort: String,
     #[serde(default)]
@@ -64,10 +66,15 @@ pub fn default_select_sort() -> String {
     "TITLE".to_string()
 }
 
+pub fn default_select_difficulty_filter() -> String {
+    "ALL".to_string()
+}
+
 impl Default for SelectStateConfig {
     fn default() -> Self {
         Self {
             mode_filter: default_select_mode_filter(),
+            difficulty_filter: default_select_difficulty_filter(),
             sort: default_select_sort(),
             random_select: false,
         }

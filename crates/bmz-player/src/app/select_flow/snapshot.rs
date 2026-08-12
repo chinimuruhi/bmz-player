@@ -155,6 +155,7 @@ impl WinitApp {
             assist_scroll_mode: self.boot.profile_config.play.assist.scroll_mode as i64,
             assist_long_note_mode: self.boot.profile_config.play.assist.long_note_mode as i64,
             select_mode: self.select.select_mode_filter.as_str().to_string(),
+            select_difficulty_filter: self.select.select_difficulty_filter.difficulty_code(),
             select_sort: self.select.select_sort.as_str().to_string(),
             select_ln_mode: self
                 .boot

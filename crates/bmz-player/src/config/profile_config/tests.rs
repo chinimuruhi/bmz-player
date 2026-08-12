@@ -222,6 +222,7 @@ fn select_state_uses_defaults_for_old_profiles() {
     let select: SelectStateConfig = toml::from_str("").unwrap();
 
     assert_eq!(select.mode_filter, "ALL");
+    assert_eq!(select.difficulty_filter, "ALL");
     assert_eq!(select.sort, "TITLE");
     assert!(!select.random_select);
 }
@@ -230,6 +231,7 @@ fn select_state_uses_defaults_for_old_profiles() {
 fn select_state_roundtrips_through_toml() {
     let select = SelectStateConfig {
         mode_filter: "7K".to_string(),
+        difficulty_filter: "HYPER".to_string(),
         sort: "LEVEL".to_string(),
         random_select: true,
     };
@@ -238,6 +240,7 @@ fn select_state_roundtrips_through_toml() {
     let parsed: SelectStateConfig = toml::from_str(&toml).unwrap();
 
     assert_eq!(parsed.mode_filter, "7K");
+    assert_eq!(parsed.difficulty_filter, "HYPER");
     assert_eq!(parsed.sort, "LEVEL");
     assert!(parsed.random_select);
 }

@@ -63,6 +63,7 @@ pub struct SkinDrawState {
     /// 0=NORMAL, 1=AUTOPLAY, 2=AUTO BATTLE, 3=BATTLE.
     pub select_session_mode_index: usize,
     pub select_mode_index: usize,
+    pub select_difficulty_filter_index: usize,
     pub select_sort_index: usize,
     pub select_ln_mode_index: usize,
     pub select_judge_algorithm_index: usize,
@@ -462,6 +463,7 @@ impl Default for SkinDrawState {
             assist_long_note_mode: 0,
             select_session_mode_index: 0,
             select_mode_index: 0,
+            select_difficulty_filter_index: 0,
             select_sort_index: 0,
             select_ln_mode_index: 0,
             select_judge_algorithm_index: 0,

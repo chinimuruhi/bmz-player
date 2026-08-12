@@ -275,6 +275,7 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
     match ref_id {
         11 if state.select_screen => Some(state.select_mode_index as i64),
         12 if state.select_screen => Some(state.select_sort_index as i64),
+        221 if state.select_screen => Some(state.select_difficulty_filter_index as i64),
         // beatoraja's `gaugetype_1p` image index is state-dependent: MusicSelector
         // reads the configured gauge, while Play/Result read the gauge that is
         // actually active after gauge auto shift has been applied.

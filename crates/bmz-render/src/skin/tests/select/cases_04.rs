@@ -779,6 +779,18 @@ fn select_mode_index_matches_beatoraja_skin_ref_order() {
 }
 
 #[test]
+fn select_difficulty_filter_exposes_beatoraja_event_and_number() {
+    let state = SkinDrawState {
+        select_screen: true,
+        select_difficulty_filter_index: 4,
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_event_index(309, &state), 4);
+    assert_eq!(skin_state_number(221, &state), Some(4));
+}
+
+#[test]
 fn select_folder_hides_chart_bpm_and_judge_rank() {
     let state = SkinDrawState {
         select_screen: true,

@@ -10,6 +10,7 @@ pub(super) enum SelectAction {
     FavoriteSong,
     FavoriteChart,
     SameFolder,
+    DifficultyFilter,
     Move(SelectMove),
 }
 
@@ -77,6 +78,8 @@ fn keyboard_select_action(control: &str, bindings: &SelectKeyBindings) -> Option
         Some(SelectAction::FavoriteChart)
     } else if bindings.is_same_folder(control) {
         Some(SelectAction::SameFolder)
+    } else if bindings.is_difficulty_filter(control) {
+        Some(SelectAction::DifficultyFilter)
     } else if bindings.is_select_scratch_down(control) {
         Some(SelectAction::Move(SelectMove::Next))
     } else if bindings.is_select_scratch_up(control) {
@@ -124,6 +127,8 @@ fn gamepad_select_action(control: &str, bindings: &SelectKeyBindings) -> Option<
         Some(SelectAction::FavoriteChart)
     } else if bindings.is_same_folder(control) {
         Some(SelectAction::SameFolder)
+    } else if bindings.is_difficulty_filter(control) {
+        Some(SelectAction::DifficultyFilter)
     } else {
         None
     }

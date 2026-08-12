@@ -14,6 +14,7 @@ impl WinitApp {
             &self.select.folder_stack,
             &history,
             self.select.select_mode_filter,
+            self.select.select_difficulty_filter,
             self.select.select_sort,
         );
         // beatoraja 準拠の自動送りで mode filter が変わることがあるので、

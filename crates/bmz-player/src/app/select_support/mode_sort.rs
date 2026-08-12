@@ -56,6 +56,55 @@ impl SelectModeFilter {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::app) enum SelectDifficultyFilter {
+    All,
+    Beginner,
+    Normal,
+    Hyper,
+    Another,
+    Insane,
+}
+
+impl SelectDifficultyFilter {
+    pub(in crate::app) const ORDER: [Self; 6] =
+        [Self::All, Self::Beginner, Self::Normal, Self::Hyper, Self::Another, Self::Insane];
+
+    pub(in crate::app) fn next(self) -> Self {
+        cycle_enum(Self::ORDER, self, 1)
+    }
+
+    pub(in crate::app) fn previous(self) -> Self {
+        cycle_enum(Self::ORDER, self, -1)
+    }
+
+    pub(in crate::app) fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "ALL",
+            Self::Beginner => "BEGINNER",
+            Self::Normal => "NORMAL",
+            Self::Hyper => "HYPER",
+            Self::Another => "ANOTHER",
+            Self::Insane => "INSANE",
+        }
+    }
+
+    pub(in crate::app) const fn difficulty_code(self) -> u8 {
+        match self {
+            Self::All => 0,
+            Self::Beginner => 1,
+            Self::Normal => 2,
+            Self::Hyper => 3,
+            Self::Another => 4,
+            Self::Insane => 5,
+        }
+    }
+
+    pub(in crate::app) fn from_str_or_default(value: &str) -> Self {
+        Self::ORDER.into_iter().find(|filter| filter.as_str() == value).unwrap_or(Self::All)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::app) enum SelectSort {
     Title,
     Artist,

@@ -61,6 +61,7 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
             Some(state.judge_timing_offset_ms as i64)
         }
         12 if state.select_screen => Some(state.select_sort_index as i64),
+        221 if state.select_screen => Some(state.select_difficulty_filter_index as i64),
         300 if state.select_screen => state.select_folder_song_count.map(i64::from),
         30 => Some(player_stat_u64(state.player_stats.play_count)),
         31 => Some(player_stat_u64(state.player_stats.clear_count)),

@@ -57,6 +57,62 @@ pub(in crate::app) fn apply_select_mode_filter(
     });
 }
 
+/// LR2風の譜面難易度フィルター。
+///
+/// 所持譜面を親フォルダ単位でまとめ、指定難易度があればその譜面を、なければ
+/// グループ内の最高難易度を残す。未所持表エントリと非譜面行は対象外とする。
+pub(in crate::app) fn apply_select_difficulty_filter(
+    items: &mut Vec<SelectItem>,
+    filter: SelectDifficultyFilter,
+) {
+    let target = filter.difficulty_code();
+    if target == 0 {
+        return;
+    }
+
+    let mut groups = std::collections::HashMap::<String, Vec<(usize, u8)>>::new();
+    for (index, item) in items.iter().enumerate() {
+        let SelectItem::Chart(row) = item else {
+            continue;
+        };
+        let Some(chart) = &row.chart else {
+            continue;
+        };
+        groups
+            .entry(chart.folder_path.clone())
+            .or_default()
+            .push((index, difficulty_code(&chart.difficulty_name)));
+    }
+
+    let mut keep = vec![true; items.len()];
+    for group in groups.values() {
+        let has_target = group.iter().any(|(_, difficulty)| *difficulty == target);
+        let fallback = group.iter().map(|(_, difficulty)| *difficulty).max().unwrap_or(0);
+        let selected = if has_target { target } else { fallback };
+        for &(index, difficulty) in group {
+            keep[index] = difficulty == selected;
+        }
+    }
+
+    let mut index = 0;
+    items.retain(|_| {
+        let retain = keep[index];
+        index += 1;
+        retain
+    });
+}
+
+pub(in crate::app) fn difficulty_code(label: &str) -> u8 {
+    match label.trim().to_ascii_uppercase().as_str() {
+        "1" | "BEGINNER" => 1,
+        "2" | "NORMAL" => 2,
+        "3" | "HYPER" => 3,
+        "4" | "ANOTHER" => 4,
+        "5" | "INSANE" | "LEGGENDARIA" => 5,
+        _ => 0,
+    }
+}
+
 pub(in crate::app) fn apply_select_sort(items: &mut [SelectItem], sort: SelectSort) {
     items.sort_by(|a, b| match (a, b) {
         (SelectItem::Chart(a), SelectItem::Chart(b)) => compare_select_chart_rows(a, b, sort),

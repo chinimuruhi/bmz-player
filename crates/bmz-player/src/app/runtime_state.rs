@@ -49,6 +49,7 @@ pub(super) struct SelectRuntimeState {
     pub(super) hs_fix_option: HsFixOption,
     pub(super) session_mode: SessionMode,
     pub(super) select_mode_filter: SelectModeFilter,
+    pub(super) select_difficulty_filter: SelectDifficultyFilter,
     pub(super) select_sort: SelectSort,
     pub(super) select_keys: SelectKeyBindings,
     pub(super) select_bar_scroll_direction: i32,

@@ -66,6 +66,7 @@ impl WinitApp {
             341 => self.cycle_select_bottom_shiftable_gauge(arg),
             340 => self.cycle_select_judge_algorithm(arg),
             308 => self.cycle_select_ln_mode(arg),
+            309 => self.cycle_select_difficulty_filter(arg),
             301..=307 => {
                 if self.boot.profile_config.play.assist.toggle_beatoraja_button(event_id) {
                     self.boot.profile_config.updated_at = now_unix_seconds();
@@ -146,6 +147,22 @@ impl WinitApp {
             previous_len,
             current_len = self.select.select_items.len(),
             "select mode filter changed"
+        );
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_select_difficulty_filter(&mut self, arg: i32) {
+        self.select.select_difficulty_filter = if arg >= 0 {
+            self.select.select_difficulty_filter.next()
+        } else {
+            self.select.select_difficulty_filter.previous()
+        };
+        self.boot.profile_config.select.difficulty_filter =
+            self.select.select_difficulty_filter.as_str().to_string();
+        self.reload_select_items();
+        tracing::info!(
+            difficulty = self.select.select_difficulty_filter.as_str(),
+            "select difficulty filter changed"
         );
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
     }

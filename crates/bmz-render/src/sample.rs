@@ -74,6 +74,7 @@ pub fn sample_select_scene() -> AppSceneSnapshot {
         assist_scroll_mode: 0,
         assist_long_note_mode: 0,
         select_mode: "ALL".to_string(),
+        select_difficulty_filter: 0,
         select_sort: "TITLE".to_string(),
         select_ln_mode: "LN".to_string(),
         judge_algorithm: "Combo".to_string(),

@@ -48,6 +48,7 @@ pub fn default_keyboard_bindings() -> Vec<BindingConfigEntry> {
         action_binding("F8", InputActionConfig::SelectFavoriteSong),
         action_binding("F9", InputActionConfig::SelectFavoriteChart),
         action_binding("Numpad8", InputActionConfig::SelectSameFolder),
+        action_binding("Numpad0", InputActionConfig::SelectDifficultyFilter),
     ]
 }
 

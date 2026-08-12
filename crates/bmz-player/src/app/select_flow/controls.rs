@@ -813,6 +813,7 @@ impl WinitApp {
             SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
             SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
             SelectAction::SameFolder => self.open_same_folder_for_selected(),
+            SelectAction::DifficultyFilter => self.cycle_select_difficulty_filter(1),
             SelectAction::Move(select_move) => {
                 self.move_selection(select_move);
                 if matches!(

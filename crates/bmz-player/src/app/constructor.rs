@@ -26,9 +26,18 @@ impl WinitApp {
         let folder_stack = initial_folder_stack(&boot.app_config);
         let initial_mode_filter =
             SelectModeFilter::from_str_or_default(&boot.profile_config.select.mode_filter);
+        let select_difficulty_filter = SelectDifficultyFilter::from_str_or_default(
+            &boot.profile_config.select.difficulty_filter,
+        );
         let select_sort = SelectSort::from_str_or_default(&boot.profile_config.select.sort);
-        let (select_items, select_mode_filter) =
-            load_items_for_stack(&boot, &folder_stack, &[], initial_mode_filter, select_sort);
+        let (select_items, select_mode_filter) = load_items_for_stack(
+            &boot,
+            &folder_stack,
+            &[],
+            initial_mode_filter,
+            select_difficulty_filter,
+            select_sort,
+        );
         boot.profile_config.select.mode_filter = select_mode_filter.as_str().to_string();
         if let Some(key_mode) = crate::app::select_flow_mode_config::select_item_play_mode(
             select_items.first(),
@@ -199,6 +208,7 @@ impl WinitApp {
                 hs_fix_option,
                 session_mode,
                 select_mode_filter,
+                select_difficulty_filter,
                 select_sort,
                 select_keys,
                 select_bar_scroll_direction: 0,
