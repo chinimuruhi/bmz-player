@@ -2,11 +2,8 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn reset_selected_replay_slot(&mut self) {
-        self.select.selected_replay_slot = self
-            .select
-            .select_items
-            .get(self.select.selected_index)
-            .and_then(first_replay_slot_for_item);
+        self.select.selected_replay_slot =
+            normalize_replay_slot(self.selected_item_replay_slots(), None);
     }
 
     pub(super) fn normalize_selected_replay_slot(&mut self) {
@@ -54,11 +51,46 @@ impl WinitApp {
     }
 
     fn selected_item_replay_slots(&self) -> [bool; 4] {
-        self.select
-            .select_items
-            .get(self.select.selected_index)
-            .map(replay_slots_for_item)
-            .unwrap_or([false; 4])
+        match self.select.select_items.get(self.select.selected_index) {
+            Some(SelectItem::Chart(_)) => self.selected_chart_replay_slots(),
+            Some(item) => replay_slots_for_item(item),
+            None => [false; 4],
+        }
+    }
+
+    pub(super) fn selected_chart_replay_slots(&self) -> [bool; 4] {
+        let Some(row) = self.selected_chart_row() else {
+            return [false; 4];
+        };
+        let Some(chart) = row.chart.as_ref() else {
+            return [false; 4];
+        };
+        let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
+        let key = crate::storage::score_db::ScoreKey::with_options(
+            chart.sha256,
+            crate::ln_policy::score_ln_policy(
+                self.boot.profile_config.play.ln_mode_policy,
+                chart.ln_profile,
+            ),
+            self.select.double_option.normalize_for_key_mode(key_mode).score_bucket(),
+            self.boot.profile_config.play.rule_mode,
+        );
+        if let Some((cached_key, slots)) = *self.select.replay_slot_cache.borrow()
+            && cached_key == key
+        {
+            return slots;
+        }
+        let slots = self
+            .boot
+            .score_db
+            .replay_slots_for_chart(key)
+            .map(|slots| slots.map(|slot| slot.is_some()))
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "failed to load replay slots for selected score bucket");
+                [false; 4]
+            });
+        self.select.replay_slot_cache.replace(Some((key, slots)));
+        slots
     }
 
     pub(super) fn try_start_replay_from_file(&mut self, path: &std::path::Path) -> bool {

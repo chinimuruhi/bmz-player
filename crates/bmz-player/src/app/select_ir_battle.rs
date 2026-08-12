@@ -43,7 +43,7 @@ impl WinitApp {
         let best_available = row
             .and_then(|row| row.best_score.as_ref())
             .is_some_and(|score| !score.replay_path.is_empty());
-        let slots = row.map(|row| row.replay_slots).unwrap_or_default();
+        let slots = self.selected_chart_replay_slots();
         let rival_name = self
             .boot
             .profile_config

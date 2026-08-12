@@ -193,6 +193,7 @@ impl WinitApp {
                 score_refresh: SelectScoreRefreshState::default(),
                 course_builder: None,
                 select_items,
+                replay_slot_cache: RefCell::new(None),
                 select_distribution_cache: RefCell::new(HashMap::new()),
                 difficulty_tables,
                 table_breadcrumb_cache: RefCell::new(HashMap::new()),

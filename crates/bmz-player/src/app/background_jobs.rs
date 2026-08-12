@@ -22,6 +22,7 @@ impl WinitApp {
         self.select.select_mode_filter = resolved_mode_filter;
         self.boot.profile_config.select.mode_filter = resolved_mode_filter.as_str().to_string();
         self.select.select_items = items;
+        self.select.replay_slot_cache.replace(None);
         self.select.select_distribution_cache.borrow_mut().clear();
         self.select.selected_index = restored_select_index(
             &self.select.select_items,

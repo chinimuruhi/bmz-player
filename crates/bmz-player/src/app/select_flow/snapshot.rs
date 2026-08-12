@@ -96,6 +96,30 @@ impl WinitApp {
         } else {
             self.select.selected_index
         };
+        let mut rows = if self.select.ir_battle.active {
+            crate::app::select_ir_battle::select_ir_battle_snapshot_rows(
+                &battle_choices,
+                self.select.ir_battle.cursor,
+                25,
+            )
+        } else {
+            select_snapshot_rows_with_rival(
+                &self.select.select_items,
+                self.select.selected_index,
+                25,
+                &self.boot.profile_config,
+                self.select.key_config_edit.as_ref(),
+                &chart_distributions,
+                Some(&self.select.select_ir),
+            )
+        };
+        if matches!(selected, Some(SelectItem::Chart(_)))
+            && !self.select.ir_battle.active
+            && let Some(selected_row) =
+                rows.iter_mut().find(|row| row.index as usize == self.select.selected_index)
+        {
+            selected_row.replay_slots = self.selected_chart_replay_slots();
+        }
         SelectSnapshot {
             time: self.select_time(),
             player_name: String::new(),
@@ -139,23 +163,7 @@ impl WinitApp {
             },
             hispeed: mode_config.as_ref().map(|config| config.hispeed).unwrap_or(0.0),
             note_display_duration_ms,
-            rows: if self.select.ir_battle.active {
-                crate::app::select_ir_battle::select_ir_battle_snapshot_rows(
-                    &battle_choices,
-                    self.select.ir_battle.cursor,
-                    25,
-                )
-            } else {
-                select_snapshot_rows_with_rival(
-                    &self.select.select_items,
-                    self.select.selected_index,
-                    25,
-                    &self.boot.profile_config,
-                    self.select.key_config_edit.as_ref(),
-                    &chart_distributions,
-                    Some(&self.select.select_ir),
-                )
-            },
+            rows,
             arrange: self.select.arrange_option.as_str().to_string(),
             arrange_2p: self.select.arrange_option_2p.as_str().to_string(),
             // 通常のRANDOMはプレイ開始時に抽選する。将来、選曲中に確定した
