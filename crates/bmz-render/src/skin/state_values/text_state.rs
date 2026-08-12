@@ -150,6 +150,9 @@ pub(super) fn skin_main_state_text(
             .map(|entry| entry.player_name.as_str().to_string())
             .unwrap_or_default(),
         150..=159 => state.course_titles[(ref_id - 150) as usize].to_string(),
+        190..=196 => {
+            draw_state.map(|state| random_mix_option_text(ref_id, state)).unwrap_or_default()
+        }
         SKIN_REF_BMZ_RESULT_IR_SCOPE => {
             draw_state.map(|state| state.ir_ranking.scope.label().to_string()).unwrap_or_default()
         }
@@ -220,11 +223,54 @@ pub(super) fn lua_main_state_text_values(
     ];
     refs.extend(120..=129);
     refs.extend(150..=159);
+    refs.extend(190..=196);
     refs.extend(200..=219);
     refs.extend(SKIN_TEXT_BMZ_DAILY_RECENT_BASE..=SKIN_TEXT_BMZ_DAILY_RECENT_LAST);
     refs.into_iter()
         .map(|ref_id| (ref_id, skin_main_state_text(ref_id, Some(draw_state), text_state)))
         .collect()
+}
+
+fn random_mix_option_text(ref_id: i32, state: &SkinDrawState) -> String {
+    let value = state.random_mix_options[(ref_id - 190) as usize];
+    match ref_id {
+        190 => {
+            if value == 0 {
+                "OFF".to_string()
+            } else {
+                format!("LEVEL {value}")
+            }
+        }
+        191 | 192 => {
+            if value == 0 {
+                "NO LIMIT".to_string()
+            } else {
+                format!("LEVEL {value}")
+            }
+        }
+        193 => {
+            if value == 0 {
+                "NO LIMIT".to_string()
+            } else {
+                format!("+- {value}BPM")
+            }
+        }
+        194 | 195 => {
+            if value == 0 {
+                "NO LIMIT".to_string()
+            } else {
+                format!("{value} BPM")
+            }
+        }
+        196 => {
+            if value == 0 {
+                "RANDOM".to_string()
+            } else {
+                format!("{value} STAGE")
+            }
+        }
+        _ => String::new(),
+    }
 }
 
 pub fn lua_main_state_option(

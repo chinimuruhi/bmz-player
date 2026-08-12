@@ -32,6 +32,49 @@ fn new_course_action_is_available_without_chart_ids() {
     ));
 }
 
+#[test]
+fn random_mix_action_is_available_without_chart_ids() {
+    let item = random_mix_item();
+    assert_eq!(item.display_name(), "RANDOM MIX");
+    assert!(matches!(
+        item,
+        SelectItem::Executable(SelectExecutableRow {
+            kind: SelectExecutableKind::RandomMix,
+            chart_ids,
+            ..
+        }) if chart_ids.is_empty()
+    ));
+}
+
+#[test]
+fn generated_random_mix_course_is_hidden_from_saved_course_rows() {
+    let (mut library_db, score_db) = open_in_memory_dbs();
+    let definition = |key: &str, title: &str| bmz_core::course::CourseDefinition {
+        key: key.to_string(),
+        title: title.to_string(),
+        kind: bmz_core::course::CourseKind::Course,
+        entries: Vec::new(),
+        constraints: bmz_core::course::CourseConstraints::default(),
+        trophies: Vec::new(),
+        release: true,
+    };
+    library_db
+        .upsert_course(RANDOM_MIX_COURSE_SOURCE, &definition("random-mix", "RANDOM MIX"), 0, 1)
+        .unwrap();
+    library_db.upsert_course("manual:test", &definition("saved", "Saved Course"), 0, 1).unwrap();
+
+    let items = load_select_items_for_courses(
+        &library_db,
+        &score_db,
+        LnPolicySetting::AutoLn,
+        RuleMode::Beatoraja,
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].display_name(), "Saved Course");
+}
+
 fn open_in_memory_dbs() -> (LibraryDatabase, ScoreDatabase) {
     let mut library_conn = Connection::open_in_memory().unwrap();
     configure_connection(&library_conn).unwrap();

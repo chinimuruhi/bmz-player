@@ -185,6 +185,21 @@ fn skin_state_text_formats_select_option_fields() {
 }
 
 #[test]
+fn skin_state_text_formats_lr2_random_mix_refs() {
+    let draw_state =
+        SkinDrawState { random_mix_options: [0, 12, 3, 7, 180, 90, 0], ..SkinDrawState::default() };
+    let text_state = SkinTextState::default();
+    let expected = ["OFF", "LEVEL 12", "LEVEL 3", "+- 7BPM", "180 BPM", "90 BPM", "RANDOM"];
+
+    for (offset, expected) in expected.into_iter().enumerate() {
+        assert_eq!(
+            skin_main_state_text(190 + offset as i32, Some(&draw_state), &text_state),
+            expected
+        );
+    }
+}
+
+#[test]
 fn select_search_input_overlay_does_not_repeat_the_skin_text_fade() {
     let document: SkinDocument = serde_json::from_str(
         r#"

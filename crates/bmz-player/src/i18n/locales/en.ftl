@@ -541,6 +541,8 @@ toast-course-download-complete-registering = Acquisition finished ({ $completed 
 toast-course-download-failed = Failed to acquire course charts ({ $count })
 toast-select-replay-slot = Selected replay { $slot }
 toast-select-replay-unavailable = No replay is available for this item
+toast-select-random-mix-empty = No charts match the RANDOM MIX constraints
+toast-select-random-mix-failed = Failed to create RANDOM MIX
 
 # Course editor
 menu-course-editor = Course / Grade editor

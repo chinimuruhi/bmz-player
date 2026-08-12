@@ -7,6 +7,7 @@ pub fn settings_adjust_step(id: SettingsEntryId) -> i32 {
         SettingsEntryId::TargetGreenNumber => 10,
         SettingsEntryId::MisslayerDurationMs => 50,
         SettingsEntryId::AnalogScratchThreshold1P | SettingsEntryId::AnalogScratchThreshold2P => 10,
+        SettingsEntryId::RandomMixMaxBpm | SettingsEntryId::RandomMixMinBpm => 10,
         _ => 1,
     }
 }
@@ -113,10 +114,41 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
             )
         }
         SettingsEntryId::SelectRandomSelect => format_bool_on_off(profile.select.random_select),
+        SettingsEntryId::RandomMixTargetLevel => {
+            format_random_mix_level(profile.select.random_mix.target_level, "OFF")
+        }
+        SettingsEntryId::RandomMixMaxLevel => {
+            format_random_mix_level(profile.select.random_mix.max_level, "NO LIMIT")
+        }
+        SettingsEntryId::RandomMixMinLevel => {
+            format_random_mix_level(profile.select.random_mix.min_level, "NO LIMIT")
+        }
+        SettingsEntryId::RandomMixBpmRange => {
+            let value = profile.select.random_mix.bpm_range;
+            if value == 0 { "NO LIMIT".to_string() } else { format!("+- {value} BPM") }
+        }
+        SettingsEntryId::RandomMixMaxBpm => {
+            format_random_mix_bpm(profile.select.random_mix.max_bpm)
+        }
+        SettingsEntryId::RandomMixMinBpm => {
+            format_random_mix_bpm(profile.select.random_mix.min_bpm)
+        }
+        SettingsEntryId::RandomMixStages => {
+            let value = profile.select.random_mix.stages;
+            if value == 0 { "RANDOM".to_string() } else { format!("{value} STAGE") }
+        }
         SettingsEntryId::ReplayAutoSave => format_bool_on_off(profile.replay.auto_save),
         SettingsEntryId::ReplaySlot1Rule => format_replay_slot_rule(profile.replay.slot_rules[0]),
         SettingsEntryId::ReplaySlot2Rule => format_replay_slot_rule(profile.replay.slot_rules[1]),
         SettingsEntryId::ReplaySlot3Rule => format_replay_slot_rule(profile.replay.slot_rules[2]),
         SettingsEntryId::ReplaySlot4Rule => format_replay_slot_rule(profile.replay.slot_rules[3]),
     }
+}
+
+fn format_random_mix_level(value: u32, zero: &str) -> String {
+    if value == 0 { zero.to_string() } else { format!("LEVEL {value}") }
+}
+
+fn format_random_mix_bpm(value: u32) -> String {
+    if value == 0 { "NO LIMIT".to_string() } else { format!("{value} BPM") }
 }

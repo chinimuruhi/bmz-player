@@ -337,6 +337,27 @@ impl SettingsEditSession {
             SettingsEntryId::SelectRandomSelect => {
                 SettingsBaseline::Bool(profile.select.random_select)
             }
+            SettingsEntryId::RandomMixTargetLevel => {
+                SettingsBaseline::U32(profile.select.random_mix.target_level)
+            }
+            SettingsEntryId::RandomMixMaxLevel => {
+                SettingsBaseline::U32(profile.select.random_mix.max_level)
+            }
+            SettingsEntryId::RandomMixMinLevel => {
+                SettingsBaseline::U32(profile.select.random_mix.min_level)
+            }
+            SettingsEntryId::RandomMixBpmRange => {
+                SettingsBaseline::U32(profile.select.random_mix.bpm_range)
+            }
+            SettingsEntryId::RandomMixMaxBpm => {
+                SettingsBaseline::U32(profile.select.random_mix.max_bpm)
+            }
+            SettingsEntryId::RandomMixMinBpm => {
+                SettingsBaseline::U32(profile.select.random_mix.min_bpm)
+            }
+            SettingsEntryId::RandomMixStages => {
+                SettingsBaseline::U32(profile.select.random_mix.stages)
+            }
             SettingsEntryId::AnalogScratch1P => {
                 SettingsBaseline::Bool(profile.input.gamepad1.analog_scratch)
             }
@@ -520,6 +541,27 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::SelectRandomSelect, SettingsBaseline::Bool(value)) => {
                 profile.select.random_select = *value;
+            }
+            (SettingsEntryId::RandomMixTargetLevel, SettingsBaseline::U32(value)) => {
+                profile.select.random_mix.target_level = *value;
+            }
+            (SettingsEntryId::RandomMixMaxLevel, SettingsBaseline::U32(value)) => {
+                profile.select.random_mix.max_level = *value;
+            }
+            (SettingsEntryId::RandomMixMinLevel, SettingsBaseline::U32(value)) => {
+                profile.select.random_mix.min_level = *value;
+            }
+            (SettingsEntryId::RandomMixBpmRange, SettingsBaseline::U32(value)) => {
+                profile.select.random_mix.bpm_range = *value;
+            }
+            (SettingsEntryId::RandomMixMaxBpm, SettingsBaseline::U32(value)) => {
+                profile.select.random_mix.max_bpm = *value;
+            }
+            (SettingsEntryId::RandomMixMinBpm, SettingsBaseline::U32(value)) => {
+                profile.select.random_mix.min_bpm = *value;
+            }
+            (SettingsEntryId::RandomMixStages, SettingsBaseline::U32(value)) => {
+                profile.select.random_mix.stages = *value;
             }
             (SettingsEntryId::AnalogScratch1P, SettingsBaseline::Bool(value)) => {
                 profile.input.gamepad1.analog_scratch = *value;

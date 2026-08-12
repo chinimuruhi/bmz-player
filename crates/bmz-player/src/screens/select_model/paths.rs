@@ -246,7 +246,7 @@ pub(super) fn path_is_under_or_equal(path: &str, root: &str) -> bool {
     path == root || path.starts_with(&format!("{root}/"))
 }
 
-pub(super) fn chart_is_in_active_song_roots(
+pub(crate) fn chart_is_in_active_song_roots(
     chart: &ChartListItem,
     active_song_roots: Option<&[String]>,
 ) -> bool {

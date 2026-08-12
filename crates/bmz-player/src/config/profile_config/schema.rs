@@ -56,6 +56,51 @@ pub struct SelectStateConfig {
     pub sort: String,
     #[serde(default)]
     pub random_select: bool,
+    #[serde(default)]
+    pub random_mix: RandomMixConfig,
+}
+
+/// LR2-style RANDOM MIX generation constraints.
+///
+/// Zero disables a bound. `stages = 0` selects 2..=4 stages randomly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RandomMixConfig {
+    #[serde(default)]
+    pub target_level: u32,
+    #[serde(default)]
+    pub max_level: u32,
+    #[serde(default)]
+    pub min_level: u32,
+    #[serde(default = "default_random_mix_bpm_range")]
+    pub bpm_range: u32,
+    #[serde(default)]
+    pub max_bpm: u32,
+    #[serde(default)]
+    pub min_bpm: u32,
+    #[serde(default = "default_random_mix_stages")]
+    pub stages: u32,
+}
+
+pub const fn default_random_mix_bpm_range() -> u32 {
+    10
+}
+
+pub const fn default_random_mix_stages() -> u32 {
+    5
+}
+
+impl Default for RandomMixConfig {
+    fn default() -> Self {
+        Self {
+            target_level: 0,
+            max_level: 0,
+            min_level: 0,
+            bpm_range: default_random_mix_bpm_range(),
+            max_bpm: 0,
+            min_bpm: 0,
+            stages: default_random_mix_stages(),
+        }
+    }
 }
 
 pub fn default_select_mode_filter() -> String {
@@ -77,6 +122,7 @@ impl Default for SelectStateConfig {
             difficulty_filter: default_select_difficulty_filter(),
             sort: default_select_sort(),
             random_select: false,
+            random_mix: RandomMixConfig::default(),
         }
     }
 }

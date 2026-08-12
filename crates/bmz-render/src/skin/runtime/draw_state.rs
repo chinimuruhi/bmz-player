@@ -64,6 +64,8 @@ pub struct SkinDrawState {
     pub select_session_mode_index: usize,
     pub select_mode_index: usize,
     pub select_difficulty_filter_index: usize,
+    /// LR2 RANDOM MIX text refs 190..196.
+    pub random_mix_options: [u32; 7],
     pub select_sort_index: usize,
     pub select_ln_mode_index: usize,
     pub select_judge_algorithm_index: usize,
@@ -464,6 +466,7 @@ impl Default for SkinDrawState {
             select_session_mode_index: 0,
             select_mode_index: 0,
             select_difficulty_filter_index: 0,
+            random_mix_options: [0, 0, 0, 10, 0, 0, 5],
             select_sort_index: 0,
             select_ln_mode_index: 0,
             select_judge_algorithm_index: 0,

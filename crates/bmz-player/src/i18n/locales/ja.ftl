@@ -538,6 +538,8 @@ toast-course-download-complete-registering = 譜面取得完了（成功 { $comp
 toast-course-download-failed = コース譜面の取得に失敗しました（{ $count } 件）
 toast-select-replay-slot = リプレイ { $slot } を選択しました
 toast-select-replay-unavailable = この項目にはリプレイがありません
+toast-select-random-mix-empty = RANDOM MIXの条件に一致する譜面がありません
+toast-select-random-mix-failed = RANDOM MIXの作成に失敗しました
 
 # Course editor
 menu-course-editor = コース / 段位作成

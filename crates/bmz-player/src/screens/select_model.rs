@@ -42,6 +42,7 @@ pub use folder::{
     load_select_items_in_folder_for_rule_mode_with_filters,
     load_select_items_in_folder_for_rule_mode_with_table_order,
 };
+pub(crate) use paths::chart_is_in_active_song_roots;
 pub use paths::{
     COURSE_CONTENTS_PATH_PREFIX, COURSE_ROOT_PATH, FAVORITE_CHART_PATH, FAVORITE_ROOT_PATH,
     FAVORITE_SONG_DETAIL_PREFIX, FAVORITE_SONG_PATH, MAX_SEARCH_HISTORY, SAME_FOLDER_PATH_PREFIX,
@@ -52,7 +53,8 @@ pub use paths::{
     song_scan_path_from_context, table_source_url_from_context,
 };
 pub use root::{
-    favorite_root_item, favorite_root_items, random_select_item_from_items, root_folder_items,
+    favorite_root_item, favorite_root_items, random_mix_item, random_select_item_from_items,
+    root_folder_items,
 };
 pub use search::{
     load_select_items_for_search, load_select_items_for_search_for_rule_mode,
@@ -60,11 +62,11 @@ pub use search::{
     load_select_items_for_search_for_rule_mode_with_table_order,
 };
 pub use table::{
-    course_root_item, load_select_items_for_course_contents, load_select_items_for_courses,
-    load_select_items_in_table, load_select_items_in_table_for_rule_mode,
-    load_select_items_in_table_level, load_select_items_in_table_level_for_rule_mode,
-    new_course_item_for_locale, table_folder_items, table_folder_items_for_active_sources,
-    table_level_folder_items,
+    RANDOM_MIX_COURSE_SOURCE, course_root_item, load_select_items_for_course_contents,
+    load_select_items_for_courses, load_select_items_in_table,
+    load_select_items_in_table_for_rule_mode, load_select_items_in_table_level,
+    load_select_items_in_table_level_for_rule_mode, new_course_item_for_locale, table_folder_items,
+    table_folder_items_for_active_sources, table_level_folder_items,
 };
 pub use virtual_folder::{
     VIRTUAL_FOLDER_CONFIG_FILE, VIRTUAL_FOLDER_PATH_PREFIX, load_select_items_in_virtual_folder,
@@ -341,6 +343,7 @@ fn clear_type_name_for_folder_lamp(index: usize) -> &'static str {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectExecutableKind {
     RandomSelect,
+    RandomMix,
     NewCourse,
 }
 

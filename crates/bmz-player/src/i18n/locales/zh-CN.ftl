@@ -538,6 +538,8 @@ toast-course-download-complete-registering = 谱面获取完成（成功 { $comp
 toast-course-download-failed = 课程谱面获取失败（{ $count } 个）
 toast-select-replay-slot = 已选择回放 { $slot }
 toast-select-replay-unavailable = 此项目没有可用的回放
+toast-select-random-mix-empty = 没有符合RANDOM MIX条件的谱面
+toast-select-random-mix-failed = RANDOM MIX创建失败
 
 # Course editor
 menu-course-editor = 课程 / 段位编辑器

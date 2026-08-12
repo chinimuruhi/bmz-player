@@ -235,6 +235,27 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
                 true
             }
         }
+        SettingsEntryId::RandomMixTargetLevel => {
+            adjust_u32(&mut profile.select.random_mix.target_level, delta, 0, 99)
+        }
+        SettingsEntryId::RandomMixMaxLevel => {
+            adjust_u32(&mut profile.select.random_mix.max_level, delta, 0, 99)
+        }
+        SettingsEntryId::RandomMixMinLevel => {
+            adjust_u32(&mut profile.select.random_mix.min_level, delta, 0, 99)
+        }
+        SettingsEntryId::RandomMixBpmRange => {
+            adjust_u32(&mut profile.select.random_mix.bpm_range, delta, 0, 99)
+        }
+        SettingsEntryId::RandomMixMaxBpm => {
+            adjust_u32(&mut profile.select.random_mix.max_bpm, delta, 0, 990)
+        }
+        SettingsEntryId::RandomMixMinBpm => {
+            adjust_u32(&mut profile.select.random_mix.min_bpm, delta, 0, 990)
+        }
+        SettingsEntryId::RandomMixStages => {
+            adjust_u32(&mut profile.select.random_mix.stages, delta, 0, 5)
+        }
         SettingsEntryId::ReplayAutoSave => {
             if delta == 0 {
                 false

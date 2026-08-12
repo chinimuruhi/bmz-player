@@ -67,3 +67,11 @@ pub fn random_select_item_from_items(items: &[SelectItem]) -> Option<SelectItem>
         })
     })
 }
+
+pub fn random_mix_item() -> SelectItem {
+    SelectItem::Executable(SelectExecutableRow {
+        title: "RANDOM MIX".to_string(),
+        kind: SelectExecutableKind::RandomMix,
+        chart_ids: Vec::new(),
+    })
+}

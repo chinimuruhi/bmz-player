@@ -86,6 +86,7 @@ pub(in crate::app) fn build_select_items_for_stack(
                 }
             };
             items.push(new_course_item_for_locale(boot.profile_config.ui.locale()));
+            items.push(random_mix_item());
             items
         }
         Some(path) if parse_course_contents_path(path).is_some() => {

@@ -158,6 +158,18 @@ impl WinitApp {
             assist_long_note_mode: self.boot.profile_config.play.assist.long_note_mode as i64,
             select_mode: self.select.select_mode_filter.as_str().to_string(),
             select_difficulty_filter: self.select.select_difficulty_filter.difficulty_code(),
+            random_mix_options: {
+                let mix = self.boot.profile_config.select.random_mix;
+                [
+                    mix.target_level,
+                    mix.max_level,
+                    mix.min_level,
+                    mix.bpm_range,
+                    mix.max_bpm,
+                    mix.min_bpm,
+                    mix.stages,
+                ]
+            },
             select_sort: self.select.select_sort.as_str().to_string(),
             select_ln_mode: self
                 .boot

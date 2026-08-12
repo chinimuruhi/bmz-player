@@ -1,5 +1,7 @@
 use super::*;
 
+pub const RANDOM_MIX_COURSE_SOURCE: &str = "bmz:random-mix";
+
 /// Returns one folder item per registered difficulty table.
 pub fn table_folder_items(
     library_db: &LibraryDatabase,
@@ -69,7 +71,9 @@ pub fn load_select_items_for_courses(
     let courses = library_db.list_courses()?;
     Ok(courses
         .into_iter()
-        .filter(|stored| !stored.source.starts_with("table:"))
+        .filter(|stored| {
+            !stored.source.starts_with("table:") && stored.source != RANDOM_MIX_COURSE_SOURCE
+        })
         .map(|stored| {
             build_select_course_row(library_db, score_db, ln_policy_setting, rule_mode, stored)
         })

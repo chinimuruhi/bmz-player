@@ -59,6 +59,8 @@ pub struct SelectSnapshot {
     pub select_mode: String,
     /// LR2-style difficulty filter: 0=ALL, 1=BEGINNER .. 5=INSANE.
     pub select_difficulty_filter: u8,
+    /// LR2 text refs 190..196: target/max/min level, BPM range/max/min, stages.
+    pub random_mix_options: [u32; 7],
     pub select_sort: String,
     pub select_ln_mode: String,
     pub judge_algorithm: String,
@@ -195,6 +197,7 @@ impl Default for SelectSnapshot {
             assist_long_note_mode: 0,
             select_mode: String::new(),
             select_difficulty_filter: 0,
+            random_mix_options: [0, 0, 0, 10, 0, 0, 5],
             select_sort: String::new(),
             select_ln_mode: String::new(),
             judge_algorithm: String::new(),

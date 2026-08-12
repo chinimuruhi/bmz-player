@@ -117,8 +117,15 @@ fn select_snapshot_row(
         SelectItem::Executable(row) => SelectRowSnapshot {
             index: index as u32,
             title: row.title.clone(),
-            kind: bmz_render::scene::SelectRowKind::Executable,
-            in_library: row.kind == SelectExecutableKind::NewCourse || !row.chart_ids.is_empty(),
+            kind: if row.kind == SelectExecutableKind::RandomMix {
+                bmz_render::scene::SelectRowKind::RandomCourse
+            } else {
+                bmz_render::scene::SelectRowKind::Executable
+            },
+            in_library: matches!(
+                row.kind,
+                SelectExecutableKind::NewCourse | SelectExecutableKind::RandomMix
+            ) || !row.chart_ids.is_empty(),
             ..SelectRowSnapshot::default()
         },
         SelectItem::Config(row) => {

@@ -463,10 +463,15 @@ impl WinitApp {
                 SelectExecutableKind::RandomSelect if self.select.course_builder.is_none() => {
                     self.start_random_select(&row.chart_ids)
                 }
+                SelectExecutableKind::RandomMix if self.select.course_builder.is_none() => {
+                    self.start_random_mix()
+                }
                 SelectExecutableKind::NewCourse if self.select.course_builder.is_none() => {
                     self.begin_select_course_builder()
                 }
-                SelectExecutableKind::RandomSelect | SelectExecutableKind::NewCourse => {
+                SelectExecutableKind::RandomSelect
+                | SelectExecutableKind::RandomMix
+                | SelectExecutableKind::NewCourse => {
                     self.show_select_course_builder_chart_required()
                 }
             },

@@ -344,13 +344,21 @@ mod tests {
     }
 
     #[test]
-    fn settings_select_lists_random_select() {
+    fn settings_select_lists_random_select_and_random_mix_options() {
         let items = load_settings_items(CONFIG_SELECT_PATH);
         assert_eq!(items.len(), SettingsEntryId::SELECT_ENTRIES.len() + 1);
         assert!(matches!(items.first(), Some(SelectItem::SettingsBack)));
         assert!(items.iter().any(|item| matches!(
             item,
             SelectItem::Config(row) if row.entry_id == SettingsEntryId::SelectRandomSelect
+        )));
+        assert!(items.iter().any(|item| matches!(
+            item,
+            SelectItem::Config(row) if row.entry_id == SettingsEntryId::RandomMixTargetLevel
+        )));
+        assert!(items.iter().any(|item| matches!(
+            item,
+            SelectItem::Config(row) if row.entry_id == SettingsEntryId::RandomMixStages
         )));
     }
 

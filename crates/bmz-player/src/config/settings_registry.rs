@@ -72,6 +72,13 @@ pub enum SettingsEntryId {
     Hispeed8Key7,
     Hispeed8Key8,
     SelectRandomSelect,
+    RandomMixTargetLevel,
+    RandomMixMaxLevel,
+    RandomMixMinLevel,
+    RandomMixBpmRange,
+    RandomMixMaxBpm,
+    RandomMixMinBpm,
+    RandomMixStages,
     ReplayAutoSave,
     ReplaySlot1Rule,
     ReplaySlot2Rule,
@@ -142,7 +149,16 @@ impl SettingsEntryId {
         Self::ControllerReleaseBounceMs,
     ];
 
-    pub const SELECT_ENTRIES: &'static [Self] = &[Self::SelectRandomSelect];
+    pub const SELECT_ENTRIES: &'static [Self] = &[
+        Self::SelectRandomSelect,
+        Self::RandomMixTargetLevel,
+        Self::RandomMixMaxLevel,
+        Self::RandomMixMinLevel,
+        Self::RandomMixBpmRange,
+        Self::RandomMixMaxBpm,
+        Self::RandomMixMinBpm,
+        Self::RandomMixStages,
+    ];
 
     pub const HISPEED_8K_ENTRIES: &'static [Self] = &[
         Self::Hispeed8Key1,
@@ -221,6 +237,13 @@ impl SettingsEntryId {
             Self::Hispeed8Key7 => "KEY 7 HS DIRECTION",
             Self::Hispeed8Key8 => "KEY 8 HS DIRECTION",
             Self::SelectRandomSelect => "RANDOM SELECT",
+            Self::RandomMixTargetLevel => "MIX TARGET LEVEL",
+            Self::RandomMixMaxLevel => "MIX MAX LEVEL",
+            Self::RandomMixMinLevel => "MIX MIN LEVEL",
+            Self::RandomMixBpmRange => "MIX BPM RANGE",
+            Self::RandomMixMaxBpm => "MIX MAX BPM",
+            Self::RandomMixMinBpm => "MIX MIN BPM",
+            Self::RandomMixStages => "MIX STAGES",
             Self::ReplayAutoSave => "REPLAY SAVE",
             Self::ReplaySlot1Rule => "REPLAY 1",
             Self::ReplaySlot2Rule => "REPLAY 2",
@@ -471,6 +494,25 @@ mod tests {
             profile.replay.slot_rules[1],
             crate::config::profile_config::ReplaySlotRule::BpUpdate
         );
+    }
+
+    #[test]
+    fn random_mix_settings_use_lr2_ranges_and_labels() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::RandomMixTargetLevel), "OFF");
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::RandomMixBpmRange),
+            "+- 10 BPM"
+        );
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::RandomMixStages), "5 STAGE");
+
+        assert_eq!(settings_adjust_step(SettingsEntryId::RandomMixMaxBpm), 10);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::RandomMixTargetLevel, 120,));
+        assert_eq!(profile.select.random_mix.target_level, 99);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::RandomMixMaxBpm, 1_000,));
+        assert_eq!(profile.select.random_mix.max_bpm, 990);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::RandomMixStages, -5,));
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::RandomMixStages), "RANDOM");
     }
 
     #[test]

@@ -539,6 +539,8 @@ toast-course-download-complete-registering = 譜面取得完成（成功 { $comp
 toast-course-download-failed = 課程譜面取得失敗（{ $count } 個）
 toast-select-replay-slot = 已選擇重播 { $slot }
 toast-select-replay-unavailable = 此項目沒有可用的重播
+toast-select-random-mix-empty = 沒有符合RANDOM MIX條件的譜面
+toast-select-random-mix-failed = RANDOM MIX建立失敗
 
 # Course editor
 menu-course-editor = 課程 / 段位編輯器

@@ -225,6 +225,7 @@ fn select_state_uses_defaults_for_old_profiles() {
     assert_eq!(select.difficulty_filter, "ALL");
     assert_eq!(select.sort, "TITLE");
     assert!(!select.random_select);
+    assert_eq!(select.random_mix, RandomMixConfig::default());
 }
 
 #[test]
@@ -234,6 +235,15 @@ fn select_state_roundtrips_through_toml() {
         difficulty_filter: "HYPER".to_string(),
         sort: "LEVEL".to_string(),
         random_select: true,
+        random_mix: RandomMixConfig {
+            target_level: 12,
+            max_level: 15,
+            min_level: 8,
+            bpm_range: 20,
+            max_bpm: 220,
+            min_bpm: 100,
+            stages: 4,
+        },
     };
 
     let toml = toml::to_string(&select).unwrap();
@@ -243,6 +253,8 @@ fn select_state_roundtrips_through_toml() {
     assert_eq!(parsed.difficulty_filter, "HYPER");
     assert_eq!(parsed.sort, "LEVEL");
     assert!(parsed.random_select);
+    assert_eq!(parsed.random_mix.target_level, 12);
+    assert_eq!(parsed.random_mix.stages, 4);
 }
 
 #[test]
