@@ -501,3 +501,13 @@ fn wmii_next_rank_diff_value_uses_forward_lua_boundary() {
         SkinValueDef { value_expr: "bmz:wmii_next_rank_diff".to_string(), ..Default::default() };
     assert_eq!(skin_value_number(&value, &state), Some(18));
 }
+
+#[test]
+fn wmii_next_rank_diff_without_max_minus_targets_max_directly() {
+    let state = SkinDrawState { ex_score: 188, total_notes: 100, ..Default::default() };
+    let value = SkinValueDef {
+        value_expr: "bmz:wmii_next_rank_diff_no_max_minus".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(skin_value_number(&value, &state), Some(12));
+}

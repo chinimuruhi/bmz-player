@@ -88,8 +88,15 @@ pub(in crate::skin) fn next_rank_diff(state: &SkinDrawState) -> Option<i64> {
 
 /// Computes the forward difference used by WMII PLAY's Lua `next_rank_info`.
 /// It differs from BMZ's generic nearest-rank display because WMII always
-/// targets the next higher boundary and has a separate MAX- boundary.
+/// targets the next higher boundary and can optionally add a MAX- boundary.
 pub(in crate::skin) fn wmii_next_rank_diff(state: &SkinDrawState) -> Option<i64> {
+    wmii_next_rank_diff_with_max_minus(state, true)
+}
+
+pub(in crate::skin) fn wmii_next_rank_diff_with_max_minus(
+    state: &SkinDrawState,
+    include_max_minus: bool,
+) -> Option<i64> {
     let ex_score = i64::from(state.ex_score);
     let total_notes = i64::from(state.total_notes);
     let max_score = total_notes.checked_mul(2)?;
@@ -97,26 +104,34 @@ pub(in crate::skin) fn wmii_next_rank_diff(state: &SkinDrawState) -> Option<i64>
         return None;
     }
     let ex_score = ex_score.clamp(0, max_score);
-    for (numerator, denominator) in [
-        (6_i64, 27_i64),
-        (9, 27),
-        (12, 27),
-        (15, 27),
-        (18, 27),
-        (21, 27),
-        (24, 27),
-        (17, 18),
-        (1, 1),
-    ] {
+    for (numerator, denominator) in
+        [(6_i64, 27_i64), (9, 27), (12, 27), (15, 27), (18, 27), (21, 27), (24, 27)]
+    {
         let threshold = div_ceil(max_score * numerator, denominator);
         if ex_score < threshold {
             return Some(threshold - ex_score);
         }
     }
+    if include_max_minus {
+        let threshold = div_ceil(max_score * 17, 18);
+        if ex_score < threshold {
+            return Some(threshold - ex_score);
+        }
+    }
+    if ex_score < max_score {
+        return Some(max_score - ex_score);
+    }
     Some(0)
 }
 
 pub(in crate::skin) fn wmii_next_rank_stage(state: &SkinDrawState) -> Option<i32> {
+    wmii_next_rank_stage_with_max_minus(state, true)
+}
+
+pub(in crate::skin) fn wmii_next_rank_stage_with_max_minus(
+    state: &SkinDrawState,
+    include_max_minus: bool,
+) -> Option<i32> {
     let ex_score = i64::from(state.ex_score);
     let total_notes = i64::from(state.total_notes);
     let max_score = total_notes.checked_mul(2)?;
@@ -132,12 +147,16 @@ pub(in crate::skin) fn wmii_next_rank_stage(state: &SkinDrawState) -> Option<i32
         (18, 27, 3),
         (21, 27, 2),
         (24, 27, 1),
-        (17, 18, 8),
-        (1, 1, 0),
     ] {
         let threshold = div_ceil(max_score * numerator, denominator);
         if ex_score < threshold {
             return Some(stage);
+        }
+    }
+    if include_max_minus {
+        let threshold = div_ceil(max_score * 17, 18);
+        if ex_score < threshold {
+            return Some(8);
         }
     }
     Some(0)

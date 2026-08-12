@@ -79,7 +79,7 @@ fn get_path_returns_sandboxed_path_before_file_exists() {
         skin_config_get_path(&path_context, "History/2026-08-03/history.txt", &BTreeMap::new())
             .unwrap();
 
-    assert_eq!(resolved, root.join("History/2026-08-03/history.txt"));
+    assert_eq!(resolved, path_context.entry_dir().join("History/2026-08-03/history.txt"));
     assert!(!resolved.exists());
     assert!(skin_config_get_path(&path_context, "../outside.txt", &BTreeMap::new()).is_err());
 }

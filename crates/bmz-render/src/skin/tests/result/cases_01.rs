@@ -114,6 +114,7 @@ fn wmii_next_rank_draw_predicates_use_forward_rank_boundaries() {
 
     let max_minus = SkinDrawState { ex_score: 188, total_notes: 100, ..Default::default() };
     assert!(eval_skin_draw_condition("wmii_next_rank_stage(8)", &max_minus));
+    assert!(eval_skin_draw_condition("wmii_next_rank_stage_no_max_minus(0)", &max_minus));
 
     let max = SkinDrawState { ex_score: 200, total_notes: 100, ..Default::default() };
     assert!(eval_skin_draw_condition("wmii_next_rank_stage(0)", &max));

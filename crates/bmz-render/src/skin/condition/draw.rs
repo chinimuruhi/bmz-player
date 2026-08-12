@@ -101,6 +101,9 @@ pub(in crate::skin) fn eval_skin_draw_term(term: &str, state: &SkinDrawState) ->
     if let Some(stage) = parse_wmii_next_rank_stage_predicate(term) {
         return Some(wmii_next_rank_stage(state) == Some(stage));
     }
+    if let Some(stage) = parse_wmii_next_rank_stage_no_max_minus_predicate(term) {
+        return Some(wmii_next_rank_stage_with_max_minus(state, false) == Some(stage));
+    }
     if term == "wmii_next_rank_diff_zero()" {
         return Some(wmii_next_rank_diff(state) == Some(0));
     }
@@ -241,6 +244,18 @@ pub(in crate::skin) fn parse_wmii_next_rank_stage_predicate(term: &str) -> Optio
     let stage =
         term.strip_prefix("wmii_next_rank_stage(")?.strip_suffix(')')?.trim().parse().ok()?;
     (0..=8).contains(&stage).then_some(stage)
+}
+
+pub(in crate::skin) fn parse_wmii_next_rank_stage_no_max_minus_predicate(
+    term: &str,
+) -> Option<i32> {
+    let stage = term
+        .strip_prefix("wmii_next_rank_stage_no_max_minus(")?
+        .strip_suffix(')')?
+        .trim()
+        .parse()
+        .ok()?;
+    (0..=7).contains(&stage).then_some(stage)
 }
 
 pub(in crate::skin) fn nearest_rank_sign_matches(value: i64, sign: &str) -> bool {

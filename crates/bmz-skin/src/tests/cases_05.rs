@@ -642,7 +642,13 @@ fn wmii_fhd_play_lua_features_when_available() {
             })
             .collect::<Vec<_>>();
         assert!(
-            next_rank_draws.contains(&("nextRank-0", "wmii_next_rank_stage(0)")),
+            next_rank_draws.iter().any(|(id, draw)| {
+                *id == "nextRank-0"
+                    && matches!(
+                        *draw,
+                        "wmii_next_rank_stage(0)" | "wmii_next_rank_stage_no_max_minus(0)"
+                    )
+            }),
             "MAX stage predicate for {name}: {next_rank_draws:?}"
         );
         assert!(
@@ -652,10 +658,6 @@ fn wmii_fhd_play_lua_features_when_available() {
         assert!(
             next_rank_draws.contains(&("nextRank-2", "wmii_next_rank_stage(2)")),
             "AA stage predicate for {name}: {next_rank_draws:?}"
-        );
-        assert!(
-            next_rank_draws.contains(&("nextRank-0", "wmii_next_rank_stage(8)")),
-            "MAX- stage predicate for {name}: {next_rank_draws:?}"
         );
         assert!(
             next_rank_draws.contains(&("nextRankMinus", "wmii_next_rank_diff_nonzero()")),
@@ -671,7 +673,14 @@ fn wmii_fhd_play_lua_features_when_available() {
             .iter()
             .find(|value| value.id == "diff_rank")
             .unwrap_or_else(|| panic!("diff_rank is missing for {name}"));
-        assert_eq!(next_rank.value_expr, "bmz:wmii_next_rank_diff", "diff_rank for {name}");
+        assert!(
+            matches!(
+                next_rank.value_expr.as_str(),
+                "bmz:wmii_next_rank_diff" | "bmz:wmii_next_rank_diff_no_max_minus"
+            ),
+            "diff_rank for {name}: {}",
+            next_rank.value_expr
+        );
         assert!(
             !loaded.warnings.iter().any(|warning| {
                 warning.message.contains("unsupported draw function")

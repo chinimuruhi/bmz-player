@@ -110,6 +110,9 @@ pub(in crate::skin) fn skin_builtin_value_i64(expr: &str, state: &SkinDrawState)
     if expr.trim() == "bmz:wmii_next_rank_diff" {
         return wmii_next_rank_diff(state);
     }
+    if expr.trim() == "bmz:wmii_next_rank_diff_no_max_minus" {
+        return wmii_next_rank_diff_with_max_minus(state, false);
+    }
     if expr.trim() == SKIN_EXPR_SELECT_TOTAL_NOTES_RATIO_INTEGER {
         return select_total_notes_ratio_parts(state).map(|parts| parts.0);
     }
