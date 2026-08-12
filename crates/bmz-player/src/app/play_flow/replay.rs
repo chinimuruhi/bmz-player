@@ -197,6 +197,10 @@ impl WinitApp {
     }
 
     pub(super) fn start_replay_for_selected(&mut self, slot: u8) -> bool {
+        if self.select.course_builder.is_some() {
+            self.show_select_course_builder_chart_required();
+            return false;
+        }
         if let Some(chart_id) = self.currently_selected_chart_id() {
             return self.try_start_replay_for_chart(chart_id, slot, true);
         }

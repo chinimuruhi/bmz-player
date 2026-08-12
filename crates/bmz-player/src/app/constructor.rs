@@ -179,6 +179,7 @@ impl WinitApp {
                 select_ir: crate::screens::select_ir::SelectIrRanking::default(),
                 player_stats,
                 score_refresh: SelectScoreRefreshState::default(),
+                course_builder: None,
                 select_items,
                 select_distribution_cache: RefCell::new(HashMap::new()),
                 difficulty_tables,

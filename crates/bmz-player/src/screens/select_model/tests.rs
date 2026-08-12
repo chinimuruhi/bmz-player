@@ -18,6 +18,20 @@ use crate::storage::migration::{
 };
 use crate::storage::score_db::{ScoreDatabase, ScoreRecord};
 
+#[test]
+fn new_course_action_is_available_without_chart_ids() {
+    let item = new_course_item_for_locale(AppLocale::Ja);
+    assert_eq!(item.display_name(), "新規コース");
+    assert!(matches!(
+        item,
+        SelectItem::Executable(SelectExecutableRow {
+            kind: SelectExecutableKind::NewCourse,
+            chart_ids,
+            ..
+        }) if chart_ids.is_empty()
+    ));
+}
+
 fn open_in_memory_dbs() -> (LibraryDatabase, ScoreDatabase) {
     let mut library_conn = Connection::open_in_memory().unwrap();
     configure_connection(&library_conn).unwrap();

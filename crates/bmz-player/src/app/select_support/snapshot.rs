@@ -118,7 +118,7 @@ fn select_snapshot_row(
             index: index as u32,
             title: row.title.clone(),
             kind: bmz_render::scene::SelectRowKind::Executable,
-            in_library: !row.chart_ids.is_empty(),
+            in_library: row.kind == SelectExecutableKind::NewCourse || !row.chart_ids.is_empty(),
             ..SelectRowSnapshot::default()
         },
         SelectItem::Config(row) => {

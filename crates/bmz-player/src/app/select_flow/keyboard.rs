@@ -384,6 +384,23 @@ impl WinitApp {
             return;
         }
 
+        if self.select.course_builder.is_some()
+            && event.state == ElementState::Pressed
+            && !event.repeat
+        {
+            match event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.cancel_select_course_builder();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Delete | KeyCode::Backspace) => {
+                    self.undo_select_course_entry();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         // Select 画面で ESC 長押し → アプリ終了 (実際の exit は redraw 時にチェック)。
         if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
             if in_settings_stack(&self.select.folder_stack)

@@ -61,7 +61,7 @@ pub use search::{
 pub use table::{
     course_root_item, load_select_items_for_courses, load_select_items_in_table,
     load_select_items_in_table_for_rule_mode, load_select_items_in_table_level,
-    load_select_items_in_table_level_for_rule_mode, table_folder_items,
+    load_select_items_in_table_level_for_rule_mode, new_course_item_for_locale, table_folder_items,
     table_folder_items_for_active_sources, table_level_folder_items,
 };
 pub use virtual_folder::{
@@ -339,6 +339,7 @@ fn clear_type_name_for_folder_lamp(index: usize) -> &'static str {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectExecutableKind {
     RandomSelect,
+    NewCourse,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

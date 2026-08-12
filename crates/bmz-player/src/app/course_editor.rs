@@ -47,7 +47,7 @@ impl WinitApp {
         }
     }
 
-    fn save_local_course(
+    pub(super) fn save_local_course(
         &mut self,
         definition: &bmz_core::course::CourseDefinition,
     ) -> Result<i64> {

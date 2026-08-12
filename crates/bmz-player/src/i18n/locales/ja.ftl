@@ -536,6 +536,26 @@ toast-chart-download-worker-ended = 譜面取得処理が予期せず終了し�
 
 # Course editor
 menu-course-editor = コース / 段位作成
+select-new-course = 新規コース
+select-course-builder-title = コース作成
+select-course-builder-default-name = 新規コース
+select-course-builder-help = 選曲して決定すると課題曲に追加します。LR2と同じく、同一キーモードで最大5譜面です。
+select-course-builder-mode = キーモード
+select-course-builder-entries = 課題曲 ({ $count } / { $max })
+select-course-builder-empty = 課題曲を選んでください
+select-course-builder-undo = 1曲戻す
+select-course-builder-cancel = キャンセル
+toast-select-course-builder-started = コース作成を開始しました。課題曲を選んでください
+toast-select-course-builder-start-failed = コース作成を開始できませんでした
+toast-select-course-builder-added = { $title } を追加しました ({ $count } / { $max })
+toast-select-course-builder-full = 課題曲は最大5譜面です
+toast-select-course-builder-local-only = 所持している譜面だけ追加できます
+toast-select-course-builder-mode-unknown = この譜面のキーモードを判定できません
+toast-select-course-builder-mode-mismatch = { $expected } コースには { $actual } 譜面を追加できません
+toast-select-course-builder-chart-required = コース作成中は課題曲を選んでください
+toast-select-course-builder-cancelled = コース作成をキャンセルしました
+toast-select-course-builder-saved = コースを保存しました
+toast-select-course-builder-save-failed = コースの保存に失敗しました: { $error }
 course-editor-title = コース / 段位作成
 course-editor-select-only = 選曲画面で編集できます
 course-editor-new = 新規作成

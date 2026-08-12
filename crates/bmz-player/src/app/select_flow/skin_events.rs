@@ -27,7 +27,9 @@ impl WinitApp {
                 self.enter_or_play_selected();
             }
             315 => {
-                if let Some(chart_id) = self.currently_selected_chart_id() {
+                if self.select.course_builder.is_some() {
+                    self.show_select_course_builder_chart_required();
+                } else if let Some(chart_id) = self.currently_selected_chart_id() {
                     self.enter_practice(chart_id, PracticeCliOverrides::default());
                 }
             }

@@ -49,6 +49,15 @@ pub fn course_root_item() -> SelectItem {
     }
 }
 
+/// Returns the action row used to start LR2-style course creation from song select.
+pub fn new_course_item_for_locale(locale: AppLocale) -> SelectItem {
+    SelectItem::Executable(SelectExecutableRow {
+        title: Localizer::new(locale).text("select-new-course"),
+        kind: SelectExecutableKind::NewCourse,
+        chart_ids: Vec::new(),
+    })
+}
+
 /// Loads manually-imported courses (not from a difficulty table) as `SelectItem::Course` entries.
 /// Table-sourced courses appear inside each table's folder via `table_level_folder_items`.
 pub fn load_select_items_for_courses(

@@ -25,6 +25,8 @@ pub(super) struct SelectRuntimeState {
     /// Result 保存後、選曲リストが score DB を再取得するまで保持する。
     /// Retry で `finished_play` が破棄されても更新必要性を失わないための状態。
     pub(super) score_refresh: SelectScoreRefreshState,
+    /// 選曲リストをブラウズしながら課題曲を積む LR2-style course creation state。
+    pub(super) course_builder: Option<SelectCourseBuilderState>,
     pub(super) select_items: Vec<SelectItem>,
     pub(super) select_distribution_cache: RefCell<HashMap<i64, Vec<ChartDistributionSecond>>>,
     pub(super) difficulty_tables: Vec<DifficultyTableRecord>,
@@ -78,6 +80,14 @@ pub(super) struct SelectRuntimeState {
     pub(super) last_cursor_position: Option<PhysicalPosition<f64>>,
     /// ドラッグ中の select skin slider type。
     pub(super) select_slider_dragging_type: Option<i32>,
+}
+
+pub(super) struct SelectCourseBuilderState {
+    pub(super) definition: bmz_core::course::CourseDefinition,
+    pub(super) key_mode: Option<KeyMode>,
+    pub(super) return_folder_stack: Vec<String>,
+    pub(super) return_selected_index_stack: Vec<usize>,
+    pub(super) return_selected_index: usize,
 }
 
 pub(super) struct PlayRuntimeState {

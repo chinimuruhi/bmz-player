@@ -85,6 +85,7 @@ mod auxiliary_window;
 #[path = "ui/course_editor.rs"]
 mod course_editor;
 mod profile_panel;
+mod select_course_builder;
 mod settings_panel;
 mod skin_panel;
 
@@ -96,6 +97,7 @@ use auxiliary_update::*;
 use auxiliary_window::*;
 use course_editor::*;
 use profile_panel::*;
+use select_course_builder::*;
 use settings_panel::*;
 use skin_panel::*;
 
@@ -109,8 +111,9 @@ use menu::*;
 use model::*;
 pub use model::{
     CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiLayer, EguiOutput,
-    EguiRunContext, SceneSkinDefs, SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta,
-    SkinReloadRequest, SongScanRequest, UpdateDialog, UpdateDialogAction,
+    EguiRunContext, SceneSkinDefs, SelectCourseBuilderAction, SelectCourseBuilderData,
+    SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta, SkinReloadRequest,
+    SongScanRequest, UpdateDialog, UpdateDialogAction,
 };
 use runtime::AudioDevicePickerState;
 #[cfg(test)]

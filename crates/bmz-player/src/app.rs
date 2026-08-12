@@ -128,9 +128,9 @@ use crate::screens::select_model::{
     load_select_items_for_favorite_songs, load_select_items_for_search_for_rule_mode_with_filters,
     load_select_items_in_folder_for_rule_mode_with_filters,
     load_select_items_in_table_level_for_rule_mode, load_select_items_in_virtual_folder,
-    parse_favorite_song_detail_path, parse_same_folder_path, parse_search_query, parse_table_path,
-    random_select_item_from_items, root_folder_items, same_folder_path,
-    search_history_folder_items_for_locale, song_scan_path_from_context,
+    new_course_item_for_locale, parse_favorite_song_detail_path, parse_same_folder_path,
+    parse_search_query, parse_table_path, random_select_item_from_items, root_folder_items,
+    same_folder_path, search_history_folder_items_for_locale, song_scan_path_from_context,
     table_folder_items_for_active_sources, table_level_folder_items, table_source_url_from_context,
     virtual_folder_breadcrumb, virtual_folder_root_items,
 };
@@ -168,8 +168,9 @@ use crate::storage::score_import::{ScoreImportRequest, import_scores};
 use crate::table_cmd::{TableFetchOutcome, TableFetchReport};
 use crate::ui::{
     CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiLayer, EguiRunContext,
-    SceneSkinDefs, SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta,
-    SkinReloadRequest, SongScanRequest, UpdateDialog, UpdateDialogAction,
+    SceneSkinDefs, SelectCourseBuilderAction, SelectCourseBuilderData, SkinCandidate,
+    SkinCandidateOrigin, SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest,
+    UpdateDialog, UpdateDialogAction,
 };
 use crate::update::{DownloadedUpdate, UpdateAssetKind, UpdateCandidate};
 use crate::window_config::select_monitor;
@@ -245,6 +246,8 @@ mod rival_sync;
 mod runtime_state;
 mod scene_input;
 mod select_assets;
+#[path = "app/select_course_builder.rs"]
+mod select_course_builder;
 #[path = "app/select_flow/controls.rs"]
 mod select_flow_controls;
 #[path = "app/select_flow/gamepad.rs"]

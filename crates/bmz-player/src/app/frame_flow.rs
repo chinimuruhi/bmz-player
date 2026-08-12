@@ -132,6 +132,8 @@ impl WinitApp {
         let course_result = self.result.finished_course.as_ref();
         let course_preview = self.egui_course_preview(scene_kind);
         let course_editor = self.egui_course_editor_data();
+        let select_course_builder_key_mode =
+            self.select.course_builder.as_ref().and_then(|builder| builder.key_mode);
         let practice_media_ready = self.practice_media_ready();
         let mut practice_panel_ctx =
             practice_panel_context(self.play.practice_session.as_mut(), practice_media_ready);
@@ -167,6 +169,13 @@ impl WinitApp {
                 course_result,
                 course_preview: course_preview.as_ref(),
                 course_editor: &course_editor,
+                select_course_builder: self.select.course_builder.as_mut().map(|builder| {
+                    SelectCourseBuilderData {
+                        definition: &mut builder.definition,
+                        key_mode: select_course_builder_key_mode,
+                        max_entries: crate::app::select_course_builder::SELECT_COURSE_MAX_ENTRIES,
+                    }
+                }),
                 practice: practice_panel_ctx.as_mut(),
                 result_ir: result_ir_panel,
                 profile_root: &self.boot.profile_paths.root_dir,
@@ -194,9 +203,15 @@ impl WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
         let scene_allows_idle = scene_kind != AppSceneKind::Play || self.play.play_ending.is_none();
+        let select_course_builder = self.select.course_builder.is_some();
         let use_idle_frame = scene_allows_idle
             && self.ui.egui.as_ref().is_some_and(|egui| {
-                !egui.needs_full_frame(scene, practice_overlay, self.jobs.update_prompt.is_some())
+                !egui.needs_full_frame(
+                    scene,
+                    practice_overlay,
+                    select_course_builder,
+                    self.jobs.update_prompt.is_some(),
+                )
             });
         if !use_idle_frame {
             return false;
@@ -488,6 +503,9 @@ impl WinitApp {
         }
         if let Some(action) = output.course_editor_action {
             self.apply_course_editor_action(action);
+        }
+        if let Some(action) = output.select_course_builder_action {
+            self.apply_select_course_builder_action(action);
         }
         self.apply_egui_video_config(window);
 

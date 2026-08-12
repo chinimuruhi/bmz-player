@@ -537,6 +537,26 @@ toast-chart-download-worker-ended = 譜面取得程序意外結束
 
 # Course editor
 menu-course-editor = 課程 / 段位編輯器
+select-new-course = 新增課程
+select-course-builder-title = 建立課程
+select-course-builder-default-name = 新增課程
+select-course-builder-help = 在選曲畫面確認譜面即可加入。與LR2相同，一個課程最多包含5個相同鍵位模式的譜面。
+select-course-builder-mode = 鍵位模式
+select-course-builder-entries = 譜面 ({ $count } / { $max })
+select-course-builder-empty = 請選擇要加入的譜面
+select-course-builder-undo = 復原最後一首
+select-course-builder-cancel = 取消
+toast-select-course-builder-started = 已開始建立課程，請選擇譜面
+toast-select-course-builder-start-failed = 無法開始建立課程
+toast-select-course-builder-added = 已加入 { $title } ({ $count } / { $max })
+toast-select-course-builder-full = 一個課程最多包含5個譜面
+toast-select-course-builder-local-only = 只能加入已安裝的譜面
+toast-select-course-builder-mode-unknown = 無法判定此譜面的鍵位模式
+toast-select-course-builder-mode-mismatch = { $expected } 課程不能加入 { $actual } 譜面
+toast-select-course-builder-chart-required = 建立課程時請選擇譜面
+toast-select-course-builder-cancelled = 已取消建立課程
+toast-select-course-builder-saved = 課程已儲存
+toast-select-course-builder-save-failed = 課程儲存失敗：{ $error }
 course-editor-title = 課程 / 段位編輯器
 course-editor-select-only = 可在選曲畫面編輯
 course-editor-new = 新增

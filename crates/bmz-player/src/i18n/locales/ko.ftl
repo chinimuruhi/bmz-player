@@ -536,6 +536,26 @@ toast-chart-download-worker-ended = 채보 가져오기 작업이 예기치 않�
 
 # Course editor
 menu-course-editor = 코스 / 단위 편집기
+select-new-course = 새 코스
+select-course-builder-title = 코스 만들기
+select-course-builder-default-name = 새 코스
+select-course-builder-help = 곡 선택에서 채보를 결정하면 추가됩니다. LR2와 같이 같은 키 모드의 채보를 최대 5개까지 추가할 수 있습니다.
+select-course-builder-mode = 키 모드
+select-course-builder-entries = 채보 ({ $count } / { $max })
+select-course-builder-empty = 추가할 채보를 선택하세요
+select-course-builder-undo = 마지막 곡 취소
+select-course-builder-cancel = 취소
+toast-select-course-builder-started = 코스 만들기를 시작했습니다. 채보를 선택하세요
+toast-select-course-builder-start-failed = 코스 만들기를 시작할 수 없습니다
+toast-select-course-builder-added = { $title } 추가됨 ({ $count } / { $max })
+toast-select-course-builder-full = 코스에는 채보를 최대 5개까지 추가할 수 있습니다
+toast-select-course-builder-local-only = 보유한 채보만 추가할 수 있습니다
+toast-select-course-builder-mode-unknown = 이 채보의 키 모드를 확인할 수 없습니다
+toast-select-course-builder-mode-mismatch = { $expected } 코스에는 { $actual } 채보를 추가할 수 없습니다
+toast-select-course-builder-chart-required = 코스를 만드는 동안에는 채보를 선택하세요
+toast-select-course-builder-cancelled = 코스 만들기를 취소했습니다
+toast-select-course-builder-saved = 코스를 저장했습니다
+toast-select-course-builder-save-failed = 코스 저장 실패: { $error }
 course-editor-title = 코스 / 단위 편집기
 course-editor-select-only = 곡 선택 화면에서 편집할 수 있습니다
 course-editor-new = 새로 만들기

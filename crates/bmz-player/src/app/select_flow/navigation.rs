@@ -289,6 +289,10 @@ impl WinitApp {
     }
 
     pub(super) fn start_autoplay_folder_selected(&mut self) {
+        if self.select.course_builder.is_some() {
+            self.show_select_course_builder_chart_required();
+            return;
+        }
         let text = Localizer::new(self.boot.profile_config.ui.locale());
         let Some((path, kind)) =
             self.select.select_items.get(self.select.selected_index).and_then(|item| match item {
@@ -426,7 +430,9 @@ impl WinitApp {
                 tracing::info!(folder = ?self.select.folder_stack.last(), "entered folder");
             }
             Some(SelectItem::Chart(row)) => {
-                if row.in_library() {
+                if self.select.course_builder.is_some() {
+                    self.add_chart_to_select_course(&row);
+                } else if row.in_library() {
                     self.start_chart(
                         row.chart.as_ref().expect("in_library row has chart").chart_id,
                     );
@@ -435,7 +441,9 @@ impl WinitApp {
                 }
             }
             Some(SelectItem::Course(row)) => {
-                if row.exists_all_songs() {
+                if self.select.course_builder.is_some() {
+                    self.show_select_course_builder_chart_required();
+                } else if row.exists_all_songs() {
                     self.start_course(row.course_id);
                 } else {
                     tracing::info!(
@@ -448,17 +456,36 @@ impl WinitApp {
                 }
             }
             Some(SelectItem::Executable(row)) => match row.kind {
-                SelectExecutableKind::RandomSelect => self.start_random_select(&row.chart_ids),
+                SelectExecutableKind::RandomSelect if self.select.course_builder.is_none() => {
+                    self.start_random_select(&row.chart_ids)
+                }
+                SelectExecutableKind::NewCourse if self.select.course_builder.is_none() => {
+                    self.begin_select_course_builder()
+                }
+                SelectExecutableKind::RandomSelect | SelectExecutableKind::NewCourse => {
+                    self.show_select_course_builder_chart_required()
+                }
             },
+            Some(SelectItem::Config(_)) if self.select.course_builder.is_some() => {
+                self.show_select_course_builder_chart_required();
+            }
             Some(SelectItem::Config(_)) => {}
             Some(SelectItem::KeyBinding(row)) => {
-                self.begin_key_config_edit(row.key_mode, row.target);
+                if self.select.course_builder.is_some() {
+                    self.show_select_course_builder_chart_required();
+                } else {
+                    self.begin_key_config_edit(row.key_mode, row.target);
+                }
             }
             Some(SelectItem::SettingsBack | SelectItem::SettingsClose) => {
                 self.exit_folder();
             }
             Some(SelectItem::AdvancedSettings) => {
-                self.open_advanced_settings_from_select();
+                if self.select.course_builder.is_some() {
+                    self.show_select_course_builder_chart_required();
+                } else {
+                    self.open_advanced_settings_from_select();
+                }
             }
             None => {
                 tracing::warn!("no item is available to select");
@@ -731,6 +758,8 @@ impl WinitApp {
             self.restart_select_bar_timer_without_scroll(Instant::now());
             self.play_system_sound(crate::system_sound::SoundType::FolderClose);
             tracing::info!(depth = self.select.folder_stack.len(), "exited folder");
+        } else if self.select.course_builder.is_some() {
+            self.cancel_select_course_builder();
         }
     }
 }

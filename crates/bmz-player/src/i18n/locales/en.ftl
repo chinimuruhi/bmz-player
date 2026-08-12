@@ -539,6 +539,26 @@ toast-chart-download-worker-ended = The chart acquisition process ended unexpect
 
 # Course editor
 menu-course-editor = Course / Grade editor
+select-new-course = New Course
+select-course-builder-title = Create Course
+select-course-builder-default-name = New Course
+select-course-builder-help = Confirm a chart on song select to add it. As in LR2, a course holds up to five charts of one key mode.
+select-course-builder-mode = Key mode
+select-course-builder-entries = Charts ({ $count } / { $max })
+select-course-builder-empty = Select a chart to add it
+select-course-builder-undo = Undo last
+select-course-builder-cancel = Cancel
+toast-select-course-builder-started = Course creation started. Select charts to add
+toast-select-course-builder-start-failed = Could not start course creation
+toast-select-course-builder-added = Added { $title } ({ $count } / { $max })
+toast-select-course-builder-full = A course can contain at most five charts
+toast-select-course-builder-local-only = Only installed charts can be added
+toast-select-course-builder-mode-unknown = The key mode of this chart could not be determined
+toast-select-course-builder-mode-mismatch = A { $expected } course cannot contain a { $actual } chart
+toast-select-course-builder-chart-required = Select a chart while creating a course
+toast-select-course-builder-cancelled = Course creation cancelled
+toast-select-course-builder-saved = Course saved
+toast-select-course-builder-save-failed = Failed to save course: { $error }
 course-editor-title = Course / Grade editor
 course-editor-select-only = Editing is available on the song select screen
 course-editor-new = New

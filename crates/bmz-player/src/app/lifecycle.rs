@@ -46,8 +46,11 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        let select_course_builder = self.select.course_builder.is_some();
         let egui_consumed = match (self.window.clone(), self.ui.egui.as_mut()) {
-            (Some(window), Some(egui)) => egui.on_window_event(&window, &event, practice_overlay),
+            (Some(window), Some(egui)) => {
+                egui.on_window_event(&window, &event, practice_overlay, select_course_builder)
+            }
             _ => false,
         };
 

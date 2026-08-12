@@ -104,9 +104,10 @@ impl EguiLayer {
         window: &Window,
         event: &WindowEvent,
         practice_overlay: bool,
+        select_course_builder: bool,
     ) -> bool {
         let response = self.state.on_window_event(window, event);
-        self.blocks_game_input(practice_overlay) && response.consumed
+        (self.blocks_game_input(practice_overlay) || select_course_builder) && response.consumed
     }
 
     pub fn blocks_game_input(&self, practice_overlay: bool) -> bool {
@@ -121,11 +122,13 @@ impl EguiLayer {
         &self,
         scene: &str,
         practice_overlay: bool,
+        select_course_builder: bool,
         has_update_dialog: bool,
     ) -> bool {
         egui_frame_needs_full_state(
             self.visible,
             practice_overlay,
+            select_course_builder,
             has_update_dialog,
             scene,
             self.show_settings,
@@ -170,6 +173,7 @@ impl EguiLayer {
             course_result,
             course_preview,
             course_editor,
+            mut select_course_builder,
             mut practice,
             mut result_ir,
             profile_root,
@@ -211,6 +215,7 @@ impl EguiLayer {
         let mut practice_start = false;
         let mut practice_leave = false;
         let mut course_editor_action = None;
+        let mut select_course_builder_action = None;
         let settings_editable = !scene_restricts_settings(info.scene);
         let mut readonly_app_config = (!settings_editable).then(|| app_config.clone());
         let visible_flag = &mut self.visible;
@@ -227,6 +232,10 @@ impl EguiLayer {
                 let panel = build_practice_panel(ui.ctx(), practice_ctx, text);
                 practice_start |= panel.start_play;
                 practice_leave |= panel.leave;
+            }
+            if let Some(builder) = select_course_builder.as_mut() {
+                select_course_builder_action =
+                    build_select_course_builder_panel(ui.ctx(), builder, text);
             }
             if *visible_flag {
                 let ctx = ui.ctx();
@@ -380,6 +389,7 @@ impl EguiLayer {
             practice_start,
             practice_leave,
             course_editor_action,
+            select_course_builder_action,
         }
     }
 }
@@ -387,11 +397,15 @@ impl EguiLayer {
 pub(super) fn egui_frame_needs_full_state(
     visible: bool,
     practice_overlay: bool,
+    select_course_builder: bool,
     has_update_dialog: bool,
     scene: &str,
     show_settings: bool,
 ) -> bool {
-    visible || practice_overlay || (has_update_dialog && (scene == "Select" || show_settings))
+    visible
+        || practice_overlay
+        || select_course_builder
+        || (has_update_dialog && (scene == "Select" || show_settings))
 }
 
 /// egui のデフォルトフォントは CJK グリフを含まないため、locale の地域別字形を

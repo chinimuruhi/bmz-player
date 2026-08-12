@@ -536,6 +536,26 @@ toast-chart-download-worker-ended = 谱面获取进程意外结束
 
 # Course editor
 menu-course-editor = 课程 / 段位编辑器
+select-new-course = 新建课程
+select-course-builder-title = 创建课程
+select-course-builder-default-name = 新建课程
+select-course-builder-help = 在选曲界面确认谱面即可添加。与LR2相同，一个课程最多包含5个相同键位模式的谱面。
+select-course-builder-mode = 键位模式
+select-course-builder-entries = 谱面 ({ $count } / { $max })
+select-course-builder-empty = 请选择要添加的谱面
+select-course-builder-undo = 撤销最后一首
+select-course-builder-cancel = 取消
+toast-select-course-builder-started = 已开始创建课程，请选择谱面
+toast-select-course-builder-start-failed = 无法开始创建课程
+toast-select-course-builder-added = 已添加 { $title } ({ $count } / { $max })
+toast-select-course-builder-full = 一个课程最多包含5个谱面
+toast-select-course-builder-local-only = 只能添加已安装的谱面
+toast-select-course-builder-mode-unknown = 无法确定此谱面的键位模式
+toast-select-course-builder-mode-mismatch = { $expected } 课程不能添加 { $actual } 谱面
+toast-select-course-builder-chart-required = 创建课程时请选择谱面
+toast-select-course-builder-cancelled = 已取消创建课程
+toast-select-course-builder-saved = 课程已保存
+toast-select-course-builder-save-failed = 课程保存失败：{ $error }
 course-editor-title = 课程 / 段位编辑器
 course-editor-select-only = 可在选曲画面编辑
 course-editor-new = 新建

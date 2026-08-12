@@ -251,6 +251,7 @@ pub struct EguiRunContext<'a, 'practice> {
     pub course_result: Option<&'a CourseResultSummary>,
     pub course_preview: Option<&'a SelectCourseRow>,
     pub course_editor: &'a CourseEditorData,
+    pub select_course_builder: Option<SelectCourseBuilderData<'a>>,
     pub practice: Option<&'a mut PracticePanelContext<'practice>>,
     pub result_ir: Option<&'a mut crate::screens::result_ir::ResultIrState>,
     pub profile_root: &'a Path,
@@ -291,6 +292,21 @@ pub struct EguiOutput {
     pub practice_start: bool,
     pub practice_leave: bool,
     pub course_editor_action: Option<CourseEditorAction>,
+    pub select_course_builder_action: Option<SelectCourseBuilderAction>,
+}
+
+pub struct SelectCourseBuilderData<'a> {
+    pub definition: &'a mut bmz_core::course::CourseDefinition,
+    pub key_mode: Option<bmz_core::lane::KeyMode>,
+    pub max_entries: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectCourseBuilderAction {
+    Remove(usize),
+    Undo,
+    Save,
+    Cancel,
 }
 
 #[derive(Debug, Clone, Default)]
