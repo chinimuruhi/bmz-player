@@ -339,7 +339,8 @@ impl WinitApp {
         {
             match event.state {
                 ElementState::Pressed if !event.repeat => {
-                    if self.begin_select_ir_battle_hold(&control) {
+                    let short_action = scene_select_action(control_event, &self.select.select_keys);
+                    if self.begin_select_ir_battle_hold(&control, short_action) {
                         return;
                     }
                 }

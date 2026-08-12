@@ -507,7 +507,10 @@ impl WinitApp {
 
         if self.select.select_option_panel == 0
             && self.select.select_keys.is_ui_key4(button)
-            && self.begin_select_ir_battle_hold(button)
+            && self.begin_select_ir_battle_hold(
+                button,
+                scene_select_action(&control_event, &self.select.select_keys),
+            )
         {
             return;
         }

@@ -566,16 +566,6 @@ fn course_normalizes_battle_session_modes() {
     assert_eq!(autoplay_battle.session_mode, SessionMode::Autoplay);
     assert!(autoplay_battle.autoplay);
     assert!(autoplay_battle.replay_player.is_none());
-
-    let mut ghost_battle = PlayStartOptions {
-        session_mode: SessionMode::GhostBattle,
-        replay_player: Some(bmz_gameplay::replay::ReplayPlayer::default()),
-        ..PlayStartOptions::default()
-    };
-    normalize_session_mode_for_course(&mut ghost_battle);
-    assert_eq!(ghost_battle.session_mode, SessionMode::Normal);
-    assert!(!ghost_battle.autoplay);
-    assert!(ghost_battle.replay_player.is_none());
 }
 
 #[test]

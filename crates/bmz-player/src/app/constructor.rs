@@ -252,7 +252,7 @@ impl WinitApp {
                 play_media_cache: None,
                 play_ending: None,
                 last_started_chart_id: None,
-                last_ghost_battle_target: None,
+                last_battle_target: None,
                 play_table_text_primary: String::new(),
                 play_table_text_secondary: String::new(),
                 play_table_text_fallback: String::new(),

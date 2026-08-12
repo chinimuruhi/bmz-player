@@ -117,6 +117,12 @@ pub struct PlaySessionOptions {
     /// 譜面変換時に確定した実効 assist。preload 後に内部で設定する。
     pub assist_runtime: AssistRuntime,
     pub replay_player: Option<ReplayPlayer>,
+    /// G-BATTLE is orthogonal to SessionMode. When present, preload builds a
+    /// separately arranged opponent chart and gameplay advances this replay
+    /// without taking over the primary input lanes.
+    pub battle_opponent: Option<BattleOpponentOptions>,
+    /// Preload-only output consumed by `build_game_session*`.
+    pub opponent_chart: Option<Arc<PlayableChart>>,
     pub sample_rate: u32,
     pub gauge_override: Option<GaugeType>,
     /// G-BATTLE opponent gauge reconstructed from the selected IR score.
@@ -173,6 +179,24 @@ pub struct PlaySessionOptions {
     pub gauge_property: Option<GaugeProperty>,
     /// 論理 `gamepad1`/`gamepad2` → 物理 gilrs id の対応。プレイ開始時に固定する。
     pub gamepad_slots: GamepadSlotMap,
+}
+
+#[derive(Debug, Clone)]
+pub struct BattleOpponentOptions {
+    pub replay_player: Option<ReplayPlayer>,
+    pub gauge: Option<GaugeType>,
+    pub arrange: ArrangeOption,
+    pub arrange_2p: ArrangeOption,
+    pub double_option: DoubleOption,
+    pub arrange_seed: Option<i64>,
+    pub arrange_seed_2p: Option<i64>,
+    /// rianIR-compatible packed side seeds. Expanded after the source key mode
+    /// is known during preload.
+    pub packed_seed: Option<i64>,
+    pub bms_random_choices: Option<Vec<i32>>,
+    pub arrange_pattern: Option<Vec<u8>>,
+    pub s_random_scheme: SRandomScheme,
+    pub s_random_scheme_2p: Option<SRandomScheme>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -253,6 +277,7 @@ pub struct PreparedPlayChart {
     pub score_key: ScoreKey,
     pub assist_runtime: AssistRuntime,
     pub score_save_disabled: bool,
+    pub opponent_chart: Option<Arc<PlayableChart>>,
 }
 
 pub struct PreloadedPlaySession {
@@ -267,6 +292,7 @@ pub struct PreloadedPlaySession {
     pub score_key: ScoreKey,
     pub assist_runtime: AssistRuntime,
     pub score_save_disabled: bool,
+    pub opponent_chart: Option<Arc<PlayableChart>>,
 }
 
 impl PreloadedPlaySession {
@@ -280,6 +306,7 @@ impl PreloadedPlaySession {
             score_key: self.score_key,
             assist_runtime: self.assist_runtime,
             score_save_disabled: self.score_save_disabled,
+            opponent_chart: self.opponent_chart.clone(),
         }
     }
 }
@@ -297,6 +324,8 @@ impl Default for PlaySessionOptions {
             assist: AssistOptionConfig::default(),
             assist_runtime: AssistRuntime::default(),
             replay_player: None,
+            battle_opponent: None,
+            opponent_chart: None,
             sample_rate: 48_000,
             gauge_override: None,
             opponent_gauge_override: None,
@@ -344,6 +373,7 @@ mod preload;
 #[path = "play_session/seven_to_six.rs"]
 mod seven_to_six;
 
+pub(crate) use arrange_pipeline::second_player_lane_mask;
 pub use arrange_pipeline::{apply_arrange, apply_arrange_pair, generate_arrange_seed};
 pub use build::{
     apply_placeholder_session_visuals, build_game_session, build_game_session_with_input_backend,

@@ -492,6 +492,8 @@ mod tests {
                         gauge: Some("Groove".to_string()),
                         arrange_1p: Some("Normal".to_string()),
                         arrange_2p: None,
+                        random_seed: None,
+                        double_option: None,
                         verification: Some("verified_play".to_string()),
                         judges: None,
                         device_type: None,

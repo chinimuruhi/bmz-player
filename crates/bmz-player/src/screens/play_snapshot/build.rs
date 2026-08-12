@@ -15,7 +15,14 @@ pub fn apply_prepared_chart_to_render_snapshot(
     cache: &PlayRenderSnapshotCache,
     battle: bool,
 ) {
-    let total_notes = if battle { scored_note_count(chart) / 2 } else { scored_note_count(chart) };
+    let total_notes = if battle {
+        bmz_gameplay::score::scored_note_count_excluding_lanes(
+            chart,
+            &crate::screens::play_session::second_player_lane_mask(),
+        )
+    } else {
+        scored_note_count(chart)
+    };
     snapshot.duration = chart.end_time;
     snapshot.title.clone_from(&chart.metadata.title);
     snapshot.subtitle.clone_from(&chart.metadata.subtitle);
@@ -191,7 +198,26 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             course_section_start: false,
         })
         .collect();
-    let opponent = session.opponent_score.as_ref().zip(session.opponent_gauge.as_ref()).map(
+    let independent_opponent = session.battle_opponent.as_ref().map(|opponent| {
+        let gauge = opponent.gauge.current();
+        OpponentRenderSnapshot {
+            combo: opponent.score.combo,
+            max_combo: opponent.score.max_combo,
+            ex_score: opponent.score.ex_score(),
+            total_notes: opponent.scored_total_notes,
+            past_notes: opponent.score.past_notes,
+            judge_counts: display_judge_counts_for_score(&opponent.score),
+            gauge: gauge.value,
+            gauge_type: gauge.definition.gauge_type as i32,
+            gauge_max: gauge.definition.max,
+            gauge_border: gauge.definition.border,
+            full_combo_elapsed_ms: None,
+            end_of_note_elapsed_ms: end_of_note_elapsed_ms(chart_now, cache.end_of_note_time),
+            gauge_increase_elapsed_ms: None,
+            gauge_max_elapsed_ms: None,
+        }
+    });
+    let legacy_opponent = session.opponent_score.as_ref().zip(session.opponent_gauge.as_ref()).map(
         |(score, gauge)| OpponentRenderSnapshot {
             combo: score.combo,
             max_combo: score.max_combo,
@@ -219,6 +245,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             ),
         },
     );
+    let opponent = independent_opponent.or(legacy_opponent);
     let mut snapshot = RenderSnapshot {
         time: chart_now,
         player_name: String::new(),

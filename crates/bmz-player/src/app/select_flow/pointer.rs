@@ -289,7 +289,7 @@ impl WinitApp {
                     self.play_system_sound(crate::system_sound::SoundType::Scratch);
                 }
                 Some(SelectRowClickAction::EnterOrPlay) => {
-                    self.start_selected_ir_ghost_battle();
+                    self.start_selected_battle();
                 }
                 Some(SelectRowClickAction::ExitFolder)
                 | Some(SelectRowClickAction::CancelSettingsEdit) => {

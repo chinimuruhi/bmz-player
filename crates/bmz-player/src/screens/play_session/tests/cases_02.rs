@@ -1,6 +1,35 @@
 use super::*;
 
 #[test]
+fn battle_presentation_uses_opponent_arrangement_on_2p_lanes() {
+    let mut primary = chart();
+    primary.metadata.key_mode = KeyMode::K7;
+    primary.lane_notes[Lane::Key1.index()].push(NoteEvent {
+        id: NoteId(1),
+        lane: Lane::Key1,
+        kind: NoteKind::Tap,
+        tick: bmz_core::time::ChartTick(0),
+        time: TimeUs(0),
+        sound: None,
+        layered_sounds: Vec::new(),
+        damage: None,
+    });
+    let mut opponent = primary.clone();
+    opponent.lane_notes[Lane::Key2.index()] =
+        std::mem::take(&mut opponent.lane_notes[Lane::Key1.index()]);
+    for note in &mut opponent.lane_notes[Lane::Key2.index()] {
+        note.lane = Lane::Key2;
+    }
+
+    apply_battle_opponent_chart(&mut primary, &opponent);
+
+    assert_eq!(primary.metadata.key_mode, KeyMode::K14);
+    assert!(primary.lane_notes[Lane::Key8.index()].is_empty());
+    assert_eq!(primary.lane_notes[Lane::Key9.index()].len(), 1);
+    assert_eq!(primary.lane_notes[Lane::Key9.index()][0].lane, Lane::Key9);
+}
+
+#[test]
 fn build_game_session_applies_dx_9key_pop_rules() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.play.rule_mode = RuleMode::Dx;

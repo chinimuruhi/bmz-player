@@ -1,7 +1,7 @@
-use bmz_chart::model::{LongNoteMode, PlayableChart};
+use bmz_chart::model::{LongNoteMode, NoteKind, PlayableChart};
 use bmz_core::clear::ClearType;
 use bmz_core::judge::{Judge, TimingSide};
-use bmz_core::lane::KeyMode;
+use bmz_core::lane::{KeyMode, LANE_COUNT};
 
 use crate::gauge::GaugeState;
 use crate::judge::model::JudgementEvent;
@@ -14,11 +14,32 @@ use crate::rule::RuleMode;
 /// are scored independently, while LN pairs are scored once as a whole, so
 /// each effective CN/HCN pair contributes one additional scored note.
 pub fn scored_note_count(chart: &PlayableChart) -> u32 {
-    let scored_long_ends = chart.long_notes.iter().fold(0u32, |count, pair| {
+    scored_note_count_excluding_lanes(chart, &[false; LANE_COUNT])
+}
+
+/// Returns the score denominator after omitting presentation-only lanes.
+///
+/// A 5K/7K battle skin stores its opponent notes in the 2P lanes of the
+/// primary chart. Genuine 10K/14K charts must not use this filter.
+pub fn scored_note_count_excluding_lanes(
+    chart: &PlayableChart,
+    excluded_lanes: &[bool; LANE_COUNT],
+) -> u32 {
+    let base_notes = chart
+        .lane_notes
+        .iter()
+        .enumerate()
+        .filter(|(lane, _)| !excluded_lanes[*lane])
+        .flat_map(|(_, notes)| notes)
+        .filter(|note| matches!(note.kind, NoteKind::Tap | NoteKind::LongStart))
+        .count() as u32;
+    chart.long_notes.iter().fold(base_notes, |count, pair| {
         let mode = pair.mode.unwrap_or(chart.metadata.long_note_mode);
-        count.saturating_add(u32::from(matches!(mode, LongNoteMode::Cn | LongNoteMode::Hcn)))
-    });
-    chart.total_notes.saturating_add(scored_long_ends)
+        count.saturating_add(u32::from(
+            !excluded_lanes[pair.lane.index()]
+                && matches!(mode, LongNoteMode::Cn | LongNoteMode::Hcn),
+        ))
+    })
 }
 
 #[derive(Debug, Clone, Default)]

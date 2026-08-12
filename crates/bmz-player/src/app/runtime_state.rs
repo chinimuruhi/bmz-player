@@ -118,7 +118,7 @@ pub(super) struct PlayRuntimeState {
     pub(super) play_ending: Option<PlayEndingTransition>,
     pub(super) last_started_chart_id: Option<i64>,
     /// Retained across Result retry so the same IR ghost remains selected.
-    pub(super) last_ghost_battle_target: Option<crate::screens::play_start::GhostBattleTarget>,
+    pub(super) last_battle_target: Option<crate::screens::play_start::BattleTarget>,
     /// プレイ開始時点の難易度表テキスト (beatoraja TEXT_TABLE1..3)。
     pub(super) play_table_text_primary: String,
     pub(super) play_table_text_secondary: String,

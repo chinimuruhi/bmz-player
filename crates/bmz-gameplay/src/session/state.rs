@@ -132,6 +132,9 @@ pub struct GameSession {
     pub score: ScoreState,
     /// display-only 2P opponent score. None outside battle sessions.
     pub opponent_score: Option<ScoreState>,
+    /// G-BATTLE の相手を主プレイヤーと独立して再生・判定するランタイム。
+    /// SessionMode には含めず、任意のキーモードで通常プレイへ重ねられる。
+    pub battle_opponent: Option<BattleOpponentSession>,
     /// Course-mode display combo carry. ScoreState remains per-chart for
     /// storage; these fields only affect the rendered combo/max combo.
     pub course_combo_carry: u32,
@@ -241,6 +244,21 @@ pub struct GameSession {
     pub state: PlayState,
     /// HCN ゲージ増減の前回更新時刻。
     pub last_hcn_gauge_at: Option<TimeUs>,
+}
+
+/// G-BATTLE opponent state. The opponent uses its own chart and judge cursor so
+/// its arrangement never changes the primary player's score chart.
+pub struct BattleOpponentSession {
+    pub chart: Arc<PlayableChart>,
+    pub key_mode: KeyMode,
+    pub scored_total_notes: u32,
+    pub judge: JudgeEngine,
+    pub base_judge_windows: JudgeWindows,
+    pub rule_mode: RuleMode,
+    pub score: ScoreState,
+    pub gauge: GaugeState,
+    pub replay_player: Option<ReplayPlayer>,
+    pub lane_keyon_started_at: [Option<TimeUs>; LANE_COUNT],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

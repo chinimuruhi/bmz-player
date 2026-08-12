@@ -478,15 +478,8 @@ fn enqueue_ir_jobs(
     if enabled.is_empty() {
         return;
     }
-    // G-BATTLE internally duplicates an SP chart into K10/K14. IR stores the
-    // human 1P attempt under the original SP identity, so strip only the
-    // display opponent lanes before building chart metadata.
-    let projected_chart = snapshot
-        .replay_lane_mask
-        .then(|| primary_chart_from_battle(&snapshot.chart, snapshot.primary_key_mode));
-    let submission_chart = projected_chart.as_ref().unwrap_or(&snapshot.chart);
     let payload = build_score_submission(
-        submission_chart,
+        &snapshot.chart,
         result,
         IrSubmissionContext {
             played_at,
@@ -529,7 +522,7 @@ fn enqueue_ir_jobs(
                 result.clear_type.as_str(),
                 chart_length_ms,
                 play_duration_ms,
-                submission_chart.metadata.has_bms_random,
+                snapshot.chart.metadata.has_bms_random,
             )
         {
             let error = format!(
@@ -565,17 +558,6 @@ fn enqueue_ir_jobs(
             }
         }
     }
-}
-
-fn primary_chart_from_battle(chart: &PlayableChart, primary_key_mode: KeyMode) -> PlayableChart {
-    let mut projected = chart.clone();
-    for lane_notes in &mut projected.lane_notes[8..] {
-        lane_notes.clear();
-    }
-    projected.long_notes.retain(|pair| pair.lane.index() < 8);
-    projected.total_notes /= 2;
-    projected.metadata.key_mode = primary_key_mode;
-    projected
 }
 
 /// 送信ポリシーによる IR ジョブ作成可否。

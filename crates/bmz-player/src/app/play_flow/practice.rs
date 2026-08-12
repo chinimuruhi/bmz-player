@@ -107,7 +107,7 @@ impl WinitApp {
         chart_id: i64,
         options: &mut PlayStartOptions,
     ) -> Result<()> {
-        if !options.session_mode.is_battle() {
+        if options.session_mode != SessionMode::AutoplayBattle && options.battle_target.is_none() {
             return Ok(());
         }
         let chart = crate::screens::play_session::load_source_chart_for_chart(
@@ -115,87 +115,45 @@ impl WinitApp {
             chart_id,
             None,
         )?;
-        if !matches!(chart.metadata.key_mode, KeyMode::K5 | KeyMode::K7) {
-            anyhow::bail!("battle session currently supports only 5K and 7K charts");
-        }
-        options.double_option = DoubleOption::Off;
         if options.session_mode == SessionMode::AutoplayBattle {
             options.autoplay = true;
-            return Ok(());
         }
-
-        let ln_policy = crate::ln_policy::score_ln_policy_for_chart(
-            self.boot.profile_config.play.ln_mode_policy,
-            &chart,
-        );
-        let replay = if let Some(target) = options.ghost_battle_target.clone() {
-            if target.replay.chart_sha256_bytes()? != chart.identity.file_sha256 {
-                anyhow::bail!("IR ghost replay chart hash does not match selected chart");
+        let Some(target) = options.battle_target.as_ref() else {
+            return Ok(());
+        };
+        options.resolved_target =
+            Some(ResolvedTarget { name: target.player_name.clone(), ex_score: target.ex_score });
+        if let crate::screens::play_start::BattleTargetPlayback::Replay(replay) = &target.playback {
+            let ln_policy = crate::ln_policy::score_ln_policy_for_chart(
+                self.boot.profile_config.play.ln_mode_policy,
+                &chart,
+            );
+            if replay.chart_sha256_bytes()? != chart.identity.file_sha256 {
+                anyhow::bail!("battle replay chart hash does not match selected chart");
             }
-            if !target.replay.ln_policy.is_empty()
-                && crate::ln_policy::LnScorePolicy::from_str_opt(&target.replay.ln_policy)
+            if !replay.ln_policy.is_empty()
+                && crate::ln_policy::LnScorePolicy::from_str_opt(&replay.ln_policy)
                     != Some(ln_policy)
             {
-                anyhow::bail!("IR ghost replay long note policy does not match selected chart");
+                anyhow::bail!("battle replay long note policy does not match selected chart");
             }
-            if target.replay.double_option_bucket()
-                != crate::select_options::DoubleOptionScoreBucket::Off
+            if replay.uses_legacy_seed_scheme() {
+                anyhow::bail!("legacy replay seed scheme is not supported by G-BATTLE");
+            }
+            if replay.events.is_empty() {
+                anyhow::bail!("battle score has no full input replay");
+            }
+            if replay
+                .events
+                .iter()
+                .any(|event| !chart.metadata.key_mode.active_lanes().contains(&event.lane))
             {
-                anyhow::bail!("IR ghost replay is not a single-play replay");
+                anyhow::bail!("battle replay contains input lanes outside the selected key mode");
             }
-            options.resolved_target =
-                Some(ResolvedTarget { name: target.player_name, ex_score: target.ex_score });
-            target.replay
-        } else {
-            let score_key = crate::storage::score_db::ScoreKey::with_options(
-                chart.identity.file_sha256,
-                ln_policy,
-                crate::select_options::DoubleOptionScoreBucket::Off,
-                self.boot.profile_config.play.rule_mode,
-            );
-            let best = self
-                .boot
-                .score_db
-                .best_scores_for_charts(&[score_key])?
-                .into_iter()
-                .next()
-                .context("self-best score is not available")?;
-            if best.replay_path.is_empty() {
-                anyhow::bail!("self-best score has no full replay");
+            if replay.events.windows(2).any(|events| events[0].time > events[1].time) {
+                anyhow::bail!("battle replay events are not ordered by time");
             }
-            let replay_path = self.boot.profile_paths.root_dir.join(&best.replay_path);
-            load_replay_for_chart_policy_and_double_option(
-                &replay_path,
-                chart.identity.file_sha256,
-                best.ln_policy,
-                crate::select_options::DoubleOptionScoreBucket::Off,
-            )?
-        };
-        if replay.uses_legacy_seed_scheme() {
-            anyhow::bail!("legacy replay seed scheme is not supported by ghost battle");
         }
-        if replay.events.is_empty() {
-            anyhow::bail!("self-best score has no full input replay");
-        }
-        let replay_s_random_scheme = replay.effective_s_random_scheme()?;
-        let events: Vec<_> = replay
-            .events
-            .iter()
-            .filter_map(|event| {
-                second_player_lane(event.lane)
-                    .map(|lane| bmz_core::replay::ReplayEvent { lane, ..*event })
-            })
-            .collect();
-        if events.is_empty() {
-            anyhow::bail!("ghost replay has no compatible 1P input events");
-        }
-        options.autoplay = false;
-        options.replay_player = Some(bmz_gameplay::replay::ReplayPlayer { events, next_index: 0 });
-        options.arrange_2p = replay.arrange_option();
-        options.arrange_seed_2p = replay.arrange_seed;
-        options.s_random_scheme_2p = Some(replay_s_random_scheme);
-        options.bms_random_seed = None;
-        options.bms_random_choices = replay.bms_random_choices;
         Ok(())
     }
 

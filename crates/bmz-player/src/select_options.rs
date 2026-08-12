@@ -270,10 +270,10 @@ fn rank_threshold(max_ex_score: u32, eighteenths: u32) -> u32 {
 #[serde(rename_all = "PascalCase")]
 pub enum SessionMode {
     #[default]
+    #[serde(alias = "GhostBattle")]
     Normal,
     Autoplay,
     AutoplayBattle,
-    GhostBattle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -539,24 +539,31 @@ mod tests {
     fn session_mode_cycles_in_select_order() {
         assert_eq!(SessionMode::Normal.cycle(), SessionMode::Autoplay);
         assert_eq!(SessionMode::Autoplay.cycle(), SessionMode::AutoplayBattle);
-        assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::GhostBattle);
-        assert_eq!(SessionMode::GhostBattle.cycle(), SessionMode::Normal);
+        assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::Normal);
         assert!(SessionMode::AutoplayBattle.primary_autoplay());
-        assert!(SessionMode::GhostBattle.score_save_enabled());
         assert!(!SessionMode::AutoplayBattle.score_save_enabled());
+    }
+
+    #[test]
+    fn legacy_ghost_battle_profile_value_migrates_to_normal() {
+        #[derive(serde::Deserialize)]
+        struct LegacyProfile {
+            session_mode: SessionMode,
+        }
+
+        let profile: LegacyProfile = toml::from_str(r#"session_mode = "GhostBattle""#).unwrap();
+        assert_eq!(profile.session_mode, SessionMode::Normal);
     }
 }
 
 impl SessionMode {
-    pub const VALUES: [Self; 4] =
-        [Self::Normal, Self::Autoplay, Self::AutoplayBattle, Self::GhostBattle];
+    pub const VALUES: [Self; 3] = [Self::Normal, Self::Autoplay, Self::AutoplayBattle];
 
     pub fn cycle(self) -> Self {
         match self {
             Self::Normal => Self::Autoplay,
             Self::Autoplay => Self::AutoplayBattle,
-            Self::AutoplayBattle => Self::GhostBattle,
-            Self::GhostBattle => Self::Normal,
+            Self::AutoplayBattle => Self::Normal,
         }
     }
 
@@ -565,7 +572,6 @@ impl SessionMode {
             Self::Normal => "NORMAL",
             Self::Autoplay => "AUTOPLAY",
             Self::AutoplayBattle => "AUTOPLAY BATTLE",
-            Self::GhostBattle => "GHOST BATTLE",
         }
     }
 
@@ -574,10 +580,10 @@ impl SessionMode {
     }
 
     pub const fn is_battle(self) -> bool {
-        matches!(self, Self::AutoplayBattle | Self::GhostBattle)
+        matches!(self, Self::AutoplayBattle)
     }
 
     pub const fn score_save_enabled(self) -> bool {
-        matches!(self, Self::Normal | Self::GhostBattle)
+        matches!(self, Self::Normal)
     }
 }

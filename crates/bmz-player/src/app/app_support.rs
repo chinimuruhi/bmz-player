@@ -121,13 +121,12 @@ pub(super) fn course_play_metrics_from_chart_metadata(
         } else {
             start_options.double_option.normalize_for_key_mode(key_mode)
         };
-        let multiplier = if start_options.session_mode.is_battle()
-            || matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
-        {
-            2
-        } else {
-            1
-        };
+        let multiplier =
+            if matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch) {
+                2
+            } else {
+                1
+            };
         total_notes = total_notes
             .saturating_add(chart.scored_total_notes(score_policy).saturating_mul(multiplier));
         ln_mode = crate::ln_policy::max_long_note_mode(

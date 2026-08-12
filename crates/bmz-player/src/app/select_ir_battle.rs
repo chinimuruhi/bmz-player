@@ -16,6 +16,7 @@ pub(super) struct SelectIrBattleRuntime {
     pub(super) source_sha256: Option<[u8; 32]>,
     pub(super) hold_started_at: Option<Instant>,
     pub(super) hold_control: Option<String>,
+    pub(super) hold_short_action: Option<SelectAction>,
     pub(super) generation: u64,
     pub(super) loading: bool,
     pub(super) pending: Option<Receiver<SelectIrBattleReplayResult>>,
@@ -24,12 +25,53 @@ pub(super) struct SelectIrBattleRuntime {
 pub(super) struct SelectIrBattleReplayResult {
     generation: u64,
     chart_id: i64,
-    target: std::result::Result<crate::screens::play_start::GhostBattleTarget, String>,
+    target: std::result::Result<crate::screens::play_start::BattleTarget, String>,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::app) enum SelectBattleChoice {
+    Off,
+    MyBest { available: bool },
+    Replay { slot: u8, available: bool },
+    Rival { name: String, available: bool },
+    Ranking(Box<crate::screens::select_ir::SelectIrBattleEntry>),
 }
 
 impl WinitApp {
-    fn select_ir_battle_entries(&self) -> &[crate::screens::select_ir::SelectIrBattleEntry] {
-        self.select.select_ir.battle_entries_for(self.select.ir_battle.source_sha256)
+    pub(super) fn select_battle_choices(&self) -> Vec<SelectBattleChoice> {
+        let row = self.selected_chart_row();
+        let best_available = row
+            .and_then(|row| row.best_score.as_ref())
+            .is_some_and(|score| !score.replay_path.is_empty());
+        let slots = row.map(|row| row.replay_slots).unwrap_or_default();
+        let rival_name = self
+            .boot
+            .profile_config
+            .rival
+            .entries
+            .iter()
+            .find(|entry| entry.id == self.boot.profile_config.rival.active_rival)
+            .map(|entry| entry.display_name.clone())
+            .filter(|name| !name.is_empty());
+        let mut choices =
+            vec![SelectBattleChoice::Off, SelectBattleChoice::MyBest { available: best_available }];
+        choices.extend(
+            (0..4).map(|slot| SelectBattleChoice::Replay { slot, available: slots[slot as usize] }),
+        );
+        choices.push(SelectBattleChoice::Rival {
+            name: rival_name.clone().unwrap_or_else(|| "--".to_string()),
+            available: rival_name.is_some(),
+        });
+        choices.extend(
+            self.select
+                .select_ir
+                .battle_entries_for(self.select.ir_battle.source_sha256)
+                .iter()
+                .cloned()
+                .map(Box::new)
+                .map(SelectBattleChoice::Ranking),
+        );
+        choices
     }
 
     fn select_ir_battle_source(&self) -> Option<(i64, [u8; 32], KeyMode)> {
@@ -39,32 +81,27 @@ impl WinitApp {
     }
 
     fn select_ir_battle_is_available(&self) -> bool {
-        if self.select.session_mode != SessionMode::GhostBattle
-            || self.select.select_option_panel != 0
+        if self.select.select_option_panel != 0
             || self.select.search.is_active()
+            || self.select.course_builder.is_some()
             || in_settings_stack(&self.select.folder_stack)
         {
             return false;
         }
-        let Some((_, sha256, key_mode)) = self.select_ir_battle_source() else {
+        let Some((_, _, _)) = self.select_ir_battle_source() else {
             return false;
         };
-        if !matches!(key_mode, KeyMode::K5 | KeyMode::K7) {
-            return false;
-        }
-        let Some(provider) =
-            crate::ir::provider_key::primary_provider_config(&self.boot.profile_config.ir)
-        else {
-            return false;
-        };
-        !crate::ir::rian_ir::is_rian_ir_config(provider)
-            && !self.select.select_ir.battle_entries_for(Some(sha256)).is_empty()
+        true
     }
 
     /// KEY4 press is deferred while a usable IR ranking is present. A short
     /// press retains the normal back action; a 120 ms hold temporarily swaps
     /// the song list for the ranking, matching LR2's interaction.
-    pub(super) fn begin_select_ir_battle_hold(&mut self, control: &str) -> bool {
+    pub(super) fn begin_select_ir_battle_hold(
+        &mut self,
+        control: &str,
+        short_action: Option<SelectAction>,
+    ) -> bool {
         if !self.select_ir_battle_is_available() {
             return false;
         }
@@ -78,6 +115,7 @@ impl WinitApp {
         self.select.ir_battle.source_sha256 = Some(sha256);
         self.select.ir_battle.hold_started_at = Some(Instant::now());
         self.select.ir_battle.hold_control = Some(control.to_string());
+        self.select.ir_battle.hold_short_action = short_action;
         true
     }
 
@@ -92,12 +130,15 @@ impl WinitApp {
             .is_some_and(|started| started.elapsed() >= IR_BATTLE_HOLD_DURATION);
         self.select.ir_battle.hold_started_at = None;
         self.select.ir_battle.hold_control = None;
+        let short_action = self.select.ir_battle.hold_short_action.take();
         if self.select.ir_battle.active || held_long_enough {
             if !self.select.ir_battle.pinned {
                 self.close_select_ir_battle();
             }
         } else {
-            self.exit_folder();
+            if let Some(action) = short_action {
+                self.apply_select_action(action, None);
+            }
         }
         true
     }
@@ -112,9 +153,7 @@ impl WinitApp {
             }
             return;
         }
-        if self.select.ir_battle.active
-            && (!self.select_ir_battle_is_available() || self.select_ir_battle_entries().is_empty())
-        {
+        if self.select.ir_battle.active && !self.select_ir_battle_is_available() {
             self.close_select_ir_battle();
             return;
         }
@@ -167,6 +206,7 @@ impl WinitApp {
         self.select.ir_battle.source_sha256 = None;
         self.select.ir_battle.hold_started_at = None;
         self.select.ir_battle.hold_control = None;
+        self.select.ir_battle.hold_short_action = None;
         self.select.ir_battle.loading = false;
         self.select.ir_battle.pending = None;
         self.select.ir_battle.generation = self.select.ir_battle.generation.wrapping_add(1);
@@ -178,7 +218,7 @@ impl WinitApp {
     }
 
     pub(super) fn move_select_ir_battle(&mut self, select_move: SelectMove, duration: Duration) {
-        let len = self.select_ir_battle_entries().len();
+        let len = self.select_battle_choices().len();
         if len == 0 {
             self.close_select_ir_battle();
             return;
@@ -193,23 +233,83 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn start_selected_ir_ghost_battle(&mut self) {
+    pub(super) fn start_selected_battle(&mut self) {
         if self.select.ir_battle.loading {
             return;
         }
         let Some(chart_id) = self.select.ir_battle.source_chart_id else {
             return;
         };
-        let Some(sha256) = self.select.ir_battle.source_sha256 else {
-            return;
-        };
-        let Some(entry) =
-            self.select_ir_battle_entries().get(self.select.ir_battle.cursor).cloned()
+        let Some(choice) = self.select_battle_choices().get(self.select.ir_battle.cursor).cloned()
         else {
             return;
         };
+        match choice {
+            SelectBattleChoice::Off => {
+                let mut options = self.play_start_options();
+                options.battle_target = None;
+                if self.prepare_session_mode_or_show_error(chart_id, &mut options) {
+                    self.close_select_ir_battle();
+                    self.begin_decide_for_chart(chart_id, options);
+                }
+            }
+            SelectBattleChoice::MyBest { available } => {
+                if !available {
+                    self.show_ir_battle_error("MYBEST has no full replay");
+                    return;
+                }
+                let Some(best) = self.selected_chart_row().and_then(|row| row.best_score.clone())
+                else {
+                    self.show_ir_battle_error("MYBEST is not available");
+                    return;
+                };
+                let path = self.boot.profile_paths.root_dir.join(&best.replay_path);
+                self.start_local_battle_target(
+                    chart_id,
+                    &path,
+                    "MYBEST".to_string(),
+                    best.ex_score,
+                    gauge_type_from_ir(&best.gauge_type),
+                );
+            }
+            SelectBattleChoice::Replay { slot, available } => {
+                if !available {
+                    self.show_ir_battle_error(&format!("REPLAY {} is empty", slot + 1));
+                    return;
+                }
+                self.start_replay_slot_battle(chart_id, slot);
+            }
+            SelectBattleChoice::Rival { available, .. } => {
+                if !available || !self.start_active_rival_battle(chart_id) {
+                    self.show_ir_battle_error("RIVAL score is not available for this chart");
+                }
+            }
+            SelectBattleChoice::Ranking(entry) => self.start_ir_ranking_battle(chart_id, *entry),
+        }
+    }
+
+    fn start_ir_ranking_battle(
+        &mut self,
+        chart_id: i64,
+        entry: crate::screens::select_ir::SelectIrBattleEntry,
+    ) {
+        let Some(sha256) = self.select.ir_battle.source_sha256 else {
+            return;
+        };
+        let key_mode =
+            self.select_ir_battle_source().map(|(_, _, key_mode)| key_mode).unwrap_or_default();
+        if entry.score_id.as_deref().is_none_or(str::is_empty) && entry.random_seed.is_some() {
+            let provider =
+                crate::ir::provider_key::primary_provider_config(&self.boot.profile_config.ir)
+                    .and_then(crate::ir::provider_key::configured_provider_key)
+                    .unwrap_or("rianIR")
+                    .to_string();
+            let target = seed_battle_target(provider, entry);
+            self.launch_battle_target(chart_id, target);
+            return;
+        }
         let Some(score_id) = entry.score_id.clone().filter(|value| !value.is_empty()) else {
-            self.show_ir_battle_error("ranking entry has no replay score id");
+            self.show_ir_battle_error("ranking entry has neither replay nor arrangement seed");
             return;
         };
         let Some(provider) =
@@ -218,10 +318,6 @@ impl WinitApp {
             self.show_ir_battle_error("primary IR provider is not configured");
             return;
         };
-        if crate::ir::rian_ir::is_rian_ir_config(&provider) {
-            self.show_ir_battle_error("this IR provider does not publish BMZ replay data");
-            return;
-        }
         let Some(provider_key) =
             crate::ir::provider_key::configured_provider_key(&provider).map(str::to_string)
         else {
@@ -247,12 +343,13 @@ impl WinitApp {
         self.show_left_overlay_toast(text.text("toast-ir-battle-loading"));
 
         tokio::spawn(async move {
-            let target = download_ir_ghost_target(
+            let target = download_ir_battle_target(
                 &provider.base_url,
                 &provider_key,
                 &score_id,
                 chart_id,
                 sha256,
+                key_mode,
                 ln_policy,
                 &replay_dir,
                 entry,
@@ -261,6 +358,156 @@ impl WinitApp {
             .map_err(|error| format!("{error:#}"));
             let _ = sender.send(SelectIrBattleReplayResult { generation, chart_id, target });
         });
+    }
+
+    fn start_local_battle_target(
+        &mut self,
+        chart_id: i64,
+        path: &Path,
+        player_name: String,
+        ex_score: u32,
+        gauge: Option<GaugeType>,
+    ) {
+        let replay = match crate::storage::replay::load_replay(path) {
+            Ok(replay) => replay,
+            Err(error) => {
+                self.show_ir_battle_error(&format!("failed to load replay: {error:#}"));
+                return;
+            }
+        };
+        self.launch_battle_target(
+            chart_id,
+            crate::screens::play_start::BattleTarget {
+                provider: "local".to_string(),
+                score_id: String::new(),
+                player_id: String::new(),
+                player_name,
+                rank: 0,
+                ex_score,
+                gauge,
+                playback: crate::screens::play_start::BattleTargetPlayback::Replay(Box::new(
+                    replay,
+                )),
+            },
+        );
+    }
+
+    fn start_replay_slot_battle(&mut self, chart_id: i64, slot: u8) {
+        let Some(row) = self.selected_chart_row() else {
+            return;
+        };
+        let Some(chart) = row.chart.as_ref() else {
+            return;
+        };
+        let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
+        let key = crate::storage::score_db::ScoreKey::with_options(
+            chart.sha256,
+            crate::ln_policy::score_ln_policy(
+                self.boot.profile_config.play.ln_mode_policy,
+                chart.ln_profile,
+            ),
+            self.select.double_option.normalize_for_key_mode(key_mode).score_bucket(),
+            self.boot.profile_config.play.rule_mode,
+        );
+        let record = match self.boot.score_db.replay_slot(key, slot) {
+            Ok(Some(record)) => record,
+            Ok(None) => {
+                self.show_ir_battle_error("replay slot is empty");
+                return;
+            }
+            Err(error) => {
+                self.show_ir_battle_error(&format!("failed to read replay slot: {error:#}"));
+                return;
+            }
+        };
+        let path = self.boot.profile_paths.root_dir.join(&record.replay_path);
+        self.start_local_battle_target(
+            chart_id,
+            &path,
+            format!("REPLAY {}", slot + 1),
+            record.ex_score,
+            None,
+        );
+    }
+
+    fn start_active_rival_battle(&mut self, chart_id: i64) -> bool {
+        let configured_rival = self
+            .boot
+            .profile_config
+            .rival
+            .entries
+            .iter()
+            .find(|entry| entry.id == self.boot.profile_config.rival.active_rival)
+            .cloned();
+        let Some(row) = self.selected_chart_row() else {
+            return false;
+        };
+        let Some(chart) = row.chart.as_ref() else {
+            return false;
+        };
+        let policy = crate::ln_policy::score_ln_policy(
+            self.boot.profile_config.play.ln_mode_policy,
+            chart.ln_profile,
+        );
+        let ln_mode = crate::screens::select_ir::rian_ln_mode_for_chart(chart.ln_profile, policy);
+        let Some(score) = self.select.select_ir.active_rival_score(chart.sha256, ln_mode).cloned()
+        else {
+            let Some(rival) = configured_rival else {
+                return false;
+            };
+            let Some(entry) = self
+                .select
+                .select_ir
+                .battle_entries_for(Some(chart.sha256))
+                .iter()
+                .find(|entry| entry.player_id == rival.ir_user_id)
+                .cloned()
+            else {
+                return false;
+            };
+            self.start_ir_ranking_battle(chart_id, entry);
+            return true;
+        };
+        let name = self
+            .select
+            .select_ir
+            .active_rival_display_name()
+            .map(str::to_string)
+            .or_else(|| configured_rival.map(|rival| rival.display_name))
+            .unwrap_or_else(|| "RIVAL".to_string());
+        let (arrange, arrange_2p, double_option) =
+            super::play_flow_launch_preload::rival_arrange_options(&score);
+        let target = crate::screens::play_start::BattleTarget {
+            provider: "rianIR".to_string(),
+            score_id: String::new(),
+            player_id: String::new(),
+            player_name: name,
+            rank: 0,
+            ex_score: score.ex_score,
+            gauge: None,
+            playback: crate::screens::play_start::BattleTargetPlayback::Seed {
+                arrange,
+                arrange_2p,
+                double_option,
+                packed_seed: score.play_seed,
+            },
+        };
+        self.launch_battle_target(chart_id, target);
+        true
+    }
+
+    fn launch_battle_target(
+        &mut self,
+        chart_id: i64,
+        target: crate::screens::play_start::BattleTarget,
+    ) {
+        let mut options = self.play_start_options();
+        options.battle_target = Some(target);
+        if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
+            return;
+        }
+        self.close_select_ir_battle();
+        self.begin_decide_for_chart(chart_id, options);
     }
 
     pub(super) fn poll_select_ir_battle_replay(&mut self) {
@@ -282,18 +529,12 @@ impl WinitApp {
         let target = match result.target {
             Ok(target) => target,
             Err(error) => {
-                tracing::warn!(%error, "failed to prepare IR ghost battle replay");
+                tracing::warn!(%error, "failed to prepare IR battle replay");
                 self.show_ir_battle_error(&error);
                 return;
             }
         };
-        let mut options = self.play_start_options();
-        options.ghost_battle_target = Some(target);
-        if !self.prepare_session_mode_or_show_error(result.chart_id, &mut options) {
-            return;
-        }
-        self.close_select_ir_battle();
-        self.begin_decide_for_chart(result.chart_id, options);
+        self.launch_battle_target(result.chart_id, target);
     }
 
     fn show_ir_battle_error(&mut self, error: &str) {
@@ -304,16 +545,27 @@ impl WinitApp {
     }
 }
 
+impl SelectBattleChoice {
+    pub(in crate::app) fn title(&self) -> String {
+        match self {
+            Self::Off => "BATTLE OFF".to_string(),
+            Self::MyBest { .. } => "MYBEST".to_string(),
+            Self::Replay { slot, .. } => format!("REPLAY {}", slot + 1),
+            Self::Rival { name, .. } => format!("RIVAL ({name})"),
+            Self::Ranking(entry) => entry.player_name.clone(),
+        }
+    }
+}
+
 pub(in crate::app) fn select_ir_battle_snapshot_rows(
-    entries: &[crate::screens::select_ir::SelectIrBattleEntry],
+    choices: &[SelectBattleChoice],
     selected_index: usize,
     visible_limit: usize,
 ) -> Vec<SelectRowSnapshot> {
-    select_visible_item_indices(entries.len(), selected_index, visible_limit)
+    select_visible_item_indices(choices.len(), selected_index, visible_limit)
         .into_iter()
-        .map(|index| {
-            let entry = &entries[index];
-            SelectRowSnapshot {
+        .map(|index| match &choices[index] {
+            SelectBattleChoice::Ranking(entry) => SelectRowSnapshot {
                 index: index as u32,
                 title: entry.player_name.clone(),
                 subtitle: entry.player_id.clone(),
@@ -326,23 +578,41 @@ pub(in crate::app) fn select_ir_battle_snapshot_rows(
                 ex_score: Some(entry.ex_score),
                 max_combo: Some(entry.max_combo),
                 bp: Some(entry.bp),
-                in_library: entry.score_id.is_some(),
+                in_library: entry.score_id.is_some() || entry.random_seed.is_some(),
                 ..SelectRowSnapshot::default()
+            },
+            choice => {
+                let available = match choice {
+                    SelectBattleChoice::Off => true,
+                    SelectBattleChoice::MyBest { available }
+                    | SelectBattleChoice::Replay { available, .. }
+                    | SelectBattleChoice::Rival { available, .. } => *available,
+                    SelectBattleChoice::Ranking(_) => unreachable!(),
+                };
+                SelectRowSnapshot {
+                    index: index as u32,
+                    title: choice.title(),
+                    subtitle: if available { String::new() } else { "UNAVAILABLE".to_string() },
+                    genre: "G-BATTLE".to_string(),
+                    in_library: available,
+                    ..SelectRowSnapshot::default()
+                }
             }
         })
         .collect()
 }
 
-async fn download_ir_ghost_target(
+async fn download_ir_battle_target(
     base_url: &str,
     provider: &str,
     score_id: &str,
     _chart_id: i64,
     chart_sha256: [u8; 32],
+    key_mode: KeyMode,
     ln_policy: crate::ln_policy::LnScorePolicy,
     replay_dir: &Path,
     entry: crate::screens::select_ir::SelectIrBattleEntry,
-) -> Result<crate::screens::play_start::GhostBattleTarget> {
+) -> Result<crate::screens::play_start::BattleTarget> {
     let client = crate::ir::bmz_official::BmzOfficialIrClient::anonymous(base_url)?;
     let (bytes, metadata) =
         client.download_replay_with_metadata_limit(score_id, IR_BATTLE_REPLAY_MAX_BYTES).await?;
@@ -375,17 +645,14 @@ async fn download_ir_ghost_target(
     {
         anyhow::bail!("IR replay long note policy does not match the selected chart");
     }
-    if replay.double_option_bucket() != crate::select_options::DoubleOptionScoreBucket::Off {
-        anyhow::bail!("IR replay is not a single-play replay");
-    }
     if replay.uses_legacy_seed_scheme() {
         anyhow::bail!("IR replay uses an unsupported legacy random seed");
     }
     if replay.events.is_empty() || replay.events.len() > IR_BATTLE_REPLAY_MAX_EVENTS {
         anyhow::bail!("IR replay has an invalid event count");
     }
-    if replay.events.iter().any(|event| event.lane.index() >= 8) {
-        anyhow::bail!("IR replay contains non-SP input lanes");
+    if replay.events.iter().any(|event| !key_mode.active_lanes().contains(&event.lane)) {
+        anyhow::bail!("IR replay contains input lanes outside the selected key mode");
     }
     if replay.events.windows(2).any(|events| events[0].time > events[1].time) {
         anyhow::bail!("IR replay events are not ordered by time");
@@ -397,7 +664,7 @@ async fn download_ir_ghost_target(
     crate::storage::replay::save_replay(&cache_path, &replay)
         .with_context(|| format!("failed to cache IR replay: {}", cache_path.display()))?;
 
-    Ok(crate::screens::play_start::GhostBattleTarget {
+    Ok(crate::screens::play_start::BattleTarget {
         provider: provider.to_string(),
         score_id: score_id.to_string(),
         player_id: entry.player_id,
@@ -405,8 +672,41 @@ async fn download_ir_ghost_target(
         rank: entry.rank,
         ex_score: entry.ex_score,
         gauge: entry.gauge.as_deref().and_then(gauge_type_from_ir),
-        replay,
+        playback: crate::screens::play_start::BattleTargetPlayback::Replay(Box::new(replay)),
     })
+}
+
+fn seed_battle_target(
+    provider: String,
+    entry: crate::screens::select_ir::SelectIrBattleEntry,
+) -> crate::screens::play_start::BattleTarget {
+    crate::screens::play_start::BattleTarget {
+        provider,
+        score_id: entry.score_id.unwrap_or_default(),
+        player_id: entry.player_id,
+        player_name: entry.player_name,
+        rank: entry.rank,
+        ex_score: entry.ex_score,
+        gauge: entry.gauge.as_deref().and_then(gauge_type_from_ir),
+        playback: crate::screens::play_start::BattleTargetPlayback::Seed {
+            arrange: entry
+                .arrange_1p
+                .as_deref()
+                .map(super::play_flow_launch_preload::arrange_option_from_rian)
+                .unwrap_or_default(),
+            arrange_2p: entry
+                .arrange_2p
+                .as_deref()
+                .map(super::play_flow_launch_preload::arrange_option_from_rian)
+                .unwrap_or_default(),
+            double_option: entry
+                .double_option
+                .as_deref()
+                .map(super::play_flow_launch_preload::double_option_from_rian)
+                .unwrap_or_default(),
+            packed_seed: entry.random_seed,
+        },
+    }
 }
 
 fn gauge_type_from_ir(value: &str) -> Option<GaugeType> {
@@ -436,18 +736,24 @@ mod tests {
     #[test]
     fn ranking_rows_keep_rank_and_score_identity() {
         let rows = select_ir_battle_snapshot_rows(
-            &[crate::screens::select_ir::SelectIrBattleEntry {
-                rank: 2,
-                player_id: "rival-id".to_string(),
-                player_name: "RIVAL".to_string(),
-                score_id: Some("score-id".to_string()),
-                ex_score: 1234,
-                clear: "Hard".to_string(),
-                bp: 7,
-                max_combo: 400,
-                gauge: Some("Hard".to_string()),
-                verification: Some("verified_play".to_string()),
-            }],
+            &[SelectBattleChoice::Ranking(Box::new(
+                crate::screens::select_ir::SelectIrBattleEntry {
+                    rank: 2,
+                    player_id: "rival-id".to_string(),
+                    player_name: "RIVAL".to_string(),
+                    score_id: Some("score-id".to_string()),
+                    ex_score: 1234,
+                    clear: "Hard".to_string(),
+                    bp: 7,
+                    max_combo: 400,
+                    gauge: Some("Hard".to_string()),
+                    verification: Some("verified_play".to_string()),
+                    arrange_1p: None,
+                    arrange_2p: None,
+                    random_seed: None,
+                    double_option: None,
+                },
+            ))],
             0,
             25,
         );
@@ -461,5 +767,23 @@ mod tests {
     fn ir_gauge_names_are_normalized() {
         assert_eq!(gauge_type_from_ir("EX-HARD"), Some(GaugeType::ExHard));
         assert_eq!(gauge_type_from_ir("groove"), Some(GaugeType::Normal));
+    }
+
+    #[test]
+    fn fixed_choices_precede_ir_ranking_and_default_to_battle_off() {
+        let choices = [
+            SelectBattleChoice::Off,
+            SelectBattleChoice::MyBest { available: false },
+            SelectBattleChoice::Replay { slot: 0, available: false },
+            SelectBattleChoice::Replay { slot: 1, available: false },
+            SelectBattleChoice::Replay { slot: 2, available: false },
+            SelectBattleChoice::Replay { slot: 3, available: false },
+            SelectBattleChoice::Rival { name: "R".to_string(), available: true },
+        ];
+
+        assert_eq!(choices[0].title(), "BATTLE OFF");
+        assert_eq!(choices[1].title(), "MYBEST");
+        assert_eq!(choices[5].title(), "REPLAY 4");
+        assert_eq!(choices[6].title(), "RIVAL (R)");
     }
 }

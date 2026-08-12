@@ -42,6 +42,10 @@ pub struct SelectIrBattleEntry {
     pub max_combo: u32,
     pub gauge: Option<String>,
     pub verification: Option<String>,
+    pub arrange_1p: Option<String>,
+    pub arrange_2p: Option<String>,
+    pub random_seed: Option<i64>,
+    pub double_option: Option<String>,
 }
 
 /// カーソルがとどまってから取得を始めるまでの待ち時間。
@@ -302,6 +306,8 @@ mod tests {
                         gauge: Some("Groove".to_string()),
                         arrange_1p: Some("Normal".to_string()),
                         arrange_2p: None,
+                        random_seed: None,
+                        double_option: None,
                         verification: Some("verified_play".to_string()),
                         judges: None,
                         device_type: None,

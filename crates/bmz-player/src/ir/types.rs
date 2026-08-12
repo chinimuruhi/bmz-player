@@ -555,6 +555,12 @@ pub struct IrRankingScore {
     pub arrange_1p: Option<String>,
     #[serde(default)]
     pub arrange_2p: Option<String>,
+    /// Provider arrangement seed. rianIR uses the LR2-compatible packed
+    /// 24-bit-per-side representation.
+    #[serde(default)]
+    pub random_seed: Option<i64>,
+    #[serde(default)]
+    pub double_option: Option<String>,
     #[serde(default)]
     pub verification: Option<String>,
     #[serde(default)]

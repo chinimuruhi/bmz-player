@@ -207,6 +207,10 @@ pub(super) fn battle_entries(ranking: &IrRankingResult) -> Vec<SelectIrBattleEnt
             max_combo: entry.score.max_combo,
             gauge: entry.score.gauge.clone(),
             verification: entry.score.verification.clone(),
+            arrange_1p: entry.score.arrange_1p.clone(),
+            arrange_2p: entry.score.arrange_2p.clone(),
+            random_seed: entry.score.random_seed,
+            double_option: entry.score.double_option.clone(),
         })
         .collect()
 }

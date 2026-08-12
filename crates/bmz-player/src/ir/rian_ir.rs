@@ -728,4 +728,40 @@ mod tests {
         assert_eq!(int_attr(&attributes, "play_option"), 0);
         assert_eq!(int_attr(&attributes, "play_seed"), 123456);
     }
+
+    #[test]
+    fn ranking_entry_keeps_arrangement_seed_for_g_battle() {
+        let attributes: Map<String, Value> = serde_json::from_value(json!({
+            "player_name": "rival",
+            "ex_score": "1900",
+            "arrange_1p": "random",
+            "arrange_2p": "mirror",
+            "double_option": "flip",
+            "play_seed": "16777218"
+        }))
+        .unwrap();
+
+        let entry = score_ranking_entry(0, RianRankingResource { id: String::new(), attributes });
+
+        assert_eq!(entry.score.arrange_1p.as_deref(), Some("random"));
+        assert_eq!(entry.score.arrange_2p.as_deref(), Some("mirror"));
+        assert_eq!(entry.score.double_option.as_deref(), Some("flip"));
+        assert_eq!(entry.score.random_seed, Some(16_777_218));
+    }
+
+    #[test]
+    fn ranking_entry_decodes_legacy_packed_arrangement_for_g_battle() {
+        let attributes: Map<String, Value> = serde_json::from_value(json!({
+            "player_name": "rival",
+            "play_option": 121,
+            "play_seed": 42
+        }))
+        .unwrap();
+
+        let entry = score_ranking_entry(0, RianRankingResource { id: String::new(), attributes });
+
+        assert_eq!(entry.score.arrange_1p.as_deref(), Some("mirror"));
+        assert_eq!(entry.score.arrange_2p.as_deref(), Some("random"));
+        assert_eq!(entry.score.double_option.as_deref(), Some("flip"));
+    }
 }

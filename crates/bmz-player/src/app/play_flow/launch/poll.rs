@@ -206,6 +206,11 @@ impl WinitApp {
         let Some(options) = pending_options else {
             return;
         };
+        let battle_presentation = uses_battle_presentation(
+            self.key_mode_for_chart(chart_id),
+            prepared.chart.metadata.key_mode,
+            options.session_mode,
+        );
         let Some(snapshot) = &mut self.play.last_play_snapshot else {
             return;
         };
@@ -213,7 +218,7 @@ impl WinitApp {
             snapshot,
             &prepared.chart,
             &prepared.render_snapshot_cache,
-            options.session_mode.is_battle(),
+            battle_presentation,
         );
         apply_play_arrange_to_snapshot(snapshot, &prepared.applied_arrange);
         snapshot.target = options

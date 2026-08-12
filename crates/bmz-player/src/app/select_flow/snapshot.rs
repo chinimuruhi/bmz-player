@@ -90,8 +90,7 @@ impl WinitApp {
         let note_display_duration_ms = mode_config
             .as_ref()
             .map(|config| config.target_green_number.max(1).min(i32::MAX as u32) as i32);
-        let ir_battle_entries =
-            self.select.select_ir.battle_entries_for(self.select.ir_battle.source_sha256);
+        let battle_choices = self.select_battle_choices();
         let displayed_index = if self.select.ir_battle.active {
             self.select.ir_battle.cursor
         } else {
@@ -114,7 +113,7 @@ impl WinitApp {
                 .map(|started_at| started_at.map(elapsed_since)),
             option_panel: self.select.select_option_panel,
             chart_count: if self.select.ir_battle.active {
-                ir_battle_entries.len()
+                battle_choices.len()
             } else {
                 self.select.select_items.len()
             } as u32,
@@ -131,9 +130,9 @@ impl WinitApp {
                 self.selected_replay_slot_for_selected()
             },
             selected_title: if self.select.ir_battle.active {
-                ir_battle_entries
+                battle_choices
                     .get(self.select.ir_battle.cursor)
-                    .map(|entry| entry.player_name.clone())
+                    .map(crate::app::select_ir_battle::SelectBattleChoice::title)
                     .unwrap_or_default()
             } else {
                 selected.map(|item| item.display_name_for_locale(locale)).unwrap_or_default()
@@ -142,7 +141,7 @@ impl WinitApp {
             note_display_duration_ms,
             rows: if self.select.ir_battle.active {
                 crate::app::select_ir_battle::select_ir_battle_snapshot_rows(
-                    ir_battle_entries,
+                    &battle_choices,
                     self.select.ir_battle.cursor,
                     25,
                 )

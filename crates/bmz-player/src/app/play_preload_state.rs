@@ -40,6 +40,7 @@ pub(super) struct PlayMediaCache {
     pub(super) chart_id: i64,
     /// Present for SameArrange reuse of the exact chart Arc.
     pub(super) chart: Option<std::sync::Arc<PlayableChart>>,
+    pub(super) opponent_chart: Option<std::sync::Arc<PlayableChart>>,
     pub(super) source_ln_profile: Option<crate::ln_policy::ChartLnProfile>,
     pub(super) chart_length_ms: u64,
     pub(super) render_snapshot_cache:

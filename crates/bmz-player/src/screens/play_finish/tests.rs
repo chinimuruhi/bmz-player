@@ -86,30 +86,6 @@ fn play_result_from_session_uses_session_state() {
 }
 
 #[test]
-fn ghost_battle_ir_projection_restores_primary_chart() {
-    let mut battle = chart();
-    battle.metadata.key_mode = KeyMode::K14;
-    battle.total_notes = 2;
-    battle.lane_notes[Lane::Key8.index()].push(NoteEvent {
-        id: NoteId(2),
-        lane: Lane::Key8,
-        kind: NoteKind::Tap,
-        tick: ChartTick(0),
-        time: TimeUs(0),
-        sound: None,
-        layered_sounds: Vec::new(),
-        damage: None,
-    });
-
-    let projected = primary_chart_from_battle(&battle, KeyMode::K7);
-
-    assert_eq!(projected.metadata.key_mode, KeyMode::K7);
-    assert_eq!(projected.total_notes, 1);
-    assert_eq!(projected.lane_notes[Lane::Key1.index()].len(), 1);
-    assert!(projected.lane_notes[Lane::Key8.index()].is_empty());
-}
-
-#[test]
 fn play_result_uses_assist_clear_lamp_for_successful_play() {
     let mut session = session();
     session.gauge.set_initial_value(100.0);
@@ -890,6 +866,7 @@ fn session() -> GameSession {
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         score: Default::default(),
         opponent_score: None,
+        battle_opponent: None,
         course_combo_carry: 0,
         course_combo_carry_active: false,
         course_max_combo: 0,

@@ -85,6 +85,7 @@ pub fn advance_session_frame(
         schedule_keysounds(session, audio);
         update_recent_judgements(session, &judgements, times.audio_now);
         update_full_combo_timer(session, &judgements);
+        advance_battle_opponent(session, times.audio_now);
 
         if should_finish(session, times.audio_now) {
             session.state = PlayState::Finished;
@@ -102,6 +103,61 @@ pub fn advance_session_frame(
         keysound_volumes,
         skin_events,
         state: session.state,
+    }
+}
+
+fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
+    let Some(opponent) = &mut session.battle_opponent else {
+        return;
+    };
+    // Seed-only providers can reproduce the lane arrangement but do not
+    // publish input timing. Keep the opponent unjudged instead of fabricating
+    // misses or autoplay data.
+    if opponent.replay_player.is_none() {
+        return;
+    }
+
+    let percent = judge_percent_at_time_for_keymode(
+        opponent.chart.metadata.judge_rank_spec,
+        &opponent.chart.judge_rank_events,
+        now,
+        opponent.key_mode,
+        opponent.rule_mode,
+    );
+    opponent.judge.set_window_set(judge_windows_for_rule_mode_and_keymode(
+        opponent.base_judge_windows,
+        percent,
+        opponent.rule_mode,
+        opponent.key_mode,
+    ));
+
+    let inputs = opponent.replay_player.as_mut().expect("checked above").poll_until(now);
+    for input in inputs {
+        match input.kind {
+            InputKind::Press => {
+                opponent.lane_keyon_started_at[input.lane.index()] = Some(input.time)
+            }
+            InputKind::Release => opponent.lane_keyon_started_at[input.lane.index()] = None,
+        }
+        let outcome = opponent.judge.process_input(&opponent.chart, input);
+        apply_battle_opponent_outcome(opponent, outcome);
+    }
+    let mine_outcome =
+        opponent.judge.process_mine_passes(&opponent.chart, now, &opponent.lane_keyon_started_at);
+    apply_battle_opponent_outcome(opponent, mine_outcome);
+    let miss_outcome = opponent.judge.process_misses(&opponent.chart, now);
+    apply_battle_opponent_outcome(opponent, miss_outcome);
+}
+
+fn apply_battle_opponent_outcome(opponent: &mut BattleOpponentSession, outcome: JudgeOutcome) {
+    for event in outcome.events {
+        if event.affects_score {
+            opponent.score.apply(&event);
+            opponent.gauge.apply_judge(event.judge, 1.0);
+        }
+    }
+    for mine in outcome.mine_hits {
+        opponent.gauge.apply_mine(mine.damage);
     }
 }
 

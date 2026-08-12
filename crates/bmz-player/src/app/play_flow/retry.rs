@@ -70,7 +70,7 @@ impl WinitApp {
 
     pub(super) fn result_retry_same_arrange_options(&self) -> PlayStartOptions {
         let mut options = self.play_start_options();
-        options.ghost_battle_target = self.play.last_ghost_battle_target.clone();
+        options.battle_target = self.play.last_battle_target.clone();
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
@@ -92,7 +92,7 @@ impl WinitApp {
 
     pub(super) fn result_retry_different_arrange_options(&self) -> PlayStartOptions {
         let mut options = self.play_start_options();
-        options.ghost_battle_target = self.play.last_ghost_battle_target.clone();
+        options.battle_target = self.play.last_battle_target.clone();
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
@@ -106,7 +106,7 @@ impl WinitApp {
 
     pub(super) fn active_play_retry_options(&self, mode: ResultRetryMode) -> PlayStartOptions {
         let mut options = self.play_start_options();
-        options.ghost_battle_target = self.play.last_ghost_battle_target.clone();
+        options.battle_target = self.play.last_battle_target.clone();
         if let Some(active) = &self.play.active_play {
             let applied = &active.running.applied_arrange;
             options.seven_to_six = applied.seven_to_six;
@@ -139,20 +139,33 @@ impl WinitApp {
     ) -> Option<PlayMediaCache> {
         let active = self.play.active_play.as_mut()?;
         let video_bga_decoders = std::mem::take(&mut active.running.video_bga_decoders);
-        let (chart, source_ln_profile, render_snapshot_cache, applied_arrange, score_key) =
-            match mode {
-                ResultRetryMode::SameArrange => (
-                    Some(Arc::clone(&active.running.session.chart)),
-                    Some(active.running.source_ln_profile),
-                    Some(active.running.render_snapshot_cache.clone()),
-                    Some(active.running.applied_arrange.clone()),
-                    Some(active.running.score_key),
-                ),
-                ResultRetryMode::DifferentArrange => (None, None, None, None, None),
-            };
+        let (
+            chart,
+            opponent_chart,
+            source_ln_profile,
+            render_snapshot_cache,
+            applied_arrange,
+            score_key,
+        ) = match mode {
+            ResultRetryMode::SameArrange => (
+                Some(Arc::clone(&active.running.session.chart)),
+                active
+                    .running
+                    .session
+                    .battle_opponent
+                    .as_ref()
+                    .map(|opponent| Arc::clone(&opponent.chart)),
+                Some(active.running.source_ln_profile),
+                Some(active.running.render_snapshot_cache.clone()),
+                Some(active.running.applied_arrange.clone()),
+                Some(active.running.score_key),
+            ),
+            ResultRetryMode::DifferentArrange => (None, None, None, None, None, None),
+        };
         Some(PlayMediaCache {
             chart_id,
             chart,
+            opponent_chart,
             source_ln_profile,
             chart_length_ms: active.running.chart_length_ms,
             render_snapshot_cache,
@@ -176,6 +189,11 @@ impl WinitApp {
         self.play.play_media_cache = Some(PlayMediaCache {
             chart_id,
             chart: Some(Arc::clone(&running.session.chart)),
+            opponent_chart: running
+                .session
+                .battle_opponent
+                .as_ref()
+                .map(|opponent| Arc::clone(&opponent.chart)),
             source_ln_profile: Some(running.source_ln_profile),
             chart_length_ms: running.chart_length_ms,
             render_snapshot_cache: Some(running.render_snapshot_cache.clone()),
@@ -213,6 +231,7 @@ impl WinitApp {
         mut cache: PlayMediaCache,
     ) {
         cache.chart = None;
+        cache.opponent_chart = None;
         cache.source_ln_profile = None;
         cache.render_snapshot_cache = None;
         cache.applied_arrange = None;
@@ -291,6 +310,7 @@ impl WinitApp {
         cache: PlayMediaCache,
     ) {
         let chart = Arc::clone(cache.chart.as_ref().expect("SameArrange cache includes chart"));
+        let opponent_chart = cache.opponent_chart.clone();
         let source_ln_profile =
             cache.source_ln_profile.expect("SameArrange cache includes source LN profile");
         let chart_length_ms = cache.chart_length_ms;
@@ -329,6 +349,7 @@ impl WinitApp {
             score_key,
             assist_runtime,
             score_save_disabled,
+            opponent_chart,
         };
         let _ = preview_prepared_chart.set(prepared_chart.clone());
         let sample_rate = session_options.sample_rate;

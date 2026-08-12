@@ -171,6 +171,7 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         rule_mode: RuleMode::Beatoraja,
         score: ScoreState::default(),
         opponent_score: None,
+        battle_opponent: None,
         course_combo_carry: 0,
         course_combo_carry_active: false,
         course_max_combo: 0,

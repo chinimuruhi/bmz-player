@@ -348,8 +348,7 @@ impl WinitApp {
                 .as_ref()
                 .map(|pending| {
                     let mode = pending.options.session_mode;
-                    let replay_playback =
-                        pending.options.replay_player.is_some() && mode != SessionMode::GhostBattle;
+                    let replay_playback = pending.options.replay_player.is_some();
                     let autoplay = !replay_playback
                         && (mode.primary_autoplay()
                             || pending.options.autoplay
@@ -503,6 +502,5 @@ pub(super) const fn playback_overlay_suffix(
         SessionMode::Normal => None,
         SessionMode::Autoplay => Some("autoplay"),
         SessionMode::AutoplayBattle => Some("auto battle"),
-        SessionMode::GhostBattle => Some("battle"),
     }
 }

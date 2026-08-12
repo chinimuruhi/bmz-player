@@ -809,7 +809,7 @@ impl WinitApp {
     pub(super) fn apply_select_action(&mut self, action: SelectAction, hold_control: Option<&str>) {
         if self.select.ir_battle.active {
             match action {
-                SelectAction::EnterOrPlay => self.start_selected_ir_ghost_battle(),
+                SelectAction::EnterOrPlay => self.start_selected_battle(),
                 SelectAction::ExitFolder => {
                     self.close_select_ir_battle();
                 }

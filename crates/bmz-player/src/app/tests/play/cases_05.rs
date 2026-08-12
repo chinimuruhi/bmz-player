@@ -9,7 +9,6 @@ fn playback_overlay_suffix_distinguishes_all_modes() {
         playback_overlay_suffix(SessionMode::AutoplayBattle, true, false),
         Some("auto battle")
     );
-    assert_eq!(playback_overlay_suffix(SessionMode::GhostBattle, false, false), Some("battle"));
 }
 
 #[test]
@@ -20,20 +19,20 @@ fn playback_overlay_suffix_uses_effective_playback_flags() {
 }
 
 #[test]
-fn session_mode_profile_migrates_legacy_autoplay_and_persists_battle() {
+fn session_mode_profile_migrates_legacy_autoplay_and_persists_autoplay() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.play.session_mode = None;
     profile.play.auto_play = true;
     assert_eq!(session_mode_from_profile(&profile.play), SessionMode::Autoplay);
 
     let mut options = select_play_options_from_profile(&profile.play);
-    options.session_mode = SessionMode::GhostBattle;
+    options.session_mode = SessionMode::Autoplay;
     apply_current_play_options_to_profile(&mut profile, None, None, options, 2);
 
-    assert_eq!(profile.play.session_mode, Some(SessionMode::GhostBattle));
-    assert!(!profile.play.auto_play);
+    assert_eq!(profile.play.session_mode, Some(SessionMode::Autoplay));
+    assert!(profile.play.auto_play);
     let serialized = toml::to_string(&profile).unwrap();
-    assert!(serialized.contains(r#"session_mode = "GhostBattle""#));
+    assert!(serialized.contains(r#"session_mode = "Autoplay""#));
 }
 
 #[test]

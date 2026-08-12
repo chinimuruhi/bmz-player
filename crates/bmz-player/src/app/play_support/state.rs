@@ -158,10 +158,11 @@ pub(in crate::app) fn session_mode_from_profile(play: &PlayDefaultsConfig) -> Se
 pub(in crate::app) fn normalize_session_mode_for_course(options: &mut PlayStartOptions) {
     options.session_mode = match options.session_mode {
         SessionMode::Autoplay | SessionMode::AutoplayBattle => SessionMode::Autoplay,
-        SessionMode::Normal | SessionMode::GhostBattle => SessionMode::Normal,
+        SessionMode::Normal => SessionMode::Normal,
     };
     options.autoplay = options.session_mode.primary_autoplay();
     options.replay_player = None;
+    options.battle_target = None;
 }
 
 pub(in crate::app) fn select_play_options_from_profile(

@@ -502,16 +502,16 @@ fn play_skin_key_mode_uses_battle_double_mode() {
         play_skin_key_mode_for_options(
             KeyMode::K7,
             DoubleOption::Off,
-            SessionMode::GhostBattle,
+            SessionMode::AutoplayBattle,
             false
         ),
-        KeyMode::K14
+        KeyMode::K7
     );
     assert_eq!(
         play_skin_key_mode_for_options(
             KeyMode::K7,
             DoubleOption::Battle,
-            SessionMode::GhostBattle,
+            SessionMode::AutoplayBattle,
             true
         ),
         KeyMode::K6

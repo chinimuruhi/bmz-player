@@ -143,7 +143,7 @@ impl WinitApp {
             .play
             .active_play
             .as_ref()
-            .map(|active_play| active_play.running.session.chart.metadata.key_mode)
+            .map(|active_play| active_play.running.session.play_config_key_mode)
         else {
             return;
         };

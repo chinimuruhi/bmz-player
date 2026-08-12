@@ -21,8 +21,8 @@ use crate::config::profile_config::{
 use crate::input::gamepad::GamepadSlotMap;
 use crate::input::shared::SharedInputBackend;
 use crate::screens::play_session::{
-    PlaySessionOptions, PreloadedPlaySession, PreparedPlaySession, SRandomScheme,
-    build_prepared_play_session_from_preloaded,
+    BattleOpponentOptions, PlaySessionOptions, PreloadedPlaySession, PreparedPlaySession,
+    SRandomScheme, build_prepared_play_session_from_preloaded,
     load_prepared_play_session_for_chart_with_input_backend,
 };
 use crate::select_options::{
@@ -33,7 +33,7 @@ use crate::storage::replay::ReplayFile;
 use crate::storage::score_db::ScoreDatabase;
 
 #[derive(Debug, Clone)]
-pub struct GhostBattleTarget {
+pub struct BattleTarget {
     pub provider: String,
     pub score_id: String,
     pub player_id: String,
@@ -41,7 +41,18 @@ pub struct GhostBattleTarget {
     pub rank: u32,
     pub ex_score: u32,
     pub gauge: Option<GaugeType>,
-    pub replay: ReplayFile,
+    pub playback: BattleTargetPlayback,
+}
+
+#[derive(Debug, Clone)]
+pub enum BattleTargetPlayback {
+    Replay(Box<ReplayFile>),
+    Seed {
+        arrange: ArrangeOption,
+        arrange_2p: ArrangeOption,
+        double_option: DoubleOption,
+        packed_seed: Option<i64>,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -55,9 +66,8 @@ pub struct PlayStartOptions {
     pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
     pub replay_player: Option<ReplayPlayer>,
-    /// IR ranking entry selected as the 2P ghost. None keeps the local
-    /// self-best G-BATTLE behavior.
-    pub ghost_battle_target: Option<GhostBattleTarget>,
+    /// G-BATTLE target selected independently from SessionMode.
+    pub battle_target: Option<BattleTarget>,
     pub chart_zero_time: TimeUs,
     /// Override profile gauge type. None means use the profile default.
     pub gauge: Option<GaugeTypeConfig>,
@@ -138,8 +148,62 @@ pub fn play_session_options_from_start(
         .gauge
         .map(|gauge| gauge_auto_shift_from_config(gauge, start_options.gauge_auto_shift))
         .unwrap_or_default();
-    let opponent_gauge_override =
-        start_options.ghost_battle_target.as_ref().and_then(|target| target.gauge);
+    let battle_opponent = start_options.battle_target.as_ref().map(|target| {
+        let (
+            replay_player,
+            arrange,
+            arrange_2p,
+            double_option,
+            arrange_seed,
+            arrange_seed_2p,
+            bms_random_choices,
+            arrange_pattern,
+            s_random_scheme,
+            s_random_scheme_2p,
+            packed_seed,
+        ) = match &target.playback {
+            BattleTargetPlayback::Replay(replay) => (
+                Some(ReplayPlayer { events: replay.events.clone(), next_index: 0 }),
+                replay.arrange_option(),
+                replay.arrange_2p_option(),
+                replay.double_option(),
+                replay.arrange_seed,
+                replay.arrange_seed_2p,
+                replay.bms_random_choices.clone(),
+                replay.lane_shuffle_pattern.clone(),
+                replay.effective_s_random_scheme().unwrap_or_default(),
+                replay.effective_s_random_scheme_2p().ok(),
+                None,
+            ),
+            BattleTargetPlayback::Seed { arrange, arrange_2p, double_option, packed_seed } => (
+                None,
+                *arrange,
+                *arrange_2p,
+                *double_option,
+                None,
+                None,
+                None,
+                None,
+                SRandomScheme::default(),
+                None,
+                *packed_seed,
+            ),
+        };
+        BattleOpponentOptions {
+            replay_player,
+            gauge: target.gauge,
+            arrange,
+            arrange_2p,
+            double_option,
+            arrange_seed,
+            arrange_seed_2p,
+            packed_seed,
+            bms_random_choices,
+            arrange_pattern,
+            s_random_scheme,
+            s_random_scheme_2p,
+        }
+    });
 
     PlaySessionOptions {
         play_config_key_mode: None,
@@ -158,9 +222,14 @@ pub fn play_session_options_from_start(
         assist: start_options.assist,
         assist_runtime: Default::default(),
         replay_player: start_options.replay_player,
+        battle_opponent,
+        opponent_chart: None,
         sample_rate: app_config.audio.sample_rate,
         gauge_override,
-        opponent_gauge_override,
+        opponent_gauge_override: start_options
+            .battle_target
+            .as_ref()
+            .and_then(|target| target.gauge),
         gauge_auto_shift,
         bottom_shiftable_gauge: bottom_shiftable_gauge_from_config(
             start_options.bottom_shiftable_gauge,

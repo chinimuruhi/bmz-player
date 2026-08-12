@@ -28,6 +28,7 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
             applied_arrange: normal_applied_arrange(0, false, SRandomScheme::Lm120HzV1),
             score_key,
             assist_runtime: Default::default(),
+            opponent_chart: None,
             score_save_disabled: false,
         },
         48_000,

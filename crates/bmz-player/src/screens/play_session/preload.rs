@@ -159,8 +159,50 @@ pub fn preload_play_session_for_chart_with_callbacks(
         library_db.chart_length_ms_by_id(chart_id)?.unwrap_or_default().max(0) as u64;
     let chart_parse_started_at = Instant::now();
     let imported = load_transformed_chart_for_play(library_db, chart_id, &options)?;
+    let opponent_chart = if let Some(opponent) = &options.battle_opponent {
+        let mut opponent_options = options.clone();
+        opponent_options.session_mode = SessionMode::Normal;
+        opponent_options.autoplay = false;
+        opponent_options.practice_mode = false;
+        opponent_options.seven_to_six = false;
+        opponent_options.score_save_disabled = true;
+        opponent_options.assist = AssistOptionConfig::default();
+        opponent_options.assist_runtime = Default::default();
+        opponent_options.replay_player = None;
+        opponent_options.battle_opponent = None;
+        opponent_options.opponent_chart = None;
+        opponent_options.arrange = opponent.arrange;
+        opponent_options.arrange_2p = opponent.arrange_2p;
+        opponent_options.double_option = opponent.double_option;
+        opponent_options.arrange_seed = opponent.arrange_seed;
+        opponent_options.arrange_seed_2p = opponent.arrange_seed_2p;
+        if let Some(packed) = opponent.packed_seed.and_then(|seed| u64::try_from(seed).ok())
+            && let Some(seeds) = RandomOptionSeeds::unpack(
+                packed,
+                matches!(imported.source_key_mode, KeyMode::K10 | KeyMode::K14),
+            )
+        {
+            opponent_options.arrange_seed = Some(i64::from(seeds.p1.value()));
+            opponent_options.arrange_seed_2p = seeds.p2.map(|seed| i64::from(seed.value()));
+        }
+        opponent_options.bms_random_choices = opponent.bms_random_choices.clone();
+        opponent_options.arrange_pattern = opponent.arrange_pattern.clone();
+        opponent_options.s_random_scheme = opponent.s_random_scheme;
+        opponent_options.s_random_scheme_2p = opponent.s_random_scheme_2p;
+        Some(Arc::new(
+            load_transformed_chart_for_play(library_db, chart_id, &opponent_options)?.chart,
+        ))
+    } else {
+        None
+    };
     let chart_parse_elapsed = chart_parse_started_at.elapsed();
-    let chart = Arc::new(imported.chart);
+    let mut primary_chart = imported.chart;
+    if options.session_mode.is_battle()
+        && let Some(opponent) = opponent_chart.as_deref()
+    {
+        apply_battle_opponent_chart(&mut primary_chart, opponent);
+    }
+    let chart = Arc::new(primary_chart);
     let prepared_chart = PreparedPlayChart {
         render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(
             &chart,
@@ -172,6 +214,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         score_key: imported.score_key,
         assist_runtime: imported.assist_runtime,
         score_save_disabled: imported.score_save_disabled,
+        opponent_chart,
     };
     let sound_counts = sound_preload_counts(&prepared_chart.chart);
     tracing::info!(
@@ -229,6 +272,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         score_key: prepared_chart.score_key,
         assist_runtime: prepared_chart.assist_runtime,
         score_save_disabled: prepared_chart.score_save_disabled,
+        opponent_chart: prepared_chart.opponent_chart,
     })
 }
 
@@ -253,6 +297,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
         score_key,
         assist_runtime,
         score_save_disabled,
+        opponent_chart,
     } = prepared_chart;
     let sound_counts = sound_preload_counts(&chart);
     let mut loader = FfmpegSampleLoader::default();
@@ -279,6 +324,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
         score_key,
         assist_runtime,
         score_save_disabled,
+        opponent_chart,
     }
 }
 
@@ -289,6 +335,7 @@ pub(super) struct TransformedPlayChart {
     pub(super) score_key: ScoreKey,
     pub(super) assist_runtime: bmz_gameplay::session::AssistRuntime,
     pub(super) score_save_disabled: bool,
+    pub(super) source_key_mode: KeyMode,
 }
 
 pub fn load_source_chart_for_chart(
@@ -333,9 +380,11 @@ pub(super) fn load_transformed_chart_for_play(
     apply_start_note_margin(&mut chart);
     let source_key_mode = chart.metadata.key_mode;
     let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
+    let battle_presentation =
+        options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
     // SessionMode の battle は表示用に2P側を作るが、通常の BATTLE 譜面オプションとは
     // 異なり、1P側のスコアキーと保存可否を維持する。
-    let applied_double_option = if seven_to_six || options.session_mode.is_battle() {
+    let applied_double_option = if seven_to_six || battle_presentation {
         DoubleOption::Off
     } else {
         options.double_option.normalize_for_key_mode(source_key_mode)
@@ -378,10 +427,7 @@ pub(super) fn load_transformed_chart_for_play(
         );
     }
     apply_double_option(&mut chart, applied_double_option);
-    if !seven_to_six
-        && options.session_mode.is_battle()
-        && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7)
-    {
+    if !seven_to_six && battle_presentation && options.battle_opponent.is_none() {
         apply_battle_double_option(&mut chart);
     }
     let mut applied_arrange = apply_arrange_pair(
@@ -406,6 +452,7 @@ pub(super) fn load_transformed_chart_for_play(
         score_key,
         assist_runtime,
         score_save_disabled: options.score_save_disabled || seven_to_six,
+        source_key_mode,
     })
 }
 
@@ -534,14 +581,6 @@ pub fn build_prepared_play_session_from_preloaded(
     input_backend: Box<dyn InputBackend>,
 ) -> PreparedPlaySession {
     options.score_save_disabled |= preloaded.score_save_disabled;
-    if preloaded.applied_arrange.seven_to_six {
-        options.session_mode = match options.session_mode {
-            SessionMode::AutoplayBattle => SessionMode::Autoplay,
-            SessionMode::GhostBattle => SessionMode::Normal,
-            other => other,
-        };
-        options.autoplay = options.session_mode.primary_autoplay();
-    }
     options.double_option = preloaded.applied_arrange.double_option;
     options.assist_runtime = preloaded.assist_runtime;
     let target_option = options.target;
@@ -553,6 +592,7 @@ pub fn build_prepared_play_session_from_preloaded(
     let practice_mode = options.practice_mode;
     let score_save_disabled = options.score_save_disabled;
     let playback_rate_percent = options.playback_rate_percent;
+    options.opponent_chart = preloaded.opponent_chart;
     let session =
         build_game_session_with_input_backend(preloaded.chart, profile, options, input_backend);
     let mut session = session;

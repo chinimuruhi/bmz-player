@@ -379,7 +379,76 @@ pub(super) fn apply_battle_double_option(chart: &mut PlayableChart) {
     chart.metadata.key_mode = next_mode;
 }
 
-pub(super) fn second_player_lane_mask() -> [bool; LANE_COUNT] {
+/// Build the 2P presentation lanes from an independently arranged opponent.
+/// The primary chart remains the score source; the opponent chart is judged by
+/// `BattleOpponentSession` and these cloned notes are display-only.
+pub(super) fn apply_battle_opponent_chart(chart: &mut PlayableChart, opponent: &PlayableChart) {
+    let (next_mode, pairs): (KeyMode, &[(Lane, Lane)]) = match chart.metadata.key_mode {
+        KeyMode::K5 if opponent.metadata.key_mode == KeyMode::K5 => (
+            KeyMode::K10,
+            &[
+                (Lane::Scratch, Lane::Scratch2),
+                (Lane::Key1, Lane::Key8),
+                (Lane::Key2, Lane::Key9),
+                (Lane::Key3, Lane::Key10),
+                (Lane::Key4, Lane::Key11),
+                (Lane::Key5, Lane::Key12),
+            ],
+        ),
+        KeyMode::K7 if opponent.metadata.key_mode == KeyMode::K7 => (
+            KeyMode::K14,
+            &[
+                (Lane::Scratch, Lane::Scratch2),
+                (Lane::Key1, Lane::Key8),
+                (Lane::Key2, Lane::Key9),
+                (Lane::Key3, Lane::Key10),
+                (Lane::Key4, Lane::Key11),
+                (Lane::Key5, Lane::Key12),
+                (Lane::Key6, Lane::Key13),
+                (Lane::Key7, Lane::Key14),
+            ],
+        ),
+        _ => return,
+    };
+
+    let mut next_id = next_note_id(chart);
+    let mut cloned_ids = std::collections::HashMap::new();
+    for &(source, destination) in pairs {
+        let notes = opponent.lane_notes[source.index()]
+            .iter()
+            .cloned()
+            .map(|mut note| {
+                let cloned_id = next_id;
+                next_id.0 = next_id.0.saturating_add(1);
+                cloned_ids.insert(note.id, cloned_id);
+                note.id = cloned_id;
+                note.lane = destination;
+                note
+            })
+            .collect();
+        chart.lane_notes[destination.index()] = notes;
+    }
+    let source_to_destination: std::collections::HashMap<_, _> = pairs.iter().copied().collect();
+    for pair in &opponent.long_notes {
+        let Some(&destination) = source_to_destination.get(&pair.lane) else {
+            continue;
+        };
+        let (Some(&start_note_id), Some(&end_note_id)) =
+            (cloned_ids.get(&pair.start_note_id), cloned_ids.get(&pair.end_note_id))
+        else {
+            continue;
+        };
+        let mut cloned = pair.clone();
+        cloned.lane = destination;
+        cloned.start_note_id = start_note_id;
+        cloned.end_note_id = end_note_id;
+        chart.long_notes.push(cloned);
+    }
+    chart.total_notes = chart.total_notes.saturating_add(opponent.total_notes);
+    chart.metadata.key_mode = next_mode;
+}
+
+pub(crate) fn second_player_lane_mask() -> [bool; LANE_COUNT] {
     let mut mask = [false; LANE_COUNT];
     for lane in [
         Lane::Key8,

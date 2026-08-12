@@ -112,10 +112,8 @@ pub fn apply_placeholder_session_visuals(
     .visual_offset_us
         / 1_000) as i32;
     snapshot.judge_timing_auto_adjust = profile.judge.visual_offset_auto_adjust;
-    let replay_playback =
-        options.replay_player.is_some() && options.session_mode != SessionMode::GhostBattle;
+    let replay_playback = options.replay_player.is_some();
     snapshot.autoplay = !replay_playback
-        && options.session_mode != SessionMode::GhostBattle
         && (options.session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     snapshot.replay_playback = replay_playback;
     snapshot.practice_mode = options.practice_mode;
@@ -212,11 +210,18 @@ pub fn build_game_session_with_input_backend(
     input_backend: Box<dyn InputBackend>,
 ) -> GameSession {
     let session_mode = options.session_mode;
+    let battle_opponent_options = options.battle_opponent.clone();
+    let battle_opponent_chart = options.opponent_chart.clone();
     let chart_key_mode = chart.metadata.key_mode;
     let play_config_key_mode = play_config_key_mode(chart_key_mode, &options);
+    let battle_presentation = session_mode.is_battle()
+        && matches!(
+            (play_config_key_mode, chart_key_mode),
+            (KeyMode::K5, KeyMode::K10) | (KeyMode::K7, KeyMode::K14)
+        );
     let mode_config = profile.play_mode_config(play_config_key_mode);
     let hs_fix = options.hs_fix;
-    let primary_key_mode = if session_mode.is_battle() {
+    let primary_key_mode = if battle_presentation {
         match chart_key_mode {
             KeyMode::K10 => KeyMode::K5,
             KeyMode::K14 => KeyMode::K7,
@@ -226,8 +231,8 @@ pub fn build_game_session_with_input_backend(
         chart_key_mode
     };
     let display_only_lane_mask =
-        if session_mode.is_battle() { second_player_lane_mask() } else { [false; LANE_COUNT] };
-    let replay_lane_mask = (session_mode == SessionMode::GhostBattle).then(second_player_lane_mask);
+        if battle_presentation { second_player_lane_mask() } else { [false; LANE_COUNT] };
+    let replay_lane_mask = None;
     let gauge_type =
         options.gauge_override.unwrap_or_else(|| gauge_type_from_config(profile.play.gauge));
     let gauge_auto_shift = if options.gauge_auto_shift != GaugeAutoShiftMode::Off {
@@ -249,7 +254,6 @@ pub fn build_game_session_with_input_backend(
     let is_replay = replay_player.is_some();
     let is_full_replay = is_replay && replay_lane_mask.is_none();
     let autoplay_enabled = !is_replay
-        && session_mode != SessionMode::GhostBattle
         && (session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     let autoplay = if autoplay_enabled {
         Some(AutoplayController::default())
@@ -269,8 +273,8 @@ pub fn build_game_session_with_input_backend(
     // `chart` is built from the source file and already has the selected LN
     // policy, course override, and double option applied.  Derive the gameplay
     // denominator here instead of using the policy-independent library count.
-    let scored_total_notes = if session_mode.is_battle() {
-        scored_note_count(&chart) / 2
+    let scored_total_notes = if battle_presentation {
+        bmz_gameplay::score::scored_note_count_excluding_lanes(&chart, &display_only_lane_mask)
     } else {
         scored_note_count(&chart)
     };
@@ -367,7 +371,7 @@ pub fn build_game_session_with_input_backend(
     } else if let Some(initial) = initial_gauge_value {
         gauge.set_initial_value(initial);
     }
-    let opponent_gauge = session_mode.is_battle().then(|| {
+    let opponent_gauge = battle_presentation.then(|| {
         if let Some(opponent_gauge_type) = options.opponent_gauge_override {
             GaugeState::new_with_property_and_rule_mode_and_keymode(
                 opponent_gauge_type,
@@ -382,7 +386,54 @@ pub fn build_game_session_with_input_backend(
         }
     });
     let opponent_score =
-        session_mode.is_battle().then(|| ScoreState::for_rule_mode(primary_key_mode, rule_mode));
+        battle_presentation.then(|| ScoreState::for_rule_mode(primary_key_mode, rule_mode));
+    let battle_opponent =
+        battle_opponent_options.zip(battle_opponent_chart).map(|(opponent, chart)| {
+            let key_mode = chart.metadata.key_mode;
+            let scored_total_notes = scored_note_count(&chart);
+            let base_judge_windows = judge_windows_for_keymode_and_rule_mode(key_mode, rule_mode);
+            let gauge_type = opponent.gauge.unwrap_or(gauge_type);
+            let gauge_total = gauge_total_for_chart_and_rule_mode(
+                chart.metadata.total,
+                scored_total_notes,
+                rule_mode,
+            );
+            bmz_gameplay::session::BattleOpponentSession {
+                judge: JudgeEngine::new_with_window_set_algorithm_and_keymode(
+                    judge_windows_for_rule_mode_and_keymode(
+                        base_judge_windows,
+                        judge_percent_at_time_for_keymode(
+                            chart.metadata.judge_rank_spec,
+                            &chart.judge_rank_events,
+                            TimeUs(0),
+                            key_mode,
+                            rule_mode,
+                        ),
+                        rule_mode,
+                        key_mode,
+                    ),
+                    rule_mode,
+                    judge_algorithm_from_config(profile.judge.judge_algorithm),
+                    key_mode,
+                ),
+                gauge: GaugeState::new_with_property_and_rule_mode_and_keymode(
+                    gauge_type,
+                    gauge_total,
+                    scored_total_notes,
+                    GaugeProperty::from_keymode(key_mode),
+                    rule_mode,
+                    key_mode,
+                ),
+                chart,
+                key_mode,
+                scored_total_notes,
+                base_judge_windows,
+                rule_mode,
+                score: ScoreState::for_rule_mode(key_mode, rule_mode),
+                replay_player: opponent.replay_player,
+                lane_keyon_started_at: Default::default(),
+            }
+        });
 
     GameSession {
         gauge,
@@ -417,6 +468,7 @@ pub fn build_game_session_with_input_backend(
         input_system,
         score: ScoreState::for_rule_mode(primary_key_mode, rule_mode),
         opponent_score,
+        battle_opponent,
         course_combo_carry: initial_course_combo,
         course_combo_carry_active: initial_course_combo > 0,
         course_max_combo: initial_course_combo,
@@ -462,7 +514,7 @@ pub fn build_game_session_with_input_backend(
         hidden_enabled: hidden_enabled_from_mode_config(&mode_config),
         hispeed_auto_adjust: mode_config.hispeed_auto_adjust,
         hidden_cover: if speed_locked { 0.0 } else { hidden_cover_from_mode_config(&mode_config) },
-        skin_offsets: skin_offsets_from_profile(profile, key_mode, session_mode),
+        skin_offsets: skin_offsets_from_profile(profile, play_config_key_mode, session_mode),
         bga_enabled: bga_enabled_from_profile(profile, autoplay_enabled, is_replay),
         poor_bga_duration_us: poor_bga_duration_us_from_profile(profile),
         bga_stretch: bga_stretch_from_profile(profile),
@@ -497,13 +549,8 @@ pub(super) fn play_config_key_mode(
     chart_key_mode: KeyMode,
     options: &PlaySessionOptions,
 ) -> KeyMode {
-    options.play_config_key_mode.unwrap_or_else(|| {
-        if options.session_mode.is_battle()
-            || matches!(
-                options.double_option,
-                DoubleOption::Battle | DoubleOption::BattleAutoScratch
-            )
-        {
+    options.play_config_key_mode.unwrap_or({
+        if matches!(options.double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch) {
             match chart_key_mode {
                 KeyMode::K10 => KeyMode::K5,
                 KeyMode::K14 => KeyMode::K7,

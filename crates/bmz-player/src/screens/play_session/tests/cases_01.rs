@@ -33,23 +33,39 @@ fn build_game_session_uses_visual_offset_auto_adjust_from_profile() {
 }
 
 #[test]
-fn ghost_battle_keeps_primary_input_offset_auto_adjust_enabled() {
+fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.judge.visual_offset_auto_adjust = true;
     let mut battle_chart = chart();
-    battle_chart.metadata.key_mode = KeyMode::K14;
+    battle_chart.metadata.key_mode = KeyMode::K7;
+    let opponent_chart = Arc::new(battle_chart.clone());
     let session = build_game_session(
         Arc::new(battle_chart),
         &profile,
         PlaySessionOptions {
-            session_mode: SessionMode::GhostBattle,
-            replay_player: Some(ReplayPlayer::default()),
+            session_mode: SessionMode::Normal,
+            battle_opponent: Some(BattleOpponentOptions {
+                replay_player: Some(ReplayPlayer::default()),
+                gauge: None,
+                arrange: ArrangeOption::Normal,
+                arrange_2p: ArrangeOption::Normal,
+                double_option: DoubleOption::Off,
+                arrange_seed: None,
+                arrange_seed_2p: None,
+                packed_seed: None,
+                bms_random_choices: None,
+                arrange_pattern: None,
+                s_random_scheme: SRandomScheme::default(),
+                s_random_scheme_2p: None,
+            }),
+            opponent_chart: Some(opponent_chart),
             ..PlaySessionOptions::default()
         },
     );
 
     assert!(session.input_offset_auto_adjust.is_some());
-    assert!(session.replay_lane_mask.is_some());
+    assert!(session.replay_lane_mask.is_none());
+    assert!(session.battle_opponent.is_some());
     assert_eq!(session.primary_key_mode, KeyMode::K7);
 }
 
@@ -82,6 +98,57 @@ fn session_uses_source_mode_presentation_settings_for_battle_layout() {
     assert_eq!(session.hispeed, 2.75);
     assert_eq!(session.target_green_number, 285);
     assert_eq!(session.offsets.visual_offset_us, 6_000);
+}
+
+#[test]
+fn autoplay_battle_keeps_genuine_double_chart_lanes_scored() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut double_chart = chart();
+    double_chart.metadata.key_mode = KeyMode::K10;
+    double_chart.lane_notes[Lane::Key1.index()].push(note(1, Lane::Key1, 1_000_000));
+    double_chart.lane_notes[Lane::Key8.index()].push(note(2, Lane::Key8, 1_000_000));
+    double_chart.total_notes = 2;
+
+    let session = build_game_session(
+        Arc::new(double_chart),
+        &profile,
+        PlaySessionOptions {
+            play_config_key_mode: Some(KeyMode::K10),
+            session_mode: SessionMode::AutoplayBattle,
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert_eq!(session.primary_key_mode, KeyMode::K10);
+    assert_eq!(session.scored_total_notes, 2);
+    assert!(!session.display_only_lane_mask[Lane::Key8.index()]);
+    assert!(session.opponent_score.is_none());
+    assert!(session.autoplay.is_some());
+}
+
+#[test]
+fn autoplay_battle_marks_only_expanded_single_play_lanes_as_display_only() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut expanded_chart = chart();
+    expanded_chart.metadata.key_mode = KeyMode::K10;
+    expanded_chart.lane_notes[Lane::Key1.index()].push(note(1, Lane::Key1, 1_000_000));
+    expanded_chart.lane_notes[Lane::Key8.index()].push(note(2, Lane::Key8, 1_000_000));
+    expanded_chart.total_notes = 2;
+
+    let session = build_game_session(
+        Arc::new(expanded_chart),
+        &profile,
+        PlaySessionOptions {
+            play_config_key_mode: Some(KeyMode::K5),
+            session_mode: SessionMode::AutoplayBattle,
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert_eq!(session.primary_key_mode, KeyMode::K5);
+    assert_eq!(session.scored_total_notes, 1);
+    assert!(session.display_only_lane_mask[Lane::Key8.index()]);
+    assert!(session.opponent_score.is_some());
 }
 
 #[test]
@@ -275,19 +342,15 @@ fn placeholder_session_visuals_expose_score_save_and_play_modes() {
         assert_eq!(snapshot.practice_mode, practice);
     }
 
-    let mut ghost_snapshot = bmz_render::snapshot::RenderSnapshot::default();
+    let mut battle_snapshot = bmz_render::snapshot::RenderSnapshot::default();
     apply_placeholder_session_visuals(
-        &mut ghost_snapshot,
+        &mut battle_snapshot,
         &profile,
         KeyMode::K7,
-        &PlaySessionOptions {
-            session_mode: SessionMode::GhostBattle,
-            replay_player: Some(ReplayPlayer::default()),
-            ..PlaySessionOptions::default()
-        },
+        &PlaySessionOptions { session_mode: SessionMode::Normal, ..PlaySessionOptions::default() },
     );
-    assert!(!ghost_snapshot.replay_playback);
-    assert!(ghost_snapshot.score_save_enabled);
+    assert!(!battle_snapshot.replay_playback);
+    assert!(battle_snapshot.score_save_enabled);
 }
 
 #[test]

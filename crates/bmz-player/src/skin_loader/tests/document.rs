@@ -305,9 +305,9 @@ fn play_skin_selection_for_returns_per_mode_fields() {
     assert!(s14.files.contains_key("d"));
     assert_eq!(s14.offsets[0].h, 14);
 
-    let battle5 = play_skin_selection_for_session(&skin, KeyMode::K10, SessionMode::AutoplayBattle);
+    let battle5 = play_skin_selection_for_session(&skin, KeyMode::K5, SessionMode::AutoplayBattle);
     assert_eq!(battle5.path, "battle5.json");
-    let battle7 = play_skin_selection_for_session(&skin, KeyMode::K14, SessionMode::GhostBattle);
+    let battle7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::AutoplayBattle);
     assert_eq!(battle7.path, "battle7.json");
     assert_eq!(
         play_skin_selection_for_session(&skin, KeyMode::K14, SessionMode::Normal).path,

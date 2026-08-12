@@ -190,7 +190,7 @@ impl WinitApp {
         // Decide / retry / direct boot のどの経路でも、Play 入場後の常時表示が
         // pending state の破棄に左右されないよう、ここで今回の mode を記録する。
         self.result.last_play_session_mode = options.session_mode;
-        self.play.last_ghost_battle_target = options.ghost_battle_target.clone();
+        self.play.last_battle_target = options.battle_target.clone();
         // リザルトの非同期 IR state は今回の試行だけを表す。retry 中にも残すと
         // 同じ chart hash の前回スコアを次の Result で表示し得るため、Play へ
         // 入る時点で直ちに手放す（バックグラウンド送信自体は継続する）。
@@ -219,11 +219,16 @@ impl WinitApp {
         snapshot.backbmp_background = self.play.play_backbmp_loaded;
         let prepared_chart = self.play_preload_prepared_chart(chart_id);
         if let Some(prepared) = &prepared_chart {
+            let battle_presentation = uses_battle_presentation(
+                self.key_mode_for_chart(chart_id),
+                prepared.chart.metadata.key_mode,
+                options.session_mode,
+            );
             apply_prepared_chart_to_render_snapshot(
                 &mut snapshot,
                 &prepared.chart,
                 &prepared.render_snapshot_cache,
-                options.session_mode.is_battle(),
+                battle_presentation,
             );
         }
         // preload 完了で install_active_play がフル snapshot に置き換えるまでの間、
@@ -247,11 +252,16 @@ impl WinitApp {
         // placeholder 初期値の算出には上で反映した正確な TOTAL / BPM を使い、
         // その後に chart 依存の派生値を実セッションと同じ値へ揃える。
         if let Some(prepared) = &prepared_chart {
+            let battle_presentation = uses_battle_presentation(
+                self.key_mode_for_chart(chart_id),
+                prepared.chart.metadata.key_mode,
+                session_options.session_mode,
+            );
             apply_prepared_chart_to_render_snapshot(
                 &mut snapshot,
                 &prepared.chart,
                 &prepared.render_snapshot_cache,
-                session_options.session_mode.is_battle(),
+                battle_presentation,
             );
         }
         // 譜面変換はWAVロードより先に完了する。preload workerが先行公開した

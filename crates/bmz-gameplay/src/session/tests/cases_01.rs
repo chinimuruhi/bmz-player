@@ -57,6 +57,42 @@ fn display_only_opponent_judgement_does_not_change_primary_score_or_gauge() {
 }
 
 #[test]
+fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
+    let opponent_chart = Arc::new(chart_with_keysound());
+    let window = JudgeWindow::symmetric(16_000, 40_000, 80_000, 120_000, 500_000, 200_000, 16_000);
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.autoplay = None;
+    session.battle_opponent = Some(BattleOpponentSession {
+        chart: Arc::clone(&opponent_chart),
+        key_mode: opponent_chart.metadata.key_mode,
+        scored_total_notes: 1,
+        judge: JudgeEngine::new(window),
+        base_judge_windows: JudgeWindows::uniform(window),
+        rule_mode: RuleMode::Beatoraja,
+        score: ScoreState::default(),
+        gauge: GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 1),
+        replay_player: Some(ReplayPlayer {
+            events: vec![bmz_core::replay::ReplayEvent {
+                lane: Lane::Key1,
+                kind: InputKind::Press,
+                time: TimeUs(0),
+                device_kind: InputDeviceKind::Keyboard,
+            }],
+            next_index: 0,
+        }),
+        lane_keyon_started_at: Default::default(),
+    });
+    let mut audio = TestAudio::default();
+
+    advance_session_frame(&mut session, &mut audio);
+
+    assert_eq!(session.score.ex_score(), 0);
+    let opponent = session.battle_opponent.as_ref().unwrap();
+    assert_eq!(opponent.score.ex_score(), 2);
+    assert_eq!(opponent.score.past_notes, 1);
+}
+
+#[test]
 fn judgement_display_latches_combo_at_each_dp_event() {
     let mut session = session_with_autoplay(chart_with_keysound());
     session.autoplay = None;

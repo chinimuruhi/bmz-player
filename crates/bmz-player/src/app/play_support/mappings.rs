@@ -62,11 +62,7 @@ pub(in crate::app) fn play_skin_key_mode_for_options(
         return KeyMode::K6;
     }
     if session_mode.is_battle() {
-        return match chart_key_mode {
-            KeyMode::K5 => KeyMode::K10,
-            KeyMode::K7 => KeyMode::K14,
-            _ => chart_key_mode,
-        };
+        return chart_key_mode;
     }
     match double_option.normalize_for_key_mode(chart_key_mode) {
         DoubleOption::Battle | DoubleOption::BattleAutoScratch => match chart_key_mode {
@@ -78,32 +74,23 @@ pub(in crate::app) fn play_skin_key_mode_for_options(
     }
 }
 
+pub(in crate::app) const fn uses_battle_presentation(
+    source_key_mode: KeyMode,
+    rendered_key_mode: KeyMode,
+    session_mode: SessionMode,
+) -> bool {
+    session_mode.is_battle()
+        && matches!(
+            (source_key_mode, rendered_key_mode),
+            (KeyMode::K5, KeyMode::K10) | (KeyMode::K7, KeyMode::K14)
+        )
+}
+
 pub(in crate::app) fn effective_play_key_mode(
     chart_key_mode: KeyMode,
     seven_to_six: bool,
 ) -> KeyMode {
     if seven_to_six && chart_key_mode == KeyMode::K7 { KeyMode::K6 } else { chart_key_mode }
-}
-
-pub(in crate::app) fn second_player_lane(lane: Lane) -> Option<Lane> {
-    match lane {
-        Lane::Scratch => Some(Lane::Scratch2),
-        Lane::Key1 => Some(Lane::Key8),
-        Lane::Key2 => Some(Lane::Key9),
-        Lane::Key3 => Some(Lane::Key10),
-        Lane::Key4 => Some(Lane::Key11),
-        Lane::Key5 => Some(Lane::Key12),
-        Lane::Key6 => Some(Lane::Key13),
-        Lane::Key7 => Some(Lane::Key14),
-        Lane::Key8
-        | Lane::Key9
-        | Lane::Key10
-        | Lane::Key11
-        | Lane::Key12
-        | Lane::Key13
-        | Lane::Key14
-        | Lane::Scratch2 => None,
-    }
 }
 
 pub(in crate::app) fn skin_reload_request_includes_key_mode(

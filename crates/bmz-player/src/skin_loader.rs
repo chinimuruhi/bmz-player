@@ -100,8 +100,8 @@ pub fn play_skin_selection_for(skin: &SkinConfig, key_mode: KeyMode) -> PlaySkin
     }
 }
 
-/// Battle SessionMode 専用スロットを優先し、未設定なら従来の10K/14Kスロットへ
-/// フォールバックする。
+/// Battle SessionMode では source 5K/7K のみ専用スロットを使う。
+/// それ以外のキーモードと Normal の G-BATTLE は通常スロットを使う。
 pub fn play_skin_selection_for_session(
     skin: &SkinConfig,
     key_mode: KeyMode,
@@ -111,20 +111,32 @@ pub fn play_skin_selection_for_session(
         return play_skin_selection_for(skin, key_mode);
     }
     match key_mode {
-        KeyMode::K10 if !skin.battle5.trim().is_empty() => PlaySkinSelection {
-            key_mode,
-            path: skin.battle5.as_str(),
-            options: &skin.battle5_options,
-            files: &skin.battle5_files,
-            offsets: &skin.battle5_offsets,
-        },
-        KeyMode::K14 if !skin.battle7.trim().is_empty() => PlaySkinSelection {
-            key_mode,
-            path: skin.battle7.as_str(),
-            options: &skin.battle7_options,
-            files: &skin.battle7_files,
-            offsets: &skin.battle7_offsets,
-        },
+        KeyMode::K5 => {
+            if skin.battle5.trim().is_empty() {
+                play_skin_selection_for(skin, KeyMode::K10)
+            } else {
+                PlaySkinSelection {
+                    key_mode: KeyMode::K10,
+                    path: skin.battle5.as_str(),
+                    options: &skin.battle5_options,
+                    files: &skin.battle5_files,
+                    offsets: &skin.battle5_offsets,
+                }
+            }
+        }
+        KeyMode::K7 => {
+            if skin.battle7.trim().is_empty() {
+                play_skin_selection_for(skin, KeyMode::K14)
+            } else {
+                PlaySkinSelection {
+                    key_mode: KeyMode::K14,
+                    path: skin.battle7.as_str(),
+                    options: &skin.battle7_options,
+                    files: &skin.battle7_files,
+                    offsets: &skin.battle7_offsets,
+                }
+            }
+        }
         _ => play_skin_selection_for(skin, key_mode),
     }
 }

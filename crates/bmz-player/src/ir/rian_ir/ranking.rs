@@ -41,6 +41,13 @@ pub(super) fn score_ranking_entry(index: usize, resource: RianRankingResource) -
     let player_id = string_attr(&attributes, "player_name");
     let display_name =
         non_empty_attr(&attributes, "display_name").unwrap_or_else(|| player_id.clone());
+    let packed_option = int_attr(&attributes, "play_option").max(0);
+    let arrange_1p = non_empty_attr(&attributes, "arrange_1p")
+        .or_else(|| arrange_name_from_beatoraja_id(packed_option % 10).map(str::to_string));
+    let arrange_2p = non_empty_attr(&attributes, "arrange_2p")
+        .or_else(|| arrange_name_from_beatoraja_id((packed_option / 10) % 10).map(str::to_string));
+    let double_option = non_empty_attr(&attributes, "double_option")
+        .or_else(|| ((packed_option / 100) % 10 == 1).then(|| "flip".to_string()));
     IrRankingEntry {
         rank: index as u32 + 1,
         scope_rank: None,
@@ -53,13 +60,32 @@ pub(super) fn score_ranking_entry(index: usize, resource: RianRankingResource) -
             min_bp: uint_attr(&attributes, "min_bp"),
             min_cb: uint_attr(&attributes, "min_bp"),
             gauge: None,
-            arrange_1p: None,
-            arrange_2p: None,
+            arrange_1p,
+            arrange_2p,
+            random_seed: attributes.get("play_seed").and_then(|value| {
+                value.as_i64().or_else(|| value.as_str().and_then(|value| value.parse().ok()))
+            }),
+            double_option,
             verification: None,
             judges: Some(ranking_judges(&attributes)),
             device_type: None,
             played_at: non_empty_attr(&attributes, "play_date"),
         },
+    }
+}
+
+fn arrange_name_from_beatoraja_id(value: i64) -> Option<&'static str> {
+    match value {
+        1 => Some("mirror"),
+        2 => Some("random"),
+        3 => Some("r-random"),
+        4 => Some("s-random"),
+        5 => Some("spiral"),
+        6 => Some("h-random"),
+        7 => Some("all-scratch"),
+        8 => Some("random-ex"),
+        9 => Some("s-random-ex"),
+        _ => None,
     }
 }
 

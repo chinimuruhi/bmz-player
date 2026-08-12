@@ -18,6 +18,7 @@ impl WinitApp {
             || options.practice_mode
             || options.seven_to_six
             || options.replay_player.is_some()
+            || options.battle_target.is_some()
             || self.play.active_course.is_some()
         {
             return;
@@ -327,11 +328,6 @@ impl WinitApp {
             crate::screens::play_session::normalize_arrange_for_seven_to_six(options.arrange);
         options.arrange_2p = ArrangeOption::Normal;
         options.double_option = DoubleOption::Off;
-        options.session_mode = match options.session_mode {
-            SessionMode::AutoplayBattle => SessionMode::Autoplay,
-            SessionMode::GhostBattle => SessionMode::Normal,
-            other => other,
-        };
         options.autoplay = options.session_mode.primary_autoplay();
         options.target = TargetOption::None;
         options.resolved_target = None;
@@ -416,7 +412,7 @@ impl WinitApp {
     }
 }
 
-fn rival_arrange_options(
+pub(in crate::app) fn rival_arrange_options(
     score: &crate::storage::network_db::IrRivalScoreRecord,
 ) -> (ArrangeOption, ArrangeOption, DoubleOption) {
     if !score.arrange_1p.trim().is_empty() {
@@ -434,7 +430,7 @@ fn rival_arrange_options(
     )
 }
 
-fn arrange_option_from_rian(value: &str) -> ArrangeOption {
+pub(in crate::app) fn arrange_option_from_rian(value: &str) -> ArrangeOption {
     match value.trim().to_ascii_lowercase().as_str() {
         "mirror" => ArrangeOption::Mirror,
         "random" => ArrangeOption::Random,
@@ -466,7 +462,7 @@ fn arrange_option_from_beatoraja_id(value: i32) -> ArrangeOption {
     }
 }
 
-fn double_option_from_rian(value: &str) -> DoubleOption {
+pub(in crate::app) fn double_option_from_rian(value: &str) -> DoubleOption {
     match value.trim().to_ascii_lowercase().as_str() {
         "flip" => DoubleOption::Flip,
         _ => DoubleOption::Off,
