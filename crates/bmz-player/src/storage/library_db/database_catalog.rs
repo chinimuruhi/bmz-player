@@ -112,6 +112,17 @@ impl LibraryDatabase {
             .collect())
     }
 
+    pub fn find_table_entry_by_hash(
+        &self,
+        source_url: &str,
+        md5: Option<&str>,
+        sha256: Option<&str>,
+    ) -> Result<Option<TableEntryRow>> {
+        super::super::difficulty_table_db::find_table_entry_by_hash(
+            &self.conn, source_url, md5, sha256,
+        )
+    }
+
     pub(super) fn charts_by_md5s(&self, md5s: &[&str]) -> Result<HashMap<String, ChartListItem>> {
         charts_by_hash_column(&self.conn, "md5", md5s)
     }

@@ -533,6 +533,9 @@ toast-chart-download-started = { $source }에서 채보를 가져오는 중입�
 toast-chart-download-complete-registering = { $source } 가져오기 완료. 채보를 등록하는 중입니다
 toast-chart-download-failed = 채보를 가져오지 못했습니다. 자세한 내용은 로그를 확인하세요
 toast-chart-download-worker-ended = 채보 가져오기 작업이 예기치 않게 종료되었습니다
+toast-course-download-started = 코스의 미보유 채보를 가져오는 중입니다({ $count }개)
+toast-course-download-complete-registering = 채보 가져오기 완료(성공 { $completed } / 실패 { $failed }). 등록 중입니다
+toast-course-download-failed = 코스 채보를 가져오지 못했습니다({ $count }개)
 
 # Course editor
 menu-course-editor = 코스 / 단위 편집기

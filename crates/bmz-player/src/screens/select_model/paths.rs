@@ -9,6 +9,9 @@ pub const TABLE_ROOT_PATH: &str = "bmz-table:";
 /// Virtual path for the course list root.
 pub const COURSE_ROOT_PATH: &str = "bmz-course:";
 
+/// Virtual path prefix for the ordered chart list of a course.
+pub const COURSE_CONTENTS_PATH_PREFIX: &str = "bmz-course-contents:";
+
 /// Virtual path prefix for song search results.
 /// `"bmz-search:<query>"` resolves to the list of charts matching `<query>`.
 pub const SEARCH_PATH_PREFIX: &str = "bmz-search:";
@@ -39,6 +42,14 @@ pub fn same_folder_path(folder_path: &str) -> String {
 pub fn parse_same_folder_path(path: &str) -> Option<&str> {
     let rest = path.strip_prefix(SAME_FOLDER_PATH_PREFIX)?;
     if rest.is_empty() { None } else { Some(rest) }
+}
+
+pub fn course_contents_path(course_id: i64) -> String {
+    format!("{COURSE_CONTENTS_PATH_PREFIX}{course_id}")
+}
+
+pub fn parse_course_contents_path(path: &str) -> Option<i64> {
+    path.strip_prefix(COURSE_CONTENTS_PATH_PREFIX)?.parse().ok()
 }
 
 pub fn favorite_song_detail_path(representative_sha256: [u8; 32]) -> String {

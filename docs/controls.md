@@ -70,7 +70,7 @@ beatoraja互換JSONの入出力、保存した内容のテストプレイを行�
 | Numpad9 | 選択中譜面と同じフォルダの `.txt` 曲テキストを開く |
 | F8 | favorite song を登録 / 解除 |
 | F9 | favorite chart を登録 / 解除 |
-| Numpad8 | 選択中譜面と同じフォルダを開く |
+| Numpad8 | 選択中譜面と同じフォルダ、または選択中コースの構成譜面を開く |
 | Numpad0 | 難易度フィルターを ALL → BEGINNER → NORMAL → HYPER → ANOTHER → INSANE の順で切替 |
 | マウスホイール | カーソル移動 |
 | 選択中の行をクリック | 決定、フォルダを開く、曲を開始 |

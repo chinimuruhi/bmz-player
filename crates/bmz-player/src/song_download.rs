@@ -72,6 +72,18 @@ pub struct ChartDownloadResult {
     pub chart_dir: PathBuf,
 }
 
+#[derive(Debug)]
+pub struct ChartDownloadFailure {
+    pub title: String,
+    pub error: anyhow::Error,
+}
+
+#[derive(Debug, Default)]
+pub struct ChartDownloadBatchResult {
+    pub completed: Vec<ChartDownloadResult>,
+    pub failures: Vec<ChartDownloadFailure>,
+}
+
 pub fn choose_missing_chart_action(
     config: &ChartDownloadsConfig,
     metadata: &ChartDownloadMetadata,
@@ -207,6 +219,20 @@ pub async fn download_chart(request: ChartDownloadRequest) -> Result<ChartDownlo
     cleanup.disarm();
 
     Ok(ChartDownloadResult { source, root_dir, chart_dir: final_dir })
+}
+
+/// Downloads every request sequentially so one failed course stage does not
+/// cancel acquisition of the remaining stages.
+pub async fn download_charts(requests: Vec<ChartDownloadRequest>) -> ChartDownloadBatchResult {
+    let mut result = ChartDownloadBatchResult::default();
+    for request in requests {
+        let title = request.title.clone();
+        match download_chart(request).await {
+            Ok(completed) => result.completed.push(completed),
+            Err(error) => result.failures.push(ChartDownloadFailure { title, error }),
+        }
+    }
+    result
 }
 
 fn ipfs_download_url(api_url: &str, cid: &str) -> Result<Url> {
@@ -586,6 +612,26 @@ mod tests {
         ];
 
         assert_eq!(validated_browser_urls(&values), vec!["https://example.com"]);
+    }
+
+    #[tokio::test]
+    async fn batch_download_continues_after_each_failed_request() {
+        let requests = ["First", "Second"]
+            .into_iter()
+            .map(|title| ChartDownloadRequest {
+                action: MissingChartAction::Unavailable,
+                title: title.to_string(),
+                data_dir: PathBuf::new(),
+            })
+            .collect();
+
+        let result = download_charts(requests).await;
+
+        assert!(result.completed.is_empty());
+        assert_eq!(
+            result.failures.iter().map(|failure| failure.title.as_str()).collect::<Vec<_>>(),
+            ["First", "Second"]
+        );
     }
 
     #[test]

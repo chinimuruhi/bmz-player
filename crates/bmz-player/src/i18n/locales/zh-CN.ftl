@@ -533,6 +533,9 @@ toast-chart-download-started = 正在从 { $source } 获取谱面
 toast-chart-download-complete-registering = 已从 { $source } 获取完成，正在注册谱面
 toast-chart-download-failed = 获取谱面失败。详情请查看日志
 toast-chart-download-worker-ended = 谱面获取进程意外结束
+toast-course-download-started = 正在获取课程中未持有的谱面（{ $count } 个）
+toast-course-download-complete-registering = 谱面获取完成（成功 { $completed } / 失败 { $failed }），正在注册
+toast-course-download-failed = 课程谱面获取失败（{ $count } 个）
 
 # Course editor
 menu-course-editor = 课程 / 段位编辑器

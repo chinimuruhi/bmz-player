@@ -31,6 +31,15 @@ pub(in crate::app) fn load_items_for_stack(
     sort: SelectSort,
 ) -> (Vec<SelectItem>, SelectModeFilter) {
     let mut items = build_select_items_for_stack(boot, stack, search_history);
+    let ordered_course_contents = stack.last().and_then(|path| parse_course_contents_path(path));
+    if ordered_course_contents.is_some() {
+        if let Err(error) =
+            apply_collection_flags(&boot.library_db, &boot.collection_db, &mut items)
+        {
+            tracing::error!(%error, "failed to apply collection flags to course contents");
+        }
+        return (items, mode_filter);
+    }
     let resolved = resolve_non_empty_mode_filter(&items, mode_filter);
     apply_select_mode_filter(&mut items, resolved);
     apply_select_difficulty_filter(&mut items, difficulty_filter);
@@ -78,6 +87,22 @@ pub(in crate::app) fn build_select_items_for_stack(
             };
             items.push(new_course_item_for_locale(boot.profile_config.ui.locale()));
             items
+        }
+        Some(path) if parse_course_contents_path(path).is_some() => {
+            let course_id = parse_course_contents_path(path).unwrap();
+            match load_select_items_for_course_contents(
+                &boot.library_db,
+                &boot.score_db,
+                course_id,
+                boot.profile_config.play.ln_mode_policy,
+                boot.profile_config.play.rule_mode,
+            ) {
+                Ok(items) => items,
+                Err(error) => {
+                    tracing::error!(%error, course_id, "failed to load course contents");
+                    Vec::new()
+                }
+            }
         }
         Some(path) if path == FAVORITE_ROOT_PATH => {
             match favorite_root_items(&boot.collection_db) {

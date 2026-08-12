@@ -533,6 +533,9 @@ toast-chart-download-started = { $source } から譜面を取得しています
 toast-chart-download-complete-registering = { $source } 取得完了。譜面を登録しています
 toast-chart-download-failed = 譜面の取得に失敗しました。詳細はログを確認してください
 toast-chart-download-worker-ended = 譜面取得処理が予期せず終了しました
+toast-course-download-started = コースの未所持譜面を取得しています（{ $count } 件）
+toast-course-download-complete-registering = 譜面取得完了（成功 { $completed } / 失敗 { $failed }）。登録しています
+toast-course-download-failed = コース譜面の取得に失敗しました（{ $count } 件）
 
 # Course editor
 menu-course-editor = コース / 段位作成

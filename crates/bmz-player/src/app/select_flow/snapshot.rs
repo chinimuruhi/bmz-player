@@ -44,6 +44,7 @@ impl WinitApp {
             Some(path) if parse_favorite_song_detail_path(path).is_some() => {
                 "FAVORITE SONG".to_string()
             }
+            Some(path) if parse_course_contents_path(path).is_some() => "COURSE".to_string(),
             Some(path) if path.starts_with(VIRTUAL_FOLDER_PATH_PREFIX) => {
                 virtual_folder_breadcrumb(&self.boot.profile_paths.root_dir, path)
                     .unwrap_or_else(|error| {

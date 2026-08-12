@@ -122,17 +122,18 @@ use crate::screens::select_model::{
     COURSE_ROOT_PATH, DifficultyTableText, FAVORITE_CHART_PATH, FAVORITE_ROOT_PATH,
     FAVORITE_SONG_PATH, SEARCH_PATH_PREFIX, SelectChartRow, SelectExecutableKind, SelectItem,
     TABLE_ROOT_PATH, TablePath, VIRTUAL_FOLDER_PATH_PREFIX, apply_collection_flags,
-    course_root_item, difficulty_table_text_for_chart_with_active_sources, favorite_root_item,
-    favorite_root_items, favorite_song_representatives_for_folder, load_select_items_for_courses,
+    course_contents_path, course_root_item, difficulty_table_text_for_chart_with_active_sources,
+    favorite_root_item, favorite_root_items, favorite_song_representatives_for_folder,
+    load_select_items_for_course_contents, load_select_items_for_courses,
     load_select_items_for_favorite_charts, load_select_items_for_favorite_song,
     load_select_items_for_favorite_songs, load_select_items_for_search_for_rule_mode_with_filters,
     load_select_items_in_folder_for_rule_mode_with_filters,
     load_select_items_in_table_level_for_rule_mode, load_select_items_in_virtual_folder,
-    new_course_item_for_locale, parse_favorite_song_detail_path, parse_same_folder_path,
-    parse_search_query, parse_table_path, random_select_item_from_items, root_folder_items,
-    same_folder_path, search_history_folder_items_for_locale, song_scan_path_from_context,
-    table_folder_items_for_active_sources, table_level_folder_items, table_source_url_from_context,
-    virtual_folder_breadcrumb, virtual_folder_root_items,
+    new_course_item_for_locale, parse_course_contents_path, parse_favorite_song_detail_path,
+    parse_same_folder_path, parse_search_query, parse_table_path, random_select_item_from_items,
+    root_folder_items, same_folder_path, search_history_folder_items_for_locale,
+    song_scan_path_from_context, table_folder_items_for_active_sources, table_level_folder_items,
+    table_source_url_from_context, virtual_folder_breadcrumb, virtual_folder_root_items,
 };
 use crate::screens::settings_edit::{SettingsBindings, SettingsEditSession, adjust_settings_draft};
 use crate::screens::settings_model::{
@@ -152,8 +153,8 @@ use crate::skin_loader::{
     set_decoded_skin_context, upload_decoded_skin_with_texture_cache,
 };
 use crate::song_download::{
-    ChartDownloadRequest, ChartDownloadResult, MissingChartAction, choose_missing_chart_action,
-    download_chart, open_browser_urls,
+    ChartDownloadBatchResult, ChartDownloadRequest, MissingChartAction,
+    choose_missing_chart_action, download_charts, open_browser_urls,
 };
 use crate::songs_cmd::scan_songs_with_progress;
 use crate::storage::collection_db::FavoriteHints;

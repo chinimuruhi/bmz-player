@@ -298,7 +298,6 @@ impl WinitApp {
                 pending_song_scan: None,
                 queued_song_scans: VecDeque::new(),
                 pending_chart_download: None,
-                queued_download_scan: None,
                 song_scan_progress: None,
                 pending_update_check: None,
                 pending_update_check_reports_up_to_date: false,

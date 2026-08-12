@@ -215,16 +215,6 @@ impl WinitApp {
         }
         if keep_pending {
             self.jobs.pending_song_scan = Some(pending);
-        } else if let Some((root, label)) = self.jobs.queued_download_scan.take() {
-            self.spawn_song_scan(
-                vec![PathEntry {
-                    path: root.to_string_lossy().into_owned(),
-                    enabled: true,
-                    recursive: true,
-                }],
-                true,
-                label,
-            );
         }
     }
 

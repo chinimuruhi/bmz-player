@@ -167,6 +167,113 @@ fn parse_table_path_distinguishes_root_table_and_level() {
 }
 
 #[test]
+fn course_contents_path_round_trips_course_id() {
+    let path = course_contents_path(42);
+    assert_eq!(path, "bmz-course-contents:42");
+    assert_eq!(parse_course_contents_path(&path), Some(42));
+    assert_eq!(parse_course_contents_path(COURSE_ROOT_PATH), None);
+}
+
+#[test]
+fn course_contents_preserve_stage_order_and_missing_download_metadata() {
+    let (mut library_db, score_db) = open_in_memory_dbs();
+    let first = chart("First Stage");
+    let third = chart("Third Stage");
+    let first_id =
+        library_db.upsert_chart_import(&record_for_chart("/songs/first.bms", &first)).unwrap();
+    let third_id =
+        library_db.upsert_chart_import(&record_for_chart("/songs/third.bms", &third)).unwrap();
+    let missing_md5 = "0123456789abcdef0123456789abcdef";
+    let source_url = "https://example.com/course-table/";
+
+    use crate::difficulty_table::{FetchedDifficultyTable, FetchedTableEntry};
+    library_db
+        .upsert_difficulty_table(&FetchedDifficultyTable {
+            source_url: source_url.to_string(),
+            head_url: format!("{source_url}header.json"),
+            name: "Course Table".to_string(),
+            symbol: "★".to_string(),
+            level_order: vec!["12".to_string()],
+            entries: vec![FetchedTableEntry {
+                level: "12".to_string(),
+                md5: missing_md5.to_string(),
+                sha256: String::new(),
+                title: "Missing Stage".to_string(),
+                artist: "Missing Artist".to_string(),
+                comment: String::new(),
+                url: "https://example.com/missing-stage".to_string(),
+                append_url: String::new(),
+                ipfs: "/ipfs/missing-stage".to_string(),
+                append_ipfs: String::new(),
+            }],
+            courses: Vec::new(),
+            fetched_at: 0,
+        })
+        .unwrap();
+    let course_id = library_db
+        .upsert_course(
+            &format!("table:{source_url}"),
+            &bmz_core::course::CourseDefinition {
+                key: "ordered-course".to_string(),
+                title: "Ordered Course".to_string(),
+                kind: bmz_core::course::CourseKind::Course,
+                entries: vec![
+                    bmz_core::course::CourseEntry {
+                        title_hint: "First hint".to_string(),
+                        md5: None,
+                        sha256: Some(hash_to_hex(&first.identity.file_sha256)),
+                        chart_id: Some(first_id),
+                    },
+                    bmz_core::course::CourseEntry {
+                        title_hint: "Missing hint".to_string(),
+                        md5: Some(missing_md5.to_string()),
+                        sha256: None,
+                        chart_id: None,
+                    },
+                    bmz_core::course::CourseEntry {
+                        title_hint: "Third hint".to_string(),
+                        md5: None,
+                        sha256: Some(hash_to_hex(&third.identity.file_sha256)),
+                        chart_id: Some(third_id),
+                    },
+                ],
+                constraints: bmz_core::course::CourseConstraints::default(),
+                trophies: Vec::new(),
+                release: true,
+            },
+            0,
+            1,
+        )
+        .unwrap();
+
+    let items = load_select_items_for_course_contents(
+        &library_db,
+        &score_db,
+        course_id,
+        LnPolicySetting::AutoLn,
+        RuleMode::Beatoraja,
+    )
+    .unwrap();
+    let rows: Vec<&SelectChartRow> = items
+        .iter()
+        .filter_map(|item| match item {
+            SelectItem::Chart(row) => Some(row),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        rows.iter().map(|row| row.display_title()).collect::<Vec<_>>(),
+        ["First Stage", "Missing Stage", "Third Stage",]
+    );
+    assert!(rows[0].in_library());
+    assert!(!rows[1].in_library());
+    assert_eq!(rows[1].display_artist(), "Missing Artist");
+    assert_eq!(rows[1].download_metadata.url, "https://example.com/missing-stage");
+    assert_eq!(rows[1].table_level, "★12");
+    assert!(rows[2].in_library());
+}
+
+#[test]
 fn table_level_folder_items_returns_folder_per_level() {
     let (mut library_db, score_db) = open_in_memory_dbs();
     let chart_a = chart("A");

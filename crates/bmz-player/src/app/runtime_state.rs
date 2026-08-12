@@ -225,8 +225,7 @@ pub(super) struct AppJobs {
     pub(super) pending_song_scan: Option<PendingSongScan>,
     /// Select外で要求されたscanを開始せず、次のSelectまでFIFOで保持する。
     pub(super) queued_song_scans: VecDeque<(Vec<PathEntry>, bool, String)>,
-    pub(super) pending_chart_download: Option<Receiver<Result<ChartDownloadResult>>>,
-    pub(super) queued_download_scan: Option<(PathBuf, String)>,
+    pub(super) pending_chart_download: Option<Receiver<Result<ChartDownloadBatchResult>>>,
     pub(super) song_scan_progress: Option<ScanProgress>,
     pub(super) pending_update_check: Option<Receiver<UpdateCheckWorkerResult>>,
     pub(super) pending_update_check_reports_up_to_date: bool,

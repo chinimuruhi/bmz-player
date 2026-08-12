@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::difficulty_table::FetchedDifficultyTable;
 
@@ -194,27 +194,56 @@ pub(super) fn list_table_entries_at_level(
     query_table_entries(conn, sql, params![source_url, level])
 }
 
+/// Finds download metadata for one course entry in its source difficulty table.
+pub(super) fn find_table_entry_by_hash(
+    conn: &Connection,
+    source_url: &str,
+    md5: Option<&str>,
+    sha256: Option<&str>,
+) -> Result<Option<TableEntryRow>> {
+    let md5 = md5.map(str::trim).filter(|value| !value.is_empty()).unwrap_or("");
+    let sha256 = sha256.map(str::trim).filter(|value| !value.is_empty()).unwrap_or("");
+    if md5.is_empty() && sha256.is_empty() {
+        return Ok(None);
+    }
+    let sql = "
+        SELECT dte.level, dte.md5, dte.sha256, dte.title, dte.artist, dte.comment,
+               dte.url, dte.append_url, dte.ipfs, dte.append_ipfs
+        FROM difficulty_table_entries dte
+        JOIN difficulty_tables dt ON dt.id = dte.table_id
+        WHERE dt.source_url = ?1
+          AND ((?2 <> '' AND lower(dte.md5) = lower(?2))
+            OR (?3 <> '' AND lower(dte.sha256) = lower(?3)))
+        ORDER BY CASE WHEN ?2 <> '' AND lower(dte.md5) = lower(?2) THEN 0 ELSE 1 END
+        LIMIT 1";
+    conn.query_row(sql, params![source_url, md5, sha256], table_entry_from_row)
+        .optional()
+        .map_err(Into::into)
+}
+
 fn query_table_entries(
     conn: &Connection,
     sql: &str,
     params: impl rusqlite::Params,
 ) -> Result<Vec<TableEntryRow>> {
     let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map(params, |row| {
-        Ok(TableEntryRow {
-            level: row.get(0)?,
-            md5: row.get(1)?,
-            sha256: row.get(2)?,
-            title: row.get(3)?,
-            artist: row.get(4)?,
-            comment: row.get(5)?,
-            url: row.get(6)?,
-            append_url: row.get(7)?,
-            ipfs: row.get(8)?,
-            append_ipfs: row.get(9)?,
-        })
-    })?;
+    let rows = stmt.query_map(params, table_entry_from_row)?;
     rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn table_entry_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TableEntryRow> {
+    Ok(TableEntryRow {
+        level: row.get(0)?,
+        md5: row.get(1)?,
+        sha256: row.get(2)?,
+        title: row.get(3)?,
+        artist: row.get(4)?,
+        comment: row.get(5)?,
+        url: row.get(6)?,
+        append_url: row.get(7)?,
+        ipfs: row.get(8)?,
+        append_ipfs: row.get(9)?,
+    })
 }
 
 pub(super) fn list_entries_by_md5s(

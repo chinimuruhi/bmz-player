@@ -76,6 +76,123 @@ pub fn load_select_items_for_courses(
         .collect())
 }
 
+/// Loads a course's stages in definition order, retaining unresolved entries as
+/// selectable missing-chart rows.
+pub fn load_select_items_for_course_contents(
+    library_db: &LibraryDatabase,
+    score_db: &ScoreDatabase,
+    course_id: i64,
+    ln_policy_setting: LnPolicySetting,
+    rule_mode: RuleMode,
+) -> Result<Vec<SelectItem>> {
+    let Some(stored) = library_db.course_by_id(course_id)? else {
+        return Ok(Vec::new());
+    };
+    let chart_ids: Vec<i64> =
+        stored.definition.entries.iter().filter_map(|entry| entry.chart_id).collect();
+    let charts = library_db.list_charts_by_ids(&chart_ids)?;
+    let chart_by_id: HashMap<i64, ChartListItem> =
+        charts.into_iter().map(|chart| (chart.chart_id, chart)).collect();
+    let ordered_charts: Vec<ChartListItem> = stored
+        .definition
+        .entries
+        .iter()
+        .filter_map(|entry| entry.chart_id.and_then(|id| chart_by_id.get(&id).cloned()))
+        .collect();
+    let mut resolved: VecDeque<SelectItem> = chart_items_without_table_enrichment(
+        library_db,
+        score_db,
+        ordered_charts,
+        ln_policy_setting,
+        rule_mode,
+    )?
+    .into();
+    let table_source = stored.source.strip_prefix("table:");
+    let table_identity = match table_source {
+        Some(source_url) => library_db
+            .list_difficulty_tables()?
+            .into_iter()
+            .find(|table| table.source_url == source_url),
+        None => None,
+    };
+
+    let mut items = Vec::with_capacity(stored.definition.entries.len());
+    for entry in stored.definition.entries {
+        if entry.chart_id.is_some_and(|id| chart_by_id.contains_key(&id)) {
+            if let Some(item) = resolved.pop_front() {
+                items.push(item);
+            }
+            continue;
+        }
+
+        let table_entry = table_source
+            .map(|source_url| {
+                library_db.find_table_entry_by_hash(
+                    source_url,
+                    entry.md5.as_deref(),
+                    entry.sha256.as_deref(),
+                )
+            })
+            .transpose()?
+            .flatten();
+        let fallback_title = table_entry
+            .as_ref()
+            .map(|row| row.title.trim())
+            .filter(|title| !title.is_empty())
+            .unwrap_or(entry.title_hint.as_str())
+            .to_string();
+        let fallback_artist =
+            table_entry.as_ref().map(|row| row.artist.clone()).unwrap_or_default();
+        let md5 = entry
+            .md5
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| table_entry.as_ref().map(|row| row.md5.clone()))
+            .unwrap_or_default();
+        let sha256 = entry
+            .sha256
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| table_entry.as_ref().map(|row| row.sha256.clone()))
+            .unwrap_or_default();
+        let table_text = match (&table_identity, &table_entry) {
+            (Some(table), Some(row)) => {
+                DifficultyTableText::from_parts(table.name.clone(), &table.symbol, &row.level)
+            }
+            _ => DifficultyTableText::default(),
+        };
+        items.push(SelectItem::Chart(SelectChartRow {
+            chart: None,
+            chart_analysis: None,
+            has_document: false,
+            fallback_title,
+            fallback_artist,
+            entry_sha256: if sha256.len() >= 48 { hex_to_hash::<32>(&sha256).ok() } else { None },
+            download_metadata: ChartDownloadMetadata {
+                md5,
+                sha256,
+                url: table_entry.as_ref().map(|row| row.url.clone()).unwrap_or_default(),
+                append_url: table_entry
+                    .as_ref()
+                    .map(|row| row.append_url.clone())
+                    .unwrap_or_default(),
+                ipfs: table_entry.as_ref().map(|row| row.ipfs.clone()).unwrap_or_default(),
+                append_ipfs: table_entry
+                    .as_ref()
+                    .map(|row| row.append_ipfs.clone())
+                    .unwrap_or_default(),
+            },
+            best_score: None,
+            replay_slots: [false; 4],
+            favorite_chart: false,
+            favorite_song: false,
+            table_level: table_text.table_level.clone(),
+            table_text,
+        }));
+    }
+    Ok(items)
+}
+
 /// Aggregates per-entry chart stats into a `SelectCourseRow`.
 pub(super) fn build_select_course_row(
     library_db: &LibraryDatabase,
