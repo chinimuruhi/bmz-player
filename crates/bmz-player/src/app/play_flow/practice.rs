@@ -1,6 +1,78 @@
 use super::*;
 
 impl WinitApp {
+    pub(super) fn route_practice_gamepad_control(&mut self, button: &str, pressed: bool) -> bool {
+        let is_config = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        if !is_config {
+            return false;
+        }
+        if !pressed {
+            return true;
+        }
+
+        enum Action {
+            Move(bool),
+            Adjust(bool),
+            Start,
+            Leave,
+            Ignore,
+        }
+        let action = if self.select.select_keys.is_enter(button) {
+            Action::Start
+        } else if self.select.select_keys.is_back(button) {
+            Action::Leave
+        } else if self.select.select_keys.is_select_previous(button)
+            || matches!(button, "DPadUp" | "DPadNorth")
+        {
+            Action::Move(false)
+        } else if self.select.select_keys.is_select_next(button)
+            || matches!(button, "DPadDown" | "DPadSouth")
+        {
+            Action::Move(true)
+        } else if self.select.select_keys.is_target_previous(button)
+            || matches!(button, "DPadLeft" | "DPadWest")
+        {
+            Action::Adjust(false)
+        } else if self.select.select_keys.is_target_next(button)
+            || matches!(button, "DPadRight" | "DPadEast")
+        {
+            Action::Adjust(true)
+        } else {
+            Action::Ignore
+        };
+
+        match action {
+            Action::Move(forward) => {
+                if let Some(practice) = &mut self.play.practice_session {
+                    crate::screens::practice::move_practice_cursor(
+                        &mut practice.cursor,
+                        practice.is_double,
+                        forward,
+                    );
+                }
+            }
+            Action::Adjust(increment) => {
+                if let Some(practice) = &mut self.play.practice_session {
+                    crate::screens::practice::adjust_practice_selected_field(
+                        &mut practice.property,
+                        practice.cursor,
+                        practice.is_double,
+                        increment,
+                        practice.max_end_time_ms,
+                    );
+                }
+            }
+            Action::Start => self.start_practice_round(),
+            Action::Leave => self.leave_practice(),
+            Action::Ignore => {}
+        }
+        true
+    }
+
     pub(super) fn start_chart(&mut self, chart_id: i64) {
         self.select.autoplay_folder = None;
         let mut options = self.play_start_options();
@@ -109,14 +181,17 @@ impl WinitApp {
                 return;
             }
         };
-        let max_end_time_ms = defaults.property.end_time_ms;
         self.play.practice_session = Some(PracticeSession {
             chart_id,
             chart_title: defaults.title,
             chart_sha256: defaults.sha256,
             property: defaults.property,
             phase: PracticePhase::Config,
-            max_end_time_ms,
+            max_end_time_ms: defaults.max_end_time_ms,
+            last_graph: defaults.graph,
+            graph_start_time_ms: 0,
+            is_double: defaults.is_double,
+            cursor: 0,
         });
         self.result.finished_play = None;
         self.play.play_ending = None;
@@ -156,7 +231,18 @@ impl WinitApp {
         } else {
             import.chart.metadata.title.clone()
         };
-        Ok(PracticeChartDefaults { property, title, sha256: import.chart.identity.file_sha256 })
+        let graph = crate::screens::result_model::ResultGraphCollector::default()
+            .snapshot_for_result_parts(&import.chart, &Default::default(), None);
+        let max_end_time_ms = crate::screens::practice::default_end_time_ms(&import.chart);
+        let is_double = matches!(import.chart.metadata.key_mode, KeyMode::K10 | KeyMode::K14);
+        Ok(PracticeChartDefaults {
+            property,
+            title,
+            sha256: import.chart.identity.file_sha256,
+            graph: std::sync::Arc::new(graph),
+            max_end_time_ms,
+            is_double,
+        })
     }
 
     pub(super) fn practice_media_ready(&self) -> bool {
@@ -243,9 +329,15 @@ impl WinitApp {
             PlayStartOptions {
                 autoplay: false,
                 practice_mode: true,
-                gauge: Some(property.gauge),
+                playback_rate_percent: property.playback_rate_percent,
                 gauge_auto_shift: GaugeAutoShiftConfig::Off,
                 arrange: property.arrange,
+                arrange_2p: property.arrange_2p,
+                double_option: if property.dp_flip {
+                    DoubleOption::Flip
+                } else {
+                    DoubleOption::Off
+                },
                 chart_zero_time: chart_zero,
                 ..Default::default()
             },
@@ -292,6 +384,11 @@ impl WinitApp {
         }
         self.commit_active_play_lane_state_to_profile();
         if let Some(started) = self.play.active_play.take() {
+            let graph = started.running.result_graph.snapshot_for_session(&started.running.session);
+            if let Some(practice) = &mut self.play.practice_session {
+                practice.last_graph = std::sync::Arc::new(graph);
+                practice.graph_start_time_ms = property.start_time_ms;
+            }
             let mut audio = started.running.audio;
             audio.mark_draining();
             self.audio.draining_audio = Some(audio);

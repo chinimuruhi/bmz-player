@@ -35,8 +35,9 @@ use crate::storage::score_db::ScoreDatabase;
 pub struct PlayStartOptions {
     pub session_mode: SessionMode,
     pub autoplay: bool,
-    /// Practice mode: section play without result DB update (CLI entry only for now).
+    /// Practice mode: section play without result DB update.
     pub practice_mode: bool,
+    pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
     pub replay_player: Option<ReplayPlayer>,
     pub chart_zero_time: TimeUs,
@@ -122,6 +123,13 @@ pub fn play_session_options_from_start(
         session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
         practice_mode: start_options.practice_mode,
+        playback_rate_percent: bmz_audio::clock::clamp_playback_rate_percent(
+            if start_options.playback_rate_percent == 0 {
+                100
+            } else {
+                start_options.playback_rate_percent
+            },
+        ),
         assist: start_options.assist,
         assist_runtime: Default::default(),
         replay_player: start_options.replay_player,

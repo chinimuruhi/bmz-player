@@ -27,6 +27,10 @@ fn practice_panel_context(
     let practice = practice.filter(|practice| practice.phase == PracticePhase::Config)?;
     Some(PracticePanelContext {
         property: &mut practice.property,
+        graph: &practice.last_graph,
+        graph_start_time_ms: practice.graph_start_time_ms,
+        is_double: practice.is_double,
+        cursor: &mut practice.cursor,
         chart_title: &practice.chart_title,
         media_ready,
         max_end_time_ms: practice.max_end_time_ms,
@@ -124,6 +128,7 @@ impl WinitApp {
         // コース graph は egui を Option から取り出した後、clone せず参照で渡す。
         let course_result = self.result.finished_course.as_ref();
         let course_preview = self.egui_course_preview(scene_kind);
+        let course_editor = self.egui_course_editor_data();
         let practice_media_ready = self.practice_media_ready();
         let mut practice_panel_ctx =
             practice_panel_context(self.play.practice_session.as_mut(), practice_media_ready);
@@ -158,6 +163,7 @@ impl WinitApp {
                 skin_catalog: &self.skin.skin_catalog,
                 course_result,
                 course_preview: course_preview.as_ref(),
+                course_editor: &course_editor,
                 practice: practice_panel_ctx.as_mut(),
                 result_ir: result_ir_panel,
                 profile_root: &self.boot.profile_paths.root_dir,
@@ -359,6 +365,51 @@ impl WinitApp {
         }
     }
 
+    fn egui_course_editor_data(&self) -> CourseEditorData {
+        let Some(egui) = self.ui.egui.as_ref().filter(|egui| egui.course_editor_visible()) else {
+            return CourseEditorData::default();
+        };
+        let courses = self
+            .boot
+            .library_db
+            .list_courses()
+            .unwrap_or_else(|error| {
+                tracing::error!(%error, "failed to load courses for editor");
+                Vec::new()
+            })
+            .into_iter()
+            .filter(|course| {
+                course.definition.constraints.gauge
+                    != bmz_core::course::CourseGaugeConstraint::Keys24
+            })
+            .collect();
+        let query = egui.course_editor_search_query().trim();
+        let mut charts = if query.is_empty() {
+            self.boot.library_db.list_charts(200, 0)
+        } else {
+            self.boot.library_db.search_charts(query)
+        }
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, query, "failed to search charts for course editor");
+            Vec::new()
+        });
+        charts.truncate(200);
+        let charts = charts
+            .into_iter()
+            .filter(|chart| !chart.mode.contains("24") && !chart.mode.contains("48"))
+            .map(|chart| CourseEditorChart {
+                chart_id: chart.chart_id,
+                title: chart.title,
+                artist: chart.artist,
+                play_level: chart.play_level,
+                mode: chart.mode,
+                md5: crate::storage::common::hash_to_hex(&chart.md5),
+                sha256: crate::storage::common::hash_to_hex(&chart.sha256),
+            })
+            .collect();
+        CourseEditorData { courses, charts }
+    }
+
     fn update_egui_select_ir(&mut self, scene_kind: AppSceneKind) {
         if scene_kind != AppSceneKind::Select {
             return;
@@ -428,6 +479,9 @@ impl WinitApp {
         }
         if output.practice_start {
             self.start_practice_round();
+        }
+        if let Some(action) = output.course_editor_action {
+            self.apply_course_editor_action(action);
         }
         self.apply_egui_video_config(window);
 

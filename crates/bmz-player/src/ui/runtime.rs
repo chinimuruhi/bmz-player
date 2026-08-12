@@ -35,6 +35,8 @@ impl EguiLayer {
             show_settings: false,
             show_profile_settings: false,
             show_skin: false,
+            show_course_editor: false,
+            course_editor: CourseEditorUiState::default(),
             skin_ui_path_cache: SkinUiPathCache::default(),
             show_license_notice: false,
             license_notice_text: None,
@@ -78,6 +80,19 @@ impl EguiLayer {
             self.score_import_status = status;
             self.score_import_error.clear();
         }
+    }
+
+    pub fn course_editor_visible(&self) -> bool {
+        self.visible && self.show_course_editor
+    }
+
+    pub fn course_editor_search_query(&self) -> &str {
+        &self.course_editor.search_query
+    }
+
+    pub fn set_course_editor_status(&mut self, status: String, error: bool) {
+        self.course_editor.status = status;
+        self.course_editor.error = error;
     }
 
     /// winit イベントを egui へ供給する。
@@ -154,6 +169,7 @@ impl EguiLayer {
             skin_catalog,
             course_result,
             course_preview,
+            course_editor,
             mut practice,
             mut result_ir,
             profile_root,
@@ -176,6 +192,7 @@ impl EguiLayer {
         let show_settings = &mut self.show_settings;
         let show_profile_settings = &mut self.show_profile_settings;
         let show_skin = &mut self.show_skin;
+        let show_course_editor = &mut self.show_course_editor;
         let show_fps = &mut self.show_fps;
         let show_license_notice = &mut self.show_license_notice;
         let license_notice_text = &mut self.license_notice_text;
@@ -193,6 +210,7 @@ impl EguiLayer {
         let mut update_dialog_action = None;
         let mut practice_start = false;
         let mut practice_leave = false;
+        let mut course_editor_action = None;
         let settings_editable = !scene_restricts_settings(info.scene);
         let mut readonly_app_config = (!settings_editable).then(|| app_config.clone());
         let visible_flag = &mut self.visible;
@@ -236,6 +254,7 @@ impl EguiLayer {
                         settings: show_settings,
                         profile_settings: show_profile_settings,
                         skin: show_skin,
+                        course_editor: show_course_editor,
                         license_notice: show_license_notice,
                     },
                     app_paths,
@@ -327,6 +346,15 @@ impl EguiLayer {
                 save_profile_config |= skin_actions.save;
                 reset_skin_config |= skin_actions.reset;
                 skin_reload_request.union(skin_actions.reload);
+                course_editor_action = build_course_editor_panel(
+                    ctx,
+                    show_course_editor,
+                    &mut self.course_editor,
+                    course_editor,
+                    profile_root,
+                    info.scene == "Select",
+                    text,
+                );
             }
         });
         self.state.handle_platform_output(window, full_output.platform_output);
@@ -351,6 +379,7 @@ impl EguiLayer {
             update_dialog_action,
             practice_start,
             practice_leave,
+            course_editor_action,
         }
     }
 }

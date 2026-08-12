@@ -5,6 +5,7 @@ pub(super) struct MenuPanelVisibility<'a> {
     pub(super) settings: &'a mut bool,
     pub(super) profile_settings: &'a mut bool,
     pub(super) skin: &'a mut bool,
+    pub(super) course_editor: &'a mut bool,
     pub(super) license_notice: &'a mut bool,
 }
 
@@ -29,6 +30,7 @@ pub(super) fn build_menu(
             ui.checkbox(panels.settings, tr!(text, "menu-app-settings"));
             ui.checkbox(panels.profile_settings, tr!(text, "menu-profile-settings"));
             ui.checkbox(panels.skin, tr!(text, "menu-skin-settings"));
+            ui.checkbox(panels.course_editor, tr!(text, "menu-course-editor"));
             ui.checkbox(panels.license_notice, tr!(text, "menu-licenses"));
             ui.separator();
             ui.label(tr!(text, "menu-open-directory"));

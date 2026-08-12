@@ -153,6 +153,10 @@ pub(super) fn delete_courses_by_source(conn: &Connection, source: &str) -> Resul
     Ok(conn.execute("DELETE FROM courses WHERE source = ?1", params![source])?)
 }
 
+pub(super) fn delete_course(conn: &Connection, course_id: i64) -> Result<bool> {
+    Ok(conn.execute("DELETE FROM courses WHERE id = ?1", params![course_id])? != 0)
+}
+
 pub(super) fn delete_table_courses_by_source_prefix(
     conn: &Connection,
     source_prefix: &str,

@@ -82,6 +82,8 @@ mod auxiliary_result_ir;
 mod auxiliary_update;
 #[path = "ui/auxiliary_panels/window.rs"]
 mod auxiliary_window;
+#[path = "ui/course_editor.rs"]
+mod course_editor;
 mod profile_panel;
 mod settings_panel;
 mod skin_panel;
@@ -92,6 +94,7 @@ use auxiliary_notice::*;
 use auxiliary_result_ir::*;
 use auxiliary_update::*;
 use auxiliary_window::*;
+use course_editor::*;
 use profile_panel::*;
 use settings_panel::*;
 use skin_panel::*;
@@ -105,9 +108,9 @@ use ir_state::*;
 use menu::*;
 use model::*;
 pub use model::{
-    DebugInfo, EguiLayer, EguiOutput, EguiRunContext, SceneSkinDefs, SkinCandidate,
-    SkinCandidateOrigin, SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest,
-    UpdateDialog, UpdateDialogAction,
+    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiLayer, EguiOutput,
+    EguiRunContext, SceneSkinDefs, SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta,
+    SkinReloadRequest, SongScanRequest, UpdateDialog, UpdateDialogAction,
 };
 use runtime::AudioDevicePickerState;
 #[cfg(test)]

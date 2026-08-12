@@ -21,6 +21,9 @@ pub struct ActiveVoiceFadeOut {
 #[derive(Debug)]
 pub struct MixerState {
     pub output_sample_rate: u32,
+    /// Gameplay timeline speed. The play output owns a dedicated mixer, so this
+    /// changes chart BGM/keysounds without affecting system UI sounds.
+    pub playback_rate: f64,
     pub voices: Vec<ActiveVoice>,
     /// 全 voice 合成後に掛けるマスターゲイン。リザルト退出時のフェードアウト等、
     /// 出力全体を一括で絞るために使う。既定は 1.0(素通し)。
@@ -29,13 +32,18 @@ pub struct MixerState {
 
 impl Default for MixerState {
     fn default() -> Self {
-        Self { output_sample_rate: 48_000, voices: Vec::new(), master_gain: 1.0 }
+        Self {
+            output_sample_rate: 48_000,
+            playback_rate: 1.0,
+            voices: Vec::new(),
+            master_gain: 1.0,
+        }
     }
 }
 
 impl MixerState {
     pub fn new(output_sample_rate: u32) -> Self {
-        Self { output_sample_rate, voices: Vec::new(), master_gain: 1.0 }
+        Self { output_sample_rate, playback_rate: 1.0, voices: Vec::new(), master_gain: 1.0 }
     }
 
     pub fn push_scheduled(&mut self, sounds: impl IntoIterator<Item = ScheduledSound>) {
@@ -100,6 +108,7 @@ impl MixerState {
         // voice 配列を in-place 更新し、毎コールバックのヒープ確保
         // (旧 `Vec::with_capacity` + voices 差し替え)を排してリアルタイム安全にする。
         let output_sample_rate = self.output_sample_rate;
+        let playback_rate = self.playback_rate;
 
         self.voices.retain_mut(|voice| {
             let Some(sample) = sample_bank.get(voice.sound.sound_id) else {
@@ -113,8 +122,8 @@ impl MixerState {
             let sample_frames = sample.frame_count();
             // 読込時リサンプル後はサンプルが出力レートと一致するため、補間不要の
             // ファストパス(整数インデックスで直接読み出し)で再生できる。
-            let native_rate = sample.sample_rate() == output_sample_rate;
-            let step = sample.sample_rate() as f64 / output_sample_rate as f64;
+            let native_rate = sample.sample_rate() == output_sample_rate && playback_rate == 1.0;
+            let step = sample.sample_rate() as f64 / output_sample_rate as f64 * playback_rate;
 
             if voice.started {
                 if output_start_frame > voice.next_output_frame {

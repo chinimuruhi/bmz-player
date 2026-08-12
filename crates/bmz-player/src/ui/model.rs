@@ -250,6 +250,7 @@ pub struct EguiRunContext<'a, 'practice> {
     pub skin_catalog: &'a SkinCatalog,
     pub course_result: Option<&'a CourseResultSummary>,
     pub course_preview: Option<&'a SelectCourseRow>,
+    pub course_editor: &'a CourseEditorData,
     pub practice: Option<&'a mut PracticePanelContext<'practice>>,
     pub result_ir: Option<&'a mut crate::screens::result_ir::ResultIrState>,
     pub profile_root: &'a Path,
@@ -289,6 +290,44 @@ pub struct EguiOutput {
     pub update_dialog_action: Option<UpdateDialogAction>,
     pub practice_start: bool,
     pub practice_leave: bool,
+    pub course_editor_action: Option<CourseEditorAction>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CourseEditorData {
+    pub courses: Vec<crate::storage::library_db::StoredCourse>,
+    pub charts: Vec<CourseEditorChart>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CourseEditorChart {
+    pub chart_id: i64,
+    pub title: String,
+    pub artist: String,
+    pub play_level: String,
+    pub mode: String,
+    pub md5: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum CourseEditorAction {
+    Save(bmz_core::course::CourseDefinition),
+    SaveAndTest(bmz_core::course::CourseDefinition),
+    Delete(i64),
+    Export { path: PathBuf, definition: bmz_core::course::CourseDefinition },
+    Import { path: PathBuf },
+}
+
+#[derive(Default)]
+pub(super) struct CourseEditorUiState {
+    pub(super) selected_course_id: Option<i64>,
+    pub(super) draft: Option<bmz_core::course::CourseDefinition>,
+    pub(super) search_query: String,
+    pub(super) import_path: String,
+    pub(super) export_path: String,
+    pub(super) status: String,
+    pub(super) error: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -340,6 +379,9 @@ pub struct EguiLayer {
     pub(super) show_profile_settings: bool,
     /// スキン設定パネルの開閉状態。
     pub(super) show_skin: bool,
+    /// ローカルのコース/段位作成・編集パネル。
+    pub(super) show_course_editor: bool,
+    pub(super) course_editor: CourseEditorUiState,
     /// Lua skin の canonicalize をスキン設定 UI の毎フレームで繰り返さないためのキャッシュ。
     pub(super) skin_ui_path_cache: SkinUiPathCache,
     /// ライセンス / third-party notice 表示パネルの開閉状態。

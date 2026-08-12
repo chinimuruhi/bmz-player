@@ -17,7 +17,8 @@ pub enum GaugeAutoShiftMode {
 /// beatoraja `GaugeProperty` 相当。キーモード別の段位ゲージ係数を選ぶ。
 /// グルーヴ系ゲージ (AssistEasy..Hazard) は本実装では全プロパティ共通だが、
 /// CLASS / EXCLASS / EXHARDCLASS は beatoraja の各キーモード値を移植する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GaugeProperty {
     FiveKeys,
     #[default]

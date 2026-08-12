@@ -438,16 +438,37 @@ pub fn build_practice_prepared_from_preloaded(
     input_backend: Box<dyn InputBackend>,
 ) -> PreparedPlaySession {
     let mut chart = (*preloaded.chart).clone();
-    let applied_arrange = apply_practice_property(&mut chart, property);
+    apply_practice_property(&mut chart, property);
+    let double_option = if property.dp_flip { DoubleOption::Flip } else { DoubleOption::Off };
+    apply_double_option(&mut chart, double_option);
+    let mut applied_arrange = apply_arrange_pair(
+        &mut chart,
+        property.arrange,
+        property.arrange_2p,
+        None,
+        None,
+        false,
+        None,
+    );
+    applied_arrange.double_option = double_option;
     options.practice_mode = true;
     options.assist_runtime = preloaded.assist_runtime;
     options.autoplay = false;
     options.replay_player = None;
-    options.gauge_override = Some(gauge_type_from_config(property.gauge));
-    options.gauge_auto_shift = GaugeAutoShiftMode::Off;
+    options.gauge_override = Some(property.gauge.gauge_type());
+    options.gauge_property = property.gauge_category;
+    options.gauge_auto_shift = if property.gauge == PracticeGaugeType::AutoShift {
+        GaugeAutoShiftMode::BestClear
+    } else {
+        GaugeAutoShiftMode::Off
+    };
     options.arrange = property.arrange;
+    options.arrange_2p = property.arrange_2p;
+    options.double_option = double_option;
+    options.playback_rate_percent = property.playback_rate_percent;
     let target = TargetOption::None.as_string();
     let practice_mode = options.practice_mode;
+    let playback_rate_percent = options.playback_rate_percent;
     let mut session =
         build_game_session_with_input_backend(Arc::new(chart), profile, options, input_backend);
     session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
@@ -467,6 +488,7 @@ pub fn build_practice_prepared_from_preloaded(
         target,
         resolved_target: None,
         practice_mode,
+        playback_rate_percent,
     }
 }
 
@@ -485,6 +507,7 @@ pub fn build_prepared_play_session_from_preloaded(
         .map(|target| target.name.clone())
         .unwrap_or_else(|| options.target.as_string());
     let practice_mode = options.practice_mode;
+    let playback_rate_percent = options.playback_rate_percent;
     let session =
         build_game_session_with_input_backend(preloaded.chart, profile, options, input_backend);
     let mut session = session;
@@ -502,6 +525,7 @@ pub fn build_prepared_play_session_from_preloaded(
         target,
         resolved_target,
         practice_mode,
+        playback_rate_percent,
     }
 }
 

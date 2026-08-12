@@ -99,6 +99,11 @@ impl AudioEngine {
         self.mixer.master_gain = gain.clamp(0.0, 1.0);
     }
 
+    pub fn set_playback_rate_percent(&mut self, rate: u16) {
+        let rate = crate::clock::clamp_playback_rate_percent(rate);
+        self.mixer.playback_rate = f64::from(rate) / 100.0;
+    }
+
     /// 指定 sound_id のスケジュール済み音および再生中 voice の音量を更新する。
     pub fn set_sound_volume(&mut self, id: bmz_core::ids::SoundId, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);

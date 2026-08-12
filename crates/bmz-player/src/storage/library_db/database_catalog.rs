@@ -27,6 +27,10 @@ impl LibraryDatabase {
         super::super::course_db::delete_courses_by_source(&self.conn, source)
     }
 
+    pub fn delete_course(&self, course_id: i64) -> Result<bool> {
+        super::super::course_db::delete_course(&self.conn, course_id)
+    }
+
     pub fn delete_table_courses_by_source_prefix(&self, source_prefix: &str) -> Result<usize> {
         super::super::course_db::delete_table_courses_by_source_prefix(&self.conn, source_prefix)
     }

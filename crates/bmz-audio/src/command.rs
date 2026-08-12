@@ -40,6 +40,9 @@ pub enum AudioEngineCommand {
     SetMasterGain {
         gain: f32,
     },
+    SetPlaybackRatePercent {
+        rate: u16,
+    },
     SetSoundVolume {
         id: SoundId,
         volume: f32,
@@ -83,6 +86,7 @@ impl AudioEngineCommand {
                 engine.stop_sound_with_fade_out(id, fade_out_frames);
             }
             Self::SetMasterGain { gain } => engine.set_master_gain(gain),
+            Self::SetPlaybackRatePercent { rate } => engine.set_playback_rate_percent(rate),
             Self::SetSoundVolume { id, volume } => engine.set_sound_volume(id, volume),
             Self::PlayNow { sound_id, volume, loop_playback } => {
                 engine.play_now(sound_id, volume, loop_playback);
@@ -329,6 +333,10 @@ impl AudioEngineHandle {
         self.push_command(AudioEngineCommand::SetMasterGain { gain })
     }
 
+    pub fn set_playback_rate_percent(&self, rate: u16) -> bool {
+        self.push_command(AudioEngineCommand::SetPlaybackRatePercent { rate })
+    }
+
     pub fn set_sound_volume(&self, id: SoundId, volume: f32) -> bool {
         self.push_command(AudioEngineCommand::SetSoundVolume { id, volume })
     }
@@ -534,6 +542,10 @@ fn command_supersedes(incoming: &AudioEngineCommand, pending: &AudioEngineComman
         (AudioEngineCommand::SetMasterGain { .. }, AudioEngineCommand::SetMasterGain { .. }) => {
             true
         }
+        (
+            AudioEngineCommand::SetPlaybackRatePercent { .. },
+            AudioEngineCommand::SetPlaybackRatePercent { .. },
+        ) => true,
         (
             AudioEngineCommand::SetSoundVolume { id: incoming_id, .. },
             AudioEngineCommand::SetSoundVolume { id: pending_id, .. },

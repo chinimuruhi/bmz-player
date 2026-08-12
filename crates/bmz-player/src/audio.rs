@@ -124,6 +124,7 @@ pub struct RunningPlaySession {
     pub resolved_target: Option<crate::select_options::ResolvedTarget>,
     pub applied_arrange: AppliedArrange,
     pub practice_mode: bool,
+    pub playback_rate_percent: u16,
     pub bga_frames: BgaFrameCatalog,
     pub render_snapshot_cache: PlayRenderSnapshotCache,
     pub video_bga_decoders: HashMap<BgaAssetId, ActiveVideoBgaDecoder>,
@@ -137,6 +138,11 @@ impl AppAudioOutput {
 
     pub fn clock(&self) -> AudioClock {
         self.source.clock()
+    }
+
+    pub fn set_playback_rate_percent(&mut self, rate: u16) {
+        self.source.set_playback_rate_percent(rate);
+        self.engine.set_playback_rate_percent(rate);
     }
 
     pub fn pause(&mut self) -> Result<()> {
@@ -270,7 +276,8 @@ pub fn open_prepared_play_audio(
     prepared: PreparedPlaySession,
     score_key: ScoreKey,
 ) -> RunningPlaySession {
-    let audio = open_app_audio_output(runtime, prepared.audio);
+    let mut audio = open_app_audio_output(runtime, prepared.audio);
+    audio.set_playback_rate_percent(prepared.playback_rate_percent);
     let mut session = prepared.session;
     session.audio_clock = audio.clock();
     let target_ex_score = prepared
@@ -302,6 +309,7 @@ pub fn open_prepared_play_audio(
         resolved_target: prepared.resolved_target,
         applied_arrange: prepared.applied_arrange,
         practice_mode: prepared.practice_mode,
+        playback_rate_percent: prepared.playback_rate_percent,
         bga_frames: BgaFrameCatalog::new(),
         video_bga_decoders: HashMap::new(),
         failed_video_bga: HashSet::new(),

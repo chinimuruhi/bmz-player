@@ -201,6 +201,10 @@ impl CpalCommandedOutputSource {
         self.clock.start(chart_zero_time);
     }
 
+    pub fn set_playback_rate_percent(&mut self, rate: u16) {
+        self.clock.set_playback_rate_percent(rate);
+    }
+
     pub fn pause(&mut self) {
         self.clock.pause();
     }

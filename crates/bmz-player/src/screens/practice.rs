@@ -5,25 +5,110 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use bmz_chart::model::{JudgeRankKind, JudgeRankSpec, PlayableChart};
 use bmz_chart::practice::apply_practice_section;
+use bmz_core::clear::GaugeType;
 use bmz_core::time::TimeUs;
-use bmz_gameplay::gauge::GaugeState;
+use bmz_gameplay::gauge::{GaugeProperty, GaugeState};
+use bmz_render::snapshot::ResultGraphSnapshot;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::config::profile_config::GaugeTypeConfig;
 use crate::paths::ProfilePaths;
-use crate::screens::play_session::{AppliedArrange, apply_arrange};
 use crate::select_options::ArrangeOption;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum PracticeGaugeType {
+    AssistEasy,
+    Easy,
+    #[default]
+    Normal,
+    Hard,
+    ExHard,
+    Hazard,
+    Class,
+    ExClass,
+    ExHardClass,
+    /// Compatibility with a practice file written before full gauge support.
+    AutoShift,
+}
+
+impl PracticeGaugeType {
+    pub const VALUES: [Self; 9] = [
+        Self::AssistEasy,
+        Self::Easy,
+        Self::Normal,
+        Self::Hard,
+        Self::ExHard,
+        Self::Hazard,
+        Self::Class,
+        Self::ExClass,
+        Self::ExHardClass,
+    ];
+
+    pub const fn gauge_type(self) -> GaugeType {
+        match self {
+            Self::AssistEasy => GaugeType::AssistEasy,
+            Self::Easy => GaugeType::Easy,
+            Self::Normal => GaugeType::Normal,
+            Self::Hard => GaugeType::Hard,
+            Self::ExHard => GaugeType::ExHard,
+            Self::Hazard => GaugeType::Hazard,
+            Self::Class => GaugeType::Class,
+            Self::ExClass => GaugeType::ExClass,
+            Self::ExHardClass => GaugeType::ExHardClass,
+            Self::AutoShift => GaugeType::ExHard,
+        }
+    }
+
+    pub const fn scales_section_total(self) -> bool {
+        matches!(self, Self::AssistEasy | Self::Easy | Self::Normal)
+    }
+}
+
+impl From<GaugeTypeConfig> for PracticeGaugeType {
+    fn from(value: GaugeTypeConfig) -> Self {
+        match value {
+            GaugeTypeConfig::AssistEasy => Self::AssistEasy,
+            GaugeTypeConfig::Easy => Self::Easy,
+            GaugeTypeConfig::Normal => Self::Normal,
+            GaugeTypeConfig::Hard => Self::Hard,
+            GaugeTypeConfig::ExHard => Self::ExHard,
+            GaugeTypeConfig::Hazard => Self::Hazard,
+            GaugeTypeConfig::AutoShift => Self::AutoShift,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PracticeGraphType {
+    #[default]
+    NoteType,
+    Judge,
+    EarlyLate,
+}
 
 /// Persisted / editable practice settings for one chart (SHA-256).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PracticeProperty {
     pub start_time_ms: u32,
     pub end_time_ms: u32,
-    pub gauge: GaugeTypeConfig,
+    pub gauge: PracticeGaugeType,
+    #[serde(default)]
+    pub gauge_category: Option<GaugeProperty>,
     pub start_gauge: u32,
     pub judgerank: i32,
     pub arrange: ArrangeOption,
+    #[serde(default)]
+    pub arrange_2p: ArrangeOption,
+    #[serde(default)]
+    pub dp_flip: bool,
     pub total: Option<f64>,
+    #[serde(default = "default_playback_rate_percent")]
+    pub playback_rate_percent: u16,
+    #[serde(default)]
+    pub graph_type: PracticeGraphType,
 }
 
 impl Default for PracticeProperty {
@@ -31,11 +116,16 @@ impl Default for PracticeProperty {
         Self {
             start_time_ms: 0,
             end_time_ms: 10_000,
-            gauge: GaugeTypeConfig::Normal,
+            gauge: PracticeGaugeType::Normal,
+            gauge_category: None,
             start_gauge: 20,
             judgerank: 100,
             arrange: ArrangeOption::Normal,
+            arrange_2p: ArrangeOption::Normal,
+            dp_flip: false,
             total: None,
+            playback_rate_percent: 100,
+            graph_type: PracticeGraphType::NoteType,
         }
     }
 }
@@ -56,6 +146,11 @@ pub struct PracticeSession {
     pub property: PracticeProperty,
     pub phase: PracticePhase,
     pub max_end_time_ms: u32,
+    pub last_graph: Arc<ResultGraphSnapshot>,
+    /// Absolute chart time represented by graph bucket zero.
+    pub graph_start_time_ms: u32,
+    pub is_double: bool,
+    pub cursor: usize,
 }
 
 /// CLI-only overrides applied when entering practice from the command line.
@@ -77,7 +172,8 @@ pub fn load_practice_property(
     cli: &PracticeCliOverrides,
 ) -> Result<PracticeProperty> {
     let path = practice_property_path(profile_paths, chart_sha256);
-    let mut property = if path.is_file() {
+    let loaded_from_file = path.is_file();
+    let mut property = if loaded_from_file {
         let text = std::fs::read_to_string(&path)
             .with_context(|| format!("read practice config: {}", path.display()))?;
         serde_json::from_str(&text)
@@ -86,15 +182,16 @@ pub fn load_practice_property(
         PracticeProperty::default()
     };
 
-    if property.end_time_ms == 10_000 && property.start_time_ms == 0 {
+    if !loaded_from_file {
         property.end_time_ms = default_end_time_ms(chart);
-    }
-    if property.judgerank == 100 {
         property.judgerank = chart.metadata.judge_rank.unwrap_or(100);
+        if profile_gauge != GaugeTypeConfig::AutoShift {
+            property.gauge = profile_gauge.into();
+        }
     }
-    if property.gauge == GaugeTypeConfig::Normal && profile_gauge != GaugeTypeConfig::AutoShift {
-        property.gauge = profile_gauge;
-    }
+    property
+        .gauge_category
+        .get_or_insert_with(|| GaugeProperty::from_keymode(chart.metadata.key_mode));
     if property.total.is_none() {
         property.total = chart.metadata.total;
     }
@@ -125,21 +222,27 @@ pub fn save_practice_property(
         .with_context(|| format!("write practice config: {}", path.display()))
 }
 
-pub fn apply_practice_property(
-    chart: &mut PlayableChart,
-    property: &PracticeProperty,
-) -> AppliedArrange {
+pub fn apply_practice_property(chart: &mut PlayableChart, property: &PracticeProperty) {
     let start_us = TimeUs(i64::from(property.start_time_ms) * 1000);
     let end_ms = property.end_time_ms.max(property.start_time_ms.saturating_add(1000));
     let end_us = TimeUs(i64::from(end_ms) * 1000);
-    apply_practice_section(chart, start_us, end_us);
-    chart.metadata.judge_rank = Some(property.judgerank);
-    chart.metadata.judge_rank_spec =
-        Some(JudgeRankSpec { value: property.judgerank, kind: JudgeRankKind::BmsonJudgeRank });
+    let audio_start_us = TimeUs(start_us.0.saturating_sub(1_000_000).max(0));
     if let Some(total) = property.total {
         chart.metadata.total = Some(total);
     }
-    apply_arrange(chart, property.arrange, None, None)
+    apply_practice_section(chart, start_us, end_us);
+    // beatoraja starts background keysounds at `starttime - 1s` and skips
+    // earlier events. Retaining them would make the scheduler catch up every
+    // sound before the practice range when entering midway through a chart.
+    chart.bgm_events.retain(|event| event.time >= audio_start_us);
+    chart.metadata.judge_rank = Some(property.judgerank);
+    chart.metadata.judge_rank_spec =
+        Some(JudgeRankSpec { value: property.judgerank, kind: JudgeRankKind::BmsonJudgeRank });
+    if !property.gauge.scales_section_total()
+        && let Some(total) = property.total
+    {
+        chart.metadata.total = Some(total);
+    }
 }
 
 pub fn apply_practice_start_gauge(gauge: &mut GaugeState, start_gauge: u32) {
@@ -148,25 +251,136 @@ pub fn apply_practice_start_gauge(gauge: &mut GaugeState, start_gauge: u32) {
 }
 
 pub fn practice_chart_zero_time(property: &PracticeProperty, skin_playstart_us: TimeUs) -> TimeUs {
-    let lead_ms = property.start_time_ms.saturating_sub(1000);
-    TimeUs(skin_playstart_us.0 - i64::from(lead_ms) * 1000)
+    let lead_us = i64::from(property.start_time_ms.saturating_sub(1000)) * 1000;
+    // `skin_playstart_us` is the normal negative READY offset. The audio clock
+    // advances at the selected rate, so compensate the fixed wall-clock READY
+    // duration and arrive at `lead_us` exactly when the play timer starts.
+    let ready_wall_us = skin_playstart_us.0.saturating_neg().max(0);
+    let ready_chart_us = ((i128::from(ready_wall_us) * i128::from(property.playback_rate_percent))
+        / 100)
+        .min(i128::from(i64::MAX)) as i64;
+    TimeUs(lead_us.saturating_sub(ready_chart_us))
 }
 
 pub fn clamp_practice_property(property: &mut PracticeProperty, chart: &PlayableChart) {
     let max_end = default_end_time_ms(chart);
-    property.start_time_ms = property.start_time_ms.min(max_end.saturating_sub(1000));
+    property.start_time_ms = property.start_time_ms.min(max_end.saturating_sub(3000));
     property.end_time_ms =
         property.end_time_ms.clamp(property.start_time_ms.saturating_add(1000), max_end);
     property.judgerank = property.judgerank.clamp(1, 400);
     property.start_gauge = property.start_gauge.clamp(1, 100);
+    property.playback_rate_percent =
+        bmz_audio::clock::clamp_playback_rate_percent(property.playback_rate_percent);
     if let Some(total) = property.total.as_mut() {
-        *total = total.clamp(20.0, 5000.0);
+        *total = total.clamp(10.0, 5000.0);
     }
+}
+
+pub fn practice_field_count(is_double: bool) -> usize {
+    if is_double { 12 } else { 10 }
+}
+
+pub fn move_practice_cursor(cursor: &mut usize, is_double: bool, forward: bool) {
+    let count = practice_field_count(is_double);
+    *cursor = (*cursor + if forward { 1 } else { count - 1 }) % count;
+}
+
+pub fn adjust_practice_selected_field(
+    property: &mut PracticeProperty,
+    cursor: usize,
+    is_double: bool,
+    increment: bool,
+    max_end_time_ms: u32,
+) {
+    let direction = if increment { 1_i32 } else { -1 };
+    match cursor {
+        0 => {
+            adjust_u32(
+                &mut property.start_time_ms,
+                direction * 100,
+                0,
+                max_end_time_ms.saturating_sub(3000),
+            );
+            property.end_time_ms =
+                property.end_time_ms.max(property.start_time_ms.saturating_add(1000));
+        }
+        1 => adjust_u32(
+            &mut property.end_time_ms,
+            direction * 100,
+            property.start_time_ms.saturating_add(1000),
+            max_end_time_ms,
+        ),
+        2 => cycle_gauge(&mut property.gauge, increment),
+        3 => {
+            cycle_gauge_category(&mut property.gauge_category, increment);
+            property.start_gauge = practice_gauge_initial_value(
+                property.gauge,
+                property.gauge_category.unwrap_or_default(),
+            );
+        }
+        4 => adjust_u32(&mut property.start_gauge, direction, 1, 100),
+        5 => property.judgerank = (property.judgerank + direction).clamp(1, 400),
+        6 => {
+            if let Some(total) = property.total.as_mut() {
+                *total = (*total + f64::from(direction) * 5.0).clamp(10.0, 5000.0);
+            }
+        }
+        7 => {
+            let value = i32::from(property.playback_rate_percent) + direction * 5;
+            property.playback_rate_percent = value.clamp(50, 200) as u16;
+        }
+        8 => cycle_graph_type(&mut property.graph_type, increment),
+        9 => cycle_arrange(&mut property.arrange, increment),
+        10 if is_double => cycle_arrange(&mut property.arrange_2p, increment),
+        11 if is_double => property.dp_flip = !property.dp_flip,
+        _ => {}
+    }
+}
+
+fn adjust_u32(value: &mut u32, delta: i32, min: u32, max: u32) {
+    *value = (i64::from(*value) + i64::from(delta)).clamp(i64::from(min), i64::from(max)) as u32;
+}
+
+fn cycle_gauge(value: &mut PracticeGaugeType, increment: bool) {
+    let index = PracticeGaugeType::VALUES.iter().position(|item| item == value).unwrap_or(0);
+    let len = PracticeGaugeType::VALUES.len();
+    *value = PracticeGaugeType::VALUES[(index + if increment { 1 } else { len - 1 }) % len];
+}
+
+fn cycle_gauge_category(value: &mut Option<GaugeProperty>, increment: bool) {
+    let values =
+        [GaugeProperty::FiveKeys, GaugeProperty::SevenKeys, GaugeProperty::Pms, GaugeProperty::Lr2];
+    let current = value.unwrap_or(GaugeProperty::SevenKeys);
+    let index = values.iter().position(|item| *item == current).unwrap_or(0);
+    *value = Some(values[(index + if increment { 1 } else { values.len() - 1 }) % values.len()]);
+}
+
+pub fn practice_gauge_initial_value(gauge: PracticeGaugeType, property: GaugeProperty) -> u32 {
+    bmz_gameplay::gauge::gauge_definitions_for(property)
+        .into_iter()
+        .find(|definition| definition.gauge_type == gauge.gauge_type())
+        .map(|definition| definition.init.round().clamp(1.0, 100.0) as u32)
+        .unwrap_or(20)
+}
+
+fn cycle_graph_type(value: &mut PracticeGraphType, increment: bool) {
+    let values =
+        [PracticeGraphType::NoteType, PracticeGraphType::Judge, PracticeGraphType::EarlyLate];
+    let index = values.iter().position(|item| item == value).unwrap_or(0);
+    *value = values[(index + if increment { 1 } else { values.len() - 1 }) % values.len()];
+}
+
+fn cycle_arrange(value: &mut ArrangeOption, increment: bool) {
+    *value = if increment { value.cycle() } else { value.cycle_prev() };
+}
+
+const fn default_playback_rate_percent() -> u16 {
+    100
 }
 
 pub fn default_end_time_ms(chart: &PlayableChart) -> u32 {
     let end_ms = (chart.end_time.0 / 1000).max(0);
-    u32::try_from(end_ms).unwrap_or(u32::MAX)
+    u32::try_from(end_ms).unwrap_or(u32::MAX).saturating_add(1000)
 }
 
 fn sha256_hex(hash: &[u8; 32]) -> String {
@@ -238,9 +452,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(property.start_time_ms, 5000);
-        assert_eq!(property.end_time_ms, 120_000);
+        assert_eq!(property.end_time_ms, 121_000);
         assert_eq!(property.judgerank, 150);
-        assert_eq!(property.gauge, GaugeTypeConfig::Hard);
+        assert_eq!(property.gauge, PracticeGaugeType::Hard);
         assert_eq!(property.total, Some(250.0));
         std::fs::remove_dir_all(root).ok();
     }

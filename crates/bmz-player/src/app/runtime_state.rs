@@ -138,7 +138,7 @@ pub(super) struct PlayRuntimeState {
     pub(super) play_e3_held: bool,
     /// E1+E2 が押され続けている開始時刻。beatoraja 既定 1000ms で途中終了。
     pub(super) play_exit_hold_started_at: Option<Instant>,
-    /// CLI から入ったプラクティスセッション。選曲 UI からは未対応。
+    /// CLI または選曲スキンの PRACTICE 操作から入ったプラクティスセッション。
     pub(super) practice_session: Option<PracticeSession>,
     /// 次の `RunningPlaySession::start` で使う chart zero（区間先頭の 1 秒前）。
     pub(super) practice_chart_zero_time: Option<TimeUs>,

@@ -167,9 +167,9 @@ use crate::storage::score_db::{DailyPlayerStats, PlayerStats, ScoreDatabase};
 use crate::storage::score_import::{ScoreImportRequest, import_scores};
 use crate::table_cmd::{TableFetchOutcome, TableFetchReport};
 use crate::ui::{
-    DebugInfo, EguiLayer, EguiRunContext, SceneSkinDefs, SkinCandidate, SkinCandidateOrigin,
-    SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest, UpdateDialog,
-    UpdateDialogAction,
+    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiLayer, EguiRunContext,
+    SceneSkinDefs, SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta,
+    SkinReloadRequest, SongScanRequest, UpdateDialog, UpdateDialogAction,
 };
 use crate::update::{DownloadedUpdate, UpdateAssetKind, UpdateCandidate};
 use crate::window_config::select_monitor;
@@ -187,6 +187,8 @@ mod app_support;
 mod background_jobs;
 mod bga_runtime;
 mod chart_assets;
+#[path = "app/course_editor.rs"]
+mod course_editor;
 #[path = "app/course_flow/advance.rs"]
 mod course_flow_advance;
 #[path = "app/course_flow/finish.rs"]

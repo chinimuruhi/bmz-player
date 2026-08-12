@@ -11,7 +11,21 @@ pub struct AudioClock {
     pub chart_zero_time_us: i64,
     pub current_frame: Arc<AtomicU64>,
     pub running: bool,
+    playback_rate_percent: u16,
     started_at: Option<Instant>,
+}
+
+pub const MIN_PLAYBACK_RATE_PERCENT: u16 = 50;
+pub const MAX_PLAYBACK_RATE_PERCENT: u16 = 200;
+
+pub const fn clamp_playback_rate_percent(rate: u16) -> u16 {
+    if rate < MIN_PLAYBACK_RATE_PERCENT {
+        MIN_PLAYBACK_RATE_PERCENT
+    } else if rate > MAX_PLAYBACK_RATE_PERCENT {
+        MAX_PLAYBACK_RATE_PERCENT
+    } else {
+        rate
+    }
 }
 
 impl AudioClock {
@@ -22,6 +36,7 @@ impl AudioClock {
             chart_zero_time_us: 0,
             current_frame: Arc::new(AtomicU64::new(0)),
             running: false,
+            playback_rate_percent: 100,
             started_at: None,
         }
     }
@@ -39,8 +54,18 @@ impl AudioClock {
             chart_zero_time_us,
             current_frame,
             running,
+            playback_rate_percent: 100,
             started_at: None,
         }
+    }
+
+    pub fn set_playback_rate_percent(&mut self, rate: u16) {
+        debug_assert!(!self.running, "playback rate must be fixed before the clock starts");
+        self.playback_rate_percent = clamp_playback_rate_percent(rate);
+    }
+
+    pub const fn playback_rate_percent(&self) -> u16 {
+        self.playback_rate_percent
     }
 
     /// Starts the chart clock from a monotonic timestamp.
@@ -73,9 +98,10 @@ impl AudioClock {
         }
 
         if let Some(started_at) = self.started_at {
-            let elapsed_us =
+            let wall_elapsed_us =
                 frame_at.saturating_duration_since(started_at).as_micros().min(i64::MAX as u128)
                     as i64;
+            let elapsed_us = scale_chart_time(wall_elapsed_us, self.playback_rate_percent);
             return TimeUs(self.chart_zero_time_us.saturating_add(elapsed_us));
         }
 
@@ -83,14 +109,28 @@ impl AudioClock {
         // anchor. Preserve the old hardware-frame calculation for those snapshots.
         let frame = self.current_frame.load(Ordering::Relaxed);
         let delta_frames = frame.saturating_sub(self.start_output_frame);
-        let delta_us = frame_to_us(delta_frames, self.sample_rate);
+        let delta_us = scale_chart_time(
+            frame_to_us(delta_frames, self.sample_rate),
+            self.playback_rate_percent,
+        );
         TimeUs(self.chart_zero_time_us + delta_us)
     }
 
     pub fn time_to_output_frame(&self, time: TimeUs) -> u64 {
-        let delta_us = (time.0 - self.chart_zero_time_us).max(0) as u128;
-        let delta_frames = delta_us * self.sample_rate as u128 / 1_000_000u128;
-        self.start_output_frame + delta_frames as u64
+        let delta_us = i128::from(time.0) - i128::from(self.chart_zero_time_us);
+        let magnitude_us = if delta_us < 0 { (-delta_us) as u128 } else { delta_us as u128 };
+        let delta_frames =
+            magnitude_us.saturating_mul(u128::from(self.sample_rate)).saturating_mul(100)
+                / (1_000_000u128 * u128::from(self.playback_rate_percent));
+        let delta_frames = delta_frames.min(u128::from(u64::MAX)) as u64;
+        if delta_us < 0 {
+            // Practice can start partway through a chart. Keep past BGM events in
+            // output-frame coordinates so catch-up begins at their elapsed sample
+            // position instead of restarting every earlier sound at frame zero.
+            self.start_output_frame.saturating_sub(delta_frames)
+        } else {
+            self.start_output_frame.saturating_add(delta_frames)
+        }
     }
 
     /// Returns hardware-paced output time elapsed since a chart timestamp.
@@ -103,6 +143,11 @@ impl AudioClock {
 
         TimeUs(self.now().0.saturating_sub(since.0).max(0))
     }
+}
+
+fn scale_chart_time(wall_time_us: i64, playback_rate_percent: u16) -> i64 {
+    ((i128::from(wall_time_us) * i128::from(playback_rate_percent)) / 100)
+        .clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64
 }
 
 pub fn frame_to_us(frame: u64, sample_rate: u32) -> i64 {

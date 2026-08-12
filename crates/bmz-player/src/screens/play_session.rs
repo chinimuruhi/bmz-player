@@ -56,7 +56,7 @@ use crate::ln_policy::{
 };
 use crate::random_option_seed::{JavaRandom, RandomOptionSeed, RandomOptionSeeds};
 use crate::screens::practice::{
-    PracticeProperty, apply_practice_property, apply_practice_start_gauge,
+    PracticeGaugeType, PracticeProperty, apply_practice_property, apply_practice_start_gauge,
 };
 use crate::select_options::{
     ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
@@ -72,6 +72,9 @@ pub struct PlaySessionOptions {
     pub autoplay: bool,
     /// Practice section play: no score / replay persistence (like autoplay).
     pub practice_mode: bool,
+    /// Fixed chart/audio rate for this session. Restricted to non-scoring modes
+    /// by the app flow and clamped by `bmz-audio` to 50..=200.
+    pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
     /// 譜面変換時に確定した実効 assist。preload 後に内部で設定する。
     pub assist_runtime: AssistRuntime,
@@ -182,6 +185,7 @@ pub struct PreparedPlaySession {
     pub target: String,
     pub resolved_target: Option<ResolvedTarget>,
     pub practice_mode: bool,
+    pub playback_rate_percent: u16,
 }
 
 /// 譜面 parse・オプション適用までが完了し、WAV/BMP ロードを開始できる状態。
@@ -232,6 +236,7 @@ impl Default for PlaySessionOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
             practice_mode: false,
+            playback_rate_percent: 100,
             assist: AssistOptionConfig::default(),
             assist_runtime: AssistRuntime::default(),
             replay_player: None,

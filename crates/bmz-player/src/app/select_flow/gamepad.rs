@@ -85,7 +85,14 @@ impl WinitApp {
         let Some(device_event) = self.filter_app_input_bounce(device_event) else {
             return;
         };
-        self.route_play_device_input(device_event);
+        let practice_config = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        if !practice_config {
+            self.route_play_device_input(device_event);
+        }
         self.route_gamepad_button(event.device_id, &event.name, event.pressed);
     }
 
@@ -326,6 +333,9 @@ impl WinitApp {
             control_event.physical.as_ref().expect("gamepad control always has a physical value");
         let has_play_control_context =
             self.play.active_play.is_some() || self.play.pending_play_start.is_some();
+        if self.route_practice_gamepad_control(button, pressed) {
+            return;
+        }
         if pressed && self.handle_quick_retry_control(button) {
             return;
         }

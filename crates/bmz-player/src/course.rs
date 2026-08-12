@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use bmz_core::course::{CourseConstraints, CourseDefinition, CourseEntry, CourseTrophy};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -47,6 +47,31 @@ struct BeatorajaTrophy {
     scorerate: f32,
 }
 
+#[derive(Debug, Serialize)]
+struct ExportedBeatorajaCourse<'a> {
+    name: &'a str,
+    hash: Vec<ExportedBeatorajaCourseSong<'a>>,
+    constraint: Vec<&'static str>,
+    trophy: Vec<ExportedBeatorajaTrophy<'a>>,
+    release: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ExportedBeatorajaCourseSong<'a> {
+    title: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    md5: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct ExportedBeatorajaTrophy<'a> {
+    name: &'a str,
+    missrate: f32,
+    scorerate: f32,
+}
+
 fn default_release() -> bool {
     true
 }
@@ -63,6 +88,72 @@ pub fn parse_beatoraja_course_json(source: &str, json: &str) -> Result<Vec<Cours
         .enumerate()
         .map(|(index, course)| convert_beatoraja_course(source, index, course))
         .collect()
+}
+
+pub fn serialize_beatoraja_course_json(courses: &[CourseDefinition]) -> Result<String> {
+    let exported = courses
+        .iter()
+        .map(|course| ExportedBeatorajaCourse {
+            name: &course.title,
+            hash: course
+                .entries
+                .iter()
+                .map(|entry| ExportedBeatorajaCourseSong {
+                    title: &entry.title_hint,
+                    md5: entry.md5.as_deref(),
+                    sha256: entry.sha256.as_deref(),
+                })
+                .collect(),
+            constraint: exported_constraint_names(&course.constraints),
+            trophy: course
+                .trophies
+                .iter()
+                .map(|trophy| ExportedBeatorajaTrophy {
+                    name: &trophy.name,
+                    missrate: trophy.max_miss_rate,
+                    scorerate: trophy.min_score_rate,
+                })
+                .collect(),
+            release: course.release,
+        })
+        .collect::<Vec<_>>();
+    serde_json::to_string_pretty(&exported).map_err(Into::into)
+}
+
+fn exported_constraint_names(constraints: &CourseConstraints) -> Vec<&'static str> {
+    use bmz_core::course::{
+        CourseClassConstraint, CourseGaugeConstraint, CourseJudgeConstraint, CourseLnConstraint,
+        CourseSpeedConstraint,
+    };
+    let mut names = Vec::new();
+    match constraints.class {
+        CourseClassConstraint::None => {}
+        CourseClassConstraint::Grade => names.push("grade"),
+        CourseClassConstraint::GradeMirrorAllowed => names.push("grade_mirror"),
+        CourseClassConstraint::GradeRandomAllowed => names.push("grade_random"),
+    }
+    if constraints.speed == CourseSpeedConstraint::NoSpeed {
+        names.push("no_speed");
+    }
+    match constraints.judge {
+        CourseJudgeConstraint::Normal => {}
+        CourseJudgeConstraint::NoGood => names.push("no_good"),
+        CourseJudgeConstraint::NoGreat => names.push("no_great"),
+    }
+    match constraints.gauge {
+        CourseGaugeConstraint::Default | CourseGaugeConstraint::Keys24 => {}
+        CourseGaugeConstraint::Lr2 => names.push("gauge_lr2"),
+        CourseGaugeConstraint::Keys5 => names.push("gauge_5k"),
+        CourseGaugeConstraint::Keys7 => names.push("gauge_7k"),
+        CourseGaugeConstraint::Keys9 => names.push("gauge_9k"),
+    }
+    match constraints.ln {
+        CourseLnConstraint::Default => {}
+        CourseLnConstraint::Ln => names.push("ln"),
+        CourseLnConstraint::Cn => names.push("cn"),
+        CourseLnConstraint::Hcn => names.push("hcn"),
+    }
+    names
 }
 
 fn convert_beatoraja_course(

@@ -16,6 +16,9 @@ pub(super) struct PracticeChartDefaults {
     pub(super) property: crate::screens::practice::PracticeProperty,
     pub(super) title: String,
     pub(super) sha256: [u8; 32],
+    pub(super) graph: std::sync::Arc<bmz_render::snapshot::ResultGraphSnapshot>,
+    pub(super) max_end_time_ms: u32,
+    pub(super) is_double: bool,
 }
 
 pub(super) struct PlayEndingTransition {
