@@ -66,23 +66,59 @@ impl RianIrClient {
         ensure_score_payload_supported(payload)?;
         let request = score_request(payload, player_id, api_token)?;
         let redacted_request_json = redacted_request_json(&request)?;
+        let mut url = self.endpoint("score/score.php")?;
+        url.query_pairs_mut().append_pair("include", "ranking").append_pair("ranking_limit", "20");
         let response = self
             .http
-            .post(self.endpoint("score/score.php")?)
+            .post(url)
             .json(&request)
             .send()
             .await
             .context("failed to send rianIR score request")?;
         let response_value: Value = decode_response(response, "rianIR score submission").await?;
         ensure_success_status(&response_value, "rianIR score submission")?;
+        let decoded: RianScoreSubmitResponse = serde_json::from_value(response_value)
+            .context("rianIR score submission returned an invalid ranking response")?;
+        let mut rankings = BTreeMap::new();
+        if let Some(ranking) = decoded.ranking {
+            if ranking.succeeded {
+                let data = convert_score_submission_ranking(
+                    &payload.chart.sha256,
+                    ranking.entries,
+                    20,
+                    Some(player_id),
+                    ranking.current_rank,
+                    ranking.total,
+                );
+                rankings.insert(
+                    IrRankingScope::Global,
+                    IrScopedRankingResponse {
+                        succeeded: true,
+                        previous_rank: ranking.previous_rank,
+                        data: Some(data),
+                        error: None,
+                    },
+                );
+            } else {
+                rankings.insert(
+                    IrRankingScope::Global,
+                    IrScopedRankingResponse {
+                        succeeded: false,
+                        previous_rank: None,
+                        data: None,
+                        error: ranking.error,
+                    },
+                );
+            }
+        }
         Ok(RianSubmitOutcome {
             redacted_request_json,
             response_json: serde_json::to_string(&IrSubmitResponse {
                 accepted: true,
-                score_id: None,
+                score_id: decoded.score_id,
                 best_updated: false,
                 previous_best: None,
-                rankings: BTreeMap::new(),
+                rankings,
             })?,
         })
     }

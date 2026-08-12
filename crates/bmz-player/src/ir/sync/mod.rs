@@ -38,6 +38,7 @@ pub struct IrIncludedRanking {
     pub account_id: String,
     pub kind: IrJobKind,
     pub local_score_id: i64,
+    pub previous_rank: Option<u32>,
     pub ranking: IrRankingResult,
 }
 

@@ -138,7 +138,7 @@ fn ir_skin_properties_map_loaded_ranking() {
             rank: Some(3),
             total_player: Some(42),
             clear_rate: Some(85),
-            previous_rank: None,
+            previous_rank: Some(7),
             entries: [
                 crate::scene::ResultIrRankingEntrySnapshot {
                     rank: Some(1),
@@ -169,7 +169,7 @@ fn ir_skin_properties_map_loaded_ranking() {
     assert_eq!(skin_state_number(180, &loaded), Some(42));
     assert_eq!(skin_state_number(200, &loaded), Some(42));
     assert_eq!(skin_state_number(181, &loaded), Some(85));
-    assert_eq!(skin_state_number(182, &loaded), None);
+    assert_eq!(skin_state_number(182, &loaded), Some(7));
     assert_eq!(skin_state_number(226, &loaded), Some(36));
     assert_eq!(skin_state_number(227, &loaded), Some(85));
     assert_eq!(skin_state_number(241, &loaded), Some(0));

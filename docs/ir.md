@@ -170,7 +170,10 @@ SHA-256 fallback でラベルを付与する。
    JSON number は ECMAScript `JSON.stringify()` 相当の表現に正規化するため、
    `160.0` と `160` は同じ canonical bytes になる。
 6. **ranking response**: `pagination.total` (scope 内総数) と
-   `ranking.clear_rate` (%) を追加。`NUMBER_IR_PREVRANK(182)` は未対応 (None)。
+   `ranking.clear_rate` (%)、score submit の scope ごとの `previous_rank` を返す。
+   `previous_rank` は送信スコアを除いた自己ベストをレスポンス生成時点の
+   全体ランキングへ仮に置いた順位で、初回プレイは `0`。Result skin の
+   `NUMBER_IR_PREVRANK(182)` に反映する。
 7. **played_at**: クライアントは unix 秒で送る。サーバーが ISO へ正規化して
    timestamptz に保存する。
 8. **gauge 表記**: 保存値・返却値は BMZ の `GaugeType::as_str()` と同じ

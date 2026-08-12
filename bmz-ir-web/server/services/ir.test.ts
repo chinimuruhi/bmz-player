@@ -160,6 +160,20 @@ describe('ranking best row aggregation', () => {
     expect(rebuilt[0]?.best_clear_score_id).toBe('fc-score')
   })
 
+  test('computes previous rank from the latest leaderboard with competition ties', () => {
+    const rows = [
+      rankingRow({ player_id: 'self', score_id: 'current', ex_score: 1500 }),
+      rankingRow({ player_id: 'leader', score_id: 'leader', ex_score: 1600 }),
+      rankingRow({ player_id: 'current-tie', score_id: 'current-tie', ex_score: 1500 }),
+      rankingRow({ player_id: 'middle', score_id: 'middle', ex_score: 1400 }),
+      rankingRow({ player_id: 'previous-tie', score_id: 'previous-tie', ex_score: 1000 }),
+    ]
+    const entries = __test.rankRows(rows, 'self', new Set(), new Map())
+
+    expect(__test.previousRankFromEntries(entries, 'self', 1000)).toBe(4)
+    expect(__test.previousRankFromEntries(entries, 'self', null)).toBe(0)
+  })
+
   test('groups cleanup rebuilds by the complete ranking bucket', () => {
     expect(
       __test.uniqueBestScoreKeys([

@@ -215,6 +215,8 @@ pub struct IrLocalBackfillDeleteResponse {
 pub struct IrScopedRankingResponse {
     pub succeeded: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_rank: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<IrRankingResult>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,

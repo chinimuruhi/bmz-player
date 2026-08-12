@@ -22,7 +22,8 @@ use super::types::{
     IrCourseRankingEntry, IrCourseRankingResult, IrCourseRankingScore, IrJudgePayload,
     IrJudgeSidePayload, IrPlayerInfo, IrRankingBody, IrRankingChartRef, IrRankingEntry,
     IrRankingPagination, IrRankingPlayer, IrRankingResult, IrRankingScope, IrRankingScore,
-    IrRankingSelfRef, IrRivalEntry, IrRivalProfile, IrScoreSubmission, IrSubmitResponse,
+    IrRankingSelfRef, IrRivalEntry, IrRivalProfile, IrScopedRankingResponse, IrScoreSubmission,
+    IrSubmitResponse,
 };
 
 pub const RIAN_IR_PROVIDER: &str = "rian-ir";
@@ -107,6 +108,30 @@ struct RianRankingResource {
     id: String,
     #[serde(default)]
     attributes: Map<String, Value>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RianScoreSubmitResponse {
+    #[serde(default)]
+    score_id: Option<String>,
+    #[serde(default)]
+    ranking: Option<RianSubmitRanking>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RianSubmitRanking {
+    #[serde(default)]
+    succeeded: bool,
+    #[serde(default)]
+    previous_rank: Option<u32>,
+    #[serde(default)]
+    current_rank: Option<u32>,
+    #[serde(default)]
+    total: Option<u32>,
+    #[serde(default)]
+    entries: Vec<RianRankingResource>,
+    #[serde(default)]
+    error: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -619,6 +644,70 @@ mod tests {
         assert_eq!(ranking.ranking.entries.last().unwrap().rank, 100);
         assert_eq!(ranking.ranking.self_summary.as_ref().unwrap().rank, 100);
         assert_eq!(ranking.ranking.pagination.unwrap().limit, 100);
+    }
+
+    #[test]
+    fn ranking_conversion_uses_competition_ranks_for_ties() {
+        let resources = [2000, 1900, 1900, 1800]
+            .into_iter()
+            .enumerate()
+            .map(|(index, ex_score)| RianRankingResource {
+                id: format!("score-{index}"),
+                attributes: serde_json::from_value(json!({
+                    "player_name": format!("login-{index}"),
+                    "ex_score": ex_score,
+                }))
+                .unwrap(),
+            })
+            .collect();
+
+        let ranking = convert_score_ranking(&"ab".repeat(32), resources, 20, Some("login-2"));
+
+        assert_eq!(
+            ranking.ranking.entries.iter().map(|entry| entry.rank).collect::<Vec<_>>(),
+            vec![1, 2, 2, 4]
+        );
+        assert_eq!(ranking.ranking.self_summary.unwrap().rank, 2);
+    }
+
+    #[test]
+    fn submission_ranking_accepts_explicit_current_previous_and_total() {
+        let decoded: RianScoreSubmitResponse = serde_json::from_value(json!({
+            "status": "success",
+            "score_id": "42",
+            "ranking": {
+                "succeeded": true,
+                "previous_rank": 12,
+                "current_rank": 8,
+                "total": 341,
+                "entries": [{
+                    "type": "scores",
+                    "id": "42",
+                    "attributes": {
+                        "player_name": "login-id",
+                        "display_name": "Player",
+                        "ex_score": 2000
+                    }
+                }]
+            }
+        }))
+        .unwrap();
+        let raw = decoded.ranking.unwrap();
+        let ranking = convert_score_submission_ranking(
+            &"ab".repeat(32),
+            raw.entries,
+            20,
+            Some("login-id"),
+            raw.current_rank,
+            raw.total,
+        );
+
+        assert_eq!(decoded.score_id.as_deref(), Some("42"));
+        assert_eq!(raw.previous_rank, Some(12));
+        assert_eq!(ranking.ranking.self_summary.unwrap().rank, 8);
+        let pagination = ranking.ranking.pagination.unwrap();
+        assert_eq!(pagination.total, Some(341));
+        assert!(pagination.has_more);
     }
 
     #[test]

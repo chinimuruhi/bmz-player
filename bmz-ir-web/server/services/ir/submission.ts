@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { db, schema } from 'hub:db'
 import { isUniqueConstraintError } from '../../utils/db_errors'
@@ -47,7 +47,12 @@ import {
   requireHex,
   scoreSubmissionMetadata,
 } from './common'
-import { bestRowsFromHistory, getRanking, rowToBestScoreRow } from './ranking'
+import {
+  bestRowsFromHistory,
+  getRanking,
+  getRankingWithPreviousRank,
+  rowToBestScoreRow,
+} from './ranking'
 import { resolveVerification, verificationStatusForSignedSubmission } from './verification'
 
 export async function attestScore(
@@ -92,16 +97,31 @@ export async function submitScore(
   rankingScopes: IrRankingScope[],
   rankingLimit: number,
 ): Promise<IrSubmitResponse> {
+  const { doubleOption, appliedDoubleOption, sourceKind } = scoreSubmissionMetadata(
+    payload.play_options,
+  )
+
   // 同一 idempotency key の再送は、当時の evidence 形式がすでに廃止されていても
   // 保存済み score を成功として返す。初回送信の検証・保存には到達させない。
   const existing = await findIdempotentScore(user.id, payload.idempotency_key)
   if (existing) {
-    return idempotentScoreResponse(existing)
+    let previousBestExScore: number | null | undefined
+    try {
+      previousBestExScore = await fetchPreviousBestExScoreExcluding(user.id, payload, existing.id)
+    } catch (error) {
+      console.error('failed to rebuild previous IR rank for idempotent score', error)
+    }
+    const rankings = await submissionRankings(
+      user,
+      payload,
+      rankingScopes,
+      rankingLimit,
+      doubleOption,
+      previousBestExScore,
+    )
+    return idempotentScoreResponse(existing, rankings)
   }
 
-  const { doubleOption, appliedDoubleOption, sourceKind } = scoreSubmissionMetadata(
-    payload.play_options,
-  )
   const verification = await resolveVerification(user.id, payload)
   await upsertChart(payload, shouldUpdateExistingChart(payload.play_options, doubleOption))
 
@@ -194,32 +214,32 @@ export async function submitScore(
     if (!existing) {
       throw new Error('failed to insert score')
     }
-    return idempotentScoreResponse(existing)
+    let previousBestExScore: number | null | undefined
+    try {
+      previousBestExScore = await fetchPreviousBestExScoreExcluding(user.id, payload, existing.id)
+    } catch (rankingError) {
+      console.error('failed to rebuild previous IR rank after concurrent submission', rankingError)
+    }
+    const rankings = await submissionRankings(
+      user,
+      payload,
+      rankingScopes,
+      rankingLimit,
+      doubleOption,
+      previousBestExScore,
+    )
+    return idempotentScoreResponse(existing, rankings)
   }
   const { bestUpdated, updatedFields } = best
 
-  const rankings: IrSubmitResponse['rankings'] = {}
-  for (const scope of rankingScopes) {
-    try {
-      rankings[scope] = {
-        succeeded: true,
-        data: await getRanking(user, payload.chart.sha256, {
-          scope,
-          limit: rankingLimit,
-          offset: 0,
-          lnPolicy: payload.rule.ln_policy,
-          doubleOption,
-          ruleMode: payload.rule.rule_mode,
-          scoring: payload.rule.scoring,
-        }),
-      }
-    } catch (error) {
-      rankings[scope] = {
-        succeeded: false,
-        error: error instanceof Error ? error.message : 'ranking failed',
-      }
-    }
-  }
+  const rankings = await submissionRankings(
+    user,
+    payload,
+    rankingScopes,
+    rankingLimit,
+    doubleOption,
+    previousBest?.ex_score ?? null,
+  )
 
   return {
     accepted: true,
@@ -230,6 +250,54 @@ export async function submitScore(
     previous_best: previousBest,
     rankings: Object.keys(rankings).length > 0 ? rankings : undefined,
   }
+}
+
+async function submissionRankings(
+  user: IrRequestUser,
+  payload: IrScoreSubmission,
+  rankingScopes: IrRankingScope[],
+  rankingLimit: number,
+  doubleOption: IrDoubleOption,
+  previousBestExScore: number | null | undefined,
+): Promise<NonNullable<IrSubmitResponse['rankings']>> {
+  const rankings: NonNullable<IrSubmitResponse['rankings']> = {}
+  for (const scope of rankingScopes) {
+    try {
+      const query = {
+        scope,
+        limit: rankingLimit,
+        offset: 0,
+        lnPolicy: payload.rule.ln_policy,
+        doubleOption,
+        ruleMode: payload.rule.rule_mode,
+        scoring: payload.rule.scoring,
+      }
+      if (previousBestExScore === undefined) {
+        rankings[scope] = {
+          succeeded: true,
+          data: await getRanking(user, payload.chart.sha256, query),
+        }
+      } else {
+        const result = await getRankingWithPreviousRank(
+          user,
+          payload.chart.sha256,
+          query,
+          previousBestExScore,
+        )
+        rankings[scope] = {
+          succeeded: true,
+          previous_rank: result.previousRank,
+          data: result.data,
+        }
+      }
+    } catch (error) {
+      rankings[scope] = {
+        succeeded: false,
+        error: error instanceof Error ? error.message : 'ranking failed',
+      }
+    }
+  }
+  return rankings
 }
 
 /**
@@ -440,10 +508,13 @@ export async function findIdempotentScore(
   })
 }
 
-export function idempotentScoreResponse(score: {
-  id: string
-  serverReceivedAt: Date
-}): IrSubmitResponse {
+export function idempotentScoreResponse(
+  score: {
+    id: string
+    serverReceivedAt: Date
+  },
+  rankings?: IrSubmitResponse['rankings'],
+): IrSubmitResponse {
   return {
     accepted: true,
     score_id: score.id,
@@ -456,6 +527,7 @@ export function idempotentScoreResponse(score: {
       min_cb: false,
     },
     server_received_at: score.serverReceivedAt.toISOString(),
+    rankings: rankings && Object.keys(rankings).length > 0 ? rankings : undefined,
   }
 }
 
@@ -541,6 +613,31 @@ export async function fetchPreviousBest(
     min_bp: current.minBp,
     min_cb: current.minCb,
   }
+}
+
+export async function fetchPreviousBestExScoreExcluding(
+  playerId: string,
+  payload: IrScoreSubmission,
+  excludedScoreId: string,
+): Promise<number | null> {
+  const rows = await db
+    .select({ ex_score: schema.scores.exScore })
+    .from(schema.scores)
+    .where(
+      and(
+        eq(schema.scores.playerId, playerId),
+        eq(schema.scores.chartSha256, payload.chart.sha256),
+        eq(schema.scores.lnPolicy, payload.rule.ln_policy),
+        eq(schema.scores.scoring, payload.rule.scoring),
+        eq(schema.scores.doubleOption, normalizeDoubleOption(payload.play_options.double_option)),
+        eq(schema.scores.ruleMode, payload.rule.rule_mode),
+        eq(schema.scores.accepted, true),
+        ne(schema.scores.id, excludedScoreId),
+      ),
+    )
+    .orderBy(desc(schema.scores.exScore))
+    .limit(1)
+  return rows[0]?.ex_score ?? null
 }
 
 /**

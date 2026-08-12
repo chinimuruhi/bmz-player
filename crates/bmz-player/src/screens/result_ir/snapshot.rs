@@ -36,7 +36,7 @@ pub(super) fn result_ir_ranking_to_skin_snapshot_at(
         rank: ranking.self_rank.map(i64::from),
         total_player: ranking.total.map(i64::from).or(Some(ranking.entries.len() as i64)),
         clear_rate: ranking.clear_rate.map(i64::from),
-        previous_rank: None,
+        previous_rank: ranking.previous_rank.map(i64::from),
         scroll_offset,
         scroll_max,
         entries,
@@ -45,6 +45,13 @@ pub(super) fn result_ir_ranking_to_skin_snapshot_at(
 }
 
 pub(super) fn chart_ranking_to_result_ir_ranking(ranking: &IrRankingResult) -> ResultIrRanking {
+    chart_ranking_to_result_ir_ranking_with_previous(ranking, None)
+}
+
+pub(super) fn chart_ranking_to_result_ir_ranking_with_previous(
+    ranking: &IrRankingResult,
+    previous_rank: Option<u32>,
+) -> ResultIrRanking {
     ResultIrRanking {
         scope: ranking.ranking.scope,
         entries: ranking
@@ -62,6 +69,7 @@ pub(super) fn chart_ranking_to_result_ir_ranking(ranking: &IrRankingResult) -> R
             .collect(),
         clear_rate: ranking.ranking.clear_rate,
         self_rank: ranking.ranking.self_summary.as_ref().map(|own| own.rank),
+        previous_rank,
         total: ranking.ranking.pagination.and_then(|pagination| pagination.total),
     }
 }
@@ -86,6 +94,7 @@ pub(crate) fn course_ranking_to_result_ir_ranking(
             .collect(),
         clear_rate: None,
         self_rank: None,
+        previous_rank: None,
         total: Some(ranking.ranking.entries.len() as u32),
     }
 }

@@ -51,6 +51,27 @@ export async function getRanking(
   sha256: string,
   query: RankingQuery,
 ): Promise<IrRanking> {
+  return (await buildRanking(user, sha256, query)).data
+}
+
+export async function getRankingWithPreviousRank(
+  user: IrRequestUser,
+  sha256: string,
+  query: RankingQuery,
+  previousBestExScore: number | null,
+): Promise<{ data: IrRanking; previousRank: number }> {
+  const result = await buildRanking(user, sha256, query)
+  return {
+    data: result.data,
+    previousRank: previousRankFromEntries(result.ranked, user.id, previousBestExScore),
+  }
+}
+
+async function buildRanking(
+  user: IrRequestUser | null,
+  sha256: string,
+  query: RankingQuery,
+): Promise<{ data: IrRanking; ranked: IrRankingEntry[] }> {
   requireHex(sha256, 64, 'sha256')
   const bestRows = await fetchRankingBestRows(sha256, query)
   const rivalIds = user ? await getRivalIds(user.id) : new Set<string>()
@@ -66,45 +87,63 @@ export async function getRanking(
   const selfEntry = ranked.find((entry) => entry.relation.is_self)
 
   return {
-    chart: { sha256 },
-    rule: {
-      scoring: query.scoring,
-      ln_policy: query.lnPolicy,
-      effective_ln_mode: query.lnPolicy
-        ? rankingRows.find((row) => row.ln_policy === query.lnPolicy)?.effective_ln_mode
-        : undefined,
-      double_option: query.doubleOption,
-      rule_mode: query.ruleMode,
-    },
-    ranking: {
-      scope: query.scope,
-      sort: 'ex_score_desc',
-      // 全プレイヤー中のクリア率 (%)。NoPlay/Failed を除いた割合。
-      clear_rate:
-        rankingRows.length > 0
-          ? Math.round(
-              (rankingRows.filter((row) => row.clear_rank > 1).length / rankingRows.length) * 100,
-            )
-          : null,
-      entries,
-      self: selfEntry
-        ? {
-            rank: selfEntry.rank,
-            score_id: selfEntry.score.score_id,
-            included_in_entries: entries.some(
-              (entry) => entry.score.score_id === selfEntry.score.score_id,
-            ),
-            entry: selfEntry,
-          }
-        : undefined,
-      pagination: {
-        limit: query.limit,
-        offset: query.offset,
-        total: scoped.length,
-        has_more: query.offset + query.limit < scoped.length,
+    data: {
+      chart: { sha256 },
+      rule: {
+        scoring: query.scoring,
+        ln_policy: query.lnPolicy,
+        effective_ln_mode: query.lnPolicy
+          ? rankingRows.find((row) => row.ln_policy === query.lnPolicy)?.effective_ln_mode
+          : undefined,
+        double_option: query.doubleOption,
+        rule_mode: query.ruleMode,
+      },
+      ranking: {
+        scope: query.scope,
+        sort: 'ex_score_desc',
+        // 全プレイヤー中のクリア率 (%)。NoPlay/Failed を除いた割合。
+        clear_rate:
+          rankingRows.length > 0
+            ? Math.round(
+                (rankingRows.filter((row) => row.clear_rank > 1).length / rankingRows.length) * 100,
+              )
+            : null,
+        entries,
+        self: selfEntry
+          ? {
+              rank: selfEntry.rank,
+              score_id: selfEntry.score.score_id,
+              included_in_entries: entries.some(
+                (entry) => entry.score.score_id === selfEntry.score.score_id,
+              ),
+              entry: selfEntry,
+            }
+          : undefined,
+        pagination: {
+          limit: query.limit,
+          offset: query.offset,
+          total: scoped.length,
+          has_more: query.offset + query.limit < scoped.length,
+        },
       },
     },
+    ranked,
   }
+}
+
+export function previousRankFromEntries(
+  entries: IrRankingEntry[],
+  selfId: string,
+  previousBestExScore: number | null,
+): number {
+  if (previousBestExScore === null) {
+    return 0
+  }
+  return (
+    entries.filter(
+      (entry) => entry.player.id !== selfId && entry.score.ex_score > previousBestExScore,
+    ).length + 1
+  )
 }
 
 export async function fetchRankingBestRows(

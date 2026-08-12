@@ -196,17 +196,18 @@ pub(super) async fn sync_pending_ir_jobs_with_filter(
                 };
                 let parsed_response =
                     serde_json::from_str::<crate::ir::types::IrSubmitResponse>(&response_json).ok();
-                if let Some(ranking) = parsed_response
+                if let Some(ranking_response) = parsed_response
                     .as_ref()
                     .and_then(|response| response.rankings.get(&IrRankingScope::Global))
                     .filter(|ranking| ranking.succeeded)
-                    .and_then(|ranking| ranking.data.clone())
+                    && let Some(ranking) = ranking_response.data.clone()
                 {
                     report.included_rankings.push(IrIncludedRanking {
                         provider: job.provider.clone(),
                         account_id: job.account_id.clone(),
                         kind: job.kind,
                         local_score_id: job.local_score_id,
+                        previous_rank: ranking_response.previous_rank,
                         ranking,
                     });
                 }

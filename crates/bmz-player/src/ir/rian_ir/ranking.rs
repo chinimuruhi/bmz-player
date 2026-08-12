@@ -6,12 +6,13 @@ pub(super) fn convert_score_ranking(
     limit: u32,
     self_player_id: Option<&str>,
 ) -> IrRankingResult {
-    let entries: Vec<_> = resources
+    let mut entries: Vec<_> = resources
         .into_iter()
         .take(limit as usize)
         .enumerate()
         .map(|(index, resource)| score_ranking_entry(index, resource))
         .collect();
+    apply_competition_ranks(&mut entries);
     let self_summary = self_player_id.and_then(|player_id| {
         entries
             .iter()
@@ -33,6 +34,39 @@ pub(super) fn convert_score_ranking(
                 has_more: false,
             }),
         },
+    }
+}
+
+pub(super) fn convert_score_submission_ranking(
+    chart_sha256: &str,
+    resources: Vec<RianRankingResource>,
+    limit: u32,
+    self_player_id: Option<&str>,
+    current_rank: Option<u32>,
+    total: Option<u32>,
+) -> IrRankingResult {
+    let mut result = convert_score_ranking(chart_sha256, resources, limit, self_player_id);
+    if let Some(rank) = current_rank.filter(|rank| *rank > 0) {
+        result.ranking.self_summary = Some(IrRankingSelfRef { rank, score_id: None });
+    }
+    if let Some(pagination) = result.ranking.pagination.as_mut()
+        && let Some(total) = total
+    {
+        pagination.total = Some(total);
+        pagination.has_more = total > result.ranking.entries.len() as u32;
+    }
+    result
+}
+
+fn apply_competition_ranks(entries: &mut [IrRankingEntry]) {
+    let mut previous_ex_score = None;
+    let mut current_rank = 0;
+    for (index, entry) in entries.iter_mut().enumerate() {
+        if previous_ex_score != Some(entry.score.ex_score) {
+            current_rank = index as u32 + 1;
+            previous_ex_score = Some(entry.score.ex_score);
+        }
+        entry.rank = current_rank;
     }
 }
 

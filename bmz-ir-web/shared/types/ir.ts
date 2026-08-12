@@ -150,6 +150,8 @@ export interface IrSubmitResponse {
 
 export interface IrScopedRankingResponse {
   succeeded: boolean
+  /** 最新ランキング上で、送信スコアを除いた自己ベストを仮に置いた全体順位。 */
+  previous_rank?: number
   data?: IrRanking
   error?: string
 }

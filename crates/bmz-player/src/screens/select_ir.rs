@@ -275,6 +275,7 @@ mod tests {
             }],
             clear_rate: Some(80),
             self_rank: Some(rank),
+            previous_rank: None,
             total: Some(total),
         }
     }

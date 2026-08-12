@@ -261,7 +261,12 @@ pub(super) fn included_global_ranking_for_query(
                 && ranking.ranking.chart.sha256 == *chart_sha256_hex
                 && ranking.ranking.ranking.scope == IrRankingScope::Global
         })
-        .map(|ranking| chart_ranking_to_result_ir_ranking(&ranking.ranking))
+        .map(|ranking| {
+            chart_ranking_to_result_ir_ranking_with_previous(
+                &ranking.ranking,
+                ranking.previous_rank,
+            )
+        })
 }
 
 pub(super) fn spawn_ranking_fetch(

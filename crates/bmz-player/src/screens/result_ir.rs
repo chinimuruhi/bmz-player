@@ -55,6 +55,7 @@ pub struct ResultIrRanking {
     pub entries: Vec<ResultIrRankingEntry>,
     pub clear_rate: Option<u32>,
     pub self_rank: Option<u32>,
+    pub previous_rank: Option<u32>,
     pub total: Option<u32>,
 }
 
@@ -577,6 +578,7 @@ mod tests {
                 .collect(),
             clear_rate: None,
             self_rank: None,
+            previous_rank: Some(18),
             total: Some(15),
         };
 
@@ -584,6 +586,7 @@ mod tests {
 
         assert_eq!(snapshot.scroll_offset, 3);
         assert_eq!(snapshot.scroll_max, 5);
+        assert_eq!(snapshot.previous_rank, Some(18));
         assert_eq!(snapshot.entries[0].rank, Some(4));
         assert_eq!(snapshot.entries[9].rank, Some(13));
     }
@@ -604,6 +607,7 @@ mod tests {
                 .collect(),
             clear_rate: None,
             self_rank: None,
+            previous_rank: None,
             total: Some(count),
         };
         let (sender, receiver) = channel::<ResultIrEvent>();
@@ -698,6 +702,7 @@ mod tests {
                     account_id: "account-1".to_string(),
                     kind: IrJobKind::Score,
                     local_score_id: 1,
+                    previous_rank: None,
                     ranking: IrRankingResult {
                         chart: IrRankingChartRef { sha256: "current".to_string() },
                         ranking: IrRankingBody {
@@ -714,6 +719,7 @@ mod tests {
                     account_id: "account-1".to_string(),
                     kind: IrJobKind::Course,
                     local_score_id: 2,
+                    previous_rank: None,
                     ranking: IrRankingResult {
                         chart: IrRankingChartRef { sha256: "current".to_string() },
                         ranking: IrRankingBody {
@@ -730,6 +736,7 @@ mod tests {
                     account_id: "account-1".to_string(),
                     kind: IrJobKind::Score,
                     local_score_id: 2,
+                    previous_rank: Some(9),
                     ranking: IrRankingResult {
                         chart: IrRankingChartRef { sha256: "current".to_string() },
                         ranking: IrRankingBody {
@@ -753,6 +760,7 @@ mod tests {
 
         assert_eq!(ranking.scope, IrRankingScope::Global);
         assert_eq!(ranking.clear_rate, Some(75));
+        assert_eq!(ranking.previous_rank, Some(9));
         assert_eq!(ranking.total, Some(2));
     }
 
