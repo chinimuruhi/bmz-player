@@ -270,6 +270,9 @@ impl GamepadBackend {
     }
 
     pub fn attach_window(&mut self, window: &winit::window::Window) -> anyhow::Result<()> {
+        #[cfg(not(windows))]
+        let _ = window;
+
         match self {
             Self::Gilrs(_) => Ok(()),
             #[cfg(windows)]

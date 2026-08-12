@@ -310,6 +310,9 @@ pub(super) fn initialize_gamepad_backend(
     configs: [crate::input::gamepad::GamepadScratchConfig; 2],
     raw_input_bridge: Option<crate::input::rawinput::RawInputBridge>,
 ) -> Option<crate::input::gamepad::GamepadBackend> {
+    #[cfg(not(windows))]
+    let _ = raw_input_bridge;
+
     match kind {
         GamepadBackendKind::Auto => initialize_gilrs_backend(configs),
         GamepadBackendKind::Gilrs => initialize_gilrs_backend(configs),
