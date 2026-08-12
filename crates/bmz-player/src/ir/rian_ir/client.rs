@@ -67,7 +67,7 @@ impl RianIrClient {
         let request = score_request(payload, player_id, api_token)?;
         let redacted_request_json = redacted_request_json(&request)?;
         let mut url = self.endpoint("score/score.php")?;
-        url.query_pairs_mut().append_pair("include", "ranking").append_pair("ranking_limit", "20");
+        url.query_pairs_mut().append_pair("include", "ranking");
         let response = self
             .http
             .post(url)
@@ -85,7 +85,7 @@ impl RianIrClient {
                 let data = convert_score_submission_ranking(
                     &payload.chart.sha256,
                     ranking.entries,
-                    20,
+                    RIAN_IR_RANKING_LIMIT,
                     Some(player_id),
                     ranking.current_rank,
                     ranking.total,

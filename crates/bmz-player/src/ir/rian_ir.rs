@@ -29,7 +29,7 @@ use super::types::{
 pub const RIAN_IR_PROVIDER: &str = "rian-ir";
 pub const RIAN_IR_DEFAULT_BASE_URL: &str = "https://rianir.link/api/";
 pub const RIAN_IR_PUBLIC_BASE_URL: &str = "https://rianir.link/";
-/// rianIR の `get_score.php` / `get_course_score.php` が返すランキング上限。
+/// rianIR が返すランキングの既定上限。
 pub const RIAN_IR_RANKING_LIMIT: u32 = 100;
 
 /// Build the public rianIR ranking page for a chart.
@@ -696,7 +696,7 @@ mod tests {
         let ranking = convert_score_submission_ranking(
             &"ab".repeat(32),
             raw.entries,
-            20,
+            RIAN_IR_RANKING_LIMIT,
             Some("login-id"),
             raw.current_rank,
             raw.total,
@@ -706,6 +706,7 @@ mod tests {
         assert_eq!(raw.previous_rank, Some(12));
         assert_eq!(ranking.ranking.self_summary.unwrap().rank, 8);
         let pagination = ranking.ranking.pagination.unwrap();
+        assert_eq!(pagination.limit, RIAN_IR_RANKING_LIMIT);
         assert_eq!(pagination.total, Some(341));
         assert!(pagination.has_more);
     }
