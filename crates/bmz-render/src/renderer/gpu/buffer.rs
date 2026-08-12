@@ -139,8 +139,17 @@ impl WgpuRenderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub(in crate::renderer) fn set_present_mode(&mut self, present_mode: WgpuPresentMode) {
-        configure_surface_settings(&mut self.config, present_mode, &self.present_modes);
+    pub(in crate::renderer) fn configure_presentation(
+        &mut self,
+        present_mode: WgpuPresentMode,
+        frame_latency_mode: WgpuFrameLatencyMode,
+    ) {
+        configure_surface_settings(
+            &mut self.config,
+            present_mode,
+            frame_latency_mode,
+            &self.present_modes,
+        );
         self.configure_surface();
         tracing::info!(
             requested = ?present_mode,

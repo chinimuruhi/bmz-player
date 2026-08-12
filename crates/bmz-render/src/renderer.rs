@@ -67,11 +67,11 @@ mod surface;
 #[cfg(test)]
 use backend_config::auto_wgpu_backends;
 pub use backend_config::{
-    InternalResolutionMode, SurfacePresentationStatus, WgpuBackend, WgpuPresentMode,
-    available_wgpu_backends,
+    InternalResolutionMode, SurfacePresentationStatus, WgpuBackend, WgpuFrameLatencyMode,
+    WgpuPresentMode, available_wgpu_backends,
 };
 use backend_config::{
-    LOW_LATENCY_MAXIMUM_FRAME_LATENCY, MAILBOX_MAXIMUM_FRAME_LATENCY, fallback_wgpu_backends,
+    LOW_LATENCY_MAXIMUM_FRAME_LATENCY, STABLE_MAXIMUM_FRAME_LATENCY, fallback_wgpu_backends,
 };
 #[cfg(test)]
 use canvas::{CanvasFitMode, CanvasSize};
@@ -83,6 +83,8 @@ use state::{
     OFFSCREEN_RECT_BATCH_TEXTURE_MAX_ENTRIES, OffscreenRectBatchTextureKey, PendingTexture,
     WgpuRenderer,
 };
+#[cfg(test)]
+use surface::resolve_maximum_frame_latency;
 #[cfg(test)]
 use surface::resolve_wgpu_present_mode;
 use surface::{configure_surface_settings, wgpu_present_mode_label};

@@ -17,6 +17,18 @@ pub enum WgpuPresentMode {
     Mailbox,
 }
 
+/// Surfaceに許可するin-flight frame数の決定方法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WgpuFrameLatencyMode {
+    /// macOSで実効present modeがImmediateの場合だけ2、それ以外は1を使う。
+    #[default]
+    Auto,
+    /// 入力から表示までの待ちを優先し、常に1を使う。
+    LowLatency,
+    /// フレームペーシングの安定を優先し、常に2を使う。
+    Stable,
+}
+
 /// ゲーム / スキン描画に使う解像度。
 ///
 /// `Skin` は現在のスキン document の `w` / `h` が表示領域より小さい場合だけ
@@ -38,11 +50,10 @@ pub struct SurfacePresentationStatus {
     pub maximum_frame_latency: u32,
 }
 
-/// 入力から表示までの待ちを最小化するため、通常modeでswapchainに許可する最大の
-/// in-flight frame数。MailboxだけはDX12でこの値×monitor HzにFPSが制限されるため、
-/// 既定値2を維持してFast VSyncがrefresh rateそのものへ落ちるのを避ける。
+/// Surfaceに許可するin-flight frame数。AutoはmacOSのImmediateだけStableを選び、
+/// Windowsを含むそれ以外の環境ではLowLatencyを選ぶ。
 pub(super) const LOW_LATENCY_MAXIMUM_FRAME_LATENCY: u32 = 1;
-pub(super) const MAILBOX_MAXIMUM_FRAME_LATENCY: u32 = 2;
+pub(super) const STABLE_MAXIMUM_FRAME_LATENCY: u32 = 2;
 
 impl WgpuBackend {
     pub fn to_wgpu(self) -> wgpu::Backends {

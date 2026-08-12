@@ -67,6 +67,22 @@ pub(super) fn config_present_mode(
     }
 }
 
+pub(super) fn config_frame_latency_mode(
+    video: &crate::config::app_config::VideoConfig,
+) -> bmz_render::WgpuFrameLatencyMode {
+    match video.frame_latency_mode {
+        crate::config::app_config::FrameLatencyModeConfig::Auto => {
+            bmz_render::WgpuFrameLatencyMode::Auto
+        }
+        crate::config::app_config::FrameLatencyModeConfig::LowLatency => {
+            bmz_render::WgpuFrameLatencyMode::LowLatency
+        }
+        crate::config::app_config::FrameLatencyModeConfig::Stable => {
+            bmz_render::WgpuFrameLatencyMode::Stable
+        }
+    }
+}
+
 pub(super) fn config_internal_resolution_mode(
     video: &crate::config::app_config::VideoConfig,
 ) -> bmz_render::InternalResolutionMode {

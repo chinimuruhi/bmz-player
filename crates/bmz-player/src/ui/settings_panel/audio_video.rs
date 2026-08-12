@@ -302,6 +302,25 @@ pub(super) fn build_audio_video_settings_sections(
                         vsync_mode_label(&VsyncModeConfig::FastVsync),
                     );
                 });
+            egui::ComboBox::new(
+                "video_frame_latency_mode",
+                tr!(text, "settings-video-frame-latency"),
+            )
+            .selected_text(frame_latency_mode_label(config.video.frame_latency_mode, text))
+            .show_ui(ui, |ui| {
+                for mode in [
+                    FrameLatencyModeConfig::Auto,
+                    FrameLatencyModeConfig::LowLatency,
+                    FrameLatencyModeConfig::Stable,
+                ] {
+                    ui.selectable_value(
+                        &mut config.video.frame_latency_mode,
+                        mode,
+                        frame_latency_mode_label(mode, text),
+                    );
+                }
+            });
+            ui.label(tr!(text, "settings-video-frame-latency-help"));
             ui.add(
                 egui::DragValue::new(&mut config.video.target_fps)
                     .range(0..=u32::MAX)

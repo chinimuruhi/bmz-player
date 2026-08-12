@@ -43,15 +43,34 @@ pub(super) fn resolve_wgpu_present_mode(
 pub(super) fn configure_surface_settings(
     config: &mut wgpu::SurfaceConfiguration,
     requested_present_mode: WgpuPresentMode,
+    frame_latency_mode: WgpuFrameLatencyMode,
     available_present_modes: &[wgpu::PresentMode],
 ) {
     config.present_mode =
         resolve_wgpu_present_mode(requested_present_mode, available_present_modes);
-    config.desired_maximum_frame_latency = match config.present_mode {
-        wgpu::PresentMode::Mailbox => MAILBOX_MAXIMUM_FRAME_LATENCY,
-        _ => LOW_LATENCY_MAXIMUM_FRAME_LATENCY,
-    };
+    config.desired_maximum_frame_latency = resolve_maximum_frame_latency(
+        frame_latency_mode,
+        config.present_mode,
+        cfg!(target_os = "macos"),
+    );
     config.usage |= wgpu::TextureUsages::COPY_SRC;
+}
+
+pub(super) fn resolve_maximum_frame_latency(
+    mode: WgpuFrameLatencyMode,
+    effective_present_mode: wgpu::PresentMode,
+    is_macos: bool,
+) -> u32 {
+    match mode {
+        WgpuFrameLatencyMode::LowLatency => LOW_LATENCY_MAXIMUM_FRAME_LATENCY,
+        WgpuFrameLatencyMode::Stable => STABLE_MAXIMUM_FRAME_LATENCY,
+        WgpuFrameLatencyMode::Auto
+            if is_macos && effective_present_mode == wgpu::PresentMode::Immediate =>
+        {
+            STABLE_MAXIMUM_FRAME_LATENCY
+        }
+        WgpuFrameLatencyMode::Auto => LOW_LATENCY_MAXIMUM_FRAME_LATENCY,
+    }
 }
 
 pub(super) fn wgpu_present_mode_label(mode: wgpu::PresentMode) -> &'static str {

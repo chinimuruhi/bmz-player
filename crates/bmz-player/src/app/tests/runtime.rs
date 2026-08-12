@@ -42,6 +42,20 @@ fn config_present_mode_maps_vsync_modes() {
 }
 
 #[test]
+fn config_frame_latency_mode_maps_video_setting() {
+    let mut config = AppConfig::default().video;
+
+    config.frame_latency_mode = FrameLatencyModeConfig::Auto;
+    assert_eq!(config_frame_latency_mode(&config), bmz_render::WgpuFrameLatencyMode::Auto);
+
+    config.frame_latency_mode = FrameLatencyModeConfig::LowLatency;
+    assert_eq!(config_frame_latency_mode(&config), bmz_render::WgpuFrameLatencyMode::LowLatency);
+
+    config.frame_latency_mode = FrameLatencyModeConfig::Stable;
+    assert_eq!(config_frame_latency_mode(&config), bmz_render::WgpuFrameLatencyMode::Stable);
+}
+
+#[test]
 fn config_internal_resolution_mode_maps_video_setting() {
     let mut config = AppConfig::default().video;
 

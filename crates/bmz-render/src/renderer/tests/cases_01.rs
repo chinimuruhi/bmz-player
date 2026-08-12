@@ -88,7 +88,7 @@ fn present_mode_fallbacks_follow_vsync_mode_semantics() {
 }
 
 #[test]
-fn surface_settings_prioritize_low_latency_and_preserve_capture_usage() {
+fn surface_settings_apply_frame_latency_mode_and_preserve_capture_usage() {
     let mut config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: wgpu::TextureFormat::Bgra8Unorm,
@@ -100,7 +100,12 @@ fn surface_settings_prioritize_low_latency_and_preserve_capture_usage() {
         view_formats: vec![],
     };
 
-    configure_surface_settings(&mut config, WgpuPresentMode::Mailbox, &[wgpu::PresentMode::Fifo]);
+    configure_surface_settings(
+        &mut config,
+        WgpuPresentMode::Mailbox,
+        WgpuFrameLatencyMode::Auto,
+        &[wgpu::PresentMode::Fifo],
+    );
 
     assert_eq!(config.desired_maximum_frame_latency, 1);
     assert_eq!(config.present_mode, wgpu::PresentMode::Fifo);
@@ -109,10 +114,30 @@ fn surface_settings_prioritize_low_latency_and_preserve_capture_usage() {
     configure_surface_settings(
         &mut config,
         WgpuPresentMode::Mailbox,
+        WgpuFrameLatencyMode::Stable,
         &[wgpu::PresentMode::Mailbox, wgpu::PresentMode::Fifo],
     );
     assert_eq!(config.present_mode, wgpu::PresentMode::Mailbox);
     assert_eq!(config.desired_maximum_frame_latency, 2);
+}
+
+#[test]
+fn automatic_frame_latency_is_stable_only_for_macos_immediate() {
+    use wgpu::PresentMode::{Fifo, Immediate, Mailbox};
+
+    assert_eq!(resolve_maximum_frame_latency(WgpuFrameLatencyMode::Auto, Immediate, true), 2);
+    assert_eq!(resolve_maximum_frame_latency(WgpuFrameLatencyMode::Auto, Fifo, true), 1);
+    assert_eq!(resolve_maximum_frame_latency(WgpuFrameLatencyMode::Auto, Mailbox, true), 1);
+    assert_eq!(resolve_maximum_frame_latency(WgpuFrameLatencyMode::Auto, Immediate, false), 1);
+    assert_eq!(resolve_maximum_frame_latency(WgpuFrameLatencyMode::Auto, Mailbox, false), 1);
+}
+
+#[test]
+fn explicit_frame_latency_modes_ignore_platform_and_present_mode() {
+    use wgpu::PresentMode::{Fifo, Immediate};
+
+    assert_eq!(resolve_maximum_frame_latency(WgpuFrameLatencyMode::LowLatency, Immediate, true), 1);
+    assert_eq!(resolve_maximum_frame_latency(WgpuFrameLatencyMode::Stable, Fifo, false), 2);
 }
 
 #[test]

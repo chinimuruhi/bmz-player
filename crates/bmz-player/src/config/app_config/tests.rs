@@ -15,8 +15,31 @@ fn app_config_defaults_scan_symlinks_and_background_frame_limit() {
     assert!(config.scan.follow_symlinks);
     assert!(!config.scan.auto_rescan_on_startup);
     assert_eq!(config.video.vsync_mode, VsyncModeConfig::Vsync);
+    assert_eq!(config.video.frame_latency_mode, FrameLatencyModeConfig::Auto);
     assert_eq!(config.video.internal_resolution, InternalResolutionModeConfig::Native);
     assert_eq!(config.video.frame_limit_in_background, 60);
+}
+
+#[test]
+fn app_config_loads_missing_frame_latency_mode_as_auto() {
+    let toml = toml::to_string(&AppConfig::default())
+        .unwrap()
+        .replace("frame_latency_mode = \"Auto\"\n", "");
+
+    let config: AppConfig = toml::from_str(&toml).unwrap();
+
+    assert_eq!(config.video.frame_latency_mode, FrameLatencyModeConfig::Auto);
+}
+
+#[test]
+fn app_config_round_trips_explicit_frame_latency_mode() {
+    let mut config = AppConfig::default();
+    config.video.frame_latency_mode = FrameLatencyModeConfig::Stable;
+
+    let toml = toml::to_string(&config).unwrap();
+    let loaded: AppConfig = toml::from_str(&toml).unwrap();
+
+    assert_eq!(loaded.video.frame_latency_mode, FrameLatencyModeConfig::Stable);
 }
 
 #[test]

@@ -5,6 +5,7 @@ impl WgpuRenderer {
         window: T,
         size: SurfaceSize,
         present_mode: WgpuPresentMode,
+        frame_latency_mode: WgpuFrameLatencyMode,
         backend: WgpuBackend,
         default_font_coverage: bmz_font::FontCoverage,
         default_font_search_paths: Vec<PathBuf>,
@@ -19,6 +20,7 @@ impl WgpuRenderer {
                 window.clone(),
                 size,
                 present_mode,
+                frame_latency_mode,
                 *candidate,
                 default_font_coverage,
                 default_font_search_paths.clone(),
@@ -48,6 +50,7 @@ impl WgpuRenderer {
         window: T,
         size: SurfaceSize,
         present_mode: WgpuPresentMode,
+        frame_latency_mode: WgpuFrameLatencyMode,
         backend: WgpuBackend,
         default_font_coverage: bmz_font::FontCoverage,
         default_font_search_paths: Vec<PathBuf>,
@@ -91,7 +94,12 @@ impl WgpuRenderer {
         // beatoraja (libGDX) は GL_FRAMEBUFFER_SRGB を使わないため値をそのまま表示する。
         // それと合わせるため sRGB サフィックスを除去して non-sRGB サーフェスとして使う。
         config.format = config.format.remove_srgb_suffix();
-        configure_surface_settings(&mut config, present_mode, &capabilities.present_modes);
+        configure_surface_settings(
+            &mut config,
+            present_mode,
+            frame_latency_mode,
+            &capabilities.present_modes,
+        );
         surface.configure(&device, &config);
         tracing::info!(
             requested = ?present_mode,

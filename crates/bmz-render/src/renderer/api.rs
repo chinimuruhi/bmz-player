@@ -12,6 +12,7 @@ impl Renderer {
             window,
             size,
             self.present_mode,
+            self.frame_latency_mode,
             self.backend,
             self.default_font_coverage,
             self.default_font_search_paths.clone(),
@@ -388,9 +389,20 @@ impl Renderer {
         }
         self.present_mode = present_mode;
         if let Some(gpu) = &mut self.gpu {
-            gpu.set_present_mode(present_mode);
+            gpu.configure_presentation(present_mode, self.frame_latency_mode);
             tracing::info!(requested = ?present_mode, "present mode updated");
         }
+    }
+
+    pub fn set_frame_latency_mode(&mut self, mode: WgpuFrameLatencyMode) {
+        if self.frame_latency_mode == mode {
+            return;
+        }
+        self.frame_latency_mode = mode;
+        if let Some(gpu) = &mut self.gpu {
+            gpu.configure_presentation(self.present_mode, mode);
+        }
+        tracing::info!(?mode, "frame latency mode updated");
     }
 
     pub fn set_internal_resolution_mode(&mut self, mode: InternalResolutionMode) {

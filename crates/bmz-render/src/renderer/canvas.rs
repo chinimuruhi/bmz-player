@@ -20,6 +20,8 @@ pub struct Renderer {
     pub(super) last_frame_timings: Option<RenderFrameTimings>,
     /// サーフェス生成時および `set_present_mode` で参照する希望 present mode。
     pub(super) present_mode: WgpuPresentMode,
+    /// サーフェス生成時および再構成時に参照するin-flight frame数の決定方法。
+    pub(super) frame_latency_mode: WgpuFrameLatencyMode,
     pub(super) internal_resolution_mode: InternalResolutionMode,
     pub(super) backend: WgpuBackend,
     pub(super) default_font_coverage: bmz_font::FontCoverage,

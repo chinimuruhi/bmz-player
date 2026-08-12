@@ -118,6 +118,19 @@ pub(in crate::ui) fn vsync_mode_label(mode: &VsyncModeConfig) -> &'static str {
     }
 }
 
+pub(in crate::ui) fn frame_latency_mode_label(
+    mode: FrameLatencyModeConfig,
+    text: Localizer,
+) -> String {
+    match mode {
+        FrameLatencyModeConfig::Auto => tr!(text, "settings-video-frame-latency-auto"),
+        FrameLatencyModeConfig::LowLatency => {
+            tr!(text, "settings-video-frame-latency-low-latency")
+        }
+        FrameLatencyModeConfig::Stable => tr!(text, "settings-video-frame-latency-stable"),
+    }
+}
+
 pub(in crate::ui) fn input_backend_label(backend: &InputBackendKind, text: Localizer) -> String {
     match backend {
         InputBackendKind::Auto => tr!(text, "common-auto-select"),

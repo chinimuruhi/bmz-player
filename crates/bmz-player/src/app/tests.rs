@@ -1,7 +1,7 @@
 use bmz_render::scene::SelectRowKind;
 use bmz_render::skin::default_skin_manifest;
 
-use crate::config::app_config::{AppConfig, PathEntry, VsyncModeConfig};
+use crate::config::app_config::{AppConfig, FrameLatencyModeConfig, PathEntry, VsyncModeConfig};
 use crate::config::profile_config::ProfileConfig;
 use crate::screens::select_model::{SelectChartRow, SelectCourseRow};
 use crate::skin_loader::default_skin_root;

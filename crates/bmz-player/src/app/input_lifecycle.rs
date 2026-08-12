@@ -213,6 +213,8 @@ impl WinitApp {
                 let size = surface_size_for_window(&window);
                 // サーフェス生成前に present mode とバックエンド設定を反映させておく。
                 self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
+                self.renderer
+                    .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video));
                 let backend = config_renderer_backend(self.boot.app_config.video.renderer.clone());
                 self.renderer.set_backend(backend);
                 if let Err(error) = self.renderer.attach_surface(Arc::clone(&window), size) {

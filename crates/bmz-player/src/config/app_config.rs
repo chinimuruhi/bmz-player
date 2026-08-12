@@ -152,6 +152,9 @@ pub struct VideoConfig {
     #[serde(default)]
     pub internal_resolution: InternalResolutionModeConfig,
     pub vsync_mode: VsyncModeConfig,
+    /// Surfaceに許可するin-flight frame数の決定方法。
+    #[serde(default)]
+    pub frame_latency_mode: FrameLatencyModeConfig,
     /// 目標 FPS。0 はフレームペーサーによる待機を行わず、無制限を意味する。
     pub target_fps: u32,
     pub frame_limit_in_background: u32,
@@ -303,6 +306,18 @@ pub enum VsyncModeConfig {
     AdaptiveVsync,
     VsyncOff,
     FastVsync,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub enum FrameLatencyModeConfig {
+    /// macOSのImmediateだけ2、それ以外は1を使う。
+    #[default]
+    Auto,
+    /// 常に1を使い、入力から表示までの待ちを優先する。
+    LowLatency,
+    /// 常に2を使い、フレームペーシングの安定を優先する。
+    Stable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -566,6 +581,7 @@ impl Default for AppConfig {
                 height: 720,
                 internal_resolution: InternalResolutionModeConfig::Native,
                 vsync_mode: VsyncModeConfig::Vsync,
+                frame_latency_mode: FrameLatencyModeConfig::Auto,
                 target_fps: 240,
                 frame_limit_in_background: 60,
                 renderer: RendererBackend::Auto,
