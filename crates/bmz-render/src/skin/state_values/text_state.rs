@@ -164,6 +164,7 @@ pub(super) fn skin_main_state_text(
             })
             .unwrap_or_default(),
         1900 => draw_state
+            .filter(|state| !state.select_screen || state.duration_green_ms.is_some())
             .map(|state| {
                 if skin_hispeed_mode_is_floating(state) { "FHS" } else { "NHS" }.to_string()
             })

@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::select_flow_mode_config::select_item_play_mode;
 
 #[test]
 fn take_analog_scroll_steps_keeps_remainder() {
@@ -136,6 +137,27 @@ fn select_skin_cover_events_toggle_sudden_and_hidden_independently() {
     assert_eq!(toggled_select_hidden(LaneEffectConfig::Off), LaneEffectConfig::Hidden);
     assert_eq!(toggled_select_hidden(LaneEffectConfig::Sudden), LaneEffectConfig::HiddenSudden);
     assert_eq!(toggled_select_hidden(LaneEffectConfig::HiddenSudden), LaneEffectConfig::Sudden);
+}
+
+#[test]
+fn select_play_mode_uses_chart_mode_and_filter_fallback() {
+    assert_eq!(select_item_play_mode(None, SelectModeFilter::All), Some(KeyMode::K7));
+    assert_eq!(select_item_play_mode(None, SelectModeFilter::K14), Some(KeyMode::K14));
+
+    let chart = chart_row_with_mode(1, "5K");
+    assert_eq!(select_item_play_mode(Some(&chart), SelectModeFilter::All), Some(KeyMode::K5));
+    assert_eq!(select_item_play_mode(Some(&chart), SelectModeFilter::K14), Some(KeyMode::K5));
+}
+
+#[test]
+fn select_play_mode_requires_a_common_resolved_course_mode() {
+    let mut same_mode = select_course_row(2, 2);
+    same_mode.common_key_mode = Some(KeyMode::K14);
+    let same_mode = SelectItem::Course(same_mode);
+    assert_eq!(select_item_play_mode(Some(&same_mode), SelectModeFilter::All), Some(KeyMode::K14));
+
+    let mixed = SelectItem::Course(select_course_row(2, 2));
+    assert_eq!(select_item_play_mode(Some(&mixed), SelectModeFilter::K7), None);
 }
 
 #[test]

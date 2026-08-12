@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use bmz_core::course::{CourseDefinition, CourseKind, CourseLnConstraint};
+use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
 use bmz_render::scene::SelectRowKind;
 
@@ -234,6 +235,9 @@ pub struct SelectCourseRow {
     pub title: String,
     pub kind: CourseKind,
     pub constraints: bmz_core::course::CourseConstraints,
+    /// Common key mode when every resolved entry uses the same mode. Mixed or
+    /// unresolved courses intentionally expose no editable play-mode config.
+    pub common_key_mode: Option<KeyMode>,
     /// Total number of entries in the course.
     pub entry_count: usize,
     /// Number of entries whose `chart_id` is resolved in the local library.

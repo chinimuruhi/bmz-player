@@ -35,9 +35,16 @@ pub fn clamp_hispeed(hispeed: f32) -> f32 {
 }
 
 pub fn play_offsets_from_profile(profile: &ProfileConfig) -> PlayOffsets {
+    play_offsets_from_profile_for_mode(profile, profile.active_play_mode)
+}
+
+pub fn play_offsets_from_profile_for_mode(
+    profile: &ProfileConfig,
+    key_mode: KeyMode,
+) -> PlayOffsets {
     PlayOffsets {
         input_offset_us: profile.judge.input_offset_us,
-        visual_offset_us: profile.judge.visual_offset_us,
+        visual_offset_us: profile.play_mode_config(key_mode).visual_offset_us,
     }
 }
 

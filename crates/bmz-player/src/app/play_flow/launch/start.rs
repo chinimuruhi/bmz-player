@@ -181,7 +181,7 @@ impl WinitApp {
     pub(super) fn enter_play_scene(
         &mut self,
         chart_id: i64,
-        options: PlayStartOptions,
+        mut options: PlayStartOptions,
         mut snapshot: RenderSnapshot,
     ) {
         // Decide / retry / direct boot のどの経路でも、Play 入場後の常時表示が
@@ -225,8 +225,14 @@ impl WinitApp {
         // preload 完了で install_active_play がフル snapshot に置き換えるまでの間、
         // 初期ゲージや緑数字が空表示にならないようセッション開始時相当の値を埋める。
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
-        let session_options =
+        let play_config_key_mode = self.key_mode_for_chart(chart_id);
+        self.boot.profile_config.activate_play_mode(play_config_key_mode);
+        self.select.hs_fix_option =
+            hs_fix_option_from_profile(self.boot.profile_config.play.hs_fix);
+        options.hs_fix = self.select.hs_fix_option;
+        let mut session_options =
             play_session_options_from_start(&self.play_session_app_config(), options.clone());
+        session_options.play_config_key_mode = Some(play_config_key_mode);
         crate::screens::play_session::apply_placeholder_session_visuals(
             &mut snapshot,
             &self.boot.profile_config,
@@ -254,6 +260,7 @@ impl WinitApp {
             &snapshot,
             &self.boot.profile_config,
             key_mode,
+            play_config_key_mode,
             session_options.gamepad_slots,
         );
         pending_play_start.prepared_chart_applied = prepared_chart.is_some();

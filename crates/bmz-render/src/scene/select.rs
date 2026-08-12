@@ -29,7 +29,8 @@ pub struct SelectSnapshot {
     pub selected_title: String,
     /// Current profile hispeed shown to select skins (NUMBER_HISPEED=310/311).
     pub hispeed: f32,
-    /// Effective note display duration for the selected chart. `None` for folders/settings.
+    /// Effective target green number for the selected play mode. `None` when a
+    /// mixed/unresolved course has no single mode whose value can be shown.
     pub note_display_duration_ms: Option<i32>,
     pub rows: Vec<SelectRowSnapshot>,
     pub arrange: String,

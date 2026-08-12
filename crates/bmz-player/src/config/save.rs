@@ -18,7 +18,10 @@ fn serialize_app_config(config: &AppConfig) -> Result<String> {
 }
 
 pub fn save_profile_config(path: &Path, profile: &ProfileConfig) -> Result<()> {
-    atomic_write(path, &toml::to_string_pretty(profile)?)?;
+    let mut profile = profile.clone();
+    profile.sync_active_play_mode();
+    profile.normalize_play_mode_configs();
+    atomic_write(path, &toml::to_string_pretty(&profile)?)?;
     Ok(())
 }
 

@@ -120,6 +120,7 @@ pub fn play_session_options_from_start(
         .unwrap_or_default();
 
     PlaySessionOptions {
+        play_config_key_mode: None,
         session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
         practice_mode: start_options.practice_mode,

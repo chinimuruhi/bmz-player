@@ -30,6 +30,12 @@ impl WinitApp {
         let (select_items, select_mode_filter) =
             load_items_for_stack(&boot, &folder_stack, &[], initial_mode_filter, select_sort);
         boot.profile_config.select.mode_filter = select_mode_filter.as_str().to_string();
+        if let Some(key_mode) = crate::app::select_flow_mode_config::select_item_play_mode(
+            select_items.first(),
+            select_mode_filter,
+        ) {
+            boot.profile_config.activate_play_mode(key_mode);
+        }
         let boot_chart_id = resolve_boot_chart_id(&boot.library_db, &options);
         log_startup_options(&options);
 

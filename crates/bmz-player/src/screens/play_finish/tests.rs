@@ -844,6 +844,7 @@ fn session() -> GameSession {
     );
     GameSession {
         chart: Arc::clone(&chart),
+        play_config_key_mode: chart.metadata.key_mode,
         primary_key_mode: chart.metadata.key_mode,
         scored_total_notes: bmz_gameplay::score::scored_note_count(&chart),
         assist: Default::default(),

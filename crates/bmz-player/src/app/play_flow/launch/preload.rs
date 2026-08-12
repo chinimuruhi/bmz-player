@@ -168,7 +168,11 @@ impl WinitApp {
         });
     }
 
-    pub(super) fn start_play_preload(&mut self, chart_id: i64, options: PlayStartOptions) -> u64 {
+    pub(super) fn start_play_preload(
+        &mut self,
+        chart_id: i64,
+        mut options: PlayStartOptions,
+    ) -> u64 {
         // 通常開始・practice・retry は、残っているコース次曲先読みを置き換える。
         // コース側は worker 開始後に同じ generation の launch 情報を設定し直す。
         self.play.pending_course_stage_launch = None;
@@ -178,6 +182,10 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
+        let play_config_key_mode = self.key_mode_for_chart(chart_id);
+        options.hs_fix = hs_fix_option_from_profile(
+            self.boot.profile_config.play_mode_config(play_config_key_mode).hs_fix,
+        );
         let (ln_policy_setting, rule_mode) = self
             .play
             .active_course
@@ -204,6 +212,7 @@ impl WinitApp {
                             &app_config,
                             options,
                         );
+                    session_options.play_config_key_mode = Some(play_config_key_mode);
                     session_options.ln_policy_setting = ln_policy_setting;
                     session_options.rule_mode = rule_mode;
                     let preloaded =

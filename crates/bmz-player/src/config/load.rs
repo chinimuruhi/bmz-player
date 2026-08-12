@@ -41,6 +41,7 @@ pub fn load_profile_config(path: &Path) -> Result<ProfileConfig> {
 
 fn parse_profile_config(text: &str) -> Result<ProfileConfig> {
     let mut config: ProfileConfig = toml::from_str(text)?;
+    config.normalize_play_mode_configs();
     config.skin.migrate_legacy_offsets();
     config.ir.normalize_builtin_providers();
     normalize_profile_input(&mut config.input);
@@ -110,5 +111,43 @@ mod tests {
             loaded.ir.providers[1],
             crate::config::profile_config::IrProviderConfig::rian_ir()
         );
+    }
+
+    #[test]
+    fn parse_profile_config_migrates_legacy_lane_values_to_all_key_modes() {
+        use bmz_core::lane::KeyMode;
+
+        let mut profile = ProfileConfig::new_default("default", "Default", 1);
+        profile.play_mode.clear();
+        profile.lane.target_green_number = 267;
+        profile.judge.visual_offset_us = -9_000;
+
+        let loaded = parse_profile_config(&toml::to_string(&profile).unwrap()).unwrap();
+
+        for key_mode in crate::config::profile_config::PLAY_MODE_CONFIG_MODES {
+            let config = loaded.play_mode_config(key_mode);
+            assert_eq!(config.target_green_number, 267, "{}", key_mode.as_str());
+            assert_eq!(config.visual_offset_us, -9_000, "{}", key_mode.as_str());
+        }
+        assert_eq!(loaded.active_play_mode, KeyMode::K7);
+    }
+
+    #[test]
+    fn parse_profile_config_preserves_distinct_key_mode_values() {
+        use bmz_core::lane::KeyMode;
+
+        let mut profile = ProfileConfig::new_default("default", "Default", 1);
+        profile.normalize_play_mode_configs();
+        profile.activate_play_mode(KeyMode::K14);
+        profile.lane.target_green_number = 225;
+        profile.judge.visual_offset_us = 13_000;
+        profile.sync_active_play_mode();
+
+        let loaded = parse_profile_config(&toml::to_string(&profile).unwrap()).unwrap();
+
+        assert_eq!(loaded.play_mode_config(KeyMode::K7).target_green_number, 300);
+        assert_eq!(loaded.play_mode_config(KeyMode::K7).visual_offset_us, 0);
+        assert_eq!(loaded.play_mode_config(KeyMode::K14).target_green_number, 225);
+        assert_eq!(loaded.play_mode_config(KeyMode::K14).visual_offset_us, 13_000);
     }
 }

@@ -58,6 +58,7 @@ pub(super) struct PendingPlayStart {
     pub(super) options: PlayStartOptions,
     /// 変換済み譜面の静的 skin 値を placeholder snapshot へ反映済みか。
     pub(super) prepared_chart_applied: bool,
+    pub(super) play_config_key_mode: KeyMode,
     pub(super) lane: PendingPlayLaneState,
     pub(super) lane_actions: Vec<PlayLaneAction>,
     pub(super) visual_input: PendingPlayVisualInput,
@@ -70,6 +71,7 @@ impl PendingPlayStart {
         snapshot: &RenderSnapshot,
         profile: &ProfileConfig,
         key_mode: KeyMode,
+        play_config_key_mode: KeyMode,
         gamepad_slots: crate::input::gamepad::GamepadSlotMap,
     ) -> Self {
         let binding = crate::config::play::lane_binding_for_chart_with_slots(
@@ -77,16 +79,18 @@ impl PendingPlayStart {
             key_mode,
             gamepad_slots,
         );
+        let mode_config = profile.play_mode_config(play_config_key_mode);
         let hs_fix = options.hs_fix;
         Self {
             chart_id,
             options,
             prepared_chart_applied: false,
+            play_config_key_mode,
             lane: PendingPlayLaneState::from_snapshot(
                 snapshot,
-                profile.lane.target_green_number,
+                mode_config.target_green_number,
                 hs_fix,
-                profile.lane.hispeed_auto_adjust,
+                mode_config.hispeed_auto_adjust,
             ),
             lane_actions: Vec::new(),
             visual_input: PendingPlayVisualInput::new(key_mode, binding, snapshot.autoplay),

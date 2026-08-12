@@ -87,6 +87,25 @@ pub(super) fn build_select_course_row(
         stored.definition.constraints.ln,
         &charts,
     );
+    let common_key_mode = if entry_count > 0 && resolved_count == entry_count {
+        let modes = stored
+            .definition
+            .entries
+            .iter()
+            .map(|entry| {
+                entry
+                    .chart_id
+                    .and_then(|id| chart_by_id.get(&id).copied())
+                    .and_then(|chart| KeyMode::from_str_opt(&chart.mode))
+            })
+            .collect::<Option<Vec<_>>>();
+        modes.and_then(|modes| {
+            let first = *modes.first()?;
+            modes.iter().all(|mode| *mode == first).then_some(first)
+        })
+    } else {
+        None
+    };
 
     let entry_previews: Vec<CourseEntryPreview> = stored
         .definition
@@ -189,6 +208,7 @@ pub(super) fn build_select_course_row(
         title: stored.definition.title,
         kind: stored.definition.kind,
         constraints: stored.definition.constraints,
+        common_key_mode,
         entry_count,
         resolved_count,
         total_notes,

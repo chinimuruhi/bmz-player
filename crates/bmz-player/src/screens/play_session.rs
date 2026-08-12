@@ -43,11 +43,11 @@ use std::sync::Arc;
 use crate::config::play::{
     audio_mix_from_profile, bottom_shiftable_gauge_from_config, gauge_auto_shift_from_config,
     gauge_type_from_config, input_bounce_config_from_profile, lane_binding_for_chart_with_slots,
-    lane_unit_to_f32, play_offsets_from_profile,
+    lane_unit_to_f32, play_offsets_from_profile_for_mode,
 };
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig, LaneEffectConfig,
-    ProfileConfig,
+    PlayModeConfig, ProfileConfig,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::ln_policy::{
@@ -68,6 +68,9 @@ use crate::storage::score_db::ScoreKey;
 
 #[derive(Debug, Clone)]
 pub struct PlaySessionOptions {
+    /// Per-key presentation settings use the source chart mode. This differs
+    /// from `chart.metadata.key_mode` after BATTLE expands 5K/7K to 10K/14K.
+    pub play_config_key_mode: Option<KeyMode>,
     pub session_mode: SessionMode,
     pub autoplay: bool,
     /// Practice section play: no score / replay persistence (like autoplay).
@@ -233,6 +236,7 @@ impl PreloadedPlaySession {
 impl Default for PlaySessionOptions {
     fn default() -> Self {
         Self {
+            play_config_key_mode: None,
             session_mode: SessionMode::Normal,
             autoplay: false,
             practice_mode: false,

@@ -79,8 +79,12 @@ impl WinitApp {
         let (search_word, search_word_alpha, search_caret_byte_index) = self.display_search_word();
         self.ensure_visible_select_chart_distributions(25);
         let chart_distributions = self.select.select_distribution_cache.borrow();
-        let note_display_duration_ms =
-            Some(Self::select_note_display_duration_ms_for_skin(&self.boot.profile_config));
+        let selected_play_mode = self.selected_play_mode();
+        let mode_config =
+            selected_play_mode.map(|mode| self.boot.profile_config.play_mode_config(mode));
+        let note_display_duration_ms = mode_config
+            .as_ref()
+            .map(|config| config.target_green_number.max(1).min(i32::MAX as u32) as i32);
         SelectSnapshot {
             time: self.select_time(),
             player_name: String::new(),
@@ -108,7 +112,7 @@ impl WinitApp {
             selected_title: selected
                 .map(|item| item.display_name_for_locale(locale))
                 .unwrap_or_default(),
-            hispeed: self.boot.profile_config.lane.hispeed,
+            hispeed: mode_config.as_ref().map(|config| config.hispeed).unwrap_or(0.0),
             note_display_duration_ms,
             rows: select_snapshot_rows_with_rival(
                 &self.select.select_items,
@@ -140,7 +144,10 @@ impl WinitApp {
             )
             .to_string(),
             double_option: self.select.double_option.as_str().to_string(),
-            hs_fix: self.select.hs_fix_option.as_str().to_string(),
+            hs_fix: mode_config
+                .as_ref()
+                .map(|config| hs_fix_option_from_profile(config.hs_fix).as_str().to_string())
+                .unwrap_or_default(),
             assist: self.select.session_mode.as_str().to_string(),
             assist_flags: self.boot.profile_config.play.assist.flags(),
             assist_extra_note_depth: self.boot.profile_config.play.assist.extra_note_depth,
@@ -165,19 +172,29 @@ impl WinitApp {
                 .to_string(),
             bga: bga_mode_as_str(self.boot.profile_config.play.bga).to_string(),
             grade_diff_display: self.boot.profile_config.play.grade_diff_display,
-            judge_timing_offset_ms: (self.boot.profile_config.judge.visual_offset_us / 1_000)
-                .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+            judge_timing_offset_ms: mode_config
+                .as_ref()
+                .map(|config| {
+                    (config.visual_offset_us / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32
+                })
+                .unwrap_or(i32::MIN),
             judge_timing_auto_adjust: self.boot.profile_config.judge.visual_offset_auto_adjust,
-            lanecover_enabled: matches!(
-                self.boot.profile_config.play.lane_effect,
-                LaneEffectConfig::Sudden | LaneEffectConfig::HiddenSudden
-            ),
-            lift_enabled: self.boot.profile_config.lane.lift_enabled,
-            hidden_enabled: matches!(
-                self.boot.profile_config.play.lane_effect,
-                LaneEffectConfig::Hidden | LaneEffectConfig::HiddenSudden
-            ),
-            hispeed_auto_adjust: self.boot.profile_config.lane.hispeed_auto_adjust,
+            lanecover_enabled: mode_config.as_ref().is_some_and(|config| {
+                matches!(
+                    config.lane_effect,
+                    LaneEffectConfig::Sudden | LaneEffectConfig::HiddenSudden
+                )
+            }),
+            lift_enabled: mode_config.as_ref().is_some_and(|config| config.lift_enabled),
+            hidden_enabled: mode_config.as_ref().is_some_and(|config| {
+                matches!(
+                    config.lane_effect,
+                    LaneEffectConfig::Hidden | LaneEffectConfig::HiddenSudden
+                )
+            }),
+            hispeed_auto_adjust: mode_config
+                .as_ref()
+                .is_some_and(|config| config.hispeed_auto_adjust),
             master_volume: crate::config::play::volume_unit_to_f32(
                 self.boot.profile_config.audio_mix.master_volume,
             ),
@@ -269,7 +286,11 @@ impl WinitApp {
     }
 
     pub(super) fn select_note_display_duration_ms_for_skin(profile: &ProfileConfig) -> i32 {
-        profile.lane.target_green_number.max(1).min(i32::MAX as u32) as i32
+        profile
+            .play_mode_config(profile.active_play_mode)
+            .target_green_number
+            .max(1)
+            .min(i32::MAX as u32) as i32
     }
 
     pub(super) fn ensure_visible_select_chart_distributions(&self, visible_limit: usize) {

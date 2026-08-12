@@ -146,6 +146,7 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         TimingMap::from_chart_timing_events(chart.metadata.initial_bpm, &chart.timing_events);
     GameSession {
         chart: Arc::clone(&chart),
+        play_config_key_mode: chart.metadata.key_mode,
         primary_key_mode: chart.metadata.key_mode,
         scored_total_notes: scored_note_count(&chart),
         assist: Default::default(),

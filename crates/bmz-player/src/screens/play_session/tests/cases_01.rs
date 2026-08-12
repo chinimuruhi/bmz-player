@@ -54,6 +54,37 @@ fn ghost_battle_keeps_primary_input_offset_auto_adjust_enabled() {
 }
 
 #[test]
+fn session_uses_source_mode_presentation_settings_for_battle_layout() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.normalize_play_mode_configs();
+    profile.lane.hispeed = 2.75;
+    profile.lane.target_green_number = 285;
+    profile.judge.visual_offset_us = 6_000;
+    profile.sync_active_play_mode();
+    profile.activate_play_mode(KeyMode::K14);
+    profile.lane.hispeed = 4.5;
+    profile.lane.target_green_number = 220;
+    profile.judge.visual_offset_us = -12_000;
+    profile.sync_active_play_mode();
+
+    let mut battle_chart = chart();
+    battle_chart.metadata.key_mode = KeyMode::K14;
+    let session = build_game_session(
+        Arc::new(battle_chart),
+        &profile,
+        PlaySessionOptions {
+            play_config_key_mode: Some(KeyMode::K7),
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert_eq!(session.play_config_key_mode, KeyMode::K7);
+    assert_eq!(session.hispeed, 2.75);
+    assert_eq!(session.target_green_number, 285);
+    assert_eq!(session.offsets.visual_offset_us, 6_000);
+}
+
+#[test]
 fn build_game_session_uses_release_bounce_settings_from_profile() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.input.keyboard_release_bounce_ms = 3;

@@ -27,6 +27,7 @@ impl WinitApp {
             previous_selected_key.as_ref(),
             self.select.selected_index,
         );
+        self.sync_selected_play_mode();
     }
 
     pub(super) fn invalidate_select_folder_summaries(&mut self) {

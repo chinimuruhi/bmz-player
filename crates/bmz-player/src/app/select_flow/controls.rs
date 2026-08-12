@@ -596,7 +596,13 @@ impl WinitApp {
             tracing::info!(gauge = ?self.select.gauge_option, "gauge option changed");
             true
         } else if self.select.select_keys.is_ui_key5(control) {
+            if !self.begin_selected_play_mode_edit() {
+                return false;
+            }
             self.select.hs_fix_option = self.select.hs_fix_option.cycle();
+            self.boot.profile_config.play.hs_fix =
+                hs_fix_config_from_option(self.select.hs_fix_option);
+            self.finish_selected_play_mode_edit();
             tracing::info!(hs_fix = self.select.hs_fix_option.as_str(), "HS-FIX option changed");
             true
         } else if self.select.select_keys.is_ui_key6(control) {
@@ -765,26 +771,32 @@ impl WinitApp {
     }
 
     pub(super) fn adjust_select_green_number(&mut self, delta: i32) -> bool {
+        if !self.begin_selected_play_mode_edit() {
+            return false;
+        }
         let current = self.boot.profile_config.lane.target_green_number.max(1);
         let next = adjusted_green_number(current, delta);
         if current == next {
             return false;
         }
         self.boot.profile_config.lane.target_green_number = next;
-        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.finish_selected_play_mode_edit();
         self.sync_realtime_profile_settings();
         tracing::info!(target_green_number = next, "select green number changed");
         true
     }
 
     pub(super) fn adjust_visual_offset_ms(&mut self, delta_ms: i32) -> bool {
+        if !self.begin_selected_play_mode_edit() {
+            return false;
+        }
         let changed = crate::config::settings_registry::adjust_settings_value(
             &mut self.boot.profile_config,
             SettingsEntryId::VisualOffsetMs,
             delta_ms,
         );
         if changed {
-            self.boot.profile_config.updated_at = now_unix_seconds();
+            self.finish_selected_play_mode_edit();
             self.sync_realtime_profile_settings();
             tracing::info!(
                 visual_offset_ms = self.boot.profile_config.judge.visual_offset_us / 1_000,

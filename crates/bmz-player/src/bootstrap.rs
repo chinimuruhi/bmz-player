@@ -178,7 +178,8 @@ fn load_or_create_profile_config(paths: &ProfilePaths, profile_id: &str) -> Resu
     }
 
     let now = now_unix_seconds();
-    let config = ProfileConfig::new_default(profile_id, "Default", now);
+    let mut config = ProfileConfig::new_default(profile_id, "Default", now);
+    config.normalize_play_mode_configs();
     save_profile_config(&paths.profile_toml, &config)?;
     Ok(config)
 }

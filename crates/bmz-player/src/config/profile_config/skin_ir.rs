@@ -496,6 +496,8 @@ impl ProfileConfig {
                 hidden: 0,
                 target_green_number: 300,
             },
+            play_mode: BTreeMap::new(),
+            active_play_mode: KeyMode::K7,
             input: crate::config::play_input::default_profile_input(),
             rival: RivalConfig {
                 active_rival: String::new(),

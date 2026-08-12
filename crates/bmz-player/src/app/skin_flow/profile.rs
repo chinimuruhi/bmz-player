@@ -53,13 +53,16 @@ impl WinitApp {
     pub(super) fn sync_active_play_realtime_profile_settings(&mut self) {
         if let Some(active_play) = &mut self.play.active_play {
             let session = &mut active_play.running.session;
+            let key_mode = session.play_config_key_mode;
             let chart_normalization_gain = session.audio_mix.chart_normalization_gain;
             session.audio_mix = crate::config::play::audio_mix_from_profile_with_chart_gain(
                 &self.boot.profile_config,
                 chart_normalization_gain,
             );
-            session.offsets =
-                crate::config::play::play_offsets_from_profile(&self.boot.profile_config);
+            session.offsets = crate::config::play::play_offsets_from_profile_for_mode(
+                &self.boot.profile_config,
+                key_mode,
+            );
             session.input_offset_auto_adjust_enabled =
                 self.boot.profile_config.judge.visual_offset_auto_adjust;
             let auto_adjust_available = session.replay_player.is_none()
@@ -73,9 +76,10 @@ impl WinitApp {
     }
 
     pub(super) fn sync_profile_visual_offset_from_active_play(&mut self) {
-        let Some((visual_offset_us, auto_adjust_active)) =
+        let Some((key_mode, visual_offset_us, auto_adjust_active)) =
             self.play.active_play.as_ref().map(|active| {
                 (
+                    active.running.session.play_config_key_mode,
                     active.running.session.offsets.visual_offset_us,
                     active.running.session.input_offset_auto_adjust.is_some(),
                 )
@@ -83,11 +87,13 @@ impl WinitApp {
         else {
             return;
         };
+        self.boot.profile_config.activate_play_mode(key_mode);
         sync_active_play_visual_offset_to_profile(
             &mut self.boot.profile_config,
             visual_offset_us,
             auto_adjust_active,
         );
+        self.boot.profile_config.sync_active_play_mode();
     }
 
     pub(super) fn play_skin_defs_for_path(&mut self, path: &str) -> SceneSkinDefs {

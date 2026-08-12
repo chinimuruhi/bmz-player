@@ -237,6 +237,7 @@ fn course_row_looks_up_best_score_with_normalized_ln_policy() {
         panic!("expected course row");
     };
     assert_eq!(row.ln_policy, LnScorePolicy::ForceLn);
+    assert_eq!(row.common_key_mode, Some(KeyMode::K7));
     assert_eq!(row.best_score.as_ref().map(|score| score.ex_score), Some(100));
 }
 

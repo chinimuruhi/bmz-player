@@ -109,6 +109,9 @@ impl WinitApp {
             return;
         };
         let scene_kind = self.current_scene_kind();
+        if scene_kind == AppSceneKind::Select {
+            self.sync_selected_play_mode();
+        }
         let scene = egui_scene_name(scene_kind);
         let course_result_active =
             matches!(scene_kind, AppSceneKind::Result) && self.result.finished_course.is_some();
@@ -736,6 +739,7 @@ impl WinitApp {
         if pending.lane_actions.is_empty() {
             return;
         }
+        self.boot.profile_config.activate_play_mode(pending.play_config_key_mode);
         apply_lane_state_to_profile(
             &mut self.boot.profile_config,
             Some(pending.lane.hispeed),
@@ -757,6 +761,7 @@ impl WinitApp {
             return false;
         };
         let session = &active_play.running.session;
+        self.boot.profile_config.activate_play_mode(session.play_config_key_mode);
         apply_lane_state_to_profile(
             &mut self.boot.profile_config,
             Some(session.hispeed),
@@ -767,6 +772,17 @@ impl WinitApp {
     }
 
     pub(super) fn save_current_play_options(&mut self, hispeed: Option<f32>, reason: &'static str) {
+        let key_mode = self
+            .play
+            .active_play
+            .as_ref()
+            .map(|active| active.running.session.play_config_key_mode)
+            .or_else(|| {
+                self.play.pending_play_start.as_ref().map(|pending| pending.play_config_key_mode)
+            })
+            .or_else(|| self.selected_play_mode())
+            .unwrap_or(KeyMode::K7);
+        self.boot.profile_config.activate_play_mode(key_mode);
         let (hispeed, lane_state) = lane_state_for_profile_save(
             active_course_speed_locked(self.play.active_course.as_ref()),
             hispeed,
@@ -781,6 +797,7 @@ impl WinitApp {
             options,
             now_unix_seconds(),
         );
+        self.boot.profile_config.sync_active_play_mode();
         if let Err(error) =
             save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
         {

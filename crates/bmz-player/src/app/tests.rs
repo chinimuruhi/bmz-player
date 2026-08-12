@@ -181,6 +181,7 @@ fn select_course_row(resolved_count: usize, entry_count: usize) -> SelectCourseR
         constraints: bmz_core::course::CourseConstraints::default(),
         entry_count,
         resolved_count,
+        common_key_mode: None,
         total_notes: 100,
         total_length_ms: 90_000,
         min_bpm: 128.0,

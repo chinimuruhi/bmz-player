@@ -1,6 +1,14 @@
 use super::*;
 
 pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
+    if state.select_screen
+        && state.duration_green_ms.is_none()
+        && (matches!(ref_id, 55 | 310 | 311 | 342 | 1900..=1902)
+            || (ref_id == 12 && state.select_option_panel == 3))
+    {
+        return None;
+    }
+
     if select_folder_lamp_counts_available(state)
         && let Some(value) = select_folder_lamp_count(ref_id, &state.select_folder_lamp_counts)
     {

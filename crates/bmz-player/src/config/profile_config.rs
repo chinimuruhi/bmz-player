@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
 use bmz_render::scene::ResultGradeDiffDisplay;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -12,6 +13,8 @@ use crate::select_options::SessionMode;
 mod bindings;
 #[path = "profile_config/input.rs"]
 mod input;
+#[path = "profile_config/play_mode.rs"]
+mod play_mode;
 #[path = "profile_config/preferences.rs"]
 mod preferences;
 #[path = "profile_config/schema.rs"]
@@ -21,6 +24,7 @@ mod skin_ir;
 
 pub use bindings::*;
 pub use input::*;
+pub use play_mode::*;
 pub use preferences::*;
 pub use schema::*;
 pub use skin_ir::*;

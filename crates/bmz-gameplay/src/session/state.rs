@@ -109,6 +109,9 @@ impl AssistRuntime {
 
 pub struct GameSession {
     pub chart: Arc<PlayableChart>,
+    /// Source chart mode used to select per-key player presentation settings.
+    /// BATTLE can expand the rendered chart to K10/K14 while this remains K5/K7.
+    pub play_config_key_mode: KeyMode,
     /// 判定窓・スコア・ゲージ規則に使う元譜面側のキーモード。
     /// battle 表示では `chart.metadata.key_mode` が K10/K14 でも K5/K7 を保持する。
     pub primary_key_mode: KeyMode,

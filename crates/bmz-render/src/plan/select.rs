@@ -180,15 +180,17 @@ pub(super) fn push_select_option_panel(
             .map(|(label, enabled)| format!("{label:<17} {}", if enabled { "ON" } else { "OFF" }))
             .collect(),
         ),
-        3 => (
-            "DETAIL OPTIONS",
-            vec![
+        3 => {
+            let mut lines = vec![
                 format!("GAS      {}", snapshot.gauge_auto_shift),
                 format!("GAUGE    {}", snapshot.gauge),
                 format!("BGA      {}", snapshot.bga),
-                format!("VISUAL   {} ms", snapshot.judge_timing_offset_ms),
-            ],
-        ),
+            ];
+            if snapshot.judge_timing_offset_ms != i32::MIN {
+                lines.push(format!("VISUAL   {} ms", snapshot.judge_timing_offset_ms));
+            }
+            ("DETAIL OPTIONS", lines)
+        }
         _ => return,
     };
 

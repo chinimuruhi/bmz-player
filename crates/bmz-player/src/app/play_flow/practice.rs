@@ -403,7 +403,7 @@ impl WinitApp {
             practice.phase = PracticePhase::Config;
         }
 
-        let preload_options = PlayStartOptions {
+        let mut preload_options = PlayStartOptions {
             autoplay: false,
             practice_mode: false,
             arrange: ArrangeOption::Normal,
@@ -412,10 +412,16 @@ impl WinitApp {
         self.invalidate_play_preload();
         self.start_play_preload(chart_id, preload_options.clone());
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &preload_options);
-        let session_options = play_session_options_from_start(
+        let play_config_key_mode = self.key_mode_for_chart(chart_id);
+        self.boot.profile_config.activate_play_mode(play_config_key_mode);
+        self.select.hs_fix_option =
+            hs_fix_option_from_profile(self.boot.profile_config.play.hs_fix);
+        preload_options.hs_fix = self.select.hs_fix_option;
+        let mut session_options = play_session_options_from_start(
             &self.play_session_app_config(),
             preload_options.clone(),
         );
+        session_options.play_config_key_mode = Some(play_config_key_mode);
         let mut snapshot = self
             .play
             .last_play_snapshot
@@ -433,6 +439,7 @@ impl WinitApp {
             &snapshot,
             &self.boot.profile_config,
             key_mode,
+            play_config_key_mode,
             session_options.gamepad_slots,
         );
         pending_play_start.lane.lane_cover_changing = self.play_lane_value_changing();

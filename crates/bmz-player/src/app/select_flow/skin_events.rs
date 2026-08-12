@@ -77,23 +77,39 @@ impl WinitApp {
             }
             321..=324 => self.cycle_replay_slot_rule(event_id, arg),
             330 => {
+                if !self.begin_selected_play_mode_edit() {
+                    return;
+                }
                 self.boot.profile_config.play.lane_effect =
                     toggled_select_sudden(self.boot.profile_config.play.lane_effect);
+                self.finish_selected_play_mode_edit();
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
             }
             331 => {
+                if !self.begin_selected_play_mode_edit() {
+                    return;
+                }
                 self.boot.profile_config.lane.lift_enabled =
                     !self.boot.profile_config.lane.lift_enabled;
+                self.finish_selected_play_mode_edit();
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
             }
             332 => {
+                if !self.begin_selected_play_mode_edit() {
+                    return;
+                }
                 self.boot.profile_config.play.lane_effect =
                     toggled_select_hidden(self.boot.profile_config.play.lane_effect);
+                self.finish_selected_play_mode_edit();
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
             }
             342 => {
+                if !self.begin_selected_play_mode_edit() {
+                    return;
+                }
                 self.boot.profile_config.lane.hispeed_auto_adjust =
                     !self.boot.profile_config.lane.hispeed_auto_adjust;
+                self.finish_selected_play_mode_edit();
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
             }
             344 => self.cycle_chart_replication_mode(arg),
@@ -160,8 +176,13 @@ impl WinitApp {
     }
 
     pub(super) fn cycle_select_hs_fix(&mut self, arg: i32) {
+        if !self.begin_selected_play_mode_edit() {
+            return;
+        }
         self.select.hs_fix_option =
             cycle_hs_fix_option_with_direction(self.select.hs_fix_option, arg);
+        self.boot.profile_config.play.hs_fix = hs_fix_config_from_option(self.select.hs_fix_option);
+        self.finish_selected_play_mode_edit();
         tracing::info!(hs_fix = self.select.hs_fix_option.as_str(), "HS-FIX option changed");
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
     }

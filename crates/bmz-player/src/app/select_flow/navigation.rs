@@ -23,6 +23,7 @@ impl WinitApp {
             select_move,
         );
         if self.select.selected_index != previous_index {
+            self.sync_selected_play_mode();
             self.select.select_bar_started_at = Instant::now();
             self.select.select_bar_scroll_direction = select_move_scroll_direction(select_move);
             self.select.select_bar_scroll_duration = duration;

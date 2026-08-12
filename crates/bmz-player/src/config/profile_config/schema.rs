@@ -11,6 +11,14 @@ pub struct ProfileConfig {
     pub play: PlayDefaultsConfig,
     pub judge: JudgeConfig,
     pub lane: LaneViewConfig,
+    /// Key-mode-specific play presentation settings. Lowercase keys match
+    /// `KeyMode::play_map_key()` (`4k`, `5k`, ..., `14k`).
+    #[serde(default)]
+    pub play_mode: BTreeMap<String, PlayModeConfig>,
+    /// `play` / `judge` / `lane` contain the editable mirror for this mode.
+    /// Runtime-only so legacy callers can keep using the existing fields.
+    #[serde(skip)]
+    pub active_play_mode: KeyMode,
     pub input: ProfileInputConfig,
     pub rival: RivalConfig,
     pub replay: ReplayConfig,
@@ -304,9 +312,10 @@ impl<'de> Deserialize<'de> for TargetOptionConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum LaneEffectConfig {
+    #[default]
     Off,
     Hidden,
     Sudden,
@@ -684,6 +693,60 @@ pub struct LaneViewConfig {
     /// HIDDEN レーンカバー量。0..=1000 の整数で持ち、ランタイムでは /1000 して扱う。
     pub hidden: u32,
     pub target_green_number: u32,
+}
+
+/// Per-key-mode values corresponding to beatoraja/LR2orajaED `PlayConfig`.
+/// Global input latency and adjustment step sizes remain outside this type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlayModeConfig {
+    #[serde(default = "default_mode_hispeed")]
+    pub hispeed: f32,
+    #[serde(default = "default_hispeed_mode")]
+    pub hispeed_mode: HispeedModeConfig,
+    #[serde(default)]
+    pub hs_fix: HsFixConfig,
+    #[serde(default)]
+    pub lane_effect: LaneEffectConfig,
+    #[serde(default)]
+    pub sudden: u32,
+    #[serde(default)]
+    pub lift: u32,
+    #[serde(default = "default_true")]
+    pub lift_enabled: bool,
+    #[serde(default = "default_true")]
+    pub hispeed_auto_adjust: bool,
+    #[serde(default)]
+    pub hidden: u32,
+    #[serde(default = "default_target_green_number")]
+    pub target_green_number: u32,
+    #[serde(default)]
+    pub visual_offset_us: i64,
+}
+
+impl Default for PlayModeConfig {
+    fn default() -> Self {
+        Self {
+            hispeed: default_mode_hispeed(),
+            hispeed_mode: default_hispeed_mode(),
+            hs_fix: HsFixConfig::Off,
+            lane_effect: LaneEffectConfig::Off,
+            sudden: 0,
+            lift: 0,
+            lift_enabled: true,
+            hispeed_auto_adjust: true,
+            hidden: 0,
+            target_green_number: default_target_green_number(),
+            visual_offset_us: 0,
+        }
+    }
+}
+
+pub const fn default_mode_hispeed() -> f32 {
+    2.0
+}
+
+pub const fn default_target_green_number() -> u32 {
+    300
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -11,6 +11,9 @@ pub fn apply_placeholder_session_visuals(
     key_mode: KeyMode,
     options: &PlaySessionOptions,
 ) {
+    let play_config_key_mode = play_config_key_mode(key_mode, options);
+    let mode_config = profile.play_mode_config(play_config_key_mode);
+    let hs_fix = options.hs_fix;
     let gauge_type =
         options.gauge_override.unwrap_or_else(|| gauge_type_from_config(profile.play.gauge));
     let gauge_auto_shift = if options.gauge_auto_shift != GaugeAutoShiftMode::Off {
@@ -65,24 +68,24 @@ pub fn apply_placeholder_session_visuals(
     snapshot.gauge_border = current.definition.border;
 
     let speed_locked = options.speed_constraint == bmz_core::course::CourseSpeedConstraint::NoSpeed;
-    snapshot.lift = if speed_locked { 0.0 } else { lift_from_profile(profile) };
+    snapshot.lift = if speed_locked { 0.0 } else { lift_from_mode_config(&mode_config) };
     snapshot.lane_cover = if speed_locked {
         0.0
     } else {
         crate::config::play::clamp_lane_cover_for_lift(
-            lane_unit_to_f32(profile.lane.sudden),
+            lane_unit_to_f32(mode_config.sudden),
             snapshot.lift,
         )
     };
     let hispeed_mode =
-        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(options.hs_fix) };
+        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(hs_fix) };
     snapshot.hispeed_mode_index = hispeed_mode_index(hispeed_mode);
-    let target_green_number = profile.lane.target_green_number.max(1);
+    let target_green_number = mode_config.target_green_number.max(1);
     snapshot.hispeed = if speed_locked {
         1.0
     } else {
         placeholder_hispeed_for_mode(
-            profile,
+            &mode_config,
             hispeed_mode,
             target_green_number,
             snapshot.lane_cover,
@@ -90,19 +93,24 @@ pub fn apply_placeholder_session_visuals(
             snapshot.now_bpm,
         )
     };
-    snapshot.lanecover_enabled = lanecover_enabled_from_profile(profile);
-    snapshot.lift_enabled = lift_enabled_from_profile(profile);
-    snapshot.hidden_enabled = hidden_enabled_from_profile(profile);
-    snapshot.hispeed_auto_adjust = profile.lane.hispeed_auto_adjust;
-    snapshot.hidden_cover = if speed_locked { 0.0 } else { hidden_cover_from_profile(profile) };
+    snapshot.lanecover_enabled = lanecover_enabled_from_mode_config(&mode_config);
+    snapshot.lift_enabled = mode_config.lift_enabled;
+    snapshot.hidden_enabled = hidden_enabled_from_mode_config(&mode_config);
+    snapshot.hispeed_auto_adjust = mode_config.hispeed_auto_adjust;
+    snapshot.hidden_cover =
+        if speed_locked { 0.0 } else { hidden_cover_from_mode_config(&mode_config) };
 
     snapshot.key_mode = key_mode;
     // session 構築時と同じく基準 BPM = initial_bpm (decide snapshot の now_bpm)。
     snapshot.main_bpm = snapshot.now_bpm;
     snapshot.fs_threshold_ms =
         bmz_render::chart_graph::rm_skin_fs_threshold_ms(snapshot.judge_rank, key_mode);
-    snapshot.judge_timing_offset_ms =
-        (play_offsets_from_profile(profile).visual_offset_us / 1_000) as i32;
+    snapshot.judge_timing_offset_ms = (play_offsets_from_profile_for_mode(
+        profile,
+        play_config_key_mode,
+    )
+    .visual_offset_us
+        / 1_000) as i32;
     snapshot.judge_timing_auto_adjust = profile.judge.visual_offset_auto_adjust;
     let replay_playback =
         options.replay_player.is_some() && options.session_mode != SessionMode::GhostBattle;
@@ -204,6 +212,9 @@ pub fn build_game_session_with_input_backend(
 ) -> GameSession {
     let session_mode = options.session_mode;
     let chart_key_mode = chart.metadata.key_mode;
+    let play_config_key_mode = play_config_key_mode(chart_key_mode, &options);
+    let mode_config = profile.play_mode_config(play_config_key_mode);
+    let hs_fix = options.hs_fix;
     let primary_key_mode = if session_mode.is_battle() {
         match chart_key_mode {
             KeyMode::K10 => KeyMode::K5,
@@ -281,27 +292,27 @@ pub fn build_game_session_with_input_backend(
     );
     let speed_locked = options.speed_constraint == bmz_core::course::CourseSpeedConstraint::NoSpeed;
     let hispeed_mode =
-        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(options.hs_fix) };
-    let target_green_number = profile.lane.target_green_number.max(1);
-    let lift = if speed_locked { 0.0 } else { lift_from_profile(profile) };
+        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(hs_fix) };
+    let target_green_number = mode_config.target_green_number.max(1);
+    let lift = if speed_locked { 0.0 } else { lift_from_mode_config(&mode_config) };
     let lane_cover = if speed_locked {
         0.0
     } else {
-        crate::config::play::clamp_lane_cover_for_lift(lane_unit_to_f32(profile.lane.sudden), lift)
+        crate::config::play::clamp_lane_cover_for_lift(lane_unit_to_f32(mode_config.sudden), lift)
     };
-    let hsfix_base_bpm = hsfix_base_bpm_for_chart(&chart, &timing_map, options.hs_fix);
+    let hsfix_base_bpm = hsfix_base_bpm_for_chart(&chart, &timing_map, hs_fix);
     let hispeed = if speed_locked {
         1.0
     } else {
         initial_hispeed_for_mode(
-            profile,
+            &mode_config,
             hispeed_mode,
             target_green_number,
             lane_cover,
             lift,
             &chart,
             &timing_map,
-            options.hs_fix,
+            hs_fix,
         )
     };
 
@@ -387,6 +398,7 @@ pub fn build_game_session_with_input_backend(
         rule_mode,
         audio_clock: AudioClock::stopped(options.sample_rate),
         chart,
+        play_config_key_mode,
         primary_key_mode,
         scored_total_notes,
         assist: options.assist_runtime,
@@ -424,7 +436,7 @@ pub fn build_game_session_with_input_backend(
         full_combo_started_at: None,
         opponent_full_combo_started_at: None,
         bgm_scheduler: BgmScheduler::default(),
-        offsets: play_offsets_from_profile(profile),
+        offsets: play_offsets_from_profile_for_mode(profile, play_config_key_mode),
         audio_mix: audio_mix_from_profile(profile),
         hispeed,
         hispeed_mode,
@@ -434,11 +446,11 @@ pub fn build_game_session_with_input_backend(
         lane_cover,
         lane_cover_visible: true,
         lane_cover_changing: false,
-        lanecover_enabled: lanecover_enabled_from_profile(profile),
-        lift_enabled: lift_enabled_from_profile(profile),
-        hidden_enabled: hidden_enabled_from_profile(profile),
-        hispeed_auto_adjust: profile.lane.hispeed_auto_adjust,
-        hidden_cover: if speed_locked { 0.0 } else { hidden_cover_from_profile(profile) },
+        lanecover_enabled: lanecover_enabled_from_mode_config(&mode_config),
+        lift_enabled: mode_config.lift_enabled,
+        hidden_enabled: hidden_enabled_from_mode_config(&mode_config),
+        hispeed_auto_adjust: mode_config.hispeed_auto_adjust,
+        hidden_cover: if speed_locked { 0.0 } else { hidden_cover_from_mode_config(&mode_config) },
         skin_offsets: skin_offsets_from_profile(profile, key_mode, session_mode),
         bga_enabled: bga_enabled_from_profile(profile, autoplay_enabled, is_replay),
         poor_bga_duration_us: poor_bga_duration_us_from_profile(profile),
@@ -448,7 +460,7 @@ pub fn build_game_session_with_input_backend(
         lane_hcn_keysound_muted: [None; bmz_core::lane::LANE_COUNT],
         pending_keysounds: Vec::new(),
         pending_keysound_volumes: Vec::new(),
-        hsfix_index: hsfix_index_from_option(options.hs_fix),
+        hsfix_index: hsfix_index_from_option(hs_fix),
         input_timestamp_anchor: None,
         pending_mine_hits: Vec::new(),
         state: PlayState::Ready,
@@ -468,6 +480,28 @@ pub(super) fn hsfix_index_from_option(option: HsFixOption) -> i32 {
         HsFixOption::MainBpm => 3,
         HsFixOption::MinBpm => 4,
     }
+}
+
+pub(super) fn play_config_key_mode(
+    chart_key_mode: KeyMode,
+    options: &PlaySessionOptions,
+) -> KeyMode {
+    options.play_config_key_mode.unwrap_or_else(|| {
+        if options.session_mode.is_battle()
+            || matches!(
+                options.double_option,
+                DoubleOption::Battle | DoubleOption::BattleAutoScratch
+            )
+        {
+            match chart_key_mode {
+                KeyMode::K10 => KeyMode::K5,
+                KeyMode::K14 => KeyMode::K7,
+                _ => chart_key_mode,
+            }
+        } else {
+            chart_key_mode
+        }
+    })
 }
 
 pub(super) fn apply_judge_constraint_to_windows(
@@ -519,7 +553,7 @@ pub(super) fn hispeed_mode_index(mode: HispeedMode) -> i32 {
 }
 
 pub(super) fn initial_hispeed_for_mode(
-    profile: &ProfileConfig,
+    mode_config: &PlayModeConfig,
     hispeed_mode: HispeedMode,
     target_green_number: u32,
     lane_cover: f32,
@@ -529,7 +563,7 @@ pub(super) fn initial_hispeed_for_mode(
     hs_fix: HsFixOption,
 ) -> f32 {
     if hispeed_mode == HispeedMode::Normal {
-        return clamp_hispeed(profile.lane.hispeed);
+        return clamp_hispeed(mode_config.hispeed);
     }
 
     let now_bpm = hsfix_base_bpm_for_chart(chart, timing_map, hs_fix);
@@ -613,7 +647,7 @@ pub(super) fn main_bpm_for_chart(
 }
 
 pub(super) fn placeholder_hispeed_for_mode(
-    profile: &ProfileConfig,
+    mode_config: &PlayModeConfig,
     hispeed_mode: HispeedMode,
     target_green_number: u32,
     lane_cover: f32,
@@ -621,7 +655,7 @@ pub(super) fn placeholder_hispeed_for_mode(
     now_bpm: f32,
 ) -> f32 {
     if hispeed_mode == HispeedMode::Normal {
-        return clamp_hispeed(profile.lane.hispeed);
+        return clamp_hispeed(mode_config.hispeed);
     }
 
     let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
@@ -641,33 +675,29 @@ pub(super) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeA
     }
 }
 
-pub(super) fn hidden_cover_from_profile(profile: &ProfileConfig) -> f32 {
-    match profile.play.lane_effect {
+pub(super) fn hidden_cover_from_mode_config(config: &PlayModeConfig) -> f32 {
+    match config.lane_effect {
         LaneEffectConfig::Hidden | LaneEffectConfig::HiddenSudden => {
-            lane_unit_to_f32(profile.lane.hidden)
+            lane_unit_to_f32(config.hidden)
         }
         LaneEffectConfig::Off | LaneEffectConfig::Sudden => 0.0,
     }
 }
 
-pub(super) fn lanecover_enabled_from_profile(profile: &ProfileConfig) -> bool {
-    let lift = lift_from_profile(profile);
+pub(super) fn lanecover_enabled_from_mode_config(config: &PlayModeConfig) -> bool {
+    let lift = lift_from_mode_config(config);
     let lane_cover =
-        crate::config::play::clamp_lane_cover_for_lift(lane_unit_to_f32(profile.lane.sudden), lift);
-    matches!(profile.play.lane_effect, LaneEffectConfig::Sudden | LaneEffectConfig::HiddenSudden)
+        crate::config::play::clamp_lane_cover_for_lift(lane_unit_to_f32(config.sudden), lift);
+    matches!(config.lane_effect, LaneEffectConfig::Sudden | LaneEffectConfig::HiddenSudden)
         || lane_cover > 0.0
 }
 
-pub(super) fn lift_from_profile(profile: &ProfileConfig) -> f32 {
-    if profile.lane.lift_enabled { lane_unit_to_f32(profile.lane.lift) } else { 0.0 }
+pub(super) fn lift_from_mode_config(config: &PlayModeConfig) -> f32 {
+    if config.lift_enabled { lane_unit_to_f32(config.lift) } else { 0.0 }
 }
 
-pub(super) fn lift_enabled_from_profile(profile: &ProfileConfig) -> bool {
-    profile.lane.lift_enabled
-}
-
-pub(super) fn hidden_enabled_from_profile(profile: &ProfileConfig) -> bool {
-    matches!(profile.play.lane_effect, LaneEffectConfig::Hidden | LaneEffectConfig::HiddenSudden)
+pub(super) fn hidden_enabled_from_mode_config(config: &PlayModeConfig) -> bool {
+    matches!(config.lane_effect, LaneEffectConfig::Hidden | LaneEffectConfig::HiddenSudden)
 }
 
 pub(super) fn poor_bga_duration_us_from_profile(profile: &ProfileConfig) -> i64 {

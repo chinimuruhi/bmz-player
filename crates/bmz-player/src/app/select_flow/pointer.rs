@@ -232,6 +232,7 @@ impl WinitApp {
         };
         if self.select.selected_index != next {
             self.select.selected_index = next;
+            self.sync_selected_play_mode();
             self.restart_select_bar_timer_without_scroll(Instant::now());
             self.play_system_sound(crate::system_sound::SoundType::Scratch);
         }
@@ -284,6 +285,7 @@ impl WinitApp {
         ) {
             Some(SelectRowClickAction::Select(next)) => {
                 self.select.selected_index = next;
+                self.sync_selected_play_mode();
                 self.restart_select_bar_timer_without_scroll(Instant::now());
                 self.play_system_sound(crate::system_sound::SoundType::Scratch);
             }
