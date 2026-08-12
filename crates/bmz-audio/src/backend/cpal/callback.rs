@@ -1,4 +1,55 @@
+use std::time::Duration;
+
 use super::*;
+
+const MIN_PLAYBACK_DISCONTINUITY: Duration = Duration::from_millis(20);
+
+#[derive(Debug, Default)]
+struct OutputPlaybackTimeline {
+    previous_playback: Option<::cpal::StreamInstant>,
+    previous_frames: usize,
+}
+
+impl OutputPlaybackTimeline {
+    fn catch_up_frames(
+        &mut self,
+        playback: ::cpal::StreamInstant,
+        frames: usize,
+        sample_rate: u32,
+    ) -> u64 {
+        let catch_up = self.previous_playback.and_then(|previous| {
+            let actual = playback.checked_duration_since(previous)?;
+            let expected = frames_to_duration(self.previous_frames, sample_rate);
+            let gap = actual.saturating_sub(expected);
+            let tolerance = MIN_PLAYBACK_DISCONTINUITY.max(expected.saturating_mul(2));
+            (gap > tolerance).then(|| duration_to_frames(gap, sample_rate))
+        });
+        self.previous_playback = Some(playback);
+        self.previous_frames = frames;
+        catch_up.unwrap_or(0)
+    }
+}
+
+fn frames_to_duration(frames: usize, sample_rate: u32) -> Duration {
+    if sample_rate == 0 {
+        return Duration::ZERO;
+    }
+    let nanos = (frames as u128)
+        .saturating_mul(1_000_000_000)
+        .checked_div(u128::from(sample_rate))
+        .unwrap_or(0)
+        .min(u128::from(u64::MAX));
+    Duration::from_nanos(nanos as u64)
+}
+
+fn duration_to_frames(duration: Duration, sample_rate: u32) -> u64 {
+    duration
+        .as_nanos()
+        .saturating_mul(u128::from(sample_rate))
+        .checked_div(1_000_000_000)
+        .unwrap_or(0)
+        .min(u128::from(u64::MAX)) as u64
+}
 
 pub(super) fn push_output_command(
     queue: &SharedOutputCommands,
@@ -37,11 +88,13 @@ where
         render_sources: Vec::with_capacity(OUTPUT_SOURCE_INITIAL_CAPACITY),
         source_command_scratch: Vec::with_capacity(OUTPUT_COMMAND_QUEUE_CAPACITY),
     };
+    let sample_rate = config.sample_rate;
+    let mut playback_timeline = OutputPlaybackTimeline::default();
     let error_diagnostics = Arc::clone(&diagnostics);
     device
         .build_output_stream(
             *config,
-            move |data: &mut [T], _| {
+            move |data: &mut [T], info| {
                 let callback_start = Instant::now();
                 diagnostics.callback_count.fetch_add(1, Ordering::Relaxed);
                 if channels == 0 {
@@ -50,8 +103,20 @@ where
                     return;
                 }
 
-                let start_frame = current_frame.load(Ordering::Relaxed);
                 let frames = data.len() / channels;
+                let catch_up_frames = playback_timeline.catch_up_frames(
+                    info.timestamp().playback,
+                    frames,
+                    sample_rate,
+                );
+                let start_frame =
+                    current_frame.load(Ordering::Relaxed).saturating_add(catch_up_frames);
+                if catch_up_frames != 0 {
+                    diagnostics.timeline_catch_up_count.fetch_add(1, Ordering::Relaxed);
+                    diagnostics
+                        .timeline_catch_up_frames
+                        .fetch_add(catch_up_frames, Ordering::Relaxed);
+                }
                 render_output(
                     data,
                     OutputRenderLayout { channels, channel_offset, start_frame },
@@ -63,7 +128,7 @@ where
                     &diagnostics,
                 );
                 diagnostics.rendered_frames.fetch_add(frames as u64, Ordering::Relaxed);
-                current_frame.fetch_add(frames as u64, Ordering::Relaxed);
+                current_frame.store(start_frame.saturating_add(frames as u64), Ordering::Relaxed);
                 diagnostics.observe_callback_duration(callback_start);
             },
             move |error| {
@@ -330,6 +395,8 @@ impl CpalOutputDiagnosticsCounters {
         CpalOutputDiagnostics {
             callback_count: self.callback_count.load(Ordering::Relaxed),
             rendered_frames: self.rendered_frames.load(Ordering::Relaxed),
+            timeline_catch_up_count: self.timeline_catch_up_count.load(Ordering::Relaxed),
+            timeline_catch_up_frames: self.timeline_catch_up_frames.load(Ordering::Relaxed),
             stream_error_count: self.stream_error_count.load(Ordering::Relaxed),
             source_lock_miss_count: self.source_lock_miss_count.load(Ordering::Relaxed),
             engine_lock_miss_count: self.engine_lock_miss_count.load(Ordering::Relaxed),
@@ -448,5 +515,88 @@ impl OutputSample for u16 {
 impl OutputSample for i32 {
     fn from_f32(value: f32) -> Self {
         (value.clamp(-1.0, 1.0) as f64 * i32::MAX as f64) as i32
+    }
+}
+
+#[cfg(test)]
+mod playback_timeline_tests {
+    use super::*;
+
+    const SAMPLE_RATE: u32 = 48_000;
+    const BUFFER_FRAMES: usize = 480;
+
+    #[test]
+    fn callback_jitter_does_not_trigger_timeline_catch_up() {
+        let mut timeline = OutputPlaybackTimeline::default();
+        assert_eq!(
+            timeline.catch_up_frames(
+                ::cpal::StreamInstant::from_millis(1_000),
+                BUFFER_FRAMES,
+                SAMPLE_RATE,
+            ),
+            0
+        );
+        assert_eq!(
+            timeline.catch_up_frames(
+                ::cpal::StreamInstant::from_millis(1_029),
+                BUFFER_FRAMES * 2,
+                SAMPLE_RATE,
+            ),
+            0
+        );
+        assert_eq!(
+            timeline.catch_up_frames(
+                ::cpal::StreamInstant::from_millis(1_049),
+                BUFFER_FRAMES,
+                SAMPLE_RATE,
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn confirmed_playback_gap_advances_the_logical_output_frame() {
+        let mut timeline = OutputPlaybackTimeline::default();
+        timeline.catch_up_frames(
+            ::cpal::StreamInstant::from_millis(1_000),
+            BUFFER_FRAMES,
+            SAMPLE_RATE,
+        );
+
+        assert_eq!(
+            timeline.catch_up_frames(
+                ::cpal::StreamInstant::from_millis(1_110),
+                BUFFER_FRAMES,
+                SAMPLE_RATE,
+            ),
+            4_800
+        );
+    }
+
+    #[test]
+    fn invalid_backward_timestamp_resets_without_correction() {
+        let mut timeline = OutputPlaybackTimeline::default();
+        timeline.catch_up_frames(
+            ::cpal::StreamInstant::from_millis(1_000),
+            BUFFER_FRAMES,
+            SAMPLE_RATE,
+        );
+
+        assert_eq!(
+            timeline.catch_up_frames(
+                ::cpal::StreamInstant::from_millis(900),
+                BUFFER_FRAMES,
+                SAMPLE_RATE,
+            ),
+            0
+        );
+        assert_eq!(
+            timeline.catch_up_frames(
+                ::cpal::StreamInstant::from_millis(910),
+                BUFFER_FRAMES,
+                SAMPLE_RATE,
+            ),
+            0
+        );
     }
 }

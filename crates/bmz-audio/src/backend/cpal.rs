@@ -96,6 +96,8 @@ pub struct CpalOutput {
 pub struct CpalOutputDiagnostics {
     pub callback_count: u64,
     pub rendered_frames: u64,
+    pub timeline_catch_up_count: u64,
+    pub timeline_catch_up_frames: u64,
     pub stream_error_count: u64,
     pub source_lock_miss_count: u64,
     pub engine_lock_miss_count: u64,
@@ -113,6 +115,8 @@ pub struct CpalOutputDiagnostics {
 struct CpalOutputDiagnosticsCounters {
     callback_count: AtomicU64,
     rendered_frames: AtomicU64,
+    timeline_catch_up_count: AtomicU64,
+    timeline_catch_up_frames: AtomicU64,
     stream_error_count: AtomicU64,
     source_lock_miss_count: AtomicU64,
     engine_lock_miss_count: AtomicU64,

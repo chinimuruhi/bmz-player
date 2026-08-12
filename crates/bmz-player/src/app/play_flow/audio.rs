@@ -48,6 +48,10 @@ impl WinitApp {
             return;
         }
         let rendered_frames = snapshot.rendered_frames.saturating_sub(previous.rendered_frames);
+        let timeline_catch_ups =
+            snapshot.timeline_catch_up_count.saturating_sub(previous.timeline_catch_up_count);
+        let timeline_catch_up_frames =
+            snapshot.timeline_catch_up_frames.saturating_sub(previous.timeline_catch_up_frames);
         let stream_errors = snapshot.stream_error_count.saturating_sub(previous.stream_error_count);
         let source_lock_misses =
             snapshot.source_lock_miss_count.saturating_sub(previous.source_lock_miss_count);
@@ -104,6 +108,7 @@ impl WinitApp {
         });
 
         if stream_errors == 0
+            && timeline_catch_ups == 0
             && source_lock_misses == 0
             && engine_lock_misses == 0
             && command_drops == 0
@@ -119,6 +124,8 @@ impl WinitApp {
             rendered_frames,
             avg_callback_frames,
             sample_rate,
+            timeline_catch_ups,
+            timeline_catch_up_frames,
             stream_errors,
             source_lock_misses,
             engine_lock_misses,

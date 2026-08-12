@@ -29,6 +29,8 @@ use crate::video_bga::ActiveVideoBgaDecoder;
 pub struct AudioOutputDiagnostics {
     pub callback_count: u64,
     pub rendered_frames: u64,
+    pub timeline_catch_up_count: u64,
+    pub timeline_catch_up_frames: u64,
     pub stream_error_count: u64,
     pub source_lock_miss_count: u64,
     pub engine_lock_miss_count: u64,
@@ -54,6 +56,8 @@ impl AudioOutputDiagnostics {
         Self {
             callback_count: snapshot.callback_count,
             rendered_frames: snapshot.rendered_frames,
+            timeline_catch_up_count: snapshot.timeline_catch_up_count,
+            timeline_catch_up_frames: snapshot.timeline_catch_up_frames,
             stream_error_count: snapshot.stream_error_count,
             source_lock_miss_count: snapshot.source_lock_miss_count,
             engine_lock_miss_count: snapshot.engine_lock_miss_count,
