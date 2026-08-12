@@ -101,11 +101,13 @@ fn play_plan_includes_lanes_notes_and_bar_lines() {
 
 #[test]
 fn play_plan_renders_judge_area_and_processed_note_fallback() {
-    let mut snapshot = RenderSnapshot::default();
-    snapshot.judge_area = true;
-    snapshot.judge_area_key_y = [0.02, 0.04, 0.08, 0.12, 0.2];
-    snapshot.judge_area_scratch_y = [0.03, 0.06, 0.1, 0.15, 0.25];
-    snapshot.mark_processed_note = true;
+    let mut snapshot = RenderSnapshot {
+        judge_area: true,
+        judge_area_key_y: [0.02, 0.04, 0.08, 0.12, 0.2],
+        judge_area_scratch_y: [0.03, 0.06, 0.1, 0.15, 0.25],
+        mark_processed_note: true,
+        ..RenderSnapshot::default()
+    };
     snapshot.visible_notes[Lane::Key1.index()].push(VisibleNote {
         lane: Lane::Key1,
         time: TimeUs(1_000),
