@@ -116,10 +116,16 @@ pub(super) fn install_sandbox(
     package.set("cpath", "")?;
     package.set("loadlib", Value::Nil)?;
 
-    let print = lua.create_function(|_, args: Variadic<Value>| {
+    let print_skin_path = path_context.entry_file().to_path_buf();
+    let print = lua.create_function(move |_, args: Variadic<Value>| {
         let parts =
             args.into_iter().map(|value| lua_value_to_log_string(&value)).collect::<Vec<_>>();
-        eprintln!("lua: {}", parts.join("\t"));
+        tracing::info!(
+            target: "bmz_skin::lua::print",
+            skin = %print_skin_path.display(),
+            "{}",
+            parts.join("\t")
+        );
         Ok(())
     })?;
     globals.set("print", print)?;
