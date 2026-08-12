@@ -415,6 +415,7 @@ fn apply_running_play_mode_to_snapshot(
     snapshot.score_save_enabled = !snapshot.autoplay
         && !snapshot.replay_playback
         && !running.practice_mode
+        && !running.score_save_disabled
         && running.session.assist.score_update_enabled();
 }
 

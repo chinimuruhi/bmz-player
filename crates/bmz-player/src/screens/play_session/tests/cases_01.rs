@@ -334,6 +334,18 @@ fn placeholder_session_visuals_expose_score_save_and_play_modes() {
             false,
             false,
         ),
+        (
+            PlaySessionOptions {
+                assist_runtime: bmz_gameplay::session::AssistRuntime {
+                    level: bmz_gameplay::session::AssistLevel::Assist,
+                    ..Default::default()
+                },
+                ..PlaySessionOptions::default()
+            },
+            false,
+            false,
+            false,
+        ),
     ] {
         let mut snapshot = bmz_render::snapshot::RenderSnapshot::default();
         apply_placeholder_session_visuals(&mut snapshot, &profile, KeyMode::K7, &options);
