@@ -122,6 +122,12 @@ impl SelectIrRanking {
                     global: ranking_to_ir_snapshot(&global),
                     self_and_rivals: self_and_rivals.as_ref().map(ranking_to_ir_snapshot),
                     rival: rivals.as_ref().and_then(top_rival_snapshot),
+                    global_battle_entries: battle_entries(&global),
+                    self_and_rivals_battle_entries: self_and_rivals
+                        .as_ref()
+                        .map(battle_entries)
+                        .unwrap_or_default(),
+                    battle_entries_loaded: true,
                     global_ex_scores: ranking_ex_scores(&global),
                     rival_ex_scores: rivals.as_ref().map(ranking_ex_scores).unwrap_or_default(),
                     completed_at,
@@ -135,6 +141,9 @@ impl SelectIrRanking {
                         },
                         self_and_rivals: None,
                         rival: None,
+                        global_battle_entries: Vec::new(),
+                        self_and_rivals_battle_entries: Vec::new(),
+                        battle_entries_loaded: true,
                         global_ex_scores: Vec::new(),
                         rival_ex_scores: Vec::new(),
                         completed_at,
@@ -151,7 +160,7 @@ impl SelectIrRanking {
             self.pending = None;
             return;
         };
-        if self.cache.contains_key(&sha256)
+        if self.cache.get(&sha256).is_some_and(|entry| entry.battle_entries_loaded)
             || self.in_flight.as_ref().is_some_and(|(_, in_flight_sha, _)| *in_flight_sha == sha256)
         {
             self.pending = None;
@@ -280,10 +289,24 @@ impl SelectIrRanking {
             );
             return;
         };
-        let (rival, rival_ex_scores) = self
+        let (
+            rival,
+            rival_ex_scores,
+            global_battle_entries,
+            self_and_rivals_battle_entries,
+            battle_entries_loaded,
+        ) = self
             .cache
             .get(&sha256)
-            .map(|entry| (entry.rival.clone(), entry.rival_ex_scores.clone()))
+            .map(|entry| {
+                (
+                    entry.rival.clone(),
+                    entry.rival_ex_scores.clone(),
+                    entry.global_battle_entries.clone(),
+                    entry.self_and_rivals_battle_entries.clone(),
+                    entry.battle_entries_loaded,
+                )
+            })
             .unwrap_or_default();
         self.insert_entry(
             sha256,
@@ -294,6 +317,9 @@ impl SelectIrRanking {
                     .get(&sha256)
                     .and_then(|entry| entry.self_and_rivals.clone()),
                 rival,
+                global_battle_entries,
+                self_and_rivals_battle_entries,
+                battle_entries_loaded,
                 global_ex_scores: result_ranking_ex_scores(ranking),
                 rival_ex_scores,
                 completed_at: Instant::now(),

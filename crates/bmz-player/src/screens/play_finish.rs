@@ -459,9 +459,7 @@ fn enqueue_ir_jobs(
         summary,
         previous_best,
     } = request;
-    // Ghost Battle はローカルの1Pスコアとして保存するが、表示用に複製した
-    // K10/K14 chart を外部IRへ通常譜面として送信しない。
-    if stored.score_history_id <= 0 || snapshot.replay_lane_mask {
+    if stored.score_history_id <= 0 {
         return;
     }
     let enabled: Vec<_> = ir_config
@@ -480,8 +478,15 @@ fn enqueue_ir_jobs(
     if enabled.is_empty() {
         return;
     }
+    // G-BATTLE internally duplicates an SP chart into K10/K14. IR stores the
+    // human 1P attempt under the original SP identity, so strip only the
+    // display opponent lanes before building chart metadata.
+    let projected_chart = snapshot
+        .replay_lane_mask
+        .then(|| primary_chart_from_battle(&snapshot.chart, snapshot.primary_key_mode));
+    let submission_chart = projected_chart.as_ref().unwrap_or(&snapshot.chart);
     let payload = build_score_submission(
-        &snapshot.chart,
+        submission_chart,
         result,
         IrSubmissionContext {
             played_at,
@@ -493,7 +498,11 @@ fn enqueue_ir_jobs(
             device_type: stored.device_type,
             idempotency_key: format!("bmz-score-{}", stored.score_history_id),
             arrange: applied_arrange.arrange,
-            arrange_2p: applied_arrange.arrange_2p,
+            arrange_2p: if snapshot.replay_lane_mask {
+                crate::select_options::ArrangeOption::Normal
+            } else {
+                applied_arrange.arrange_2p
+            },
             double_option: score_key.double_option,
             applied_double_option: applied_arrange.double_option,
             arrange_seed: applied_arrange.packed_beatoraja_seed(snapshot.primary_key_mode),
@@ -520,7 +529,7 @@ fn enqueue_ir_jobs(
                 result.clear_type.as_str(),
                 chart_length_ms,
                 play_duration_ms,
-                snapshot.chart.metadata.has_bms_random,
+                submission_chart.metadata.has_bms_random,
             )
         {
             let error = format!(
@@ -556,6 +565,17 @@ fn enqueue_ir_jobs(
             }
         }
     }
+}
+
+fn primary_chart_from_battle(chart: &PlayableChart, primary_key_mode: KeyMode) -> PlayableChart {
+    let mut projected = chart.clone();
+    for lane_notes in &mut projected.lane_notes[8..] {
+        lane_notes.clear();
+    }
+    projected.long_notes.retain(|pair| pair.lane.index() < 8);
+    projected.total_notes /= 2;
+    projected.metadata.key_mode = primary_key_mode;
+    projected
 }
 
 /// 送信ポリシーによる IR ジョブ作成可否。

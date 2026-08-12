@@ -66,6 +66,7 @@ beatoraja互換JSONの入出力、保存した内容のテストプレイを行�
 | Ctrl+F3 / Ctrl+Shift+F3 | MD5 / SHA256 をクリップボードへコピー（従来互換） |
 | F10 | 選択中フォルダ内の譜面を Autoplay |
 | F11 | 選択中譜面のプライマリIRページを開く |
+| Tab | GHOST BATTLE選択中、IRランキングを固定表示 / 閉じる |
 | 7 / Numpad7 | rianIRの選択ライバルを `NONE → 登録順` で切替 |
 | Numpad9 | 選択中譜面と同じフォルダの `.txt` 曲テキストを開く |
 | F8 | favorite song を登録 / 解除 |
@@ -95,6 +96,15 @@ Webサイト側で行います。
 `RANDOM SELECT` 行は設定フォルダの `選曲 > RANDOM SELECT` から表示を切り替えられます。
 favorite 操作は invisible を使わず、登録済みなら解除、未登録なら登録します。
 
+5K / 7K譜面でSESSION MODEを`GHOST BATTLE`にし、プライマリIRのランキング取得が
+完了している場合、通常状態の`KEY4`を120ms以上長押しするとLR2と同様に曲リストが
+IRランキングへ一時的に切り替わります。キーを離すと元の曲リストへ戻ります。
+`Tab`ではランキングを固定表示でき、もう一度`Tab`、戻る操作、`Escape`で閉じます。
+ランキング中も上下・ページ移動・スクラッチ・マウスホイールで相手を選び、決定すると
+公開済みの検証済みリプレイを取得してG-BATTLEを開始します。リプレイが未公開、未検証、
+形式不一致、譜面/LNポリシー不一致の場合は開始せず、選曲画面に理由を表示します。
+現時点でIRリプレイを公開するプライマリIRだけが対象で、rianIRランキングは対象外です。
+
 `COURSE` フォルダの `新規コース` を決定すると、LR2風のコース作成モードへ入ります。
 通常どおり曲フォルダや難易度表、検索結果を移動し、所持譜面を決定すると課題曲へ追加します。
 課題曲は同じキーモードで最大5譜面まで追加でき、同じ譜面の重複も可能です。
@@ -121,7 +131,7 @@ F1メニューの「コース / 段位作成」を使用します。
 | KEY1 | 決定 / 開く / 曲開始 | 1P RANDOM 次 | EXPAND JUDGE 切替 | BGA 切替 |
 | KEY2 | 戻る / 閉じる | 1P RANDOM 前 | CONSTANT 切替 | GAUGE AUTO SHIFT 切替 |
 | KEY3 | 決定 / 開く / 曲開始 | GAUGE 次 | JUDGE AREA 切替 | JUDGE AUTO ADJUST 切替 |
-| KEY4 | 戻る / 閉じる | GAUGE 前 | LEGACY NOTE 切替 | GREEN NUMBER -1 |
+| KEY4 | 戻る / 閉じる（GHOST BATTLE時は120ms長押しでIRランキング） | GAUGE 前 | LEGACY NOTE 切替 | GREEN NUMBER -1 |
 | KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | MARK NOTE 切替 | VISUAL OFFSET -1 ms |
 | KEY6 | 戻る / 閉じる | DP OPTION 次 | BPM GUIDE 切替 | GREEN NUMBER +1 |
 | KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → AUTOPLAY → AUTOPLAY BATTLE → GHOST BATTLE） | NO MINE 切替 | VISUAL OFFSET +1 ms |

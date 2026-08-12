@@ -540,11 +540,23 @@ pub struct IrRankingPlayer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IrRankingScore {
+    /// 公開リプレイ取得に使う、IR上のスコアID。
+    /// リプレイAPIを持たない互換IRでは返らない。
+    #[serde(default)]
+    pub score_id: Option<String>,
     pub clear: String,
     pub ex_score: u32,
     pub max_combo: u32,
     pub min_bp: u32,
     pub min_cb: u32,
+    #[serde(default)]
+    pub gauge: Option<String>,
+    #[serde(default)]
+    pub arrange_1p: Option<String>,
+    #[serde(default)]
+    pub arrange_2p: Option<String>,
+    #[serde(default)]
+    pub verification: Option<String>,
     #[serde(default)]
     pub judges: Option<IrJudgePayload>,
     #[serde(default)]

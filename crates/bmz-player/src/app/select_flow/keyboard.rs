@@ -333,6 +333,31 @@ impl WinitApp {
         control_event: &ControlInputEvent,
     ) {
         if matches!(self.view_state(), AppViewState::Select)
+            && self.select.select_option_panel == 0
+            && let Some(control) = physical_key_name(event.physical_key)
+            && self.select.select_keys.is_ui_key4(&control)
+        {
+            match event.state {
+                ElementState::Pressed if !event.repeat => {
+                    if self.begin_select_ir_battle_hold(&control) {
+                        return;
+                    }
+                }
+                ElementState::Released if self.finish_select_ir_battle_hold(&control) => return,
+                _ => {}
+            }
+        }
+
+        if matches!(self.view_state(), AppViewState::Select)
+            && event.physical_key == PhysicalKey::Code(KeyCode::Tab)
+            && event.state == ElementState::Pressed
+            && !event.repeat
+        {
+            self.toggle_select_ir_battle();
+            return;
+        }
+
+        if matches!(self.view_state(), AppViewState::Select)
             && event.physical_key == PhysicalKey::Code(KeyCode::F5)
             && event.state == ElementState::Pressed
             && !event.repeat
@@ -399,6 +424,15 @@ impl WinitApp {
                 }
                 _ => {}
             }
+        }
+
+        if self.select.ir_battle.active
+            && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
+            && event.state == ElementState::Pressed
+            && !event.repeat
+        {
+            self.close_select_ir_battle();
+            return;
         }
 
         // Select 画面で ESC 長押し → アプリ終了 (実際の exit は redraw 時にチェック)。

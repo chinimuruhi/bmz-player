@@ -28,6 +28,22 @@ use crate::select_options::TargetOption;
 use crate::storage::common::{hash_to_hex, hex_to_hash};
 use crate::storage::network_db::IrRivalScoreRecord;
 
+/// 選曲中にG-BATTLEの相手として選べるIRランキング行。
+/// 描画用snapshotとは分離し、リプレイ取得に必要な識別情報を失わない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectIrBattleEntry {
+    pub rank: u32,
+    pub player_id: String,
+    pub player_name: String,
+    pub score_id: Option<String>,
+    pub ex_score: u32,
+    pub clear: String,
+    pub bp: u32,
+    pub max_combo: u32,
+    pub gauge: Option<String>,
+    pub verification: Option<String>,
+}
+
 /// カーソルがとどまってから取得を始めるまでの待ち時間。
 /// 連打スクロールで全行を取得しに行かないためのデバウンス。
 const FETCH_DEBOUNCE: Duration = Duration::from_millis(400);
@@ -126,6 +142,9 @@ struct CachedChartIr {
     global: ResultIrSnapshot,
     self_and_rivals: Option<ResultIrSnapshot>,
     rival: Option<SelectRivalSnapshot>,
+    global_battle_entries: Vec<SelectIrBattleEntry>,
+    self_and_rivals_battle_entries: Vec<SelectIrBattleEntry>,
+    battle_entries_loaded: bool,
     global_ex_scores: Vec<u32>,
     rival_ex_scores: Vec<u32>,
     completed_at: Instant,
@@ -274,11 +293,16 @@ mod tests {
                         display_name: "player".to_string(),
                     },
                     score: IrRankingScore {
+                        score_id: Some("score-1".to_string()),
                         clear: "Hard".to_string(),
                         ex_score,
                         max_combo: 300,
                         min_bp: 2,
                         min_cb: 2,
+                        gauge: Some("Groove".to_string()),
+                        arrange_1p: Some("Normal".to_string()),
+                        arrange_2p: None,
+                        verification: Some("verified_play".to_string()),
                         judges: None,
                         device_type: None,
                         played_at: None,
@@ -369,6 +393,9 @@ mod tests {
                     bp: 12,
                     judge_counts: None,
                 }),
+                global_battle_entries: Vec::new(),
+                self_and_rivals_battle_entries: Vec::new(),
+                battle_entries_loaded: true,
                 global_ex_scores: vec![1800, 1600, 1400],
                 rival_ex_scores: vec![1500, 1200],
                 completed_at: Instant::now(),
@@ -512,6 +539,9 @@ mod tests {
                     bp: 12,
                     judge_counts: None,
                 }),
+                global_battle_entries: Vec::new(),
+                self_and_rivals_battle_entries: Vec::new(),
+                battle_entries_loaded: true,
                 global_ex_scores: vec![1200],
                 rival_ex_scores: vec![1500],
                 completed_at: Instant::now(),

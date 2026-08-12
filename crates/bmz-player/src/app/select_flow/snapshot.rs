@@ -36,7 +36,10 @@ impl WinitApp {
             .select_skin_document()
             .map(|document| document.select_ir_scope_binding)
             .unwrap_or_default();
-        let current_folder = match self.select.folder_stack.last() {
+        let current_folder = if self.select.ir_battle.active {
+            "IR RANKING / G-BATTLE".to_string()
+        } else {
+            match self.select.folder_stack.last() {
             None => String::new(),
             Some(path) if path == FAVORITE_ROOT_PATH => "FAVORITE".to_string(),
             Some(path) if path == FAVORITE_CHART_PATH => "FAVORITE CHART".to_string(),
@@ -76,6 +79,7 @@ impl WinitApp {
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string(),
+            }
         };
         let (search_word, search_word_alpha, search_caret_byte_index) = self.display_search_word();
         self.ensure_visible_select_chart_distributions(25);
@@ -86,6 +90,13 @@ impl WinitApp {
         let note_display_duration_ms = mode_config
             .as_ref()
             .map(|config| config.target_green_number.max(1).min(i32::MAX as u32) as i32);
+        let ir_battle_entries =
+            self.select.select_ir.battle_entries_for(self.select.ir_battle.source_sha256);
+        let displayed_index = if self.select.ir_battle.active {
+            self.select.ir_battle.cursor
+        } else {
+            self.select.selected_index
+        };
         SelectSnapshot {
             time: self.select_time(),
             player_name: String::new(),
@@ -102,29 +113,50 @@ impl WinitApp {
                 .option_panel_off_started_at
                 .map(|started_at| started_at.map(elapsed_since)),
             option_panel: self.select.select_option_panel,
-            chart_count: self.select.select_items.len() as u32,
-            selected_index: self.select.selected_index as u32,
+            chart_count: if self.select.ir_battle.active {
+                ir_battle_entries.len()
+            } else {
+                self.select.select_items.len()
+            } as u32,
+            selected_index: displayed_index as u32,
             bar_scroll_direction: self.select.select_bar_scroll_direction,
             bar_scroll_progress: self.select_bar_scroll_progress(),
             selected_chart_id: match selected {
                 Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| chart.chart_id),
                 _ => None,
             },
-            selected_replay_slot: self.selected_replay_slot_for_selected(),
-            selected_title: selected
-                .map(|item| item.display_name_for_locale(locale))
-                .unwrap_or_default(),
+            selected_replay_slot: if self.select.ir_battle.active {
+                None
+            } else {
+                self.selected_replay_slot_for_selected()
+            },
+            selected_title: if self.select.ir_battle.active {
+                ir_battle_entries
+                    .get(self.select.ir_battle.cursor)
+                    .map(|entry| entry.player_name.clone())
+                    .unwrap_or_default()
+            } else {
+                selected.map(|item| item.display_name_for_locale(locale)).unwrap_or_default()
+            },
             hispeed: mode_config.as_ref().map(|config| config.hispeed).unwrap_or(0.0),
             note_display_duration_ms,
-            rows: select_snapshot_rows_with_rival(
-                &self.select.select_items,
-                self.select.selected_index,
-                25,
-                &self.boot.profile_config,
-                self.select.key_config_edit.as_ref(),
-                &chart_distributions,
-                Some(&self.select.select_ir),
-            ),
+            rows: if self.select.ir_battle.active {
+                crate::app::select_ir_battle::select_ir_battle_snapshot_rows(
+                    ir_battle_entries,
+                    self.select.ir_battle.cursor,
+                    25,
+                )
+            } else {
+                select_snapshot_rows_with_rival(
+                    &self.select.select_items,
+                    self.select.selected_index,
+                    25,
+                    &self.boot.profile_config,
+                    self.select.key_config_edit.as_ref(),
+                    &chart_distributions,
+                    Some(&self.select.select_ir),
+                )
+            },
             arrange: self.select.arrange_option.as_str().to_string(),
             arrange_2p: self.select.arrange_option_2p.as_str().to_string(),
             // 通常のRANDOMはプレイ開始時に抽選する。将来、選曲中に確定した

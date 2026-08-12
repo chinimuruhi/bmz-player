@@ -190,6 +190,7 @@ impl WinitApp {
         // Decide / retry / direct boot のどの経路でも、Play 入場後の常時表示が
         // pending state の破棄に左右されないよう、ここで今回の mode を記録する。
         self.result.last_play_session_mode = options.session_mode;
+        self.play.last_ghost_battle_target = options.ghost_battle_target.clone();
         // リザルトの非同期 IR state は今回の試行だけを表す。retry 中にも残すと
         // 同じ chart hash の前回スコアを次の Result で表示し得るため、Play へ
         // 入る時点で直ちに手放す（バックグラウンド送信自体は継続する）。

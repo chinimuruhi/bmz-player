@@ -29,7 +29,20 @@ use crate::select_options::{
     ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
 };
 use crate::storage::library_db::LibraryDatabase;
+use crate::storage::replay::ReplayFile;
 use crate::storage::score_db::ScoreDatabase;
+
+#[derive(Debug, Clone)]
+pub struct GhostBattleTarget {
+    pub provider: String,
+    pub score_id: String,
+    pub player_id: String,
+    pub player_name: String,
+    pub rank: u32,
+    pub ex_score: u32,
+    pub gauge: Option<GaugeType>,
+    pub replay: ReplayFile,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct PlayStartOptions {
@@ -42,6 +55,9 @@ pub struct PlayStartOptions {
     pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
     pub replay_player: Option<ReplayPlayer>,
+    /// IR ranking entry selected as the 2P ghost. None keeps the local
+    /// self-best G-BATTLE behavior.
+    pub ghost_battle_target: Option<GhostBattleTarget>,
     pub chart_zero_time: TimeUs,
     /// Override profile gauge type. None means use the profile default.
     pub gauge: Option<GaugeTypeConfig>,
@@ -122,6 +138,8 @@ pub fn play_session_options_from_start(
         .gauge
         .map(|gauge| gauge_auto_shift_from_config(gauge, start_options.gauge_auto_shift))
         .unwrap_or_default();
+    let opponent_gauge_override =
+        start_options.ghost_battle_target.as_ref().and_then(|target| target.gauge);
 
     PlaySessionOptions {
         play_config_key_mode: None,
@@ -142,6 +160,7 @@ pub fn play_session_options_from_start(
         replay_player: start_options.replay_player,
         sample_rate: app_config.audio.sample_rate,
         gauge_override,
+        opponent_gauge_override,
         gauge_auto_shift,
         bottom_shiftable_gauge: bottom_shiftable_gauge_from_config(
             start_options.bottom_shiftable_gauge,

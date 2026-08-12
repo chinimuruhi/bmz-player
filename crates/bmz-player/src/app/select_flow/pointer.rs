@@ -227,6 +227,19 @@ impl WinitApp {
     }
 
     pub(super) fn apply_select_scroll_slider(&mut self, value: f32) {
+        if self.select.ir_battle.active {
+            let len =
+                self.select.select_ir.battle_entries_for(self.select.ir_battle.source_sha256).len();
+            let Some(next) = select_scroll_slider_index(value, len) else {
+                return;
+            };
+            if self.select.ir_battle.cursor != next {
+                self.select.ir_battle.cursor = next;
+                self.restart_select_bar_timer_without_scroll(Instant::now());
+                self.play_system_sound(crate::system_sound::SoundType::Scratch);
+            }
+            return;
+        }
         let Some(next) = select_scroll_slider_index(value, self.select.select_items.len()) else {
             return;
         };
@@ -260,6 +273,32 @@ impl WinitApp {
     }
 
     pub(super) fn handle_select_row_click(&mut self, row_index: u32, button: MouseButton) {
+        if self.select.ir_battle.active {
+            let len =
+                self.select.select_ir.battle_entries_for(self.select.ir_battle.source_sha256).len();
+            match select_row_click_action(
+                row_index,
+                button,
+                self.select.ir_battle.cursor,
+                len,
+                false,
+            ) {
+                Some(SelectRowClickAction::Select(next)) => {
+                    self.select.ir_battle.cursor = next;
+                    self.restart_select_bar_timer_without_scroll(Instant::now());
+                    self.play_system_sound(crate::system_sound::SoundType::Scratch);
+                }
+                Some(SelectRowClickAction::EnterOrPlay) => {
+                    self.start_selected_ir_ghost_battle();
+                }
+                Some(SelectRowClickAction::ExitFolder)
+                | Some(SelectRowClickAction::CancelSettingsEdit) => {
+                    self.close_select_ir_battle();
+                }
+                None => {}
+            }
+            return;
+        }
         if in_settings_stack(&self.select.folder_stack) && button == MouseButton::Left {
             if self.select.settings_edit.is_some() {
                 self.commit_settings_edit();

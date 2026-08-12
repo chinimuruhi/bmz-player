@@ -188,6 +188,7 @@ impl WinitApp {
             select: SelectRuntimeState {
                 autoplay_folder: None,
                 select_ir: crate::screens::select_ir::SelectIrRanking::default(),
+                ir_battle: crate::app::select_ir_battle::SelectIrBattleRuntime::default(),
                 player_stats,
                 score_refresh: SelectScoreRefreshState::default(),
                 course_builder: None,
@@ -251,6 +252,7 @@ impl WinitApp {
                 play_media_cache: None,
                 play_ending: None,
                 last_started_chart_id: None,
+                last_ghost_battle_target: None,
                 play_table_text_primary: String::new(),
                 play_table_text_secondary: String::new(),
                 play_table_text_fallback: String::new(),

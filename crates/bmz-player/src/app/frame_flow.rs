@@ -468,8 +468,13 @@ impl WinitApp {
             };
         let configured_ln_policy = self.boot.profile_config.play.ln_mode_policy;
         let ln_policy = crate::ln_policy::score_ln_policy(configured_ln_policy, ln_profile);
-        let double_option =
-            self.select.double_option.normalize_for_key_mode(key_mode).score_bucket();
+        let double_option = if self.select.session_mode.is_battle()
+            && matches!(key_mode, KeyMode::K5 | KeyMode::K7)
+        {
+            crate::select_options::DoubleOptionScoreBucket::Off
+        } else {
+            self.select.double_option.normalize_for_key_mode(key_mode).score_bucket()
+        };
         let rule_mode = self.boot.profile_config.play.rule_mode;
         let context =
             select_ir_cache_context(configured_ln_policy, ln_policy, double_option, rule_mode);

@@ -18,24 +18,32 @@ pub(super) fn spawn_fetch(
     tracing::debug!(chart = %query.chart_sha256_hex, "fetching select IR ranking");
     tokio::spawn(async move {
         let result = async {
-            let global =
-                crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Global).await?;
+            let global = crate::screens::result_ir::fetch_ranking_with_limit(
+                &query,
+                IrRankingScope::Global,
+                200,
+            )
+            .await?;
             // Self-and-Rivals / Rivals scope は要認証。未ログイン等で失敗しても
             // グローバルランキング表示は維持する。
             let (self_and_rivals, rivals) =
                 if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
                     (None, None)
                 } else {
-                    let self_and_rivals = crate::screens::result_ir::fetch_ranking(
+                    let self_and_rivals = crate::screens::result_ir::fetch_ranking_with_limit(
                         &query,
                         IrRankingScope::SelfAndRivals,
+                        200,
                     )
                     .await
                     .ok();
-                    let rivals =
-                        crate::screens::result_ir::fetch_ranking(&query, IrRankingScope::Rivals)
-                            .await
-                            .ok();
+                    let rivals = crate::screens::result_ir::fetch_ranking_with_limit(
+                        &query,
+                        IrRankingScope::Rivals,
+                        200,
+                    )
+                    .await
+                    .ok();
                     (self_and_rivals, rivals)
                 };
             anyhow::Ok((global, self_and_rivals, rivals))
@@ -181,6 +189,26 @@ pub(super) fn top_rival_snapshot(rivals: &IrRankingResult) -> Option<SelectRival
 
 pub(super) fn ranking_ex_scores(ranking: &IrRankingResult) -> Vec<u32> {
     ranking.ranking.entries.iter().map(|entry| entry.score.ex_score).collect()
+}
+
+pub(super) fn battle_entries(ranking: &IrRankingResult) -> Vec<SelectIrBattleEntry> {
+    ranking
+        .ranking
+        .entries
+        .iter()
+        .map(|entry| SelectIrBattleEntry {
+            rank: entry.rank,
+            player_id: entry.player.id.clone(),
+            player_name: entry.player.display_name.clone(),
+            score_id: entry.score.score_id.clone(),
+            ex_score: entry.score.ex_score,
+            clear: entry.score.clear.clone(),
+            bp: entry.score.min_bp,
+            max_combo: entry.score.max_combo,
+            gauge: entry.score.gauge.clone(),
+            verification: entry.score.verification.clone(),
+        })
+        .collect()
 }
 
 pub(super) fn result_ranking_ex_scores(ranking: &ResultIrRanking) -> Vec<u32> {

@@ -439,7 +439,7 @@ pub use snapshot::ranking_to_ir_snapshot;
 pub(crate) use snapshot::{
     course_ranking_to_result_ir_ranking, result_ir_ranking_to_skin_snapshot,
 };
-pub(crate) use task::fetch_ranking;
+pub(crate) use task::fetch_ranking_with_limit;
 pub use task::{spawn_course_result_ir_task, spawn_result_ir_task};
 
 use snapshot::*;
@@ -483,11 +483,16 @@ mod tests {
                         display_name: "hyrorre".to_string(),
                     },
                     score: IrRankingScore {
+                        score_id: Some("score-1".to_string()),
                         clear: "Perfect".to_string(),
                         ex_score: 46,
                         max_combo: 28,
                         min_bp: 0,
                         min_cb: 0,
+                        gauge: Some("Groove".to_string()),
+                        arrange_1p: Some("Normal".to_string()),
+                        arrange_2p: None,
+                        verification: Some("verified_play".to_string()),
                         judges: None,
                         device_type: None,
                         played_at: None,

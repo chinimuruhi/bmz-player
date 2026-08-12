@@ -20,6 +20,8 @@ pub(super) struct SelectRuntimeState {
     pub(super) autoplay_folder: Option<AutoplayFolderSession>,
     /// 選曲カーソル譜面の IR ランキングキャッシュ。
     pub(super) select_ir: crate::screens::select_ir::SelectIrRanking,
+    /// LR2-style temporary IR ranking list used to choose a G-BATTLE ghost.
+    pub(super) ir_battle: crate::app::select_ir_battle::SelectIrBattleRuntime,
     /// profile 全体の player statistics。Select / Result skin の NUMBER_TOTAL* 系に渡す。
     pub(super) player_stats: PlayerStatsSnapshot,
     /// Result 保存後、選曲リストが score DB を再取得するまで保持する。
@@ -115,6 +117,8 @@ pub(super) struct PlayRuntimeState {
     pub(super) play_media_cache: Option<PlayMediaCache>,
     pub(super) play_ending: Option<PlayEndingTransition>,
     pub(super) last_started_chart_id: Option<i64>,
+    /// Retained across Result retry so the same IR ghost remains selected.
+    pub(super) last_ghost_battle_target: Option<crate::screens::play_start::GhostBattleTarget>,
     /// プレイ開始時点の難易度表テキスト (beatoraja TEXT_TABLE1..3)。
     pub(super) play_table_text_primary: String,
     pub(super) play_table_text_secondary: String,

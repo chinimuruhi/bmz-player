@@ -119,6 +119,8 @@ pub struct PlaySessionOptions {
     pub replay_player: Option<ReplayPlayer>,
     pub sample_rate: u32,
     pub gauge_override: Option<GaugeType>,
+    /// G-BATTLE opponent gauge reconstructed from the selected IR score.
+    pub opponent_gauge_override: Option<GaugeType>,
     pub gauge_auto_shift: GaugeAutoShiftMode,
     pub bottom_shiftable_gauge: GaugeType,
     pub arrange: ArrangeOption,
@@ -297,6 +299,7 @@ impl Default for PlaySessionOptions {
             replay_player: None,
             sample_rate: 48_000,
             gauge_override: None,
+            opponent_gauge_override: None,
             gauge_auto_shift: GaugeAutoShiftMode::Off,
             bottom_shiftable_gauge: GaugeType::AssistEasy,
             arrange: ArrangeOption::Normal,

@@ -124,32 +124,53 @@ impl WinitApp {
             return Ok(());
         }
 
-        let score_key = crate::storage::score_db::ScoreKey::with_options(
-            chart.identity.file_sha256,
-            crate::ln_policy::score_ln_policy_for_chart(
-                self.boot.profile_config.play.ln_mode_policy,
-                &chart,
-            ),
-            crate::select_options::DoubleOptionScoreBucket::Off,
-            self.boot.profile_config.play.rule_mode,
+        let ln_policy = crate::ln_policy::score_ln_policy_for_chart(
+            self.boot.profile_config.play.ln_mode_policy,
+            &chart,
         );
-        let best = self
-            .boot
-            .score_db
-            .best_scores_for_charts(&[score_key])?
-            .into_iter()
-            .next()
-            .context("self-best score is not available")?;
-        if best.replay_path.is_empty() {
-            anyhow::bail!("self-best score has no full replay");
-        }
-        let replay_path = self.boot.profile_paths.root_dir.join(&best.replay_path);
-        let replay = load_replay_for_chart_policy_and_double_option(
-            &replay_path,
-            chart.identity.file_sha256,
-            best.ln_policy,
-            crate::select_options::DoubleOptionScoreBucket::Off,
-        )?;
+        let replay = if let Some(target) = options.ghost_battle_target.clone() {
+            if target.replay.chart_sha256_bytes()? != chart.identity.file_sha256 {
+                anyhow::bail!("IR ghost replay chart hash does not match selected chart");
+            }
+            if !target.replay.ln_policy.is_empty()
+                && crate::ln_policy::LnScorePolicy::from_str_opt(&target.replay.ln_policy)
+                    != Some(ln_policy)
+            {
+                anyhow::bail!("IR ghost replay long note policy does not match selected chart");
+            }
+            if target.replay.double_option_bucket()
+                != crate::select_options::DoubleOptionScoreBucket::Off
+            {
+                anyhow::bail!("IR ghost replay is not a single-play replay");
+            }
+            options.resolved_target =
+                Some(ResolvedTarget { name: target.player_name, ex_score: target.ex_score });
+            target.replay
+        } else {
+            let score_key = crate::storage::score_db::ScoreKey::with_options(
+                chart.identity.file_sha256,
+                ln_policy,
+                crate::select_options::DoubleOptionScoreBucket::Off,
+                self.boot.profile_config.play.rule_mode,
+            );
+            let best = self
+                .boot
+                .score_db
+                .best_scores_for_charts(&[score_key])?
+                .into_iter()
+                .next()
+                .context("self-best score is not available")?;
+            if best.replay_path.is_empty() {
+                anyhow::bail!("self-best score has no full replay");
+            }
+            let replay_path = self.boot.profile_paths.root_dir.join(&best.replay_path);
+            load_replay_for_chart_policy_and_double_option(
+                &replay_path,
+                chart.identity.file_sha256,
+                best.ln_policy,
+                crate::select_options::DoubleOptionScoreBucket::Off,
+            )?
+        };
         if replay.uses_legacy_seed_scheme() {
             anyhow::bail!("legacy replay seed scheme is not supported by ghost battle");
         }
@@ -157,7 +178,7 @@ impl WinitApp {
             anyhow::bail!("self-best score has no full input replay");
         }
         let replay_s_random_scheme = replay.effective_s_random_scheme()?;
-        let events = replay
+        let events: Vec<_> = replay
             .events
             .iter()
             .filter_map(|event| {
@@ -165,6 +186,9 @@ impl WinitApp {
                     .map(|lane| bmz_core::replay::ReplayEvent { lane, ..*event })
             })
             .collect();
+        if events.is_empty() {
+            anyhow::bail!("ghost replay has no compatible 1P input events");
+        }
         options.autoplay = false;
         options.replay_player = Some(bmz_gameplay::replay::ReplayPlayer { events, next_index: 0 });
         options.arrange_2p = replay.arrange_option();

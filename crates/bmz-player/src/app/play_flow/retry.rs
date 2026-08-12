@@ -70,6 +70,7 @@ impl WinitApp {
 
     pub(super) fn result_retry_same_arrange_options(&self) -> PlayStartOptions {
         let mut options = self.play_start_options();
+        options.ghost_battle_target = self.play.last_ghost_battle_target.clone();
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
@@ -91,6 +92,7 @@ impl WinitApp {
 
     pub(super) fn result_retry_different_arrange_options(&self) -> PlayStartOptions {
         let mut options = self.play_start_options();
+        options.ghost_battle_target = self.play.last_ghost_battle_target.clone();
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
@@ -104,6 +106,7 @@ impl WinitApp {
 
     pub(super) fn active_play_retry_options(&self, mode: ResultRetryMode) -> PlayStartOptions {
         let mut options = self.play_start_options();
+        options.ghost_battle_target = self.play.last_ghost_battle_target.clone();
         if let Some(active) = &self.play.active_play {
             let applied = &active.running.applied_arrange;
             options.seven_to_six = applied.seven_to_six;

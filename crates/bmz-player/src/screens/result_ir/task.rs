@@ -345,6 +345,14 @@ pub(crate) async fn fetch_ranking(
     query: &ResultIrQuery,
     scope: IrRankingScope,
 ) -> anyhow::Result<IrRankingResult> {
+    fetch_ranking_with_limit(query, scope, 20).await
+}
+
+pub(crate) async fn fetch_ranking_with_limit(
+    query: &ResultIrQuery,
+    scope: IrRankingScope,
+    limit: u32,
+) -> anyhow::Result<IrRankingResult> {
     let now = now_unix_seconds();
     if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
         let credentials =
@@ -356,7 +364,7 @@ pub(crate) async fn fetch_ranking(
                 &query.chart_sha256_hex,
                 crate::ir::rian_ir::body_for_rule_mode(query.rule_mode),
                 scope,
-                crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT,
+                limit.min(crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT),
                 credentials.as_ref().map(|credentials| credentials.account_id.as_str()),
             )
             .await;
@@ -377,7 +385,7 @@ pub(crate) async fn fetch_ranking(
                 ln_policy: query.ln_policy.as_str().to_string(),
                 double_option: query.double_option,
                 rule_mode: query.rule_mode,
-                limit: 20,
+                limit,
                 offset: 0,
             },
         )

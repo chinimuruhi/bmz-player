@@ -10,6 +10,10 @@ impl WinitApp {
         select_move: SelectMove,
         duration: Duration,
     ) {
+        if self.select.ir_battle.active {
+            self.move_select_ir_battle(select_move, duration);
+            return;
+        }
         if self.select.select_items.is_empty() {
             self.reload_select_items();
         }

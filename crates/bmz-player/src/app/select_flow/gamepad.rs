@@ -377,6 +377,13 @@ impl WinitApp {
             }
         }
         if !pressed {
+            if matches!(self.view_state(), AppViewState::Select)
+                && self.select.select_option_panel == 0
+                && self.select.select_keys.is_ui_key4(button)
+                && self.finish_select_ir_battle_hold(button)
+            {
+                return;
+            }
             if in_settings_stack(&self.select.folder_stack) {
                 self.clear_select_hold_control(button);
                 return;
@@ -495,6 +502,13 @@ impl WinitApp {
             if pressed {
                 let _ = self.route_settings_control(button);
             }
+            return;
+        }
+
+        if self.select.select_option_panel == 0
+            && self.select.select_keys.is_ui_key4(button)
+            && self.begin_select_ir_battle_hold(button)
+        {
             return;
         }
 

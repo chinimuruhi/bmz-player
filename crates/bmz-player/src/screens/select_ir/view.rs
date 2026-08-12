@@ -106,6 +106,16 @@ impl SelectIrRanking {
         self.active_scope
     }
 
+    pub fn battle_entries_for(&self, selected: Option<[u8; 32]>) -> &[SelectIrBattleEntry] {
+        let Some(entry) = selected.and_then(|sha256| self.cache.get(&sha256)) else {
+            return &[];
+        };
+        match self.active_scope {
+            SelectIrRankingScope::Global => &entry.global_battle_entries,
+            SelectIrRankingScope::SelfAndRivals => &entry.self_and_rivals_battle_entries,
+        }
+    }
+
     /// scope を選ぶ。Self-and-Rivals は取得済みの場合だけ選択できる。
     pub fn select_scope(
         &mut self,

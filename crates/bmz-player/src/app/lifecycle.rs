@@ -210,6 +210,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let input_start = Instant::now();
                 self.poll_gamepad_events();
                 self.advance_select_hold_move();
+                self.advance_select_ir_battle_hold();
                 self.advance_result_ir_scroll_hold();
                 self.advance_select_analog_scroll();
                 self.advance_result_ir_analog_scroll();
@@ -219,6 +220,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.poll_play_preload();
                 self.refresh_play_target_from_source();
                 self.poll_select_maintenance();
+                self.poll_select_ir_battle_replay();
                 let background_us = instant_elapsed_us_u64(background_start);
                 let transition_start = Instant::now();
                 self.advance_decide_transition();

@@ -330,16 +330,13 @@ pub fn build_game_session_with_input_backend(
     );
     let base_judge_window = base_judge_windows.note;
 
+    let gauge_total =
+        gauge_total_for_chart_and_rule_mode(chart.metadata.total, scored_total_notes, rule_mode);
+    // 単曲時はチャートのキーモードから GaugeProperty を導出、コース時は
+    // `apply_course_constraints` が CourseGaugeConstraint から決めた値を使う。
+    let gauge_property =
+        options.gauge_property.unwrap_or_else(|| GaugeProperty::from_keymode(primary_key_mode));
     let mut gauge = {
-        let gauge_total = gauge_total_for_chart_and_rule_mode(
-            chart.metadata.total,
-            scored_total_notes,
-            rule_mode,
-        );
-        // 単曲時はチャートのキーモードから GaugeProperty を導出、コース時は
-        // `apply_course_constraints` が CourseGaugeConstraint から決めた値を使う。
-        let gauge_property =
-            options.gauge_property.unwrap_or_else(|| GaugeProperty::from_keymode(primary_key_mode));
         if gauge_auto_shift != GaugeAutoShiftMode::Off {
             let mut gauge = GaugeState::new_with_auto_shift_property_and_rule_mode_and_keymode(
                 gauge_type,
@@ -370,7 +367,20 @@ pub fn build_game_session_with_input_backend(
     } else if let Some(initial) = initial_gauge_value {
         gauge.set_initial_value(initial);
     }
-    let opponent_gauge = session_mode.is_battle().then(|| gauge.clone());
+    let opponent_gauge = session_mode.is_battle().then(|| {
+        if let Some(opponent_gauge_type) = options.opponent_gauge_override {
+            GaugeState::new_with_property_and_rule_mode_and_keymode(
+                opponent_gauge_type,
+                gauge_total,
+                scored_total_notes,
+                gauge_property,
+                rule_mode,
+                primary_key_mode,
+            )
+        } else {
+            gauge.clone()
+        }
+    });
     let opponent_score =
         session_mode.is_battle().then(|| ScoreState::for_rule_mode(primary_key_mode, rule_mode));
 

@@ -270,6 +270,8 @@ mod select_flow_skin_events;
 #[path = "app/select_flow/snapshot.rs"]
 mod select_flow_snapshot;
 mod select_folder_summary;
+#[path = "app/select_ir_battle.rs"]
+mod select_ir_battle;
 mod select_key_bindings;
 #[path = "app/select_random_mix.rs"]
 mod select_random_mix;

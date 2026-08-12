@@ -807,6 +807,34 @@ impl WinitApp {
     }
 
     pub(super) fn apply_select_action(&mut self, action: SelectAction, hold_control: Option<&str>) {
+        if self.select.ir_battle.active {
+            match action {
+                SelectAction::EnterOrPlay => self.start_selected_ir_ghost_battle(),
+                SelectAction::ExitFolder => {
+                    self.close_select_ir_battle();
+                }
+                SelectAction::Move(select_move) => {
+                    self.move_selection(select_move);
+                    if matches!(
+                        select_move,
+                        SelectMove::Previous
+                            | SelectMove::Next
+                            | SelectMove::PagePrevious
+                            | SelectMove::PageNext
+                    ) && let Some(control) = hold_control
+                    {
+                        self.start_select_hold_move(select_move, control.to_string());
+                    }
+                }
+                SelectAction::FavoriteSong
+                | SelectAction::FavoriteChart
+                | SelectAction::SameFolder
+                | SelectAction::DifficultyFilter
+                | SelectAction::ReplayCycle
+                | SelectAction::ReplayPlay => {}
+            }
+            return;
+        }
         match action {
             SelectAction::EnterOrPlay => self.enter_or_play_selected(),
             SelectAction::ExitFolder => self.exit_folder(),

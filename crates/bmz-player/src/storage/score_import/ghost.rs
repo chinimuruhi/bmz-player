@@ -15,7 +15,7 @@ pub(super) fn decode_external_ghost(encoded: &str, total_notes: u32) -> Vec<u8> 
 
 /// Decodes LR2's `score.ghost` column into bmz's per-note judge array.
 ///
-/// The LR2 format (see OpenLR2 `LR2_ghost.cpp` `EncodeGhostData`/`DecodeGhostData`)
+/// The LR2 format (see `LR2_ghost.cpp` `EncodeGhostData`/`DecodeGhostData`)
 /// is a run-length encoding of per-note judge symbols `@ A B C D E` (= judge codes
 /// 0..=5), wrapped in two layers of bigram dictionary compression.  We reverse the
 /// dictionaries (layer 2 then layer 1, as LR2 does), expand the run-length runs,

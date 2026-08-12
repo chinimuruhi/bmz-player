@@ -187,6 +187,25 @@ impl BmzOfficialIrClient {
 
     /// 公開リプレイをダウンロードする。戻り値は (bytes, 申告 hash)。
     pub async fn download_replay(&self, score_id: &str) -> Result<(Vec<u8>, String)> {
+        let (bytes, target) = self.download_replay_with_metadata(score_id).await?;
+        Ok((bytes, target.hash.unwrap_or_default()))
+    }
+
+    /// 公開リプレイをメタデータ付きでダウンロードする。
+    pub async fn download_replay_with_metadata(
+        &self,
+        score_id: &str,
+    ) -> Result<(Vec<u8>, IrReplayDownloadTarget)> {
+        self.download_replay_with_metadata_limit(score_id, usize::MAX).await
+    }
+
+    /// 公開リプレイを上限付きでダウンロードする。Content-Length が無い応答も
+    /// chunk ごとに検査し、上限を超える本文を保持しない。
+    pub async fn download_replay_with_metadata_limit(
+        &self,
+        score_id: &str,
+        max_bytes: usize,
+    ) -> Result<(Vec<u8>, IrReplayDownloadTarget)> {
         let url = self.base_url.join(&format!("/api/v1/scores/{score_id}/replay"))?;
         let response = self
             .http
@@ -196,7 +215,7 @@ impl BmzOfficialIrClient {
             .context("failed to request BMZ IR replay download URL")?;
         let target: IrReplayDownloadTarget =
             decode_response(response, "BMZ IR replay download URL").await?;
-        let body = self
+        let mut body = self
             .http
             .get(&target.download_url)
             .send()
@@ -206,8 +225,18 @@ impl BmzOfficialIrClient {
         if !status.is_success() {
             bail!("BMZ IR replay download failed: {status}");
         }
-        let bytes = body.bytes().await.context("failed to read BMZ IR replay body")?.to_vec();
-        Ok((bytes, target.hash.unwrap_or_default()))
+        if body.content_length().is_some_and(|length| length > max_bytes as u64) {
+            bail!("BMZ IR replay exceeds the download size limit");
+        }
+        let mut bytes =
+            Vec::with_capacity(body.content_length().unwrap_or(0).min(max_bytes as u64) as usize);
+        while let Some(chunk) = body.chunk().await.context("failed to read BMZ IR replay body")? {
+            if bytes.len().saturating_add(chunk.len()) > max_bytes {
+                bail!("BMZ IR replay exceeds the download size limit");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok((bytes, target))
     }
 
     /// アップロード済み replay の hash 検証をサーバーへ依頼する。

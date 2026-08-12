@@ -234,7 +234,12 @@ pub fn save_replay_with_hash(path: &Path, replay: &ReplayFile) -> Result<String>
 
 pub fn load_replay(path: &Path) -> Result<ReplayFile> {
     let text = std::fs::read_to_string(path)?;
-    let replay: ReplayFile = toml::from_str(&text)?;
+    parse_replay(&text)
+}
+
+/// Parse a replay received from local storage or a trusted IR transport.
+pub fn parse_replay(text: &str) -> Result<ReplayFile> {
+    let replay: ReplayFile = toml::from_str(text)?;
     replay.effective_s_random_scheme()?;
     replay.effective_s_random_scheme_2p()?;
     Ok(replay)
