@@ -536,6 +536,8 @@ toast-chart-download-worker-ended = 채보 가져오기 작업이 예기치 않�
 toast-course-download-started = 코스의 미보유 채보를 가져오는 중입니다({ $count }개)
 toast-course-download-complete-registering = 채보 가져오기 완료(성공 { $completed } / 실패 { $failed }). 등록 중입니다
 toast-course-download-failed = 코스 채보를 가져오지 못했습니다({ $count }개)
+toast-select-replay-slot = 리플레이 { $slot }을 선택했습니다
+toast-select-replay-unavailable = 이 항목에는 리플레이가 없습니다
 
 # Course editor
 menu-course-editor = 코스 / 단위 편집기

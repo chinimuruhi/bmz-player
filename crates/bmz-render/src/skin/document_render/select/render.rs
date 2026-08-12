@@ -437,7 +437,8 @@ macro_rules! skin_document_render_select_render_methods {
                 judge_rank: selected_row.and_then(|row| row.judge_rank),
                 select_ex_score: selected_row.and_then(|row| row.ex_score),
                 select_replay_slots: selected_row.map(|row| row.replay_slots).unwrap_or([false; 4]),
-                select_replay_index: selected_row.and_then(select_row_replay_index),
+                select_replay_index: selected_row
+                    .and_then(|row| select_row_replay_index(row, snapshot.selected_replay_slot)),
                 select_clear_index: selected_row.map(select_row_clear_index).unwrap_or(0) as i64,
                 select_favorite_song: selected_row.is_some_and(|row| row.favorite_song),
                 select_favorite_chart: selected_row.is_some_and(|row| row.favorite_chart),

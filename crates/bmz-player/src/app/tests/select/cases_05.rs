@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::play_flow_replay::{cycle_replay_slot, normalize_replay_slot};
 
 #[test]
 fn moved_select_index_handles_empty_rows() {
@@ -84,6 +85,26 @@ fn select_skin_event_state_cycles_supported_mode_filters() {
         cycle_judge_algorithm_with_direction(JudgeAlgorithmConfig::Combo, -1),
         JudgeAlgorithmConfig::Lowest
     );
+}
+
+#[test]
+fn replay_slot_cycle_skips_empty_slots_and_wraps() {
+    let slots = [true, false, true, false];
+
+    assert_eq!(cycle_replay_slot(slots, None, 1), Some(0));
+    assert_eq!(cycle_replay_slot(slots, Some(0), 1), Some(2));
+    assert_eq!(cycle_replay_slot(slots, Some(2), 1), Some(0));
+    assert_eq!(cycle_replay_slot(slots, Some(0), -1), Some(2));
+    assert_eq!(cycle_replay_slot([false; 4], None, 1), None);
+}
+
+#[test]
+fn replay_slot_normalization_keeps_available_selection_or_uses_first() {
+    let slots = [false, true, false, true];
+
+    assert_eq!(normalize_replay_slot(slots, Some(3)), Some(3));
+    assert_eq!(normalize_replay_slot(slots, Some(0)), Some(1));
+    assert_eq!(normalize_replay_slot(slots, None), Some(1));
 }
 
 #[test]

@@ -24,6 +24,7 @@ impl WinitApp {
         );
         if self.select.selected_index != previous_index {
             self.sync_selected_play_mode();
+            self.reset_selected_replay_slot();
             self.select.select_bar_started_at = Instant::now();
             self.select.select_bar_scroll_direction = select_move_scroll_direction(select_move);
             self.select.select_bar_scroll_duration = duration;
@@ -404,6 +405,7 @@ impl WinitApp {
         self.select.folder_stack.push(path);
         self.reload_select_items();
         self.select.selected_index = 0;
+        self.reset_selected_replay_slot();
         self.restart_select_bar_timer_without_scroll(Instant::now());
         self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
         tracing::info!(target = %description, "entered related chart view");
@@ -432,6 +434,7 @@ impl WinitApp {
                 self.select.folder_stack.push(path);
                 self.reload_select_items();
                 self.select.selected_index = 0;
+                self.reset_selected_replay_slot();
                 self.restart_select_bar_timer_without_scroll(Instant::now());
                 self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
                 tracing::info!(folder = ?self.select.folder_stack.last(), "entered folder");
@@ -878,6 +881,7 @@ impl WinitApp {
         self.select.folder_stack.push(format!("{SEARCH_PATH_PREFIX}{query}"));
         self.reload_select_items();
         self.select.selected_index = 0;
+        self.reset_selected_replay_slot();
         self.restart_select_bar_timer_without_scroll(Instant::now());
         self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
         tracing::info!(%query, hit_count, "entered search result folder");
@@ -896,6 +900,7 @@ impl WinitApp {
             // 復元先がリスト範囲外なら末尾にクランプする。
             self.select.selected_index =
                 restored.min(self.select.select_items.len().saturating_sub(1));
+            self.reset_selected_replay_slot();
             self.restart_select_bar_timer_without_scroll(Instant::now());
             self.play_system_sound(crate::system_sound::SoundType::FolderClose);
             tracing::info!(depth = self.select.folder_stack.len(), "exited folder");

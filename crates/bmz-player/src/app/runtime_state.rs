@@ -50,6 +50,8 @@ pub(super) struct SelectRuntimeState {
     pub(super) session_mode: SessionMode,
     pub(super) select_mode_filter: SelectModeFilter,
     pub(super) select_difficulty_filter: SelectDifficultyFilter,
+    /// Currently selected replay slot for the highlighted chart or course.
+    pub(super) selected_replay_slot: Option<u8>,
     pub(super) select_sort: SelectSort,
     pub(super) select_keys: SelectKeyBindings,
     pub(super) select_bar_scroll_direction: i32,

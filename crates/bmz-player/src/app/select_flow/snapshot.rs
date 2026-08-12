@@ -110,6 +110,7 @@ impl WinitApp {
                 Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| chart.chart_id),
                 _ => None,
             },
+            selected_replay_slot: self.selected_replay_slot_for_selected(),
             selected_title: selected
                 .map(|item| item.display_name_for_locale(locale))
                 .unwrap_or_default(),

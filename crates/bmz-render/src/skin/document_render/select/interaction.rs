@@ -170,7 +170,11 @@ macro_rules! skin_document_render_select_interaction_methods {
                 else {
                     continue;
                 };
-                Self::apply_select_songlist_click_row_state(&mut row_state, row);
+                Self::apply_select_songlist_click_row_state(
+                    &mut row_state,
+                    row,
+                    snapshot.selected_replay_slot,
+                );
                 let elapsed = skin_timer_elapsed_ms(row_destination.timer, state).unwrap_or(0);
                 let Some(mut frame) = resolve_destination_frame(
                     row_destination,
@@ -208,6 +212,7 @@ macro_rules! skin_document_render_select_interaction_methods {
         fn apply_select_songlist_render_row_state(
             state: &mut SkinDrawState,
             row: &SelectRowSnapshot,
+            selected_replay_slot: Option<u8>,
         ) {
             state.select_play_level = select_row_level_number(row);
             state.play_level = select_row_level_number(row);
@@ -216,7 +221,7 @@ macro_rules! skin_document_render_select_interaction_methods {
             state.judge_rank = row.judge_rank;
             state.select_ex_score = row.ex_score;
             state.select_replay_slots = row.replay_slots;
-            state.select_replay_index = select_row_replay_index(row);
+            state.select_replay_index = select_row_replay_index(row, selected_replay_slot);
             state.select_clear_index = select_row_clear_index(row) as i64;
             state.select_favorite_song = row.favorite_song;
             state.select_favorite_chart = row.favorite_chart;
@@ -257,8 +262,9 @@ macro_rules! skin_document_render_select_interaction_methods {
         fn apply_select_songlist_click_row_state(
             state: &mut SkinDrawState,
             row: &SelectRowSnapshot,
+            selected_replay_slot: Option<u8>,
         ) {
-            Self::apply_select_songlist_render_row_state(state, row);
+            Self::apply_select_songlist_render_row_state(state, row, selected_replay_slot);
         }
 
         fn click_target_for_destination(

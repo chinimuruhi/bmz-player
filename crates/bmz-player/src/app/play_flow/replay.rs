@@ -1,6 +1,66 @@
 use super::*;
 
 impl WinitApp {
+    pub(super) fn reset_selected_replay_slot(&mut self) {
+        self.select.selected_replay_slot = self
+            .select
+            .select_items
+            .get(self.select.selected_index)
+            .and_then(first_replay_slot_for_item);
+    }
+
+    pub(super) fn normalize_selected_replay_slot(&mut self) {
+        let slots = self.selected_item_replay_slots();
+        self.select.selected_replay_slot =
+            normalize_replay_slot(slots, self.select.selected_replay_slot);
+    }
+
+    pub(super) fn selected_replay_slot_for_selected(&self) -> Option<u8> {
+        normalize_replay_slot(self.selected_item_replay_slots(), self.select.selected_replay_slot)
+    }
+
+    pub(super) fn cycle_selected_replay_slot(&mut self, direction: i32) -> bool {
+        let slots = self.selected_item_replay_slots();
+        let current = self.select.selected_replay_slot;
+        let next = cycle_replay_slot(slots, current, direction);
+        self.select.selected_replay_slot = next;
+        if next == current {
+            return false;
+        }
+        let text = Localizer::new(self.boot.profile_config.ui.locale());
+        if let Some(slot) = next {
+            let mut args = FluentArgs::new();
+            args.set("slot", i64::from(slot) + 1);
+            self.show_left_overlay_toast(text.format("toast-select-replay-slot", &args));
+            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+            tracing::info!(slot, "selected replay slot changed");
+            true
+        } else {
+            self.show_left_overlay_toast(text.text("toast-select-replay-unavailable"));
+            false
+        }
+    }
+
+    pub(super) fn start_selected_replay_slot(&mut self) -> bool {
+        let Some(slot) = self.selected_replay_slot_for_selected() else {
+            self.show_left_overlay_toast(
+                Localizer::new(self.boot.profile_config.ui.locale())
+                    .text("toast-select-replay-unavailable"),
+            );
+            return false;
+        };
+        self.select.selected_replay_slot = Some(slot);
+        self.start_replay_for_selected(slot)
+    }
+
+    fn selected_item_replay_slots(&self) -> [bool; 4] {
+        self.select
+            .select_items
+            .get(self.select.selected_index)
+            .map(replay_slots_for_item)
+            .unwrap_or([false; 4])
+    }
+
     pub(super) fn try_start_replay_from_file(&mut self, path: &std::path::Path) -> bool {
         let replay_file = match crate::storage::replay::load_replay(path) {
             Ok(file) => file,
@@ -297,4 +357,45 @@ impl WinitApp {
             }
         }
     }
+}
+
+pub(super) fn first_replay_slot_for_item(item: &SelectItem) -> Option<u8> {
+    normalize_replay_slot(replay_slots_for_item(item), None)
+}
+
+fn replay_slots_for_item(item: &SelectItem) -> [bool; 4] {
+    match item {
+        SelectItem::Chart(row) => row.replay_slots,
+        SelectItem::Course(row) => row.replay_slots,
+        _ => [false; 4],
+    }
+}
+
+pub(super) fn normalize_replay_slot(slots: [bool; 4], selected: Option<u8>) -> Option<u8> {
+    selected
+        .filter(|slot| slots.get(usize::from(*slot)).copied().unwrap_or(false))
+        .or_else(|| slots.iter().position(|exists| *exists).map(|slot| slot as u8))
+}
+
+pub(super) fn cycle_replay_slot(
+    slots: [bool; 4],
+    selected: Option<u8>,
+    direction: i32,
+) -> Option<u8> {
+    if !selected.is_some_and(|slot| slots.get(usize::from(slot)).copied().unwrap_or(false)) {
+        return if direction >= 0 {
+            slots.iter().position(|exists| *exists).map(|slot| slot as u8)
+        } else {
+            slots.iter().rposition(|exists| *exists).map(|slot| slot as u8)
+        };
+    }
+    let current = usize::from(selected.unwrap());
+    for distance in 1..4 {
+        let slot =
+            if direction >= 0 { (current + distance) % 4 } else { (current + 4 - distance) % 4 };
+        if slots[slot] {
+            return Some(slot as u8);
+        }
+    }
+    selected
 }

@@ -175,8 +175,13 @@ pub(super) fn select_row_clear_index(row: &SelectRowSnapshot) -> usize {
     }
 }
 
-pub(super) fn select_row_replay_index(row: &SelectRowSnapshot) -> Option<usize> {
-    row.replay_slots.iter().position(|has_replay| *has_replay)
+pub(super) fn select_row_replay_index(
+    row: &SelectRowSnapshot,
+    selected_replay_slot: Option<u8>,
+) -> Option<usize> {
+    selected_replay_slot
+        .map(usize::from)
+        .filter(|slot| row.replay_slots.get(*slot).copied().unwrap_or(false))
 }
 
 pub(super) fn select_row_trophy_index(row: &SelectRowSnapshot) -> Option<usize> {

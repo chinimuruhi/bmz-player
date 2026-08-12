@@ -178,6 +178,10 @@ pub enum InputActionConfig {
     SelectSameFolder,
     #[serde(rename = "DifficultyFilter")]
     SelectDifficultyFilter,
+    #[serde(rename = "ReplayCycle")]
+    SelectReplayCycle,
+    #[serde(rename = "ReplayPlay")]
+    SelectReplayPlay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

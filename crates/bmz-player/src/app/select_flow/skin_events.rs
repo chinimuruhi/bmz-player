@@ -33,14 +33,14 @@ impl WinitApp {
                     self.enter_practice(chart_id, PracticeCliOverrides::default());
                 }
             }
-            19 | 316 | 317 | 318 => {
-                let slot = match event_id {
-                    19 => 0,
-                    316 => 1,
-                    317 => 2,
-                    318 => 3,
-                    _ => unreachable!(),
-                };
+            // beatoraja event 19 starts the currently selected replay slot.
+            19 => {
+                if !self.start_selected_replay_slot() {
+                    tracing::info!("select skin replay click ignored; no replay is selected");
+                }
+            }
+            316..=318 => {
+                let slot = (event_id - 315) as u8;
                 if !self.start_replay_for_selected(slot) {
                     tracing::info!(slot, "select skin replay click ignored; slot is empty");
                 }

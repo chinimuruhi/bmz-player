@@ -539,6 +539,8 @@ toast-chart-download-worker-ended = The chart acquisition process ended unexpect
 toast-course-download-started = Acquiring missing course charts ({ $count })
 toast-course-download-complete-registering = Acquisition finished ({ $completed } succeeded, { $failed } failed). Registering charts
 toast-course-download-failed = Failed to acquire course charts ({ $count })
+toast-select-replay-slot = Selected replay { $slot }
+toast-select-replay-unavailable = No replay is available for this item
 
 # Course editor
 menu-course-editor = Course / Grade editor

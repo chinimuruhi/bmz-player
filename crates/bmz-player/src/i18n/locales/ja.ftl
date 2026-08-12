@@ -536,6 +536,8 @@ toast-chart-download-worker-ended = 譜面取得処理が予期せず終了し�
 toast-course-download-started = コースの未所持譜面を取得しています（{ $count } 件）
 toast-course-download-complete-registering = 譜面取得完了（成功 { $completed } / 失敗 { $failed }）。登録しています
 toast-course-download-failed = コース譜面の取得に失敗しました（{ $count } 件）
+toast-select-replay-slot = リプレイ { $slot } を選択しました
+toast-select-replay-unavailable = この項目にはリプレイがありません
 
 # Course editor
 menu-course-editor = コース / 段位作成

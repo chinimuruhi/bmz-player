@@ -11,6 +11,8 @@ pub(super) enum SelectAction {
     FavoriteChart,
     SameFolder,
     DifficultyFilter,
+    ReplayCycle,
+    ReplayPlay,
     Move(SelectMove),
 }
 
@@ -80,6 +82,10 @@ fn keyboard_select_action(control: &str, bindings: &SelectKeyBindings) -> Option
         Some(SelectAction::SameFolder)
     } else if bindings.is_difficulty_filter(control) {
         Some(SelectAction::DifficultyFilter)
+    } else if bindings.is_replay_cycle(control) {
+        Some(SelectAction::ReplayCycle)
+    } else if bindings.is_replay_play(control) {
+        Some(SelectAction::ReplayPlay)
     } else if bindings.is_select_scratch_down(control) {
         Some(SelectAction::Move(SelectMove::Next))
     } else if bindings.is_select_scratch_up(control) {
@@ -129,6 +135,10 @@ fn gamepad_select_action(control: &str, bindings: &SelectKeyBindings) -> Option<
         Some(SelectAction::SameFolder)
     } else if bindings.is_difficulty_filter(control) {
         Some(SelectAction::DifficultyFilter)
+    } else if bindings.is_replay_cycle(control) {
+        Some(SelectAction::ReplayCycle)
+    } else if bindings.is_replay_play(control) {
+        Some(SelectAction::ReplayPlay)
     } else {
         None
     }

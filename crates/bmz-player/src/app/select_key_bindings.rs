@@ -42,6 +42,8 @@ pub(super) struct SelectKeyBindings {
     favorite_chart_controls: Vec<String>,
     same_folder_controls: Vec<String>,
     difficulty_filter_controls: Vec<String>,
+    replay_cycle_controls: Vec<String>,
+    replay_play_controls: Vec<String>,
     cycle_bga: Option<String>,
     key_hint: String,
     option_hint: String,
@@ -159,6 +161,14 @@ impl SelectKeyBindings {
             actions_for(InputActionConfig::SelectDifficultyFilter),
             "Numpad0",
         );
+        let replay_cycle_controls = select_controls_with_default(
+            actions_for(InputActionConfig::SelectReplayCycle),
+            "Numpad4",
+        );
+        let replay_play_controls = select_controls_with_default(
+            actions_for(InputActionConfig::SelectReplayPlay),
+            "Numpad5",
+        );
         let mut scratch_up_controls = Vec::new();
         let mut scratch_down_controls = Vec::new();
         let mut select_scratch_up_controls = Vec::new();
@@ -236,7 +246,7 @@ impl SelectKeyBindings {
              {start_str}+K1/K2:1P ARR  {start_str}+2P K1/K2:2P ARR  {start_str}+K3/K4:GAUGE  \
              {start_str}+K5:HS-FIX  {start_str}+K6:DP OPT  {start_str}+K7:AUTOPLAY  \
              BACK+K1..K7:ASSIST  \
-             {start_str}+BACK+{key2_str}:GAS  {start_str}+UP/DOWN:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY"
+             {start_str}+BACK+{key2_str}:GAS  {start_str}+UP/DOWN:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N4:CYCLE  N5:REPLAY"
         );
 
         Self {
@@ -272,6 +282,8 @@ impl SelectKeyBindings {
             favorite_chart_controls,
             same_folder_controls,
             difficulty_filter_controls,
+            replay_cycle_controls,
+            replay_play_controls,
             cycle_bga,
             key_hint,
             option_hint,
@@ -355,6 +367,14 @@ impl SelectKeyBindings {
             actions_for(InputActionConfig::SelectDifficultyFilter),
             "Numpad0",
         );
+        let replay_cycle_controls = select_controls_with_default(
+            actions_for(InputActionConfig::SelectReplayCycle),
+            "Numpad4",
+        );
+        let replay_play_controls = select_controls_with_default(
+            actions_for(InputActionConfig::SelectReplayPlay),
+            "Numpad5",
+        );
         let cycle_bga = select_control_with_lane_fallback(
             actions_for(InputActionConfig::SelectOptionBga),
             key1_controls.clone(),
@@ -402,7 +422,7 @@ impl SelectKeyBindings {
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+K3:GAUGE  {start_str}+K5:HS-FIX  \
              BACK+K1..K7:ASSIST  \
-             {start_str}+K8/K9:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY"
+             {start_str}+K8/K9:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N4:CYCLE  N5:REPLAY"
         );
 
         Self {
@@ -438,6 +458,8 @@ impl SelectKeyBindings {
             favorite_chart_controls,
             same_folder_controls,
             difficulty_filter_controls,
+            replay_cycle_controls,
+            replay_play_controls,
             cycle_bga,
             key_hint,
             option_hint,
@@ -630,6 +652,14 @@ impl SelectKeyBindings {
 
     pub(super) fn is_difficulty_filter(&self, control: &str) -> bool {
         contains(&self.difficulty_filter_controls, control)
+    }
+
+    pub(super) fn is_replay_cycle(&self, control: &str) -> bool {
+        contains(&self.replay_cycle_controls, control)
+    }
+
+    pub(super) fn is_replay_play(&self, control: &str) -> bool {
+        contains(&self.replay_play_controls, control)
     }
 }
 

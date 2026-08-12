@@ -53,6 +53,8 @@ impl WinitApp {
         } else {
             session_mode_from_profile(&boot.profile_config.play)
         };
+        let selected_replay_slot =
+            select_items.first().and_then(crate::app::play_flow_replay::first_replay_slot_for_item);
         let gauge_option = if boot.profile_config.play.gauge == GaugeTypeConfig::AutoShift {
             GaugeTypeConfig::ExHard
         } else {
@@ -209,6 +211,7 @@ impl WinitApp {
                 session_mode,
                 select_mode_filter,
                 select_difficulty_filter,
+                selected_replay_slot,
                 select_sort,
                 select_keys,
                 select_bar_scroll_direction: 0,

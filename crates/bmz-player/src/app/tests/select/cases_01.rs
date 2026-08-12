@@ -320,6 +320,14 @@ fn select_action_maps_collection_keys() {
         select_action(PhysicalKey::Code(KeyCode::Numpad8), ElementState::Pressed, false, &keys),
         Some(SelectAction::SameFolder)
     );
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::Numpad4), ElementState::Pressed, false, &keys),
+        Some(SelectAction::ReplayCycle)
+    );
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::Numpad5), ElementState::Pressed, false, &keys),
+        Some(SelectAction::ReplayPlay)
+    );
 }
 
 #[test]

@@ -29,7 +29,11 @@ macro_rules! skin_document_render_select_songlist_methods {
                 else {
                     continue;
                 };
-                Self::apply_select_songlist_render_row_state(&mut row_state, row);
+                Self::apply_select_songlist_render_row_state(
+                    &mut row_state,
+                    row,
+                    snapshot.selected_replay_slot,
+                );
                 let elapsed = skin_timer_elapsed_ms(row_destination.timer, state).unwrap_or(0);
                 let Some(mut row_frame) = resolve_destination_frame(
                     row_destination,

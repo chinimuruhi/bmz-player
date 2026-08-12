@@ -26,6 +26,8 @@ pub struct SelectSnapshot {
     /// Remaining song bar movement progress (1.0 at movement start, 0.0 at rest).
     pub bar_scroll_progress: f32,
     pub selected_chart_id: Option<i64>,
+    /// Currently selected replay slot (0..=3), normalized to an existing slot.
+    pub selected_replay_slot: Option<u8>,
     pub selected_title: String,
     /// Current profile hispeed shown to select skins (NUMBER_HISPEED=310/311).
     pub hispeed: f32,
@@ -170,6 +172,7 @@ impl Default for SelectSnapshot {
             bar_scroll_direction: 0,
             bar_scroll_progress: 0.0,
             selected_chart_id: None,
+            selected_replay_slot: None,
             selected_title: String::new(),
             hispeed: 0.0,
             note_display_duration_ms: None,

@@ -145,6 +145,8 @@ pub const COMMON_ACTIONS: &[InputActionConfig] = &[
     InputActionConfig::SelectFavoriteChart,
     InputActionConfig::SelectSameFolder,
     InputActionConfig::SelectDifficultyFilter,
+    InputActionConfig::SelectReplayCycle,
+    InputActionConfig::SelectReplayPlay,
 ];
 
 pub fn key_mode_settings_path(keys_root: &str, key_mode: KeyMode) -> String {
@@ -229,6 +231,8 @@ pub fn action_label(action: InputActionConfig) -> &'static str {
         InputActionConfig::SelectFavoriteChart => "FAVORITE CHART",
         InputActionConfig::SelectSameFolder => "SAME FOLDER",
         InputActionConfig::SelectDifficultyFilter => "DIFFICULTY FILTER",
+        InputActionConfig::SelectReplayCycle => "REPLAY CYCLE",
+        InputActionConfig::SelectReplayPlay => "REPLAY PLAY",
     }
 }
 

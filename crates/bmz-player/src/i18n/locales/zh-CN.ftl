@@ -536,6 +536,8 @@ toast-chart-download-worker-ended = 谱面获取进程意外结束
 toast-course-download-started = 正在获取课程中未持有的谱面（{ $count } 个）
 toast-course-download-complete-registering = 谱面获取完成（成功 { $completed } / 失败 { $failed }），正在注册
 toast-course-download-failed = 课程谱面获取失败（{ $count } 个）
+toast-select-replay-slot = 已选择回放 { $slot }
+toast-select-replay-unavailable = 此项目没有可用的回放
 
 # Course editor
 menu-course-editor = 课程 / 段位编辑器

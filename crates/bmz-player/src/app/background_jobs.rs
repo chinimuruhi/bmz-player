@@ -29,6 +29,7 @@ impl WinitApp {
             self.select.selected_index,
         );
         self.sync_selected_play_mode();
+        self.normalize_selected_replay_slot();
     }
 
     pub(super) fn invalidate_select_folder_summaries(&mut self) {
@@ -438,6 +439,7 @@ impl WinitApp {
                 self.select.folder_stack.clear();
                 self.select.selected_index_stack.clear();
                 self.select.selected_index = 0;
+                self.reset_selected_replay_slot();
             }
         }
 

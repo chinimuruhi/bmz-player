@@ -48,6 +48,7 @@ impl WinitApp {
         self.select.course_builder = Some(state);
         self.select.selected_index = 0;
         self.reload_select_items();
+        self.reset_selected_replay_slot();
         self.restart_select_bar_timer_without_scroll(Instant::now());
         self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
         self.show_left_overlay_toast(text.text("toast-select-course-builder-started"));
@@ -210,6 +211,7 @@ impl WinitApp {
         {
             self.select.selected_index = index;
         }
+        self.reset_selected_replay_slot();
         self.sync_selected_play_mode();
         self.restart_select_bar_timer_without_scroll(Instant::now());
         self.play_system_sound(crate::system_sound::SoundType::FolderClose);

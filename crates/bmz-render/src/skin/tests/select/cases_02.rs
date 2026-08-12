@@ -412,8 +412,9 @@ fn select_row_replay_index_is_row_kind_agnostic() {
         ..SelectRowSnapshot::default()
     };
 
-    assert_eq!(select_row_replay_index(&song), Some(1));
-    assert_eq!(select_row_replay_index(&course), Some(1));
+    assert_eq!(select_row_replay_index(&song, Some(3)), Some(3));
+    assert_eq!(select_row_replay_index(&course, Some(3)), Some(3));
+    assert_eq!(select_row_replay_index(&song, Some(0)), None);
 }
 
 #[test]

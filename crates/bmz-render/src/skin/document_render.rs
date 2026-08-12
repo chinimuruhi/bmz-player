@@ -217,9 +217,17 @@ pub trait SkinDocumentRenderExt {
         state: &SkinDrawState,
     ) -> Vec<SkinClickHit>;
 
-    fn apply_select_songlist_render_row_state(state: &mut SkinDrawState, row: &SelectRowSnapshot);
+    fn apply_select_songlist_render_row_state(
+        state: &mut SkinDrawState,
+        row: &SelectRowSnapshot,
+        selected_replay_slot: Option<u8>,
+    );
 
-    fn apply_select_songlist_click_row_state(state: &mut SkinDrawState, row: &SelectRowSnapshot);
+    fn apply_select_songlist_click_row_state(
+        state: &mut SkinDrawState,
+        row: &SelectRowSnapshot,
+        selected_replay_slot: Option<u8>,
+    );
 
     fn click_target_for_destination(
         &self,

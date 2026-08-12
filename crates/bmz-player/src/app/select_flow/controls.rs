@@ -814,6 +814,12 @@ impl WinitApp {
             SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
             SelectAction::SameFolder => self.open_same_folder_for_selected(),
             SelectAction::DifficultyFilter => self.cycle_select_difficulty_filter(1),
+            SelectAction::ReplayCycle => {
+                self.cycle_selected_replay_slot(1);
+            }
+            SelectAction::ReplayPlay => {
+                self.start_selected_replay_slot();
+            }
             SelectAction::Move(select_move) => {
                 self.move_selection(select_move);
                 if matches!(
