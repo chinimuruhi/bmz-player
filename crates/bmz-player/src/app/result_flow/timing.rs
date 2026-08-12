@@ -3,7 +3,7 @@ use super::*;
 impl WinitApp {
     pub(super) fn leave_result(&mut self) {
         if let Some(finished) = &self.result.finished_play {
-            self.select.score_refresh.mark_stored_result(finished.stored.score_history_id);
+            self.select.score_refresh.mark_score_data_changed(finished.score_data_changed);
         }
         if let Some(audio) = &self.result.result_skin_audio {
             audio.stop_all();

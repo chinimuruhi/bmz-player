@@ -49,6 +49,8 @@ pub struct FinishedPlaySession {
     pub double_option: crate::select_options::DoubleOptionScoreBucket,
     pub rule_mode: bmz_gameplay::rule::RuleMode,
     pub assist: AssistRuntime,
+    /// score_best、履歴、またはclear-only集計のいずれかを永続化した。
+    pub score_data_changed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -283,6 +285,7 @@ fn finish_session_snapshot_result(
     // オートプレイ / リプレイ再生 / プラクティス時はスコア・リプレイをDBに保存しない
     // （リザルト画面の表示のみ行う）。
     let full_autoplay = result.autoplay;
+    let score_data_changed = !full_autoplay && !replay_playback && !practice_mode;
     let stored = if full_autoplay || replay_playback || practice_mode {
         StoredPlayResult {
             score_history_id: 0,
@@ -403,6 +406,7 @@ fn finish_session_snapshot_result(
         double_option: score_key.double_option,
         rule_mode: score_key.rule_mode,
         assist: snapshot.assist,
+        score_data_changed,
     })
 }
 

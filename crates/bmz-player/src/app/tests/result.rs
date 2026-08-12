@@ -86,11 +86,11 @@ fn pre_play_abort_starts_fadeout_and_returns_to_select_without_result() {
 fn stored_result_keeps_select_score_refresh_pending_until_reload() {
     let mut refresh = SelectScoreRefreshState::default();
 
-    refresh.mark_stored_result(0);
+    refresh.mark_score_data_changed(false);
     assert!(!refresh.take_dirty(), "unsaved autoplay/replay results must not dirty select scores");
 
-    refresh.mark_stored_result(42);
-    refresh.mark_stored_result(0);
+    refresh.mark_score_data_changed(true);
+    refresh.mark_score_data_changed(false);
     // Result -> Retry does not consume this state. The next Select reload does.
     assert!(refresh.take_dirty());
     assert!(!refresh.take_dirty(), "a completed Select reload must consume the dirty state");

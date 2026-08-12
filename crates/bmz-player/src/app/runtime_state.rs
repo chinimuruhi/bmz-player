@@ -6,8 +6,8 @@ pub(super) struct SelectScoreRefreshState {
 }
 
 impl SelectScoreRefreshState {
-    pub(super) fn mark_stored_result(&mut self, score_history_id: i64) {
-        self.dirty |= score_history_id > 0;
+    pub(super) fn mark_score_data_changed(&mut self, changed: bool) {
+        self.dirty |= changed;
     }
 
     pub(super) fn take_dirty(&mut self) -> bool {

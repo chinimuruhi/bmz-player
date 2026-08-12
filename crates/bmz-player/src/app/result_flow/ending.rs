@@ -113,7 +113,7 @@ impl WinitApp {
                 }
             }
         };
-        self.select.score_refresh.mark_stored_result(finished.stored.score_history_id);
+        self.select.score_refresh.mark_score_data_changed(finished.score_data_changed);
         if let Some(chart_id) = self.play.last_started_chart_id {
             self.capture_play_media_cache_from_running(chart_id, &mut started.running);
         }

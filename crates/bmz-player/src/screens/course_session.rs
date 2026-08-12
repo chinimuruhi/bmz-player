@@ -394,6 +394,7 @@ mod tests {
                         double_option: crate::select_options::DoubleOptionScoreBucket::Off,
                         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
                         assist: Default::default(),
+                        score_data_changed: false,
                     },
                 }
             })
@@ -578,6 +579,7 @@ mod tests {
                         double_option: crate::select_options::DoubleOptionScoreBucket::Off,
                         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
                         assist: Default::default(),
+                        score_data_changed: false,
                     },
                 }
             })
