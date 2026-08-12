@@ -1,6 +1,58 @@
 use super::*;
 
 #[test]
+fn play_plan_passes_grade_diff_display_mode_to_skin_options() {
+    let document: SkinDocument = serde_json::from_str(
+        r##"
+            {
+                "type": 0,
+                "w": 100,
+                "h": 100,
+                "panel": [
+                    { "id": "nearest", "color": "#12AB34" },
+                    { "id": "next", "color": "#FEDCBA" }
+                ],
+                "destination": [
+                    { "id": "nearest", "op": [1972], "dst": [{ "x": 0, "y": 0, "w": 10, "h": 10 }] },
+                    { "id": "next", "op": [1973], "dst": [{ "x": 0, "y": 0, "w": 10, "h": 10 }] }
+                ]
+            }
+            "##,
+    )
+    .unwrap();
+    let skin = SkinContext::from_manifest_and_document(SkinManifest::default(), document, []);
+
+    for (grade_diff_display, expected, unexpected) in [
+        (
+            crate::scene::ResultGradeDiffDisplay::Nearest,
+            Color::rgb(0x12 as f32 / 255.0, 0xAB as f32 / 255.0, 0x34 as f32 / 255.0),
+            Color::rgb(0xFE as f32 / 255.0, 0xDC as f32 / 255.0, 0xBA as f32 / 255.0),
+        ),
+        (
+            crate::scene::ResultGradeDiffDisplay::Next,
+            Color::rgb(0xFE as f32 / 255.0, 0xDC as f32 / 255.0, 0xBA as f32 / 255.0),
+            Color::rgb(0x12 as f32 / 255.0, 0xAB as f32 / 255.0, 0x34 as f32 / 255.0),
+        ),
+    ] {
+        let plan = DrawPlan::from_scene_with_skin(
+            &AppSceneSnapshot::Play(RenderSnapshot {
+                grade_diff_display,
+                ..RenderSnapshot::default()
+            }),
+            &skin,
+            &mut crate::skin::DynamicTimerRuntime::default(),
+        );
+
+        assert!(plan.commands.iter().any(
+            |command| matches!(command, DrawCommand::Rect { color, .. } if *color == expected)
+        ));
+        assert!(!plan.commands.iter().any(
+            |command| matches!(command, DrawCommand::Rect { color, .. } if *color == unexpected)
+        ));
+    }
+}
+
+#[test]
 fn play_plan_passes_runtime_stagefile_to_skin_document() {
     let document: SkinDocument = serde_json::from_str(
         r#"

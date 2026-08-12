@@ -358,6 +358,25 @@ fn folded_constant_draw_condition_number_zero_is_true() {
 }
 
 #[test]
+fn grade_diff_display_mode_is_available_to_skins() {
+    let nearest = SkinDrawState {
+        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
+        ..SkinDrawState::default()
+    };
+    let next = SkinDrawState {
+        result_grade_diff_display: ResultGradeDiffDisplay::Next,
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_GRADE_DIFF_DISPLAY, &nearest), Some(0));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_GRADE_DIFF_DISPLAY, &next), Some(1));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST, &[], &nearest));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEXT, &[], &nearest));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST, &[], &next));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEXT, &[], &next));
+}
+
+#[test]
 fn skin_state_number_maps_next_rank_diff() {
     let a_state = SkinDrawState {
         result_grade_diff_display: ResultGradeDiffDisplay::Next,

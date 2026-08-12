@@ -88,6 +88,11 @@ pub const SKIN_REF_BMZ_IR_SCOPE_TOTAL: i32 = 1969;
 /// BMZ extension: select session mode (`0=NORMAL`, `1=AUTOPLAY`,
 /// `2=AUTO BATTLE`, `3=BATTLE`).
 pub const SKIN_REF_BMZ_SELECT_SESSION_MODE: i32 = 1970;
+/// BMZ extension: grade difference display (`0=NEAREST`, `1=NEXT`).
+pub const SKIN_REF_BMZ_GRADE_DIFF_DISPLAY: i32 = 1971;
+/// BMZ extension: grade difference display mode options.
+pub const SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST: i32 = 1972;
+pub const SKIN_OPTION_BMZ_GRADE_DIFF_NEXT: i32 = 1973;
 /// Backward-compatible Rust aliases for the initial Result-only names.
 pub const SKIN_REF_BMZ_RESULT_IR_SCOPE: i32 = SKIN_REF_BMZ_IR_SCOPE;
 pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL: i32 = SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL;

@@ -74,7 +74,9 @@ impl WinitApp {
                 AppSceneSnapshot::Decide(snapshot)
             }
             AppViewState::Play => {
-                AppSceneSnapshot::Play(self.play.last_play_snapshot.clone().unwrap_or_default())
+                let mut snapshot = self.play.last_play_snapshot.clone().unwrap_or_default();
+                snapshot.grade_diff_display = self.boot.profile_config.play.grade_diff_display;
+                AppSceneSnapshot::Play(snapshot)
             }
             AppViewState::Result => {
                 // `view_state` only returns Result when one of the result sources exists.

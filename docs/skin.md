@@ -117,6 +117,18 @@ BMZ 対応 select skin で4種類を区別する場合は、BMZ 拡張 ref `1970
 `2=AUTO BATTLE`, `3=BATTLE` を返す。BMZ デフォルトスキンの play mode panel も
 この ref を使用する。
 
+### BMZ Grade Difference Display Ref
+
+選曲設定のランク差分表示モードは、select / play / result skin 共通で次の BMZ 拡張
+ref / option から取得できる。play skin の `ref=154` などのランク差分値も、この設定に
+応じて NEXT / NEAREST の計算へ切り替わる。
+
+| ref / option | kind | meaning |
+| ---: | --- | --- |
+| 1971 | number | `0=NEAREST`, `1=NEXT` |
+| 1972 | option | NEAREST のとき真 |
+| 1973 | option | NEXT のとき真 |
+
 ### Select Rival and Chart Replication
 
 beatoraja互換の選曲イベントを次のように扱う。

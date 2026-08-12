@@ -76,6 +76,12 @@ pub(in crate::skin) fn test_skin_op(
         }
         SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL_SUPPORTED => state.ir_ranking.global_scope_supported,
         SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL_SUPPORTED => state.ir_ranking.rival_scope_supported,
+        SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST => {
+            state.result_grade_diff_display == ResultGradeDiffDisplay::Nearest
+        }
+        SKIN_OPTION_BMZ_GRADE_DIFF_NEXT => {
+            state.result_grade_diff_display == ResultGradeDiffDisplay::Next
+        }
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
         }

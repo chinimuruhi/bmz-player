@@ -150,6 +150,10 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
             Some(i64::from(select_settings_row_kind_index(state.select_row_kind)))
         }
         SKIN_REF_BMZ_SELECT_SESSION_MODE => Some(state.select_session_mode_index as i64),
+        SKIN_REF_BMZ_GRADE_DIFF_DISPLAY => Some(match state.result_grade_diff_display {
+            ResultGradeDiffDisplay::Nearest => 0,
+            ResultGradeDiffDisplay::Next => 1,
+        }),
         1930 => Some(player_stat_u64(state.player_stats.daily.play_count)),
         1931 => Some(player_stat_u64(state.player_stats.daily.clear_count)),
         1932 => Some(player_stat_u64(state.player_stats.daily.pgreat)),
