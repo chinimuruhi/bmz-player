@@ -59,11 +59,23 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
     assert_eq!(play.grade_diff_display, ResultGradeDiffDisplay::Nearest);
     assert_eq!(play.rule_mode, RuleMode::Beatoraja);
     assert_eq!(play.ln_mode_policy, LnPolicySetting::AutoLn);
+    assert!(!play.seven_to_six);
     assert_eq!(play.bga, BgaModeConfig::On);
     assert_eq!(play.bga_expand, BgaExpandConfig::KeepAspect);
     assert_eq!(play.misslayer_duration_ms, 500);
     assert_eq!(play.play_exit_hold_ms, 1000);
     assert_eq!(play.bottom_shiftable_gauge, BottomShiftableGaugeConfig::AssistEasy);
+}
+
+#[test]
+fn seven_to_six_roundtrips_in_play_defaults() {
+    let mut play = ProfileConfig::new_default("default", "Default", 0).play;
+    play.seven_to_six = true;
+
+    let encoded = toml::to_string(&play).unwrap();
+    let decoded: PlayDefaultsConfig = toml::from_str(&encoded).unwrap();
+
+    assert!(decoded.seven_to_six);
 }
 
 #[test]

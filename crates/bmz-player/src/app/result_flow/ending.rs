@@ -77,7 +77,8 @@ impl WinitApp {
                         target_ex_score: started.running.target_ex_score,
                         target_name: &started.running.target,
                         score_key: started.running.score_key,
-                        practice_mode: started.running.practice_mode,
+                        practice_mode: started.running.practice_mode
+                            || started.running.score_save_disabled,
                         finish_mode: if self.play.active_course.is_some() {
                             crate::screens::play_finish::FinishResultMode::CourseStage
                         } else {

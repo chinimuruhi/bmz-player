@@ -14,6 +14,7 @@ pub(super) fn normal_applied_arrange(seed: i64, legacy_seed: bool) -> AppliedArr
         legacy_seed,
         bms_random_choices: Vec::new(),
         pattern: None,
+        seven_to_six: false,
     }
 }
 
@@ -51,6 +52,7 @@ pub(super) fn apply_arrange_internal(
             legacy_seed,
             bms_random_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
+            seven_to_six: false,
         };
     }
 
@@ -68,6 +70,7 @@ pub(super) fn apply_arrange_internal(
                 legacy_seed,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
+                seven_to_six: false,
             }
         }
         ArrangeOption::Random => {
@@ -82,6 +85,7 @@ pub(super) fn apply_arrange_internal(
                 legacy_seed,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
+                seven_to_six: false,
             }
         }
         ArrangeOption::RRandom => {
@@ -96,6 +100,7 @@ pub(super) fn apply_arrange_internal(
                 legacy_seed,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
+                seven_to_six: false,
             }
         }
         ArrangeOption::RandomEx => {
@@ -110,6 +115,7 @@ pub(super) fn apply_arrange_internal(
                 legacy_seed,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
+                seven_to_six: false,
             }
         }
         ArrangeOption::FRandom | ArrangeOption::MFRandom => {
@@ -124,6 +130,7 @@ pub(super) fn apply_arrange_internal(
                 legacy_seed,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
+                seven_to_six: false,
             }
         }
         ArrangeOption::SRandom
@@ -141,6 +148,7 @@ pub(super) fn apply_arrange_internal(
                 legacy_seed,
                 bms_random_choices: Vec::new(),
                 pattern: None,
+                seven_to_six: false,
             }
         }
     }
@@ -189,6 +197,7 @@ pub fn apply_arrange_pair(
             legacy_seed,
             bms_random_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
+            seven_to_six: false,
         };
     }
 
@@ -217,6 +226,7 @@ pub fn apply_arrange_pair(
         legacy_seed,
         bms_random_choices: Vec::new(),
         pattern: has_perm.then(|| combined_perm.iter().map(|&i| i as u8).collect()),
+        seven_to_six: false,
     }
 }
 

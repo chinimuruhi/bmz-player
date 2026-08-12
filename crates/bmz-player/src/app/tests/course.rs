@@ -405,6 +405,7 @@ fn course_entry_title_hints_are_hydrated_for_unplayed_stages() {
 fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
     let mut first = select_chart_row(10).chart.unwrap();
     first.title = "First".to_string();
+    first.mode = "7K".to_string();
     first.total_notes = 100;
     first.ln_profile =
         crate::ln_policy::ChartLnProfile { has_undefined_ln: true, ..Default::default() };
@@ -453,6 +454,7 @@ fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
     .unwrap();
 
     assert_eq!(snapshot.first_chart.chart_id, 10);
+    assert!(snapshot.has_seven_key);
     assert_eq!(snapshot.titles.get(&20).map(String::as_str), Some("Second"));
     assert_eq!(snapshot.metrics.total_notes, 505);
     assert_eq!(snapshot.metrics.ln_mode, Some(bmz_chart::model::LongNoteMode::Cn));

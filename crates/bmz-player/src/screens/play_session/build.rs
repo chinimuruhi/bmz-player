@@ -130,7 +130,8 @@ pub fn apply_placeholder_session_visuals(
     snapshot.score_save_enabled = options.session_mode.score_save_enabled()
         && !snapshot.autoplay
         && !snapshot.replay_playback
-        && !snapshot.practice_mode;
+        && !snapshot.practice_mode
+        && !options.score_save_disabled;
     snapshot.bga_enabled =
         bga_enabled_from_profile(profile, snapshot.autoplay, snapshot.replay_playback);
     snapshot.bga_stretch = bga_stretch_from_profile(profile);

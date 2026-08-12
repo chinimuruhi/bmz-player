@@ -11,6 +11,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
+        self.normalize_seven_to_six_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
@@ -44,6 +45,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
+        self.normalize_seven_to_six_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
@@ -184,6 +186,7 @@ impl WinitApp {
         mut options: PlayStartOptions,
         mut snapshot: RenderSnapshot,
     ) {
+        self.normalize_seven_to_six_options(chart_id, &mut options);
         // Decide / retry / direct boot のどの経路でも、Play 入場後の常時表示が
         // pending state の破棄に左右されないよう、ここで今回の mode を記録する。
         self.result.last_play_session_mode = options.session_mode;
@@ -225,7 +228,8 @@ impl WinitApp {
         // preload 完了で install_active_play がフル snapshot に置き換えるまでの間、
         // 初期ゲージや緑数字が空表示にならないようセッション開始時相当の値を埋める。
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
-        let play_config_key_mode = self.key_mode_for_chart(chart_id);
+        let play_config_key_mode =
+            effective_play_key_mode(self.key_mode_for_chart(chart_id), options.seven_to_six);
         self.boot.profile_config.activate_play_mode(play_config_key_mode);
         self.select.hs_fix_option =
             hs_fix_option_from_profile(self.boot.profile_config.play.hs_fix);

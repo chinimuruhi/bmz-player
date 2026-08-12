@@ -80,6 +80,9 @@ pub struct PlayDefaultsConfig {
     pub rule_mode: RuleMode,
     #[serde(default)]
     pub ln_mode_policy: LnPolicySetting,
+    /// Convert source 7K charts into BMZ's scratch-less 6K mode.
+    #[serde(default)]
+    pub seven_to_six: bool,
     pub gauge: GaugeTypeConfig,
     #[serde(default)]
     pub gauge_auto_shift: GaugeAutoShiftConfig,

@@ -459,7 +459,12 @@ fn loaded_skin_reset_preserves_non_skin_profile_settings() {
 #[test]
 fn play_skin_key_mode_uses_battle_double_mode() {
     assert_eq!(
-        play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Battle, SessionMode::Normal,),
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Battle,
+            SessionMode::Normal,
+            false
+        ),
         KeyMode::K14
     );
     assert_eq!(
@@ -467,23 +472,48 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::BattleAutoScratch,
             SessionMode::Normal,
+            false,
         ),
         KeyMode::K14
     );
     assert_eq!(
-        play_skin_key_mode_for_options(KeyMode::K5, DoubleOption::Battle, SessionMode::Normal,),
+        play_skin_key_mode_for_options(
+            KeyMode::K5,
+            DoubleOption::Battle,
+            SessionMode::Normal,
+            false
+        ),
         KeyMode::K10
     );
     assert_eq!(
-        play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Flip, SessionMode::Normal,),
+        play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Flip, SessionMode::Normal, false),
         KeyMode::K7
     );
     assert_eq!(
-        play_skin_key_mode_for_options(KeyMode::K14, DoubleOption::Battle, SessionMode::Normal,),
+        play_skin_key_mode_for_options(
+            KeyMode::K14,
+            DoubleOption::Battle,
+            SessionMode::Normal,
+            false
+        ),
         KeyMode::K14
     );
     assert_eq!(
-        play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Off, SessionMode::GhostBattle,),
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Off,
+            SessionMode::GhostBattle,
+            false
+        ),
         KeyMode::K14
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Battle,
+            SessionMode::GhostBattle,
+            true
+        ),
+        KeyMode::K6
     );
 }

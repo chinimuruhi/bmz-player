@@ -18,6 +18,8 @@ pub struct ActiveCourseSession {
     /// Course-wide normalized score key derived from every entry's LN profile.
     pub ln_policy: LnScorePolicy,
     pub rule_mode: RuleMode,
+    /// Any converted 7K stage makes the entire course attempt non-persistent.
+    pub score_save_disabled: bool,
     /// Course-wide total initialized from library metadata before Decide, then
     /// replaced by the background source import using the entry's actual play
     /// options. This remains course-wide when a Failed chart aborts early.
@@ -422,6 +424,7 @@ mod tests {
             ln_policy_setting: LnPolicySetting::ForceLn,
             ln_policy: LnScorePolicy::ForceLn,
             rule_mode: RuleMode::Beatoraja,
+            score_save_disabled: false,
             course_total_notes,
             course_ln_mode: Some(bmz_chart::model::LongNoteMode::Ln),
             current_index: 0,
@@ -598,6 +601,7 @@ mod tests {
             ln_policy_setting: LnPolicySetting::ForceLn,
             ln_policy: LnScorePolicy::ForceLn,
             rule_mode: RuleMode::Beatoraja,
+            score_save_disabled: false,
             course_total_notes,
             course_ln_mode: None,
             current_index: 0,

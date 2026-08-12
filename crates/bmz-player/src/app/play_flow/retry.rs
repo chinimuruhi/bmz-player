@@ -73,6 +73,8 @@ impl WinitApp {
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
+            options.seven_to_six = applied.seven_to_six;
+            options.score_save_disabled |= applied.seven_to_six;
             options.arrange = applied.arrange;
             options.arrange_seed = applied.seed;
             options.arrange_seed_2p = applied.seed_2p;
@@ -88,6 +90,8 @@ impl WinitApp {
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
+            options.seven_to_six = applied.seven_to_six;
+            options.score_save_disabled |= applied.seven_to_six;
             options.arrange = applied.arrange;
             options.arrange_pattern = None;
         }
@@ -98,6 +102,8 @@ impl WinitApp {
         let mut options = self.play_start_options();
         if let Some(active) = &self.play.active_play {
             let applied = &active.running.applied_arrange;
+            options.seven_to_six = applied.seven_to_six;
+            options.score_save_disabled |= applied.seven_to_six;
             options.arrange = applied.arrange;
             options.arrange_2p = applied.arrange_2p;
             options.double_option = applied.double_option;
@@ -145,6 +151,7 @@ impl WinitApp {
             applied_arrange,
             score_key,
             assist_runtime: active.running.session.assist,
+            score_save_disabled: active.running.score_save_disabled,
             bga_frames: active.running.bga_frames.clone(),
             bga_assets: active.running.session.chart.bga_assets.clone(),
             video_bga_decoders,
@@ -167,6 +174,7 @@ impl WinitApp {
             applied_arrange: Some(running.applied_arrange.clone()),
             score_key: Some(running.score_key),
             assist_runtime: running.session.assist,
+            score_save_disabled: running.score_save_disabled,
             bga_frames: running.bga_frames.clone(),
             bga_assets: running.session.chart.bga_assets.clone(),
             video_bga_decoders,
@@ -285,6 +293,7 @@ impl WinitApp {
             cache.applied_arrange.clone().expect("SameArrange cache includes applied arrange");
         let score_key = cache.score_key.expect("SameArrange cache includes score key");
         let assist_runtime = cache.assist_runtime;
+        let score_save_disabled = cache.score_save_disabled;
         let chart_normalization_gain = cache.chart_normalization_gain;
 
         self.play.play_preload_generation = self.play.play_preload_generation.wrapping_add(1);
@@ -302,7 +311,7 @@ impl WinitApp {
         let audio_progress = Arc::new(AtomicU32::new(0));
         let worker_audio_progress = Arc::clone(&audio_progress);
         let preview_prepared_chart = Arc::new(OnceLock::new());
-        let _ = preview_prepared_chart.set(PreparedPlayChart {
+        let prepared_chart = PreparedPlayChart {
             chart: Arc::clone(&chart),
             source_ln_profile,
             chart_length_ms,
@@ -310,7 +319,9 @@ impl WinitApp {
             applied_arrange: applied_arrange.clone(),
             score_key,
             assist_runtime,
-        });
+            score_save_disabled,
+        };
+        let _ = preview_prepared_chart.set(prepared_chart.clone());
         let sample_rate = session_options.sample_rate;
         let (tx, rx) = mpsc::channel();
         thread::Builder::new()
@@ -318,15 +329,9 @@ impl WinitApp {
             .spawn(move || {
                 let preloaded =
                     crate::screens::play_session::preload_play_session_reloading_audio_with_progress(
-                        chart,
-                        source_ln_profile,
-                        chart_length_ms,
+                        prepared_chart,
                         sample_rate,
                         chart_normalization_gain,
-                        render_snapshot_cache,
-                        applied_arrange,
-                        score_key,
-                        assist_runtime,
                         |loaded, total| {
                             worker_audio_progress.store(
                                 resource_load_progress_units(loaded, total),
@@ -457,7 +462,8 @@ impl WinitApp {
                         target_ex_score: active_play.running.target_ex_score,
                         target_name: &active_play.running.target,
                         score_key: active_play.running.score_key,
-                        practice_mode: active_play.running.practice_mode,
+                        practice_mode: active_play.running.practice_mode
+                            || active_play.running.score_save_disabled,
                         finish_mode,
                     },
                 ) {

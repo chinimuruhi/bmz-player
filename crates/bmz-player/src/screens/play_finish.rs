@@ -276,8 +276,10 @@ fn finish_session_snapshot_result(
     let result = snapshot.result.clone();
     let summary_clear_type = finish_mode.summary_clear_type(result.clear_type);
     let replay_playback = snapshot.replay_playback;
-    let previous_best =
-        score_db.best_scores_for_charts(&[score_key]).ok().and_then(|mut bests| bests.pop());
+    let previous_best = (!applied_arrange.seven_to_six)
+        .then(|| score_db.best_scores_for_charts(&[score_key]).ok())
+        .flatten()
+        .and_then(|mut bests| bests.pop());
     // オートプレイ / リプレイ再生 / プラクティス時はスコア・リプレイをDBに保存しない
     // （リザルト画面の表示のみ行う）。
     let full_autoplay = result.autoplay;
@@ -344,7 +346,8 @@ fn finish_session_snapshot_result(
     // 過去ベストスコア・ベストコンボを ResultSummary にフィルする。
     // 今回のスコアが直前に upsert_score_best されているので、`best_*` は
     // 「現在の最高記録」を返す。差分表示は `current - best` として 0 になり得る。
-    if let Ok(bests) = score_db.best_scores_for_charts(&[score_key])
+    if !applied_arrange.seven_to_six
+        && let Ok(bests) = score_db.best_scores_for_charts(&[score_key])
         && let Some(best) = bests.into_iter().next()
     {
         summary.best_ex_score = Some(best.ex_score);
@@ -352,7 +355,9 @@ fn finish_session_snapshot_result(
         summary.best_max_combo = Some(best.max_combo);
         summary.best_bp = Some(best.bp);
     }
-    if let Ok(slots) = score_db.replay_slots_for_chart(score_key) {
+    if !applied_arrange.seven_to_six
+        && let Ok(slots) = score_db.replay_slots_for_chart(score_key)
+    {
         summary.replay_slots = slots.each_ref().map(Option::is_some);
         for (index, saved) in summary.saved_replay_slots.iter().enumerate() {
             if *saved {

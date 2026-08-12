@@ -26,6 +26,7 @@ pub(super) struct CourseLibrarySnapshot {
     pub(super) metrics: CoursePlayMetrics,
     pub(super) first_chart: ChartListItem,
     pub(super) titles: HashMap<i64, String>,
+    pub(super) has_seven_key: bool,
 }
 
 fn finish_course_play_metrics(
@@ -102,6 +103,7 @@ pub(super) fn course_play_metrics_from_chart_metadata(
     let mut total_notes = 0u32;
     let mut ln_mode = None;
     let mut source_ln_profile = crate::ln_policy::ChartLnProfile::default();
+    let mut has_seven_key = false;
     for (index, (chart_id, start_options)) in chart_ids.iter().zip(entry_start_options).enumerate()
     {
         let chart = charts_by_id.get(chart_id).with_context(|| {
@@ -113,7 +115,12 @@ pub(super) fn course_play_metrics_from_chart_metadata(
             chart.ln_profile,
         );
         let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
-        let double_option = start_options.double_option.normalize_for_key_mode(key_mode);
+        has_seven_key |= key_mode == KeyMode::K7;
+        let double_option = if start_options.seven_to_six && key_mode == KeyMode::K7 {
+            DoubleOption::Off
+        } else {
+            start_options.double_option.normalize_for_key_mode(key_mode)
+        };
         let multiplier = if start_options.session_mode.is_battle()
             || matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
         {
@@ -139,7 +146,7 @@ pub(super) fn course_play_metrics_from_chart_metadata(
     );
     let titles =
         charts_by_id.into_iter().map(|(chart_id, chart)| (chart_id, chart.title)).collect();
-    Ok(CourseLibrarySnapshot { metrics, first_chart, titles })
+    Ok(CourseLibrarySnapshot { metrics, first_chart, titles, has_seven_key })
 }
 
 /// 先頭譜面はPlay preload workerが既に変換した値を再利用し、残りの譜面だけを

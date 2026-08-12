@@ -18,6 +18,14 @@ fn prepared_course_finish_matches(
     prepared_course_id == active_course_id && prepared_entries == active_entries
 }
 
+fn course_result_persistence_enabled(
+    any_autoplay: bool,
+    any_replay_playback: bool,
+    score_save_disabled: bool,
+) -> bool {
+    !any_autoplay && !any_replay_playback && !score_save_disabled
+}
+
 impl WinitApp {
     /// 最終ステージの単曲結果が確定した時点で、コース全体の保存と IR enqueue を行う。
     ///
@@ -133,6 +141,7 @@ impl WinitApp {
             course.entry_results.iter().any(|entry| entry.finished.replay_playback);
         let any_assist =
             course.entry_results.iter().any(|entry| !entry.finished.assist.score_update_enabled());
+        let score_save_disabled = course.score_save_disabled;
 
         // `into_result` が entry_results を消費する前に保存用の情報を取り出す。
         let chart_records: Vec<crate::storage::score_db::CourseScoreChartRecord> = course
@@ -205,7 +214,8 @@ impl WinitApp {
 
         // Autoplay / replay playback は単曲と同じく保存しない。アシスト時は
         // クリアランプと回数だけを残し、数値・リプレイ・IR・トロフィーは更新しない。
-        if !any_autoplay && !any_replay_playback {
+        if course_result_persistence_enabled(any_autoplay, any_replay_playback, score_save_disabled)
+        {
             if let Some((stored_course, identity)) = &course_identity {
                 let course_ln_policy = course_result.ln_policy;
                 let course_rule_mode = course_result.rule_mode;
@@ -407,7 +417,10 @@ impl WinitApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{prepared_course_finish_matches, should_prepare_terminal_course_finish};
+    use super::{
+        course_result_persistence_enabled, prepared_course_finish_matches,
+        should_prepare_terminal_course_finish,
+    };
 
     #[test]
     fn course_finish_is_prepared_only_for_failed_or_last_stage() {
@@ -422,5 +435,13 @@ mod tests {
         assert!(prepared_course_finish_matches(7, 3, 7, 3));
         assert!(!prepared_course_finish_matches(8, 3, 7, 3));
         assert!(!prepared_course_finish_matches(7, 2, 7, 3));
+    }
+
+    #[test]
+    fn converted_course_never_persists() {
+        assert!(course_result_persistence_enabled(false, false, false));
+        assert!(!course_result_persistence_enabled(false, false, true));
+        assert!(!course_result_persistence_enabled(true, false, false));
+        assert!(!course_result_persistence_enabled(false, true, false));
     }
 }

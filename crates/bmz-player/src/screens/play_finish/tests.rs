@@ -235,6 +235,7 @@ fn finish_session_result_returns_summary() {
         legacy_seed: false,
         bms_random_choices: vec![1, 2],
         pattern: Some(lane_shuffle_pattern.clone()),
+        seven_to_six: false,
     };
 
     let finished = finish_session_result(

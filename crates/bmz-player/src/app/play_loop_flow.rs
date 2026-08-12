@@ -134,7 +134,8 @@ impl WinitApp {
                             target_ex_score: active_play.running.target_ex_score,
                             target_name: &active_play.running.target,
                             score_key: active_play.running.score_key,
-                            practice_mode: active_play.running.practice_mode,
+                            practice_mode: active_play.running.practice_mode
+                                || active_play.running.score_save_disabled,
                             finish_mode,
                         },
                     ) {
@@ -220,6 +221,7 @@ impl WinitApp {
             || active_play.running.pending_finished.is_some()
             || active_play.running.finish_error.is_some()
             || active_play.running.practice_mode
+            || active_play.running.score_save_disabled
         {
             return;
         }
@@ -242,7 +244,8 @@ impl WinitApp {
                 target_ex_score: active_play.running.target_ex_score,
                 target_name: &active_play.running.target,
                 score_key: active_play.running.score_key,
-                practice_mode: active_play.running.practice_mode,
+                practice_mode: active_play.running.practice_mode
+                    || active_play.running.score_save_disabled,
                 finish_mode,
             },
             settled_at,

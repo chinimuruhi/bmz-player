@@ -9,7 +9,9 @@ use bmz_audio::loudness::{analyze_chart_loudness, play_normalization_gain_for_lo
 use bmz_chart::import::{
     BmsRandomSource, ImportResult, import_bms_chart, import_bms_chart_with_random_source,
 };
-use bmz_chart::model::{LongNoteMode, NoteEvent, NoteKind, PlayableChart, TimingEventKind};
+use bmz_chart::model::{
+    LongNoteMode, LongNotePair, NoteEvent, NoteKind, PlayableChart, SoundEvent, TimingEventKind,
+};
 use bmz_chart::start_margin::apply_start_note_margin;
 use bmz_core::clear::GaugeType;
 use bmz_core::ids::NoteId;
@@ -75,6 +77,12 @@ pub struct PlaySessionOptions {
     pub autoplay: bool,
     /// Practice section play: no score / replay persistence (like autoplay).
     pub practice_mode: bool,
+    /// Convert a source 7K chart into BMZ's scratch-less 6K mode before
+    /// applying the normal arrange option.
+    pub seven_to_six: bool,
+    /// Explicitly disables score/lamp/replay/IR persistence without presenting
+    /// the session as practice or autoplay.
+    pub score_save_disabled: bool,
     /// Fixed chart/audio rate for this session. Restricted to non-scoring modes
     /// by the app flow and clamped by `bmz-audio` to 50..=200.
     pub playback_rate_percent: u16,
@@ -148,6 +156,8 @@ pub struct AppliedArrange {
     /// BMS `#RANDOM` decisions applied before the arrange modifier.
     pub bms_random_choices: Vec<i32>,
     pub pattern: Option<Vec<u8>>,
+    /// The source chart was converted from 7K to 6K before this arrangement.
+    pub seven_to_six: bool,
 }
 
 impl AppliedArrange {
@@ -188,6 +198,7 @@ pub struct PreparedPlaySession {
     pub target: String,
     pub resolved_target: Option<ResolvedTarget>,
     pub practice_mode: bool,
+    pub score_save_disabled: bool,
     pub playback_rate_percent: u16,
 }
 
@@ -204,6 +215,7 @@ pub struct PreparedPlayChart {
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
     pub assist_runtime: AssistRuntime,
+    pub score_save_disabled: bool,
 }
 
 pub struct PreloadedPlaySession {
@@ -217,6 +229,7 @@ pub struct PreloadedPlaySession {
     pub applied_arrange: AppliedArrange,
     pub score_key: ScoreKey,
     pub assist_runtime: AssistRuntime,
+    pub score_save_disabled: bool,
 }
 
 impl PreloadedPlaySession {
@@ -229,6 +242,7 @@ impl PreloadedPlaySession {
             applied_arrange: self.applied_arrange.clone(),
             score_key: self.score_key,
             assist_runtime: self.assist_runtime,
+            score_save_disabled: self.score_save_disabled,
         }
     }
 }
@@ -240,6 +254,8 @@ impl Default for PlaySessionOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
             practice_mode: false,
+            seven_to_six: false,
+            score_save_disabled: false,
             playback_rate_percent: 100,
             assist: AssistOptionConfig::default(),
             assist_runtime: AssistRuntime::default(),
@@ -285,6 +301,8 @@ mod arrange_pipeline;
 mod arrange_rng;
 mod build;
 mod preload;
+#[path = "play_session/seven_to_six.rs"]
+mod seven_to_six;
 
 pub use arrange_pipeline::{apply_arrange, apply_arrange_pair, generate_arrange_seed};
 pub use build::{
@@ -300,6 +318,7 @@ pub use preload::{
     preload_play_session_reloading_audio_with_progress, scored_chart_metrics_for_chart,
     scored_chart_metrics_from_prepared, scored_note_count_for_chart,
 };
+pub use seven_to_six::{apply_seven_to_six, normalize_arrange_for_seven_to_six};
 
 use arrange_algorithm::*;
 use arrange_permutation::*;

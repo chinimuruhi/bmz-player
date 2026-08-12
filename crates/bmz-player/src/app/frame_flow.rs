@@ -335,6 +335,9 @@ impl WinitApp {
         let Some(finished) = &self.result.finished_play else {
             return;
         };
+        if finished.stored.score_history_id <= 0 {
+            return;
+        }
         self.result.result_ir = crate::screens::result_ir::spawn_result_ir_task(
             self.boot.profile_paths.root_dir.clone(),
             self.boot.profile_paths.score_db.clone(),
@@ -552,6 +555,10 @@ impl WinitApp {
         }
         self.sync_changed_select_play_options_from_profile(&before.play);
         self.sync_changed_select_score_context(SelectScoreContext::from_play(&before.play));
+        if before.play.seven_to_six != self.boot.profile_config.play.seven_to_six {
+            self.invalidate_play_preload();
+            self.play.play_media_cache = None;
+        }
         self.sync_changed_gamepad_analog_config_from_profile(&before.input);
         if profile_lane_settings_changed(&before.lane, &self.boot.profile_config.lane) {
             self.sync_active_play_lane_settings_from_profile(&before.lane);

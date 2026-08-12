@@ -2,6 +2,7 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn begin_decide_for_chart(&mut self, chart_id: i64, mut options: PlayStartOptions) {
+        self.normalize_seven_to_six_options(chart_id, &mut options);
         self.apply_active_rival_play_overrides(chart_id, &mut options);
         let snapshot = self.decide_snapshot_for_chart(chart_id);
         self.begin_decide_for_chart_with_snapshot(chart_id, options, snapshot, None, None);
@@ -15,6 +16,7 @@ impl WinitApp {
         if options.session_mode != SessionMode::Normal
             || options.autoplay
             || options.practice_mode
+            || options.seven_to_six
             || options.replay_player.is_some()
             || self.play.active_course.is_some()
         {
@@ -76,10 +78,11 @@ impl WinitApp {
     pub(super) fn begin_course_decide_for_chart(
         &mut self,
         chart_id: i64,
-        options: PlayStartOptions,
+        mut options: PlayStartOptions,
         course_title: &str,
         chart_metadata: ChartListItem,
     ) {
+        self.normalize_seven_to_six_options(chart_id, &mut options);
         let mut snapshot = self.decide_snapshot_for_chart_with_metadata(chart_id, &chart_metadata);
         self.apply_course_skin_context(&mut snapshot);
         let title_override =
@@ -145,6 +148,7 @@ impl WinitApp {
                     key_mode,
                     options.double_option,
                     options.session_mode,
+                    options.seven_to_six,
                 )
             })
             .unwrap_or_else(|| self.play_skin_key_mode_for_chart(chart_id, &options));
@@ -173,6 +177,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) -> u64 {
+        self.normalize_seven_to_six_options(chart_id, &mut options);
         // 通常開始・practice・retry は、残っているコース次曲先読みを置き換える。
         // コース側は worker 開始後に同じ generation の launch 情報を設定し直す。
         self.play.pending_course_stage_launch = None;
@@ -182,7 +187,8 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
-        let play_config_key_mode = self.key_mode_for_chart(chart_id);
+        let play_config_key_mode =
+            effective_play_key_mode(self.key_mode_for_chart(chart_id), options.seven_to_six);
         options.hs_fix = hs_fix_option_from_profile(
             self.boot.profile_config.play_mode_config(play_config_key_mode).hs_fix,
         );
@@ -304,7 +310,31 @@ impl WinitApp {
             self.key_mode_for_chart(chart_id),
             options.double_option,
             options.session_mode,
+            options.seven_to_six,
         )
+    }
+
+    pub(super) fn normalize_seven_to_six_options(
+        &self,
+        chart_id: i64,
+        options: &mut PlayStartOptions,
+    ) {
+        if !options.seven_to_six || self.key_mode_for_chart(chart_id) != KeyMode::K7 {
+            return;
+        }
+        options.score_save_disabled = true;
+        options.arrange =
+            crate::screens::play_session::normalize_arrange_for_seven_to_six(options.arrange);
+        options.arrange_2p = ArrangeOption::Normal;
+        options.double_option = DoubleOption::Off;
+        options.session_mode = match options.session_mode {
+            SessionMode::AutoplayBattle => SessionMode::Autoplay,
+            SessionMode::GhostBattle => SessionMode::Normal,
+            other => other,
+        };
+        options.autoplay = options.session_mode.primary_autoplay();
+        options.target = TargetOption::None;
+        options.resolved_target = None;
     }
 
     pub(super) fn open_prepared_winit_play_session(

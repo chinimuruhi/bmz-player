@@ -37,6 +37,8 @@ pub struct PlayStartOptions {
     pub autoplay: bool,
     /// Practice mode: section play without result DB update.
     pub practice_mode: bool,
+    pub seven_to_six: bool,
+    pub score_save_disabled: bool,
     pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
     pub replay_player: Option<ReplayPlayer>,
@@ -124,6 +126,8 @@ pub fn play_session_options_from_start(
         session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
         practice_mode: start_options.practice_mode,
+        seven_to_six: start_options.seven_to_six,
+        score_save_disabled: start_options.score_save_disabled,
         playback_rate_percent: bmz_audio::clock::clamp_playback_rate_percent(
             if start_options.playback_rate_percent == 0 {
                 100
@@ -233,9 +237,11 @@ pub fn start_running_play_session_for_chart_with_audio_runtime_and_input_backend
     )?;
     let score_key = prepared.score_key;
     let mut running = open_prepared_play_audio(runtime, prepared, score_key);
-    running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
-    running.best_ghost =
-        score_db.best_ghost(score_key, running.session.scored_total_notes).unwrap_or(None);
+    if !running.score_save_disabled {
+        running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
+        running.best_ghost =
+            score_db.best_ghost(score_key, running.session.scored_total_notes).unwrap_or(None);
+    }
     resolve_local_target_ex_score(&mut running);
     running.start(chart_zero_time)?;
     Ok(running)
@@ -281,9 +287,11 @@ pub fn open_prepared_winit_play_session(
 ) -> Result<StartedInputPlaySession> {
     let score_key = prepared.prepared.score_key;
     let mut running = open_prepared_play_audio(runtime, prepared.prepared, score_key);
-    running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
-    running.best_ghost =
-        score_db.best_ghost(score_key, running.session.scored_total_notes).unwrap_or(None);
+    if !running.score_save_disabled {
+        running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
+        running.best_ghost =
+            score_db.best_ghost(score_key, running.session.scored_total_notes).unwrap_or(None);
+    }
     resolve_local_target_ex_score(&mut running);
     Ok(StartedInputPlaySession { running, input: prepared.input })
 }
@@ -423,6 +431,8 @@ pub fn apply_arrange_override(
     options.legacy_arrange_seed = arrange.legacy_seed;
     options.bms_random_choices = Some(arrange.bms_random_choices.clone());
     options.arrange_pattern = arrange.pattern.clone();
+    options.seven_to_six = arrange.seven_to_six;
+    options.score_save_disabled |= arrange.seven_to_six;
 }
 
 pub fn apply_queued_replay(
@@ -440,6 +450,7 @@ pub fn apply_queued_replay(
     options.legacy_arrange_seed = replay.replay.uses_legacy_seed_scheme();
     options.bms_random_choices = replay.replay.bms_random_choices.clone();
     options.arrange_pattern = replay.replay.lane_shuffle_pattern.clone();
+    options.seven_to_six = false;
     // Replays of past plays were recorded by a human; never autoplay them.
     options.autoplay = false;
 }
@@ -468,6 +479,7 @@ mod tests {
             legacy_seed: false,
             bms_random_choices: vec![2],
             pattern: Some(vec![3, 1, 2, 0]),
+            seven_to_six: true,
         };
         apply_arrange_override(&mut options, &arrange);
 
@@ -476,6 +488,8 @@ mod tests {
         assert_eq!(options.double_option, crate::select_options::DoubleOption::Flip);
         assert_eq!(options.arrange_seed, Some(42));
         assert_eq!(options.arrange_pattern, Some(vec![3, 1, 2, 0]));
+        assert!(options.seven_to_six);
+        assert!(options.score_save_disabled);
         // Unlike a replay, no playback player is attached: the chart is played.
         assert!(options.replay_player.is_none());
     }

@@ -207,6 +207,8 @@ pub(in crate::ui::profile_panel) fn build_profile_play_section(
                 });
             profile.play.session_mode = Some(session_mode);
             profile.play.auto_play = session_mode.primary_autoplay();
+            ui.checkbox(&mut profile.play.seven_to_six, tr!(text, "profile-play-seven-to-six"))
+                .on_hover_text(tr!(text, "profile-play-seven-to-six-help"));
             egui::CollapsingHeader::new("ASSIST / MODIFIERS").id_salt("profile_play_assist").show(
                 ui,
                 |ui| {

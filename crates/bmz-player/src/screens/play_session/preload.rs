@@ -171,6 +171,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         applied_arrange: imported.applied_arrange,
         score_key: imported.score_key,
         assist_runtime: imported.assist_runtime,
+        score_save_disabled: imported.score_save_disabled,
     };
     let sound_counts = sound_preload_counts(&prepared_chart.chart);
     tracing::info!(
@@ -227,6 +228,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         applied_arrange: prepared_chart.applied_arrange,
         score_key: prepared_chart.score_key,
         assist_runtime: prepared_chart.assist_runtime,
+        score_save_disabled: prepared_chart.score_save_disabled,
     })
 }
 
@@ -237,17 +239,21 @@ pub fn preload_play_session_for_chart_with_callbacks(
 /// asset declared by the retried session.  This intentionally does not carry
 /// mixer voices, scheduled sounds, or any other playback state across retries.
 pub fn preload_play_session_reloading_audio_with_progress(
-    chart: Arc<PlayableChart>,
-    source_ln_profile: ChartLnProfile,
-    chart_length_ms: u64,
+    prepared_chart: PreparedPlayChart,
     sample_rate: u32,
     chart_normalization_gain: f32,
-    render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
-    applied_arrange: AppliedArrange,
-    score_key: ScoreKey,
-    assist_runtime: bmz_gameplay::session::AssistRuntime,
     on_progress: impl FnMut(usize, usize),
 ) -> PreloadedPlaySession {
+    let PreparedPlayChart {
+        chart,
+        source_ln_profile,
+        chart_length_ms,
+        render_snapshot_cache,
+        applied_arrange,
+        score_key,
+        assist_runtime,
+        score_save_disabled,
+    } = prepared_chart;
     let sound_counts = sound_preload_counts(&chart);
     let mut loader = FfmpegSampleLoader::default();
     let audio_load_started_at = Instant::now();
@@ -272,6 +278,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
         applied_arrange,
         score_key,
         assist_runtime,
+        score_save_disabled,
     }
 }
 
@@ -281,6 +288,7 @@ pub(super) struct TransformedPlayChart {
     pub(super) applied_arrange: AppliedArrange,
     pub(super) score_key: ScoreKey,
     pub(super) assist_runtime: bmz_gameplay::session::AssistRuntime,
+    pub(super) score_save_disabled: bool,
 }
 
 pub fn load_source_chart_for_chart(
@@ -324,9 +332,10 @@ pub(super) fn load_transformed_chart_for_play(
     // LN / arrange より前に適用し、practice 切出しもシフト後時刻を使う。
     apply_start_note_margin(&mut chart);
     let source_key_mode = chart.metadata.key_mode;
+    let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
     // SessionMode の battle は表示用に2P側を作るが、通常の BATTLE 譜面オプションとは
     // 異なり、1P側のスコアキーと保存可否を維持する。
-    let applied_double_option = if options.session_mode.is_battle() {
+    let applied_double_option = if seven_to_six || options.session_mode.is_battle() {
         DoubleOption::Off
     } else {
         options.double_option.normalize_for_key_mode(source_key_mode)
@@ -348,21 +357,37 @@ pub(super) fn load_transformed_chart_for_play(
         options.assist,
         options.arrange_seed.unwrap_or(0),
     );
-    apply_double_option(&mut chart, applied_double_option);
-    if options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7) {
-        apply_battle_double_option(&mut chart);
-    }
+    let arrange = if seven_to_six {
+        normalize_arrange_for_seven_to_six(options.arrange)
+    } else {
+        options.arrange
+    };
     let arrange_seed = effective_arrange_seed(
-        chart.metadata.key_mode,
-        options.arrange,
+        source_key_mode,
+        arrange,
         options.arrange_seed,
         options.random_trainer_seed,
         options.arrange_pattern.as_deref(),
-    );
+    )
+    .or_else(|| seven_to_six.then(generate_arrange_seed));
+    if seven_to_six {
+        apply_seven_to_six(
+            &mut chart,
+            arrange_seed.expect("7K to 6K seed"),
+            options.legacy_arrange_seed,
+        );
+    }
+    apply_double_option(&mut chart, applied_double_option);
+    if !seven_to_six
+        && options.session_mode.is_battle()
+        && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7)
+    {
+        apply_battle_double_option(&mut chart);
+    }
     let mut applied_arrange = apply_arrange_pair(
         &mut chart,
-        options.arrange,
-        options.arrange_2p,
+        arrange,
+        if seven_to_six { ArrangeOption::Normal } else { options.arrange_2p },
         arrange_seed,
         options.arrange_seed_2p,
         options.legacy_arrange_seed,
@@ -370,6 +395,7 @@ pub(super) fn load_transformed_chart_for_play(
     );
     applied_arrange.double_option = applied_double_option;
     applied_arrange.bms_random_choices = import.bms_random_choices;
+    applied_arrange.seven_to_six = seven_to_six;
 
     Ok(TransformedPlayChart {
         chart,
@@ -377,6 +403,7 @@ pub(super) fn load_transformed_chart_for_play(
         applied_arrange,
         score_key,
         assist_runtime,
+        score_save_disabled: options.score_save_disabled || seven_to_six,
     })
 }
 
@@ -451,6 +478,7 @@ pub fn build_practice_prepared_from_preloaded(
         None,
     );
     applied_arrange.double_option = double_option;
+    applied_arrange.seven_to_six = preloaded.applied_arrange.seven_to_six;
     options.practice_mode = true;
     options.assist_runtime = preloaded.assist_runtime;
     options.autoplay = false;
@@ -468,6 +496,8 @@ pub fn build_practice_prepared_from_preloaded(
     options.playback_rate_percent = property.playback_rate_percent;
     let target = TargetOption::None.as_string();
     let practice_mode = options.practice_mode;
+    options.score_save_disabled |= preloaded.score_save_disabled;
+    let score_save_disabled = options.score_save_disabled;
     let playback_rate_percent = options.playback_rate_percent;
     let mut session =
         build_game_session_with_input_backend(Arc::new(chart), profile, options, input_backend);
@@ -488,6 +518,7 @@ pub fn build_practice_prepared_from_preloaded(
         target,
         resolved_target: None,
         practice_mode,
+        score_save_disabled,
         playback_rate_percent,
     }
 }
@@ -498,6 +529,15 @@ pub fn build_prepared_play_session_from_preloaded(
     mut options: PlaySessionOptions,
     input_backend: Box<dyn InputBackend>,
 ) -> PreparedPlaySession {
+    options.score_save_disabled |= preloaded.score_save_disabled;
+    if preloaded.applied_arrange.seven_to_six {
+        options.session_mode = match options.session_mode {
+            SessionMode::AutoplayBattle => SessionMode::Autoplay,
+            SessionMode::GhostBattle => SessionMode::Normal,
+            other => other,
+        };
+        options.autoplay = options.session_mode.primary_autoplay();
+    }
     options.double_option = preloaded.applied_arrange.double_option;
     options.assist_runtime = preloaded.assist_runtime;
     let target_option = options.target;
@@ -507,6 +547,7 @@ pub fn build_prepared_play_session_from_preloaded(
         .map(|target| target.name.clone())
         .unwrap_or_else(|| options.target.as_string());
     let practice_mode = options.practice_mode;
+    let score_save_disabled = options.score_save_disabled;
     let playback_rate_percent = options.playback_rate_percent;
     let session =
         build_game_session_with_input_backend(preloaded.chart, profile, options, input_backend);
@@ -525,6 +566,7 @@ pub fn build_prepared_play_session_from_preloaded(
         target,
         resolved_target,
         practice_mode,
+        score_save_disabled,
         playback_rate_percent,
     }
 }

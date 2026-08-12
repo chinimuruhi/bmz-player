@@ -97,6 +97,8 @@ pub(in crate::app) fn preloaded_matches_start(
     preloaded.chart_id == chart_id
         && preloaded.session_options.autoplay == options.autoplay
         && preloaded.session_options.practice_mode == options.practice_mode
+        && preloaded.session_options.seven_to_six == options.seven_to_six
+        && preloaded.session_options.score_save_disabled == options.score_save_disabled
         && preloaded.session_options.arrange == options.arrange
         && preloaded.session_options.arrange_2p == options.arrange_2p
         && preloaded.session_options.double_option == options.double_option

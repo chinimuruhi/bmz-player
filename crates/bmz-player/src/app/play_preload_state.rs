@@ -48,6 +48,7 @@ pub(super) struct PlayMediaCache {
     pub(super) applied_arrange: Option<crate::screens::play_session::AppliedArrange>,
     pub(super) score_key: Option<crate::storage::score_db::ScoreKey>,
     pub(super) assist_runtime: bmz_gameplay::session::AssistRuntime,
+    pub(super) score_save_disabled: bool,
     pub(super) bga_frames: BgaFrameCatalog,
     pub(super) bga_assets: Vec<BgaAssetRef>,
     pub(super) video_bga_decoders: crate::video_bga::VideoBgaDecoderMap,

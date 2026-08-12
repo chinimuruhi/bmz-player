@@ -19,15 +19,19 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
     let mut progress = Vec::new();
 
     let preloaded = preload_play_session_reloading_audio_with_progress(
-        Arc::clone(&chart),
-        crate::ln_policy::ChartLnProfile::default(),
-        123_456,
+        PreparedPlayChart {
+            chart: Arc::clone(&chart),
+            source_ln_profile: crate::ln_policy::ChartLnProfile::default(),
+            chart_length_ms: 123_456,
+            render_snapshot_cache:
+                crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&chart),
+            applied_arrange: normal_applied_arrange(0, false),
+            score_key,
+            assist_runtime: Default::default(),
+            score_save_disabled: false,
+        },
         48_000,
         0.75,
-        crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&chart),
-        normal_applied_arrange(0, false),
-        score_key,
-        Default::default(),
         |loaded, total| progress.push((loaded, total)),
     );
 

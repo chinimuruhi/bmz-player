@@ -441,7 +441,8 @@ pub(super) fn lua_runtime_state_for_play(
 ) -> bmz_skin::LuaLoadRuntimeState {
     let replay_playback = options.replay_player.is_some();
     let autoplay = !replay_playback && (profile_autoplay || options.autoplay);
-    let score_save_enabled = !autoplay && !replay_playback && !options.practice_mode;
+    let score_save_enabled =
+        !autoplay && !replay_playback && !options.practice_mode && !options.score_save_disabled;
     let mut option_values = BTreeMap::from([
         (32, !autoplay),
         (33, autoplay),

@@ -261,6 +261,12 @@ fn placeholder_session_visuals_expose_score_save_and_play_modes() {
             false,
             true,
         ),
+        (
+            PlaySessionOptions { score_save_disabled: true, ..PlaySessionOptions::default() },
+            false,
+            false,
+            false,
+        ),
     ] {
         let mut snapshot = bmz_render::snapshot::RenderSnapshot::default();
         apply_placeholder_session_visuals(&mut snapshot, &profile, KeyMode::K7, &options);

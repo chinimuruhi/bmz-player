@@ -56,7 +56,11 @@ pub(in crate::app) fn play_skin_key_mode_for_options(
     chart_key_mode: KeyMode,
     double_option: DoubleOption,
     session_mode: SessionMode,
+    seven_to_six: bool,
 ) -> KeyMode {
+    if seven_to_six && chart_key_mode == KeyMode::K7 {
+        return KeyMode::K6;
+    }
     if session_mode.is_battle() {
         return match chart_key_mode {
             KeyMode::K5 => KeyMode::K10,
@@ -72,6 +76,13 @@ pub(in crate::app) fn play_skin_key_mode_for_options(
         },
         DoubleOption::Off | DoubleOption::Flip => chart_key_mode,
     }
+}
+
+pub(in crate::app) fn effective_play_key_mode(
+    chart_key_mode: KeyMode,
+    seven_to_six: bool,
+) -> KeyMode {
+    if seven_to_six && chart_key_mode == KeyMode::K7 { KeyMode::K6 } else { chart_key_mode }
 }
 
 pub(in crate::app) fn second_player_lane(lane: Lane) -> Option<Lane> {

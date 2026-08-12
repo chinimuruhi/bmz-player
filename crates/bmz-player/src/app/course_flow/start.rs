@@ -112,7 +112,6 @@ impl WinitApp {
             }
             entry_start_options.push(options);
         }
-        let options = entry_start_options[0].clone();
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
         let metadata_started_at = Instant::now();
@@ -129,6 +128,14 @@ impl WinitApp {
             }
         };
         let metadata_elapsed = metadata_started_at.elapsed();
+        let score_save_disabled = library_snapshot.has_seven_key
+            && entry_start_options.iter().any(|options| options.seven_to_six);
+        if score_save_disabled {
+            for options in &mut entry_start_options {
+                options.score_save_disabled = true;
+            }
+        }
+        let options = entry_start_options[0].clone();
         apply_course_entry_title_hints(&mut definition, &library_snapshot.titles);
         let course_title = definition.title.clone();
         let course_metrics = library_snapshot.metrics;
@@ -139,6 +146,7 @@ impl WinitApp {
             ln_policy_setting,
             ln_policy: course_metrics.ln_policy,
             rule_mode,
+            score_save_disabled,
             course_total_notes: course_metrics.total_notes,
             course_ln_mode: course_metrics.ln_mode,
             current_index: 0,
@@ -278,6 +286,8 @@ impl WinitApp {
         let mut entry_start_options = Vec::with_capacity(definition.entries.len());
         for (index, entry) in definition.entries.iter().enumerate() {
             let mut options = self.play_start_options();
+            options.seven_to_six = false;
+            options.score_save_disabled = false;
             options.session_mode = SessionMode::Normal;
             options.autoplay = false;
             apply_course_constraints(&mut options, &definition.constraints);
@@ -316,6 +326,7 @@ impl WinitApp {
             ln_policy_setting,
             ln_policy,
             rule_mode,
+            score_save_disabled: false,
             course_total_notes: course_metrics.total_notes,
             course_ln_mode: course_metrics.ln_mode,
             current_index: 0,
