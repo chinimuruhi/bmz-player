@@ -105,6 +105,10 @@ pub(super) fn build_random_mix_definition(
         key_mode,
         min_level,
         max_level,
+        min_bpm,
+        max_bpm,
+        None,
+        config.bpm_range,
         config.target_level,
     );
     let reference_bpm = first.max_bpm;
@@ -135,6 +139,10 @@ pub(super) fn build_random_mix_definition(
             key_mode,
             min_level,
             max_level,
+            min_bpm,
+            max_bpm,
+            Some(reference_bpm),
+            config.bpm_range,
             config.target_level,
         ));
     }
@@ -197,6 +205,10 @@ fn random_mix_target_chart<'a>(
     key_mode: KeyMode,
     min_level: u32,
     max_level: u32,
+    min_bpm: u32,
+    max_bpm: u32,
+    reference_bpm: Option<f64>,
+    bpm_range: u32,
     target_level: u32,
 ) -> &'a ChartListItem {
     if target_level == 0 {
@@ -208,6 +220,15 @@ fn random_mix_target_chart<'a>(
             chart.folder_path == default.folder_path
                 && chart.mode == key_mode.as_str()
                 && random_mix_level_matches(chart, min_level, max_level)
+                && random_mix_bpm_matches(chart, min_bpm, max_bpm)
+                && match reference_bpm {
+                    Some(reference_bpm) => {
+                        bpm_range == 0
+                            || (chart.min_bpm >= reference_bpm - bpm_range as f64
+                                && chart.max_bpm <= reference_bpm + bpm_range as f64)
+                    }
+                    None => bpm_range == 0 || (chart.max_bpm - chart.min_bpm).abs() < f64::EPSILON,
+                }
         })
         .min_by_key(|chart| chart_level(chart).abs_diff(target_level))
         .unwrap_or(default)
@@ -347,6 +368,28 @@ mod tests {
         let definition = build_random_mix_definition(&charts, config, KeyMode::K7, 3).unwrap();
 
         assert!((2..=4).contains(&definition.entries.len()));
+    }
+
+    #[test]
+    fn random_mix_target_level_does_not_bypass_bpm_limits() {
+        let charts = vec![
+            chart(1, "a", "7K", "3", 120.0, 120.0),
+            chart(2, "a", "7K", "10", 200.0, 200.0),
+            chart(3, "b", "7K", "9", 125.0, 125.0),
+        ];
+        let config = crate::config::profile_config::RandomMixConfig {
+            target_level: 10,
+            max_bpm: 130,
+            stages: 2,
+            ..Default::default()
+        };
+
+        let definition = build_random_mix_definition(&charts, config, KeyMode::K7, 7).unwrap();
+        let ids =
+            definition.entries.iter().map(|entry| entry.chart_id.unwrap()).collect::<HashSet<_>>();
+
+        assert!(ids.contains(&1));
+        assert!(!ids.contains(&2));
     }
 
     #[test]
