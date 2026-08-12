@@ -323,6 +323,8 @@ fn finish_session_snapshot_result(
                 } else {
                     crate::storage::replay::SEED_SCHEME_BEATORAJA_24BIT_V1.to_string()
                 },
+                s_random_scheme: applied_arrange.s_random_scheme,
+                s_random_scheme_2p: applied_arrange.s_random_scheme_2p,
                 arrange_pattern,
                 update_score: snapshot.assist.score_update_enabled(),
                 mode: finish_mode.store_mode(),

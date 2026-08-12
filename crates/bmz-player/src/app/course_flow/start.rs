@@ -293,8 +293,10 @@ impl WinitApp {
             apply_course_constraints(&mut options, &definition.constraints);
             if let Some(replay) = queued.get(index)
                 && entry.chart_id == Some(replay.chart_id)
+                && let Err(error) = apply_queued_replay(&mut options, replay)
             {
-                apply_queued_replay(&mut options, replay);
+                tracing::warn!(%error, course_id, index, "unsupported course replay arrangement");
+                return;
             }
             entry_start_options.push(options);
         }

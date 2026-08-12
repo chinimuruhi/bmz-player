@@ -156,6 +156,7 @@ impl WinitApp {
         if replay.events.is_empty() {
             anyhow::bail!("self-best score has no full input replay");
         }
+        let replay_s_random_scheme = replay.effective_s_random_scheme()?;
         let events = replay
             .events
             .iter()
@@ -168,6 +169,7 @@ impl WinitApp {
         options.replay_player = Some(bmz_gameplay::replay::ReplayPlayer { events, next_index: 0 });
         options.arrange_2p = replay.arrange_option();
         options.arrange_seed_2p = replay.arrange_seed;
+        options.s_random_scheme_2p = Some(replay_s_random_scheme);
         options.bms_random_seed = None;
         options.bms_random_choices = replay.bms_random_choices;
         Ok(())

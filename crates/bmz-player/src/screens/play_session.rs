@@ -68,6 +68,33 @@ use crate::storage::library_db::ChartNormalizationAnalysis;
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::score_db::ScoreKey;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SRandomScheme {
+    Legacy40MsV1,
+    #[default]
+    Lm120HzV1,
+}
+
+impl SRandomScheme {
+    pub const LEGACY_40MS_V1: &'static str = "legacy_40ms_v1";
+    pub const LM_120HZ_V1: &'static str = "lm_120hz_v1";
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Legacy40MsV1 => Self::LEGACY_40MS_V1,
+            Self::Lm120HzV1 => Self::LM_120HZ_V1,
+        }
+    }
+
+    pub fn from_persistent_str(value: &str) -> Result<Self> {
+        match value {
+            Self::LEGACY_40MS_V1 => Ok(Self::Legacy40MsV1),
+            Self::LM_120HZ_V1 => Ok(Self::Lm120HzV1),
+            _ => bail!("unsupported S-RANDOM scheme: {value}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PlaySessionOptions {
     /// Per-key presentation settings use the source chart mode. This differs
@@ -108,6 +135,10 @@ pub struct PlaySessionOptions {
     pub random_trainer_seed: Option<i64>,
     /// Replay v3 and older used one unrestricted i64 seed with SplitMix64.
     pub legacy_arrange_seed: bool,
+    /// S-RANDOM algorithm generation, independent from the arrange RNG scheme.
+    pub s_random_scheme: SRandomScheme,
+    /// Optional 2P S-RANDOM generation for mixed ghost/replay arrangements.
+    pub s_random_scheme_2p: Option<SRandomScheme>,
     /// Independent seed used only while selecting BMS `#RANDOM` branches.
     pub bms_random_seed: Option<u64>,
     /// Recorded `#RANDOM` decisions, in source order, for exact replay.
@@ -153,6 +184,10 @@ pub struct AppliedArrange {
     pub seed_2p: Option<i64>,
     /// True only when replaying the pre-v4 SplitMix64 seed format.
     pub legacy_seed: bool,
+    /// S-RANDOM algorithm generation actually used for this chart.
+    pub s_random_scheme: SRandomScheme,
+    /// 2P generation for DP charts. `None` means this is an SP chart.
+    pub s_random_scheme_2p: Option<SRandomScheme>,
     /// BMS `#RANDOM` decisions applied before the arrange modifier.
     pub bms_random_choices: Vec<i32>,
     pub pattern: Option<Vec<u8>>,
@@ -274,6 +309,8 @@ impl Default for PlaySessionOptions {
             arrange_seed_2p: None,
             random_trainer_seed: None,
             legacy_arrange_seed: false,
+            s_random_scheme: SRandomScheme::default(),
+            s_random_scheme_2p: None,
             bms_random_seed: None,
             bms_random_choices: None,
             arrange_pattern: None,

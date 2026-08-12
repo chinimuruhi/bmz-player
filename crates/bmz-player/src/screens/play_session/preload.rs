@@ -391,6 +391,8 @@ pub(super) fn load_transformed_chart_for_play(
         arrange_seed,
         options.arrange_seed_2p,
         options.legacy_arrange_seed,
+        options.s_random_scheme,
+        options.s_random_scheme_2p,
         options.arrange_pattern.as_deref(),
     );
     applied_arrange.double_option = applied_double_option;
@@ -475,6 +477,8 @@ pub fn build_practice_prepared_from_preloaded(
         None,
         None,
         false,
+        options.s_random_scheme,
+        options.s_random_scheme_2p,
         None,
     );
     applied_arrange.double_option = double_option;

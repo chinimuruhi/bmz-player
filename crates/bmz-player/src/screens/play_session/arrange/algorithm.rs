@@ -4,6 +4,7 @@ pub(super) struct NoteArrangeEngine {
     pub(super) arrange: ArrangeOption,
     pub(super) rng: ArrangeRng,
     pub(super) groups: Vec<NoteArrangeGroup>,
+    pub(super) s_random_scheme: SRandomScheme,
 }
 
 impl NoteArrangeEngine {
@@ -12,11 +13,13 @@ impl NoteArrangeEngine {
         seed: i64,
         groups: &[Vec<usize>],
         legacy_seed: bool,
+        s_random_scheme: SRandomScheme,
     ) -> Self {
         Self {
             arrange,
             rng: ArrangeRng::new(seed, legacy_seed),
             groups: groups.iter().map(|lanes| NoteArrangeGroup::new(lanes)).collect(),
+            s_random_scheme,
         }
     }
 
@@ -28,7 +31,8 @@ impl NoteArrangeEngine {
     ) {
         let time = notes.first().map(|note| note.time).unwrap_or(TimeUs(0));
         for group in &mut self.groups {
-            let map = group.randomize(notes, time, self.arrange, &mut self.rng);
+            let map =
+                group.randomize(notes, time, self.arrange, self.s_random_scheme, &mut self.rng);
             for note in notes.iter_mut() {
                 let source = note.lane.index();
                 let Some(&dest) = map.get(&source) else {
@@ -55,6 +59,57 @@ pub(super) struct NoteArrangeGroup {
     pub(super) spiral_head: usize,
     pub(super) scratch_lanes: Vec<usize>,
     pub(super) scratch_index: usize,
+    pub(super) lane_history: [LaneHistory; LANE_COUNT],
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct LaneHistory {
+    pub(super) last_frame: Option<i64>,
+    pub(super) rapid_streak: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LmCandidateClass {
+    Safe,
+    FourPlusWithin8F,
+    ThreePlusWithin7F,
+    TwoPlusWithin6F,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LmCandidate {
+    lane: usize,
+    gap: i64,
+}
+
+pub(super) fn logical_frame_120(time: TimeUs) -> i64 {
+    let scaled = i128::from(time.0) * 120;
+    scaled.div_euclid(1_000_000) as i64
+}
+
+pub(super) fn next_lane_history(history: LaneHistory, current_frame: i64) -> (LaneHistory, i64) {
+    let Some(last_frame) = history.last_frame else {
+        return (LaneHistory { last_frame: Some(current_frame), rapid_streak: 1 }, i64::MAX);
+    };
+
+    debug_assert!(current_frame >= last_frame, "arrange timelines must be time-sorted");
+    let gap =
+        if current_frame >= last_frame { current_frame.saturating_sub(last_frame) } else { 0 };
+    let rapid_streak = if gap > 8 { 1 } else { history.rapid_streak.saturating_add(1) };
+    (LaneHistory { last_frame: Some(current_frame), rapid_streak }, gap)
+}
+
+pub(super) fn classify_lm_candidate(history: LaneHistory, current_frame: i64) -> LmCandidateClass {
+    let (next, gap) = next_lane_history(history, current_frame);
+    if gap <= 6 && next.rapid_streak >= 2 {
+        LmCandidateClass::TwoPlusWithin6F
+    } else if gap <= 7 && next.rapid_streak >= 3 {
+        LmCandidateClass::ThreePlusWithin7F
+    } else if gap <= 8 && next.rapid_streak >= 4 {
+        LmCandidateClass::FourPlusWithin8F
+    } else {
+        LmCandidateClass::Safe
+    }
 }
 
 impl NoteArrangeGroup {
@@ -72,6 +127,7 @@ impl NoteArrangeGroup {
             spiral_head: 0,
             scratch_lanes,
             scratch_index: 0,
+            lane_history: [LaneHistory::default(); LANE_COUNT],
         }
     }
 
@@ -80,6 +136,7 @@ impl NoteArrangeGroup {
         notes: &[NoteEvent],
         time: TimeUs,
         arrange: ArrangeOption,
+        s_random_scheme: SRandomScheme,
         rng: &mut ArrangeRng,
     ) -> std::collections::HashMap<usize, usize> {
         if self.lanes.is_empty() {
@@ -87,6 +144,12 @@ impl NoteArrangeGroup {
         }
         if arrange == ArrangeOption::Spiral {
             return self.spiral_map(rng);
+        }
+
+        if matches!(arrange, ArrangeOption::SRandom | ArrangeOption::SRandomEx)
+            && s_random_scheme == SRandomScheme::Lm120HzV1
+        {
+            return self.lm_120hz_shuffle(notes, time, rng);
         }
 
         let mut changeable = self.changeable_lanes();
@@ -105,6 +168,100 @@ impl NoteArrangeGroup {
             _ => TimeUs(40_000),
         };
         map.extend(self.time_based_shuffle(notes, time, threshold, rng, changeable, assignable));
+        map
+    }
+
+    /// LM approximation v1: 120 Hz logical-frame correction with 8F/7F/6F buckets.
+    ///
+    /// The exact RNG call order is replay data for this scheme. Do not change selection or
+    /// shuffle calls without introducing a new S-RANDOM scheme.
+    pub(super) fn lm_120hz_shuffle(
+        &mut self,
+        notes: &[NoteEvent],
+        time: TimeUs,
+        rng: &mut ArrangeRng,
+    ) -> std::collections::HashMap<usize, usize> {
+        let changeable = self.changeable_lanes();
+        let assignable = self.assignable_lanes();
+        let mut map = std::collections::HashMap::new();
+        map.extend(self.active_ln.iter().map(|(&source, &dest)| (source, dest)));
+
+        let mut note_lanes = Vec::new();
+        let mut empty_lanes = Vec::new();
+        for lane in changeable {
+            if notes.iter().any(|note| note.lane.index() == lane && note.kind != NoteKind::Mine) {
+                note_lanes.push(lane);
+            } else {
+                empty_lanes.push(lane);
+            }
+        }
+
+        // A mine-only timeline must not advance the arrange RNG or correction history. A cloned
+        // RNG still gives its objects a deterministic shuffled mapping while active long-note
+        // reservations and the following normal-note arrangement remain unchanged.
+        if note_lanes.is_empty() {
+            let mut mine_destinations = assignable;
+            let mut mine_rng = rng.clone();
+            shuffle_lm_lanes(&mut mine_destinations, &mut mine_rng);
+            map.extend(empty_lanes.into_iter().zip(mine_destinations));
+            return map;
+        }
+
+        let current_frame = logical_frame_120(time);
+        let mut safe = Vec::new();
+        let mut four_plus = Vec::new();
+        let mut three_plus = Vec::new();
+        let mut two_plus = Vec::new();
+        for lane in assignable.iter().copied() {
+            let history = self.lane_history[lane];
+            let (_, gap) = next_lane_history(history, current_frame);
+            let candidate = LmCandidate { lane, gap };
+            match classify_lm_candidate(history, current_frame) {
+                LmCandidateClass::Safe => safe.push(candidate),
+                LmCandidateClass::FourPlusWithin8F => four_plus.push(candidate),
+                LmCandidateClass::ThreePlusWithin7F => three_plus.push(candidate),
+                LmCandidateClass::TwoPlusWithin6F => two_plus.push(candidate),
+            }
+        }
+
+        let mut selected = Vec::with_capacity(note_lanes.len());
+        while selected.len() < note_lanes.len() && !safe.is_empty() {
+            let index = rng.next_usize(safe.len());
+            selected.push(safe.remove(index).lane);
+        }
+        for bucket in [&mut four_plus, &mut three_plus, &mut two_plus] {
+            select_lm_violation_candidates(
+                bucket,
+                note_lanes.len().saturating_sub(selected.len()),
+                rng,
+                &mut selected,
+            );
+        }
+        debug_assert_eq!(selected.len(), note_lanes.len());
+
+        shuffle_lm_lanes(&mut selected, rng);
+        for (&source, &dest) in note_lanes.iter().zip(&selected) {
+            map.insert(source, dest);
+        }
+
+        let mut selected_destinations = [false; LANE_COUNT];
+        for &dest in &selected {
+            selected_destinations[dest] = true;
+        }
+        let mut remaining_destinations: Vec<usize> =
+            assignable.into_iter().filter(|&lane| !selected_destinations[lane]).collect();
+        shuffle_lm_lanes(&mut remaining_destinations, rng);
+        debug_assert_eq!(empty_lanes.len(), remaining_destinations.len());
+        map.extend(empty_lanes.into_iter().zip(remaining_destinations));
+
+        // Timeline-start history was frozen until the mapping became complete. A source lane is
+        // represented once here even if it contains multiple objects at the same timeline.
+        for source in note_lanes {
+            if let Some(&dest) = map.get(&source) {
+                self.lane_history[dest] =
+                    next_lane_history(self.lane_history[dest], current_frame).0;
+            }
+        }
         map
     }
 
@@ -240,5 +397,41 @@ impl NoteArrangeGroup {
         assignable.retain(|&lane| lane != scratch);
         self.last_note_time.insert(scratch, time);
         self.scratch_index = (self.scratch_index + 1) % self.scratch_lanes.len();
+    }
+}
+
+fn select_lm_violation_candidates(
+    candidates: &mut Vec<LmCandidate>,
+    limit: usize,
+    rng: &mut ArrangeRng,
+    selected: &mut Vec<usize>,
+) {
+    if limit == 0 || candidates.is_empty() {
+        return;
+    }
+    candidates.sort_by(|left, right| right.gap.cmp(&left.gap).then(left.lane.cmp(&right.lane)));
+    let mut remaining = limit.min(candidates.len());
+    while remaining > 0 {
+        let gap = candidates[0].gap;
+        let equal_count = candidates.iter().take_while(|candidate| candidate.gap == gap).count();
+        if equal_count <= remaining {
+            selected.extend(candidates.drain(..equal_count).map(|candidate| candidate.lane));
+            remaining -= equal_count;
+        } else {
+            let mut available = equal_count;
+            for _ in 0..remaining {
+                let index = rng.next_usize(available);
+                selected.push(candidates.remove(index).lane);
+                available -= 1;
+            }
+            remaining = 0;
+        }
+    }
+}
+
+fn shuffle_lm_lanes(lanes: &mut [usize], rng: &mut ArrangeRng) {
+    for index in (1..lanes.len()).rev() {
+        let other = rng.next_usize(index + 1);
+        lanes.swap(index, other);
     }
 }

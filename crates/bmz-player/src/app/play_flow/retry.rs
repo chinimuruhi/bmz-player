@@ -76,9 +76,13 @@ impl WinitApp {
             options.seven_to_six = applied.seven_to_six;
             options.score_save_disabled |= applied.seven_to_six;
             options.arrange = applied.arrange;
+            options.arrange_2p = applied.arrange_2p;
+            options.double_option = applied.double_option;
             options.arrange_seed = applied.seed;
             options.arrange_seed_2p = applied.seed_2p;
             options.legacy_arrange_seed = applied.legacy_seed;
+            options.s_random_scheme = applied.s_random_scheme;
+            options.s_random_scheme_2p = applied.s_random_scheme_2p;
             options.bms_random_choices = Some(applied.bms_random_choices.clone());
             options.arrange_pattern = applied.pattern.clone();
         }
@@ -112,6 +116,8 @@ impl WinitApp {
                     options.arrange_seed = applied.seed;
                     options.arrange_seed_2p = applied.seed_2p;
                     options.legacy_arrange_seed = applied.legacy_seed;
+                    options.s_random_scheme = applied.s_random_scheme;
+                    options.s_random_scheme_2p = applied.s_random_scheme_2p;
                     options.bms_random_choices = Some(applied.bms_random_choices.clone());
                     options.arrange_pattern = applied.pattern.clone();
                 }

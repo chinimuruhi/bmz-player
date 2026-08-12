@@ -6,6 +6,7 @@ pub(super) fn apply_arrange_side(
     seed: Option<i64>,
     side: ArrangeSide,
     legacy_seed: bool,
+    s_random_scheme: SRandomScheme,
 ) -> Option<Vec<usize>> {
     if arrange == ArrangeOption::Normal {
         return None;
@@ -79,6 +80,7 @@ pub(super) fn apply_arrange_side(
                 seed.unwrap_or_else(generate_arrange_seed),
                 &groups,
                 legacy_seed,
+                s_random_scheme,
             );
             None
         }
@@ -345,10 +347,11 @@ pub(super) fn apply_note_arrange(
     arrange: ArrangeOption,
     seed: i64,
     legacy_seed: bool,
+    s_random_scheme: SRandomScheme,
 ) {
     let include_scratch = matches!(arrange, ArrangeOption::AllScratch | ArrangeOption::SRandomEx);
     let groups = arrange_lane_groups(chart.metadata.key_mode, include_scratch);
-    apply_note_arrange_for_groups(chart, arrange, seed, &groups, legacy_seed);
+    apply_note_arrange_for_groups(chart, arrange, seed, &groups, legacy_seed, s_random_scheme);
 }
 
 pub(super) fn apply_note_arrange_for_groups(
@@ -357,8 +360,9 @@ pub(super) fn apply_note_arrange_for_groups(
     seed: i64,
     groups: &[Vec<usize>],
     legacy_seed: bool,
+    s_random_scheme: SRandomScheme,
 ) {
-    let mut engine = NoteArrangeEngine::new(arrange, seed, groups, legacy_seed);
+    let mut engine = NoteArrangeEngine::new(arrange, seed, groups, legacy_seed, s_random_scheme);
     let mut notes: Vec<NoteEvent> = chart.lane_notes.iter_mut().flat_map(std::mem::take).collect();
     notes.sort_by_key(|note| (note.tick, note.time, note.lane as u8, note.id));
 

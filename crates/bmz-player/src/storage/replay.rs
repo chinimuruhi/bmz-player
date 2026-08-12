@@ -8,11 +8,14 @@ use bmz_gameplay::rule::RuleMode;
 use serde::{Deserialize, Serialize};
 
 use crate::ln_policy::LnScorePolicy;
+use crate::screens::play_session::SRandomScheme;
 use crate::select_options::{ArrangeOption, DoubleOption, DoubleOptionScoreBucket};
 
-pub const REPLAY_FILE_VERSION: u32 = 4;
+pub const REPLAY_FILE_VERSION: u32 = 5;
 pub const SEED_SCHEME_BEATORAJA_24BIT_V1: &str = "beatoraja_24bit_v1";
 pub const SEED_SCHEME_LEGACY_SHARED_V3: &str = "legacy_shared_v3";
+pub const S_RANDOM_SCHEME_LEGACY_40MS_V1: &str = SRandomScheme::LEGACY_40MS_V1;
+pub const S_RANDOM_SCHEME_LM_120HZ_V1: &str = SRandomScheme::LM_120HZ_V1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplayFile {
@@ -37,6 +40,10 @@ pub struct ReplayFile {
     pub bms_random_choices: Option<Vec<i32>>,
     #[serde(default)]
     pub seed_scheme: String,
+    #[serde(default)]
+    pub s_random_scheme: String,
+    #[serde(default)]
+    pub s_random_scheme_2p: String,
     #[serde(default)]
     pub lane_shuffle_pattern: Option<Vec<u8>>,
     pub events: Vec<ReplayEvent>,
@@ -99,6 +106,8 @@ impl ReplayFile {
             arrange_seed_2p: None,
             bms_random_choices: Some(Vec::new()),
             seed_scheme: SEED_SCHEME_BEATORAJA_24BIT_V1.to_string(),
+            s_random_scheme: S_RANDOM_SCHEME_LM_120HZ_V1.to_string(),
+            s_random_scheme_2p: String::new(),
             lane_shuffle_pattern,
             events,
         }
@@ -119,6 +128,25 @@ impl ReplayFile {
         self
     }
 
+    pub fn with_s_random_scheme(mut self, s_random_scheme: SRandomScheme) -> Self {
+        self.s_random_scheme = s_random_scheme.as_str().to_string();
+        self.s_random_scheme_2p.clear();
+        self
+    }
+
+    pub fn with_s_random_schemes(
+        mut self,
+        s_random_scheme: SRandomScheme,
+        s_random_scheme_2p: Option<SRandomScheme>,
+    ) -> Self {
+        self.s_random_scheme = s_random_scheme.as_str().to_string();
+        self.s_random_scheme_2p = s_random_scheme_2p
+            .filter(|&scheme| scheme != s_random_scheme)
+            .map(|scheme| scheme.as_str().to_string())
+            .unwrap_or_default();
+        self
+    }
+
     pub fn effective_seed_scheme(&self) -> &str {
         if self.version < 4 || self.seed_scheme.is_empty() {
             SEED_SCHEME_LEGACY_SHARED_V3
@@ -129,6 +157,30 @@ impl ReplayFile {
 
     pub fn uses_legacy_seed_scheme(&self) -> bool {
         self.effective_seed_scheme() == SEED_SCHEME_LEGACY_SHARED_V3
+    }
+
+    pub fn effective_s_random_scheme(&self) -> Result<SRandomScheme> {
+        let declared = if self.s_random_scheme.is_empty() {
+            None
+        } else {
+            Some(SRandomScheme::from_persistent_str(&self.s_random_scheme)?)
+        };
+        match (self.version >= 5, declared) {
+            (true, Some(scheme)) => Ok(scheme),
+            _ => Ok(SRandomScheme::Legacy40MsV1),
+        }
+    }
+
+    pub fn effective_s_random_scheme_2p(&self) -> Result<SRandomScheme> {
+        let declared = if self.s_random_scheme_2p.is_empty() {
+            None
+        } else {
+            Some(SRandomScheme::from_persistent_str(&self.s_random_scheme_2p)?)
+        };
+        match (self.version >= 5, declared) {
+            (true, Some(scheme)) => Ok(scheme),
+            _ => self.effective_s_random_scheme(),
+        }
     }
 
     pub fn arrange_option(&self) -> ArrangeOption {
@@ -182,7 +234,10 @@ pub fn save_replay_with_hash(path: &Path, replay: &ReplayFile) -> Result<String>
 
 pub fn load_replay(path: &Path) -> Result<ReplayFile> {
     let text = std::fs::read_to_string(path)?;
-    Ok(toml::from_str(&text)?)
+    let replay: ReplayFile = toml::from_str(&text)?;
+    replay.effective_s_random_scheme()?;
+    replay.effective_s_random_scheme_2p()?;
+    Ok(replay)
 }
 
 pub fn load_replay_player(path: &Path) -> Result<ReplayPlayer> {
@@ -372,6 +427,8 @@ mod tests {
             "0101010101010101010101010101010101010101010101010101010101010101"
         );
         assert_eq!(loaded.ln_policy, "ForceLn");
+        assert_eq!(loaded.s_random_scheme, S_RANDOM_SCHEME_LM_120HZ_V1);
+        assert_eq!(loaded.effective_s_random_scheme().unwrap(), SRandomScheme::Lm120HzV1);
         assert_eq!(loaded.events, replay.events);
 
         std::fs::remove_file(path).unwrap();
@@ -580,7 +637,112 @@ events = []
         assert_eq!(loaded.arrange_seed_2p, None);
         assert_eq!(loaded.bms_random_choices, None);
         assert_eq!(loaded.effective_seed_scheme(), SEED_SCHEME_LEGACY_SHARED_V3);
+        assert_eq!(loaded.effective_s_random_scheme().unwrap(), SRandomScheme::Legacy40MsV1);
         assert_eq!(loaded.events.len(), 0);
+    }
+
+    #[test]
+    fn replay_s_random_scheme_defaults_old_or_missing_fields_to_legacy() {
+        for version in [4, 5] {
+            let replay: ReplayFile = toml::from_str(&format!(
+                r#"
+version = {version}
+chart_sha256 = "0101010101010101010101010101010101010101010101010101010101010101"
+played_at = 1700000060
+arrange = "SRandom"
+seed_scheme = "beatoraja_24bit_v1"
+events = []
+"#
+            ))
+            .unwrap();
+
+            assert!(replay.s_random_scheme.is_empty());
+            assert_eq!(replay.effective_s_random_scheme().unwrap(), SRandomScheme::Legacy40MsV1);
+        }
+    }
+
+    #[test]
+    fn replay_s_random_and_rng_schemes_are_independent() {
+        for (legacy_rng, s_random_scheme) in [
+            (true, SRandomScheme::Legacy40MsV1),
+            (true, SRandomScheme::Lm120HzV1),
+            (false, SRandomScheme::Legacy40MsV1),
+            (false, SRandomScheme::Lm120HzV1),
+        ] {
+            let replay = ReplayFile::new(
+                [7; 32],
+                1_700_000_061,
+                Some(42),
+                ArrangeOption::SRandom,
+                Some(42),
+                None,
+                Vec::new(),
+            )
+            .with_seed_scheme(if legacy_rng {
+                SEED_SCHEME_LEGACY_SHARED_V3
+            } else {
+                SEED_SCHEME_BEATORAJA_24BIT_V1
+            })
+            .with_s_random_scheme(s_random_scheme);
+
+            assert_eq!(replay.uses_legacy_seed_scheme(), legacy_rng);
+            assert_eq!(replay.effective_s_random_scheme().unwrap(), s_random_scheme);
+        }
+    }
+
+    #[test]
+    fn replay_s_random_scheme_round_trip_preserves_mixed_dp_generations() {
+        let path = std::env::temp_dir().join(format!(
+            "bmz-replay-s-random-scheme-{}-{}.toml",
+            std::process::id(),
+            TimeUs(49).0
+        ));
+        let replay = ReplayFile::new(
+            [8; 32],
+            1_700_000_062,
+            Some(42),
+            ArrangeOption::SRandom,
+            Some(42),
+            None,
+            Vec::new(),
+        )
+        .with_s_random_schemes(SRandomScheme::Lm120HzV1, Some(SRandomScheme::Legacy40MsV1));
+
+        save_replay(&path, &replay).unwrap();
+        let loaded = load_replay(&path).unwrap();
+
+        assert_eq!(loaded.version, 5);
+        assert_eq!(loaded.s_random_scheme, S_RANDOM_SCHEME_LM_120HZ_V1);
+        assert_eq!(loaded.s_random_scheme_2p, S_RANDOM_SCHEME_LEGACY_40MS_V1);
+        assert_eq!(loaded.effective_s_random_scheme().unwrap(), SRandomScheme::Lm120HzV1);
+        assert_eq!(loaded.effective_s_random_scheme_2p().unwrap(), SRandomScheme::Legacy40MsV1);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn replay_rejects_unknown_non_empty_s_random_scheme() {
+        let path = std::env::temp_dir().join(format!(
+            "bmz-replay-unknown-s-random-scheme-{}-{}.toml",
+            std::process::id(),
+            TimeUs(50).0
+        ));
+        let mut replay = ReplayFile::new(
+            [9; 32],
+            1_700_000_063,
+            Some(42),
+            ArrangeOption::SRandom,
+            Some(42),
+            None,
+            Vec::new(),
+        );
+        replay.s_random_scheme = "future_240hz_v2".to_string();
+        std::fs::write(&path, toml::to_string(&replay).unwrap()).unwrap();
+
+        let error = load_replay(&path).unwrap_err();
+        assert!(error.to_string().contains("unsupported S-RANDOM scheme: future_240hz_v2"));
+
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

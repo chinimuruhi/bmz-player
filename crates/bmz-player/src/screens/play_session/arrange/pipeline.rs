@@ -4,7 +4,11 @@ pub fn generate_arrange_seed() -> i64 {
     i64::from(RandomOptionSeeds::fresh(false).p1.value())
 }
 
-pub(super) fn normal_applied_arrange(seed: i64, legacy_seed: bool) -> AppliedArrange {
+pub(super) fn normal_applied_arrange(
+    seed: i64,
+    legacy_seed: bool,
+    s_random_scheme: SRandomScheme,
+) -> AppliedArrange {
     AppliedArrange {
         arrange: ArrangeOption::Normal,
         arrange_2p: ArrangeOption::Normal,
@@ -12,6 +16,8 @@ pub(super) fn normal_applied_arrange(seed: i64, legacy_seed: bool) -> AppliedArr
         seed: Some(seed),
         seed_2p: None,
         legacy_seed,
+        s_random_scheme,
+        s_random_scheme_2p: None,
         bms_random_choices: Vec::new(),
         pattern: None,
         seven_to_six: false,
@@ -24,7 +30,7 @@ pub fn apply_arrange(
     seed: Option<i64>,
     pattern: Option<&[u8]>,
 ) -> AppliedArrange {
-    apply_arrange_internal(chart, arrange, seed, pattern, false)
+    apply_arrange_internal(chart, arrange, seed, pattern, false, SRandomScheme::Lm120HzV1)
 }
 
 pub(super) fn apply_arrange_internal(
@@ -33,11 +39,12 @@ pub(super) fn apply_arrange_internal(
     seed: Option<i64>,
     pattern: Option<&[u8]>,
     legacy_seed: bool,
+    s_random_scheme: SRandomScheme,
 ) -> AppliedArrange {
     let key_mode = chart.metadata.key_mode;
     let used_seed = seed.unwrap_or_else(generate_arrange_seed);
     if arrange_requires_scratch(arrange) && !key_mode_has_scratch(key_mode) {
-        return normal_applied_arrange(used_seed, legacy_seed);
+        return normal_applied_arrange(used_seed, legacy_seed, s_random_scheme);
     }
 
     if let Some(perm) = pattern {
@@ -50,6 +57,8 @@ pub(super) fn apply_arrange_internal(
             seed: Some(used_seed),
             seed_2p: None,
             legacy_seed,
+            s_random_scheme,
+            s_random_scheme_2p: None,
             bms_random_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
             seven_to_six: false,
@@ -57,7 +66,7 @@ pub(super) fn apply_arrange_internal(
     }
 
     match arrange {
-        ArrangeOption::Normal => normal_applied_arrange(used_seed, legacy_seed),
+        ArrangeOption::Normal => normal_applied_arrange(used_seed, legacy_seed, s_random_scheme),
         ArrangeOption::Mirror => {
             let perm = mirror_permutation(key_mode);
             apply_lane_permutation(chart, &perm);
@@ -68,6 +77,8 @@ pub(super) fn apply_arrange_internal(
                 seed: Some(used_seed),
                 seed_2p: None,
                 legacy_seed,
+                s_random_scheme,
+                s_random_scheme_2p: None,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 seven_to_six: false,
@@ -83,6 +94,8 @@ pub(super) fn apply_arrange_internal(
                 seed: Some(used_seed),
                 seed_2p: None,
                 legacy_seed,
+                s_random_scheme,
+                s_random_scheme_2p: None,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 seven_to_six: false,
@@ -98,6 +111,8 @@ pub(super) fn apply_arrange_internal(
                 seed: Some(used_seed),
                 seed_2p: None,
                 legacy_seed,
+                s_random_scheme,
+                s_random_scheme_2p: None,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 seven_to_six: false,
@@ -113,6 +128,8 @@ pub(super) fn apply_arrange_internal(
                 seed: Some(used_seed),
                 seed_2p: None,
                 legacy_seed,
+                s_random_scheme,
+                s_random_scheme_2p: None,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 seven_to_six: false,
@@ -128,6 +145,8 @@ pub(super) fn apply_arrange_internal(
                 seed: Some(used_seed),
                 seed_2p: None,
                 legacy_seed,
+                s_random_scheme,
+                s_random_scheme_2p: None,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 seven_to_six: false,
@@ -138,7 +157,7 @@ pub(super) fn apply_arrange_internal(
         | ArrangeOption::HRandom
         | ArrangeOption::AllScratch
         | ArrangeOption::SRandomEx => {
-            apply_note_arrange(chart, arrange, used_seed, legacy_seed);
+            apply_note_arrange(chart, arrange, used_seed, legacy_seed, s_random_scheme);
             AppliedArrange {
                 arrange,
                 arrange_2p: ArrangeOption::Normal,
@@ -146,6 +165,8 @@ pub(super) fn apply_arrange_internal(
                 seed: Some(used_seed),
                 seed_2p: None,
                 legacy_seed,
+                s_random_scheme,
+                s_random_scheme_2p: None,
                 bms_random_choices: Vec::new(),
                 pattern: None,
                 seven_to_six: false,
@@ -172,12 +193,21 @@ pub fn apply_arrange_pair(
     seed: Option<i64>,
     seed_2p: Option<i64>,
     legacy_seed: bool,
+    s_random_scheme: SRandomScheme,
+    s_random_scheme_2p: Option<SRandomScheme>,
     pattern: Option<&[u8]>,
 ) -> AppliedArrange {
     let used_seed = seed.unwrap_or_else(generate_arrange_seed);
     let key_mode = chart.metadata.key_mode;
     if !matches!(key_mode, KeyMode::K10 | KeyMode::K14) {
-        return apply_arrange_internal(chart, arrange_1p, Some(used_seed), pattern, legacy_seed);
+        return apply_arrange_internal(
+            chart,
+            arrange_1p,
+            Some(used_seed),
+            pattern,
+            legacy_seed,
+            s_random_scheme,
+        );
     }
 
     let used_seed_2p = if legacy_seed {
@@ -185,6 +215,7 @@ pub fn apply_arrange_pair(
     } else {
         seed_2p.unwrap_or_else(generate_arrange_seed)
     };
+    let used_s_random_scheme_2p = s_random_scheme_2p.unwrap_or(s_random_scheme);
     if let Some(perm) = pattern {
         let perm_usize: Vec<usize> = perm.iter().map(|&i| i as usize).collect();
         apply_lane_permutation(chart, &perm_usize);
@@ -195,6 +226,8 @@ pub fn apply_arrange_pair(
             seed: Some(used_seed),
             seed_2p: Some(used_seed_2p),
             legacy_seed,
+            s_random_scheme,
+            s_random_scheme_2p: Some(used_s_random_scheme_2p),
             bms_random_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
             seven_to_six: false,
@@ -204,15 +237,25 @@ pub fn apply_arrange_pair(
     let mut combined_perm: Vec<usize> = (0..LANE_COUNT).collect();
     let mut has_perm = false;
 
-    if let Some(perm) =
-        apply_arrange_side(chart, arrange_1p, Some(used_seed), ArrangeSide::P1, legacy_seed)
-    {
+    if let Some(perm) = apply_arrange_side(
+        chart,
+        arrange_1p,
+        Some(used_seed),
+        ArrangeSide::P1,
+        legacy_seed,
+        s_random_scheme,
+    ) {
         merge_lane_permutation(&mut combined_perm, &perm);
         has_perm = true;
     }
-    if let Some(perm) =
-        apply_arrange_side(chart, arrange_2p, Some(used_seed_2p), ArrangeSide::P2, legacy_seed)
-    {
+    if let Some(perm) = apply_arrange_side(
+        chart,
+        arrange_2p,
+        Some(used_seed_2p),
+        ArrangeSide::P2,
+        legacy_seed,
+        used_s_random_scheme_2p,
+    ) {
         merge_lane_permutation(&mut combined_perm, &perm);
         has_perm = true;
     }
@@ -224,6 +267,8 @@ pub fn apply_arrange_pair(
         seed: Some(used_seed),
         seed_2p: Some(used_seed_2p),
         legacy_seed,
+        s_random_scheme,
+        s_random_scheme_2p: Some(used_s_random_scheme_2p),
         bms_random_choices: Vec::new(),
         pattern: has_perm.then(|| combined_perm.iter().map(|&i| i as u8).collect()),
         seven_to_six: false,

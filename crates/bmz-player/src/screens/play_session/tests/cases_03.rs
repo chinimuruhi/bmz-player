@@ -122,6 +122,8 @@ fn random2_arranges_only_dp_second_player_lanes() {
         Some(1),
         Some(2),
         false,
+        SRandomScheme::Lm120HzV1,
+        None,
         None,
     );
 
@@ -151,6 +153,8 @@ fn recorded_sp_pattern_does_not_gain_a_second_player_seed() {
         Some(1),
         None,
         false,
+        SRandomScheme::Lm120HzV1,
+        None,
         Some(&pattern),
     );
 
@@ -286,6 +290,153 @@ fn s_random_keeps_long_note_end_on_start_lane() {
         .expect("end note");
     assert_eq!(start_lane, end_lane);
     assert_eq!(chart.long_notes[0].lane, start_lane);
+}
+
+#[test]
+fn legacy_s_random_and_non_target_arranges_match_pre_lm_head_goldens() {
+    let make_chart = || {
+        let mut chart = chart();
+        chart.metadata.key_mode = KeyMode::K7;
+        for (id, lane, time) in [
+            (1, Lane::Key1, 1_000_000),
+            (2, Lane::Key1, 1_020_000),
+            (3, Lane::Key1, 1_060_000),
+            (4, Lane::Key3, 1_060_000),
+            (5, Lane::Key2, 1_080_000),
+            (6, Lane::Scratch, 1_100_000),
+            (7, Lane::Key4, 1_150_000),
+            (8, Lane::Key7, 1_170_000),
+        ] {
+            chart.lane_notes[lane.index()].push(note(id, lane, time));
+        }
+        chart
+    };
+
+    for (arrange, legacy_seed, expected) in [
+        (
+            ArrangeOption::SRandom,
+            false,
+            vec![
+                Lane::Key3,
+                Lane::Key4,
+                Lane::Key6,
+                Lane::Key7,
+                Lane::Key1,
+                Lane::Scratch,
+                Lane::Key3,
+                Lane::Key6,
+            ],
+        ),
+        (
+            ArrangeOption::SRandom,
+            true,
+            vec![
+                Lane::Key1,
+                Lane::Key2,
+                Lane::Key4,
+                Lane::Key7,
+                Lane::Key2,
+                Lane::Scratch,
+                Lane::Key2,
+                Lane::Key6,
+            ],
+        ),
+        (
+            ArrangeOption::HRandom,
+            false,
+            vec![
+                Lane::Key3,
+                Lane::Key4,
+                Lane::Key2,
+                Lane::Key1,
+                Lane::Key6,
+                Lane::Scratch,
+                Lane::Key7,
+                Lane::Key1,
+            ],
+        ),
+        (
+            ArrangeOption::AllScratch,
+            false,
+            vec![
+                Lane::Scratch,
+                Lane::Key2,
+                Lane::Scratch,
+                Lane::Key6,
+                Lane::Key4,
+                Lane::Key1,
+                Lane::Scratch,
+                Lane::Key3,
+            ],
+        ),
+        (
+            ArrangeOption::Random,
+            false,
+            vec![
+                Lane::Key2,
+                Lane::Key2,
+                Lane::Key2,
+                Lane::Key1,
+                Lane::Key7,
+                Lane::Scratch,
+                Lane::Key6,
+                Lane::Key5,
+            ],
+        ),
+        (
+            ArrangeOption::RRandom,
+            false,
+            vec![
+                Lane::Key7,
+                Lane::Key7,
+                Lane::Key7,
+                Lane::Key2,
+                Lane::Key1,
+                Lane::Scratch,
+                Lane::Key3,
+                Lane::Key6,
+            ],
+        ),
+        (
+            ArrangeOption::Mirror,
+            false,
+            vec![
+                Lane::Key7,
+                Lane::Key7,
+                Lane::Key7,
+                Lane::Key5,
+                Lane::Key6,
+                Lane::Scratch,
+                Lane::Key4,
+                Lane::Key1,
+            ],
+        ),
+    ] {
+        let mut chart = make_chart();
+        apply_arrange_internal(
+            &mut chart,
+            arrange,
+            Some(0x12_3456),
+            None,
+            legacy_seed,
+            SRandomScheme::Legacy40MsV1,
+        );
+        let actual: Vec<_> = lanes_for_notes(&chart).into_iter().map(|(_, lane)| lane).collect();
+        assert_eq!(actual, expected, "{arrange:?} legacy_rng={legacy_seed}");
+
+        if arrange != ArrangeOption::SRandom {
+            let mut with_lm_scheme = make_chart();
+            apply_arrange_internal(
+                &mut with_lm_scheme,
+                arrange,
+                Some(0x12_3456),
+                None,
+                legacy_seed,
+                SRandomScheme::Lm120HzV1,
+            );
+            assert_eq!(lanes_for_notes(&with_lm_scheme), lanes_for_notes(&chart));
+        }
+    }
 }
 
 #[test]

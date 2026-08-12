@@ -20,6 +20,20 @@ impl WinitApp {
             );
             return false;
         };
+        let s_random_scheme = match replay_file.effective_s_random_scheme() {
+            Ok(scheme) => scheme,
+            Err(error) => {
+                tracing::warn!(%error, path = %path.display(), "replay arrangement scheme is unsupported");
+                return false;
+            }
+        };
+        let s_random_scheme_2p = match replay_file.effective_s_random_scheme_2p() {
+            Ok(scheme) => Some(scheme),
+            Err(error) => {
+                tracing::warn!(%error, path = %path.display(), "replay 2P arrangement scheme is unsupported");
+                return false;
+            }
+        };
         let player = bmz_gameplay::replay::ReplayPlayer {
             events: replay_file.events.clone(),
             next_index: 0,
@@ -47,6 +61,8 @@ impl WinitApp {
             arrange_seed_2p: replay_file.arrange_seed_2p,
             random_trainer_seed: None,
             legacy_arrange_seed: replay_file.uses_legacy_seed_scheme(),
+            s_random_scheme,
+            s_random_scheme_2p,
             bms_random_seed: None,
             bms_random_choices: replay_file.bms_random_choices.clone(),
             arrange_pattern: replay_file.lane_shuffle_pattern.clone(),
@@ -121,6 +137,20 @@ impl WinitApp {
                 return false;
             }
         };
+        let s_random_scheme = match replay_file.effective_s_random_scheme() {
+            Ok(scheme) => scheme,
+            Err(error) => {
+                tracing::warn!(%error, path = %abs_path.display(), "replay arrangement scheme is unsupported");
+                return false;
+            }
+        };
+        let s_random_scheme_2p = match replay_file.effective_s_random_scheme_2p() {
+            Ok(scheme) => Some(scheme),
+            Err(error) => {
+                tracing::warn!(%error, path = %abs_path.display(), "replay 2P arrangement scheme is unsupported");
+                return false;
+            }
+        };
         let player = bmz_gameplay::replay::ReplayPlayer {
             events: replay_file.events.clone(),
             next_index: 0,
@@ -148,6 +178,8 @@ impl WinitApp {
             arrange_seed_2p: replay_file.arrange_seed_2p,
             random_trainer_seed: None,
             legacy_arrange_seed: replay_file.uses_legacy_seed_scheme(),
+            s_random_scheme,
+            s_random_scheme_2p,
             bms_random_seed: None,
             bms_random_choices: replay_file.bms_random_choices.clone(),
             arrange_pattern: replay_file.lane_shuffle_pattern.clone(),

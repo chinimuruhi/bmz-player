@@ -233,6 +233,8 @@ fn finish_session_result_returns_summary() {
         seed: Some(42),
         seed_2p: None,
         legacy_seed: false,
+        s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
+        s_random_scheme_2p: None,
         bms_random_choices: vec![1, 2],
         pattern: Some(lane_shuffle_pattern.clone()),
         seven_to_six: false,

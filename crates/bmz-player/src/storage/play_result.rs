@@ -7,6 +7,7 @@ use bmz_gameplay::result::PlayResult;
 use crate::config::profile_config::{ReplayConfig, ReplaySlotRule};
 use crate::ln_policy::LnScorePolicy;
 use crate::paths::ProfilePaths;
+use crate::screens::play_session::SRandomScheme;
 use crate::select_options::{ArrangeOption, DoubleOption, DoubleOptionScoreBucket};
 
 use super::replay::{
@@ -48,6 +49,8 @@ pub struct StorePlayResultRequest {
     pub arrange_seed_2p: Option<i64>,
     pub bms_random_choices: Vec<i32>,
     pub seed_scheme: String,
+    pub s_random_scheme: SRandomScheme,
+    pub s_random_scheme_2p: Option<SRandomScheme>,
     pub arrange_pattern: Option<Vec<u8>>,
     /// false の場合は beatoraja の `updateScore=false` と同様に、
     /// クリアランプとプレイ回数だけを更新する。
@@ -135,7 +138,8 @@ pub fn store_play_result(
                 replay_events.clone(),
             )
             .with_randomization(arrange_seed_2p, bms_random_choices.clone())
-            .with_seed_scheme(request.seed_scheme.clone());
+            .with_seed_scheme(request.seed_scheme.clone())
+            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p);
             let hash = save_replay_with_hash(&path, &replay)?;
             (format!("replay/{file_name}"), Some(hash))
         } else {
@@ -208,7 +212,8 @@ pub fn store_play_result(
                 replay_events.clone(),
             )
             .with_randomization(arrange_seed_2p, bms_random_choices.clone())
-            .with_seed_scheme(request.seed_scheme.clone());
+            .with_seed_scheme(request.seed_scheme.clone())
+            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p);
             save_replay(&path, &replay)?;
             let rel_path = format!("replay/{file_name}");
             score_db.upsert_replay_slot(&ReplaySlotRecord {

@@ -21,7 +21,7 @@ use crate::config::profile_config::{
 use crate::input::gamepad::GamepadSlotMap;
 use crate::input::shared::SharedInputBackend;
 use crate::screens::play_session::{
-    PlaySessionOptions, PreloadedPlaySession, PreparedPlaySession,
+    PlaySessionOptions, PreloadedPlaySession, PreparedPlaySession, SRandomScheme,
     build_prepared_play_session_from_preloaded,
     load_prepared_play_session_for_chart_with_input_backend,
 };
@@ -59,6 +59,8 @@ pub struct PlayStartOptions {
     /// 無い場合だけ `PlaySessionOptions` 側で 1P seed より優先する。
     pub random_trainer_seed: Option<i64>,
     pub legacy_arrange_seed: bool,
+    pub s_random_scheme: SRandomScheme,
+    pub s_random_scheme_2p: Option<SRandomScheme>,
     pub bms_random_seed: Option<u64>,
     pub bms_random_choices: Option<Vec<i32>>,
     pub arrange_pattern: Option<Vec<u8>>,
@@ -154,6 +156,8 @@ pub fn play_session_options_from_start(
         arrange_seed_2p: start_options.arrange_seed_2p,
         random_trainer_seed: start_options.random_trainer_seed,
         legacy_arrange_seed: start_options.legacy_arrange_seed,
+        s_random_scheme: start_options.s_random_scheme,
+        s_random_scheme_2p: start_options.s_random_scheme_2p,
         bms_random_seed: start_options.bms_random_seed,
         bms_random_choices: start_options.bms_random_choices,
         arrange_pattern: start_options.arrange_pattern,
@@ -429,6 +433,8 @@ pub fn apply_arrange_override(
     options.arrange_seed = arrange.seed;
     options.arrange_seed_2p = arrange.seed_2p;
     options.legacy_arrange_seed = arrange.legacy_seed;
+    options.s_random_scheme = arrange.s_random_scheme;
+    options.s_random_scheme_2p = arrange.s_random_scheme_2p;
     options.bms_random_choices = Some(arrange.bms_random_choices.clone());
     options.arrange_pattern = arrange.pattern.clone();
     options.seven_to_six = arrange.seven_to_six;
@@ -438,7 +444,7 @@ pub fn apply_arrange_override(
 pub fn apply_queued_replay(
     options: &mut PlayStartOptions,
     replay: &crate::storage::replay::QueuedCourseReplay,
-) {
+) -> Result<()> {
     let player =
         bmz_gameplay::replay::ReplayPlayer { events: replay.replay.events.clone(), next_index: 0 };
     options.replay_player = Some(player);
@@ -448,11 +454,14 @@ pub fn apply_queued_replay(
     options.arrange_seed = replay.replay.arrange_seed;
     options.arrange_seed_2p = replay.replay.arrange_seed_2p;
     options.legacy_arrange_seed = replay.replay.uses_legacy_seed_scheme();
+    options.s_random_scheme = replay.replay.effective_s_random_scheme()?;
+    options.s_random_scheme_2p = Some(replay.replay.effective_s_random_scheme_2p()?);
     options.bms_random_choices = replay.replay.bms_random_choices.clone();
     options.arrange_pattern = replay.replay.lane_shuffle_pattern.clone();
     options.seven_to_six = false;
     // Replays of past plays were recorded by a human; never autoplay them.
     options.autoplay = false;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -477,6 +486,8 @@ mod tests {
             seed: Some(42),
             seed_2p: Some(24),
             legacy_seed: false,
+            s_random_scheme: SRandomScheme::Legacy40MsV1,
+            s_random_scheme_2p: Some(SRandomScheme::Lm120HzV1),
             bms_random_choices: vec![2],
             pattern: Some(vec![3, 1, 2, 0]),
             seven_to_six: true,
@@ -487,6 +498,8 @@ mod tests {
         assert_eq!(options.arrange_2p, ArrangeOption::Mirror);
         assert_eq!(options.double_option, crate::select_options::DoubleOption::Flip);
         assert_eq!(options.arrange_seed, Some(42));
+        assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
+        assert_eq!(options.s_random_scheme_2p, Some(SRandomScheme::Lm120HzV1));
         assert_eq!(options.arrange_pattern, Some(vec![3, 1, 2, 0]));
         assert!(options.seven_to_six);
         assert!(options.score_save_disabled);
@@ -511,7 +524,37 @@ mod tests {
         assert!(options.autoplay);
         assert_eq!(options.sample_rate, 96_000);
         assert_eq!(options.random_trainer_seed, Some(322));
+        assert_eq!(options.s_random_scheme, SRandomScheme::Lm120HzV1);
         assert!(options.replay_player.is_none());
+    }
+
+    #[test]
+    fn apply_queued_replay_carries_legacy_s_random_scheme() {
+        let mut replay = crate::storage::replay::ReplayFile::new(
+            [1; 32],
+            1,
+            Some(42),
+            ArrangeOption::SRandom,
+            Some(42),
+            None,
+            Vec::new(),
+        );
+        replay.version = 4;
+        replay.s_random_scheme.clear();
+        let queued = crate::storage::replay::QueuedCourseReplay {
+            position: 0,
+            chart_id: 1,
+            chart_sha256: [1; 32],
+            replay,
+        };
+        let mut options = PlayStartOptions::default();
+
+        apply_queued_replay(&mut options, &queued).unwrap();
+
+        assert_eq!(options.arrange, ArrangeOption::SRandom);
+        assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
+        assert_eq!(options.s_random_scheme_2p, Some(SRandomScheme::Legacy40MsV1));
+        assert!(options.replay_player.is_some());
     }
 
     fn default_constraints() -> CourseConstraints {
