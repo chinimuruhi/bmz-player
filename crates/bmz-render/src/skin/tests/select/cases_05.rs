@@ -171,6 +171,7 @@ fn skin_image_ref_number_maps_extended_select_arrange() {
         select_ln_mode_index: 2,
         select_judge_algorithm_index: 3,
         select_bottom_shiftable_gauge_index: 2,
+        duration_green_ms: Some(300),
         ..SkinDrawState::default()
     };
 

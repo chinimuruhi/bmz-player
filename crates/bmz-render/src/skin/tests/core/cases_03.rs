@@ -533,6 +533,7 @@ fn skin_image_index_number_separates_colliding_value_refs() {
         select_chart_normal_notes: 900,
         select_max_bpm: 180.0,
         judge_rank: Some(3),
+        duration_green_ms: Some(300),
         ..SkinDrawState::default()
     };
 

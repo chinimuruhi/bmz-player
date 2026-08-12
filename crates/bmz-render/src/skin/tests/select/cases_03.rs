@@ -159,6 +159,7 @@ fn select_option_panel_three_renders_judge_timing_value() {
         option_panel: 3,
         option_panel_time: TimeUs(100_000),
         judge_timing_offset_ms: -12,
+        note_display_duration_ms: Some(300),
         ..SelectSnapshot::default()
     };
 
@@ -224,6 +225,7 @@ fn select_draw_state_uses_select_judge_timing_offset() {
     let snapshot = SelectSnapshot {
         option_panel: 3,
         judge_timing_offset_ms: -12,
+        note_display_duration_ms: Some(300),
         ..SelectSnapshot::default()
     };
 
@@ -314,6 +316,7 @@ fn select_draw_state_maps_extended_option_refs() {
         double_option: "BATTLE AS".to_string(),
         hs_fix: "MAIN BPM".to_string(),
         hispeed_auto_adjust: true,
+        note_display_duration_ms: Some(300),
         ..SelectSnapshot::default()
     };
 
