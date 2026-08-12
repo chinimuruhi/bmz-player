@@ -26,7 +26,6 @@ pub(super) fn skin_offsets_from_session(
             &mut values,
             SCRATCH_ANGLE_OFFSET_1P,
             visual_time,
-            0,
             session.lane_scratch_angle_delta_ms[Lane::Scratch.index()],
         );
     }
@@ -35,7 +34,6 @@ pub(super) fn skin_offsets_from_session(
             &mut values,
             SCRATCH_ANGLE_OFFSET_2P,
             visual_time,
-            1,
             session.lane_scratch_angle_delta_ms[Lane::Scratch2.index()],
         );
     }
@@ -46,25 +44,16 @@ pub(super) fn set_scratch_angle_offset(
     values: &mut SkinOffsetValues,
     offset_id: i32,
     visual_time: TimeUs,
-    scratch_index: i32,
     input_delta_ms: i64,
 ) {
     let mut offset = values.get(offset_id).unwrap_or_default();
-    offset.r = scratch_angle_degrees(visual_time, scratch_index, input_delta_ms);
+    offset.r = scratch_angle_degrees(visual_time, input_delta_ms);
     values.set(offset_id, offset);
 }
 
-pub(super) fn scratch_angle_degrees(
-    visual_time: TimeUs,
-    scratch_index: i32,
-    input_delta_ms: i64,
-) -> i32 {
+pub(super) fn scratch_angle_degrees(visual_time: TimeUs, input_delta_ms: i64) -> i32 {
     let elapsed_ms = (visual_time.0.max(0) / 1_000).rem_euclid(SCRATCH_ANGLE_PERIOD_MS);
-    let base_ms = if scratch_index % 2 == 0 {
-        (SCRATCH_ANGLE_PERIOD_MS - elapsed_ms).rem_euclid(SCRATCH_ANGLE_PERIOD_MS)
-    } else {
-        elapsed_ms
-    };
+    let base_ms = (SCRATCH_ANGLE_PERIOD_MS - elapsed_ms).rem_euclid(SCRATCH_ANGLE_PERIOD_MS);
     let angle_ms = (base_ms + input_delta_ms).rem_euclid(SCRATCH_ANGLE_PERIOD_MS);
     // Keep the offset in beatoraja's bottom-origin angle convention. The shared
     // skin renderer converts it to BMZ's top-origin convention together with

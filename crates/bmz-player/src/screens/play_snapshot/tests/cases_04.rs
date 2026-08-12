@@ -206,18 +206,16 @@ fn refresh_play_skin_visuals_keeps_accumulated_scratch_phase_after_release() {
 }
 
 #[test]
-fn scratch_angle_offsets_match_beatoraja_1p_and_2p_values() {
+fn scratch_angle_offsets_advance_in_the_same_direction_for_both_players() {
     let first_frame = TimeUs(6_000_000);
     let next_frame = TimeUs(6_006_000);
 
-    assert_eq!(scratch_angle_degrees(first_frame, 0, 0), 80);
-    assert_eq!(scratch_angle_degrees(next_frame, 0, 0), 79);
-    assert_eq!(scratch_angle_degrees(first_frame, 1, 0), 280);
-    assert_eq!(scratch_angle_degrees(next_frame, 1, 0), 281);
+    assert_eq!(scratch_angle_degrees(first_frame, 0), 80);
+    assert_eq!(scratch_angle_degrees(next_frame, 0), 79);
 }
 
 #[test]
-fn build_render_snapshot_sets_opposite_14k_turntable_offsets() {
+fn build_render_snapshot_sets_matching_14k_turntable_offsets() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut chart = chart();
     chart.metadata.key_mode = KeyMode::K14;
@@ -226,7 +224,7 @@ fn build_render_snapshot_sets_opposite_14k_turntable_offsets() {
     let snapshot = build_render_snapshot(&session, TimeUs(6_000_000), &[], None);
 
     assert_eq!(snapshot.skin_offsets.get(SCRATCH_ANGLE_OFFSET_1P).unwrap().r, 80);
-    assert_eq!(snapshot.skin_offsets.get(SCRATCH_ANGLE_OFFSET_2P).unwrap().r, 280);
+    assert_eq!(snapshot.skin_offsets.get(SCRATCH_ANGLE_OFFSET_2P).unwrap().r, 80);
 }
 
 #[test]
@@ -269,7 +267,7 @@ fn scratch_offsets_render_with_beatoraja_rotation_after_skin_conversion() {
     )]);
 
     for (visual_time, expected_angles) in
-        [(TimeUs(6_000_000), [-80, -280]), (TimeUs(6_006_000), [-79, -281])]
+        [(TimeUs(6_000_000), [-80, -80]), (TimeUs(6_006_000), [-79, -79])]
     {
         let snapshot = build_render_snapshot(&session, visual_time, &[], None);
         let state = SkinDrawState {

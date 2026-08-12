@@ -215,7 +215,6 @@ pub fn refresh_pending_play_input_visuals(
             &mut snapshot.skin_offsets,
             SCRATCH_ANGLE_OFFSET_1P,
             input_elapsed,
-            0,
             lane_scratch_angle_delta_ms[Lane::Scratch.index()],
         );
     }
@@ -224,7 +223,6 @@ pub fn refresh_pending_play_input_visuals(
             &mut snapshot.skin_offsets,
             SCRATCH_ANGLE_OFFSET_2P,
             input_elapsed,
-            1,
             lane_scratch_angle_delta_ms[Lane::Scratch2.index()],
         );
     }
