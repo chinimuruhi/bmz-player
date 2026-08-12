@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
@@ -698,6 +698,7 @@ struct FinishSessionResultJob {
 
 pub struct PendingFinishedPlaySession {
     receiver: Receiver<Result<FinishedPlaySession>>,
+    worker: Option<JoinHandle<()>>,
     started_at: Instant,
 }
 
@@ -712,6 +713,18 @@ impl PendingFinishedPlaySession {
 
     pub fn elapsed(&self) -> Duration {
         self.started_at.elapsed()
+    }
+
+    /// アプリ終了時に保存ワーカーの副作用を完了させる。
+    pub fn wait_for_completion(mut self) -> Result<()> {
+        if let Some(worker) = self.worker.take() {
+            worker.join().map_err(|_| anyhow::anyhow!("play result save worker panicked"))?;
+        }
+        match self.receiver.try_recv() {
+            Ok(result) => result.map(|_| ()),
+            Err(TryRecvError::Empty) => bail!("play result save worker completed without a result"),
+            Err(TryRecvError::Disconnected) => bail!("play result save worker disconnected"),
+        }
     }
 }
 
@@ -740,11 +753,12 @@ pub fn spawn_settled_session_result(
         result_graph,
     };
     let (sender, receiver) = mpsc::channel();
-    thread::Builder::new().name("bmz-play-result-save".to_string()).spawn(move || {
-        let result = finish_session_result_job(job);
-        let _ = sender.send(result);
-    })?;
-    Ok(PendingFinishedPlaySession { receiver, started_at: Instant::now() })
+    let worker =
+        thread::Builder::new().name("bmz-play-result-save".to_string()).spawn(move || {
+            let result = finish_session_result_job(job);
+            let _ = sender.send(result);
+        })?;
+    Ok(PendingFinishedPlaySession { receiver, worker: Some(worker), started_at: Instant::now() })
 }
 
 fn finish_session_result_job(job: FinishSessionResultJob) -> Result<FinishedPlaySession> {

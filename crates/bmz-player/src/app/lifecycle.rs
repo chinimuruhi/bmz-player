@@ -399,6 +399,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
         }
         self.flush_pending_screenshots("app exit");
         self.save_configs_for_exit(self.active_hispeed(), "game exit");
+        self.wait_for_pending_play_result_on_exit();
         if self.release_audio_for_process_exit() {
             std::process::exit(0);
         }
@@ -413,6 +414,24 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
 }
 
 impl WinitApp {
+    fn wait_for_pending_play_result_on_exit(&mut self) {
+        let pending = self
+            .play
+            .active_play
+            .as_mut()
+            .and_then(|active| active.running.pending_finished.take());
+        let Some(pending) = pending else {
+            return;
+        };
+        let elapsed_ms = pending.elapsed().as_millis();
+        match pending.wait_for_completion() {
+            Ok(()) => tracing::info!(elapsed_ms, "play result save completed during app exit"),
+            Err(error) => {
+                tracing::error!(%error, elapsed_ms, "play result save failed during app exit")
+            }
+        }
+    }
+
     fn release_audio_for_process_exit(&mut self) -> bool {
         if self.audio.audio_runtime.as_ref().is_some_and(AudioRuntime::uses_pulseaudio_host) {
             // cpal 0.18 の PulseAudio backend は stream Drop 時に pulseaudio crate の

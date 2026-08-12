@@ -18,6 +18,24 @@ use bmz_gameplay::session::{BgmScheduler, GameSession, PlayAudioMix, PlayOffsets
 use rusqlite::Connection;
 
 use super::*;
+
+#[test]
+fn pending_finished_play_waits_for_worker_completion() {
+    let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let worker_completed = Arc::clone(&completed);
+    let (sender, receiver) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        worker_completed.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = sender.send(Err(anyhow::anyhow!("expected test error")));
+    });
+    let pending =
+        PendingFinishedPlaySession { receiver, worker: Some(worker), started_at: Instant::now() };
+
+    let error = pending.wait_for_completion().unwrap_err();
+
+    assert!(completed.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(error.to_string().contains("expected test error"));
+}
 use crate::config::play::DEFAULT_JUDGE_WINDOW;
 use crate::config::profile_config::{IrConfig, IrProviderConfig, ReplayConfig};
 use crate::storage::common::configure_connection;
