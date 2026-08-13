@@ -146,13 +146,6 @@ macro_rules! skin_document_render_core_static_methods {
             let destination_count = planning
                 .as_ref()
                 .map_or(destinations.len(), |planning| planning.destinations.len());
-            let has_nearest_f_diff_rank_destination = planning.as_ref().map_or_else(
-                || nearest_f_diff_rank_destination_available(&destinations),
-                |planning| planning.has_nearest_f_diff_rank_destination,
-            );
-            let state =
-                apply_nearest_f_diff_rank_fallback(state, has_nearest_f_diff_rank_destination);
-            let state = state.as_ref();
             for index in 0..destination_count {
                 let Some(destination) = planning
                     .as_ref()
@@ -168,12 +161,7 @@ macro_rules! skin_document_render_core_static_methods {
                     continue;
                 }
                 if !destination.op.is_empty()
-                    && !destination_ops_match(
-                        destination,
-                        enabled_options,
-                        state,
-                        has_nearest_f_diff_rank_destination,
-                    )
+                    && !destination_ops_match(destination, enabled_options, state)
                 {
                     continue;
                 }
@@ -233,7 +221,6 @@ macro_rules! skin_document_render_core_static_methods {
                                             text_state,
                                             sources,
                                             runtime_graphs,
-                                            has_nearest_f_diff_rank_destination,
                                             cache: None,
                                         },
                                     )
@@ -256,7 +243,6 @@ macro_rules! skin_document_render_core_static_methods {
                             text_state,
                             sources,
                             runtime_graphs,
-                            has_nearest_f_diff_rank_destination,
                             cache: cache.as_deref_mut(),
                         },
                     )

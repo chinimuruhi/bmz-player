@@ -150,10 +150,27 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
             Some(i64::from(select_settings_row_kind_index(state.select_row_kind)))
         }
         SKIN_REF_BMZ_SELECT_SESSION_MODE => Some(state.select_session_mode_index as i64),
-        SKIN_REF_BMZ_GRADE_DIFF_DISPLAY => Some(match state.result_grade_diff_display {
-            ResultGradeDiffDisplay::Nearest => 0,
-            ResultGradeDiffDisplay::Next => 1,
-        }),
+        // Deprecated grade-difference mode: old BMZ skins fall back to NEXT.
+        SKIN_REF_BMZ_GRADE_DIFF_DISPLAY => Some(1),
+        SKIN_REF_BMZ_SCORE_GRADE_CURRENT => {
+            score_grade_facts(state).map(|facts| facts.current_index as i64)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEXT => {
+            score_grade_facts(state).map(|facts| facts.next_index as i64)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST => {
+            score_grade_facts(state).map(|facts| facts.nearest_index as i64)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_CURRENT_DIFF => {
+            score_grade_facts(state).map(|facts| facts.current_diff)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEXT_DIFF => score_grade_facts(state).map(|facts| facts.next_diff),
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF => {
+            score_grade_facts(state).map(|facts| facts.nearest_diff)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST_ABS => {
+            score_grade_facts(state).map(|facts| facts.nearest_diff.abs())
+        }
         1930 => Some(player_stat_u64(state.player_stats.daily.play_count)),
         1931 => Some(player_stat_u64(state.player_stats.daily.clear_count)),
         1932 => Some(player_stat_u64(state.player_stats.daily.pgreat)),

@@ -328,15 +328,7 @@ fn cached_document_planning(
             }
         }
     }
-    let has_nearest_f_diff_rank_destination = destinations
-        .iter()
-        .filter_map(|destination| destination.resolve(document))
-        .any(|destination| destination.id == "RANK_s_F");
-    let planning = DocumentPlanningCache {
-        enabled_options,
-        destinations: Arc::from(destinations),
-        has_nearest_f_diff_rank_destination,
-    };
+    let planning = DocumentPlanningCache { enabled_options, destinations: Arc::from(destinations) };
     *cached = Some(planning.clone());
     planning
 }
@@ -352,7 +344,6 @@ pub(in crate::skin) struct ResultGaugeGraphCache {
 pub(in crate::skin) struct DocumentPlanningCache {
     pub(in crate::skin) enabled_options: Arc<[i32]>,
     pub(in crate::skin) destinations: Arc<[ResultDestinationRef]>,
-    pub(in crate::skin) has_nearest_f_diff_rank_destination: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

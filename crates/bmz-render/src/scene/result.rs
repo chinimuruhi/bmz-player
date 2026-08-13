@@ -183,7 +183,6 @@ pub struct ResultSnapshot {
     pub gauge_value: f32,
     pub gauge_type: i32,
     pub total_notes: u32,
-    pub grade_diff_display: ResultGradeDiffDisplay,
     pub duration_ms: i32,
     /// NUMBER_DURATION/NUMBER_DURATION_GREEN に渡す緑数字 ms。
     pub note_display_duration_ms: Option<i32>,

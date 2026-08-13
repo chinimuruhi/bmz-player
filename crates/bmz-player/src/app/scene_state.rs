@@ -74,9 +74,7 @@ impl WinitApp {
                 AppSceneSnapshot::Decide(snapshot)
             }
             AppViewState::Play => {
-                let mut snapshot = self.play.last_play_snapshot.clone().unwrap_or_default();
-                snapshot.grade_diff_display = self.boot.profile_config.play.grade_diff_display;
-                AppSceneSnapshot::Play(snapshot)
+                AppSceneSnapshot::Play(self.play.last_play_snapshot.clone().unwrap_or_default())
             }
             AppViewState::Result => {
                 // `view_state` only returns Result when one of the result sources exists.
@@ -130,7 +128,6 @@ impl WinitApp {
                     gauge_value: summary.gauge_value,
                     gauge_type: summary.gauge_type as i32,
                     total_notes: summary.total_notes,
-                    grade_diff_display: self.boot.profile_config.play.grade_diff_display,
                     duration_ms: summary.duration_ms,
                     note_display_duration_ms: Some(Self::select_note_display_duration_ms_for_skin(
                         &self.boot.profile_config,

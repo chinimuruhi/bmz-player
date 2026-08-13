@@ -141,7 +141,7 @@ fn result_key_mode_ops_use_result_key_mode() {
 }
 
 #[test]
-fn nearest_result_diff_rank_destinations_use_target_grade() {
+fn result_diff_destinations_follow_ops_without_object_id_override() {
     fn destination(id: &str, op: i32) -> SkinDestinationDef {
         SkinDestinationDef {
             id: id.to_string(),
@@ -188,78 +188,20 @@ fn nearest_result_diff_rank_destinations_use_target_grade() {
         }
     }
 
-    let max_minus = SkinDrawState {
+    let state = SkinDrawState {
         ex_score: 1900,
         total_notes: 1000,
         result_failed: Some(false),
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
         ..SkinDrawState::default()
     };
-    assert!(destination_ops_match(&destination("RANK_s_MAX", 300), &[], &max_minus, false));
-    assert!(!destination_ops_match(&destination("RANK_s_AAA", 301), &[], &max_minus, false));
-    assert!(destination_ops_match(&destination("RANK_m_AAA", 300), &[], &max_minus, false));
-
-    let aaa_plus = SkinDrawState {
-        ex_score: 1100,
-        total_notes: 594,
-        result_failed: Some(false),
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
-        ..SkinDrawState::default()
-    };
-    assert!(destination_ops_match(&destination("RANK_s_AAA", 301), &[], &aaa_plus, false));
-    assert!(!destination_ops_match(&destination("RANK_s_MAX", 300), &[], &aaa_plus, false));
-
-    let nearest_e_minus = SkinDrawState {
-        select_ex_score: Some(0),
-        select_total_notes: 2253,
-        select_play_count: 1,
-        select_screen: true,
-        ..SkinDrawState::default()
-    };
-    assert!(destination_ops_match(&destination("RANK_s_E", 307), &[], &nearest_e_minus, false));
-    assert!(!destination_ops_match(&destination("RANK_s_D", 306), &[], &nearest_e_minus, false));
-
-    let nearest_aaa_minus = SkinDrawState {
-        select_ex_score: Some(1774),
-        select_total_notes: 1000,
-        select_play_count: 1,
-        select_screen: true,
-        ..SkinDrawState::default()
-    };
-    assert!(destination_ops_match(&destination("RANK_s_AAA", 301), &[], &nearest_aaa_minus, false));
-    assert!(!destination_ops_match(
-        &destination("RANK_s_MAX", 300),
-        &[],
-        &nearest_aaa_minus,
-        false
-    ));
-
-    let f_plus = SkinDrawState {
-        ex_score: 100,
-        total_notes: 1000,
-        result_failed: Some(false),
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
-        ..SkinDrawState::default()
-    };
-    assert!(destination_ops_match(&destination("RANK_s_E", 307), &[], &f_plus, false));
-    assert!(!destination_ops_match(&destination("RANK_s_F", 307), &[], &f_plus, false));
-    assert_eq!(skin_value_number_for_destination(&grade_diff_value(), &f_plus, false), Some(-345));
-    assert_eq!(
-        skin_state_number(
-            154,
-            &SkinDrawState { result_grade_diff_f_fallback_to_e: true, ..f_plus.clone() }
-        ),
-        Some(-345)
-    );
-
-    assert!(destination_ops_match(&destination("RANK_s_F", 307), &[], &f_plus, true));
-    assert!(!destination_ops_match(&destination("RANK_s_E", 307), &[], &f_plus, true));
-    assert_eq!(skin_value_number_for_destination(&grade_diff_value(), &f_plus, true), Some(100));
-    assert!(destination_ops_match(&destination("RANK_m_F", 307), &[], &f_plus, false));
+    assert!(destination_ops_match(&destination("RANK_s_MAX", 300), &[], &state));
+    assert!(destination_ops_match(&destination("any_other_id", 300), &[], &state));
+    assert!(!destination_ops_match(&destination("RANK_s_AAA", 301), &[], &state));
+    assert_eq!(skin_value_number_for_destination(&grade_diff_value(), &state), Some(100));
 }
 
 #[test]
-fn nearest_result_diff_number_renders_negative_when_f_rank_destination_is_missing() {
+fn next_result_diff_number_renders_positive_without_destination_override() {
     let document: SkinDocument = serde_json::from_str(
         r#"
             {
@@ -308,7 +250,6 @@ fn nearest_result_diff_number_renders_negative_when_f_rank_destination_is_missin
         ex_score: 100,
         total_notes: 1000,
         result_failed: Some(false),
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
         ..SkinDrawState::default()
     };
 
@@ -318,7 +259,7 @@ fn nearest_result_diff_number_renders_negative_when_f_rank_destination_is_missin
         _ => None,
     });
 
-    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.5));
+    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.0));
 }
 
 #[test]

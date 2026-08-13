@@ -225,7 +225,6 @@ impl WinitApp {
                 .beatoraja_name()
                 .to_string(),
             bga: bga_mode_as_str(self.boot.profile_config.play.bga).to_string(),
-            grade_diff_display: self.boot.profile_config.play.grade_diff_display,
             judge_timing_offset_ms: mode_config
                 .as_ref()
                 .map(|config| {

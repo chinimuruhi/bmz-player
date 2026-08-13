@@ -468,7 +468,6 @@ pub(in crate::skin) struct DestinationResolveContext<'a, 'text> {
     pub(in crate::skin) text_state: &'a SkinTextState<'text>,
     pub(in crate::skin) sources: &'a HashMap<String, SkinDocumentTexture>,
     pub(in crate::skin) runtime_graphs: SkinRuntimeGraphs<'a>,
-    pub(in crate::skin) has_nearest_f_diff_rank_destination: bool,
     pub(in crate::skin) cache: Option<&'a mut ResultRenderCache>,
 }
 

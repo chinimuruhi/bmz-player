@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, VecDeque, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -21,7 +20,7 @@ use crate::plan::{
 };
 use crate::scene::{
     CourseConstraintFlags, CourseResultSkinSnapshot, DailyPlayerStatsSnapshot, PlayerStatsSnapshot,
-    ResultGradeDiffDisplay, SelectRowKind, SelectRowSnapshot, SelectSnapshot,
+    SelectRowKind, SelectRowSnapshot, SelectSnapshot,
 };
 use crate::skin_offset::{
     BEATORAJA_SKIN_OFFSET_MAX, SKIN_OFFSET_BAR_LINE, SkinOffsetValue, SkinOffsetValues,
@@ -315,6 +314,15 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         342 => Some(i64::from(state.hispeed_auto_adjust)),
         344 => Some(extended_arrange_ref_index(state) as i64),
         345 => Some(extended_arrange_2p_ref_index(state) as i64),
+        SKIN_REF_BMZ_SCORE_GRADE_CURRENT => {
+            score_grade_facts(state).map(|facts| facts.current_index as i64)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEXT => {
+            score_grade_facts(state).map(|facts| facts.next_index as i64)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST => {
+            score_grade_facts(state).map(|facts| facts.nearest_index as i64)
+        }
         321..=324 => {
             let slot = (ref_id - 321) as usize;
             Some(state.select_replay_slot_rule_indices[slot])

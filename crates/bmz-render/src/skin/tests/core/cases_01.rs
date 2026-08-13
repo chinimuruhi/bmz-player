@@ -358,118 +358,147 @@ fn folded_constant_draw_condition_number_zero_is_true() {
 }
 
 #[test]
-fn grade_diff_display_mode_is_available_to_skins() {
-    let nearest = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
-        ..SkinDrawState::default()
-    };
-    let next = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Next,
-        ..SkinDrawState::default()
-    };
+fn removed_grade_diff_mode_refs_have_fixed_next_compatibility_values() {
+    let state = SkinDrawState::default();
 
-    assert_eq!(skin_state_number(SKIN_REF_BMZ_GRADE_DIFF_DISPLAY, &nearest), Some(0));
-    assert_eq!(skin_state_number(SKIN_REF_BMZ_GRADE_DIFF_DISPLAY, &next), Some(1));
-    assert!(test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST, &[], &nearest));
-    assert!(!test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEXT, &[], &nearest));
-    assert!(!test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST, &[], &next));
-    assert!(test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEXT, &[], &next));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_GRADE_DIFF_DISPLAY, &state), Some(1));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_GRADE_DIFF_NEXT, &[], &state));
 }
 
 #[test]
-fn skin_state_number_maps_next_rank_diff() {
-    let a_state = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Next,
-        select_ex_score: Some(1300),
-        select_total_notes: 1000,
-        ..SkinDrawState::default()
-    };
-    let aaa_state = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Next,
-        select_ex_score: Some(1800),
-        select_total_notes: 1000,
-        ..SkinDrawState::default()
-    };
-    let max_state = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Next,
-        select_ex_score: Some(2000),
-        select_total_notes: 1000,
-        ..SkinDrawState::default()
-    };
-
-    assert_eq!(skin_state_number(154, &a_state), Some(-34));
-    assert_eq!(skin_state_number(154, &aaa_state), Some(-200));
-    assert_eq!(skin_state_number(154, &max_state), Some(0));
-    assert_eq!(skin_state_number(154, &SkinDrawState::default()), None);
-    assert_eq!(next_rank_grade(&a_state), Some("AA"));
-    assert_eq!(next_rank_grade(&aaa_state), Some("MAX"));
-    let near_aaa_state = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Next,
-        select_ex_score: Some(1774),
-        select_total_notes: 1000,
-        select_play_count: 1,
+fn score_grade_refs_use_exact_official_borders() {
+    let state = SkinDrawState {
         select_screen: true,
+        select_ex_score: Some(63),
+        select_total_notes: 102,
+        select_play_count: 1,
         ..SkinDrawState::default()
     };
-    assert_eq!(skin_state_number(154, &near_aaa_state), Some(-4));
-    assert_eq!(result_grade_diff_label(&near_aaa_state), Some("-4".to_string()));
-    assert_eq!(next_rank_grade(&near_aaa_state), Some("AAA"));
-    assert_eq!(grade_diff_rank_target_grade(&near_aaa_state, true), Some("AAA"));
-    assert_eq!(
-        next_rank_grade(&SkinDrawState {
-            select_ex_score: Some(0),
-            select_total_notes: 2253,
-            ..SkinDrawState::default()
-        }),
-        Some("E")
-    );
 
-    let nearest = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
-        select_total_notes: 1000,
+    assert_eq!(skin_state_number(154, &state), Some(5));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &state), Some(1));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &state), Some(2));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST, &state), Some(2));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT_DIFF, &state), Some(17));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT_DIFF, &state), Some(5));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF, &state), Some(-5));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST_ABS, &state), Some(5));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_CURRENT, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_NEXT, &[], &state));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_EXACT, &[], &state));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_TIE, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_AVAILABLE, &[], &state));
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_SCORE_GRADE_NEAREST, &state), 2);
+    assert_eq!(skin_state_imageset_index(SKIN_REF_BMZ_SCORE_GRADE_NEAREST, &state), Some(2));
+    assert_eq!(
+        skin_main_state_text(
+            SKIN_REF_BMZ_SCORE_GRADE_CURRENT,
+            Some(&state),
+            &SkinTextState::default()
+        ),
+        "E"
+    );
+    assert_eq!(
+        skin_main_state_text(
+            SKIN_REF_BMZ_SCORE_GRADE_NEXT,
+            Some(&state),
+            &SkinTextState::default()
+        ),
+        "D"
+    );
+    assert_eq!(
+        skin_main_state_text(
+            SKIN_REF_BMZ_SCORE_GRADE_NEAREST,
+            Some(&state),
+            &SkinTextState::default()
+        ),
+        "D"
+    );
+}
+
+#[test]
+fn score_grade_boundaries_skip_one_ninth_and_advance_when_exact() {
+    let below_e = SkinDrawState { ex_score: 2, total_notes: 9, ..SkinDrawState::default() };
+    assert_eq!(skin_state_number(154, &below_e), Some(2));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &below_e), Some(1));
+
+    let exact_d = SkinDrawState { ex_score: 68, total_notes: 102, ..SkinDrawState::default() };
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &exact_d), Some(2));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &exact_d), Some(3));
+    assert_eq!(skin_state_number(154, &exact_d), Some(23));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF, &exact_d), Some(0));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_CURRENT, &[], &exact_d));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_EXACT, &[], &exact_d));
+}
+
+#[test]
+fn score_grade_nearest_tie_prefers_current_border() {
+    let state = SkinDrawState { ex_score: 5, total_notes: 9, ..SkinDrawState::default() };
+
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &state), Some(1));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &state), Some(2));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST, &state), Some(1));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF, &state), Some(1));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_CURRENT, &[], &state));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_NEXT, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_TIE, &[], &state));
+}
+
+#[test]
+fn score_grade_handles_tiny_charts_max_and_unavailable_scores() {
+    let tiny = SkinDrawState { ex_score: 1, total_notes: 1, ..SkinDrawState::default() };
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &tiny), Some(3));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &tiny), Some(4));
+
+    let max = SkinDrawState { ex_score: 204, total_notes: 102, ..SkinDrawState::default() };
+    for ref_id in [
+        SKIN_REF_BMZ_SCORE_GRADE_CURRENT,
+        SKIN_REF_BMZ_SCORE_GRADE_NEXT,
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST,
+    ] {
+        assert_eq!(skin_state_number(ref_id, &max), Some(8));
+    }
+    assert_eq!(skin_state_number(154, &max), Some(0));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_EXACT, &[], &max));
+
+    let unavailable = SkinDrawState {
+        select_screen: true,
+        select_ex_score: Some(0),
+        select_total_notes: 102,
         ..SkinDrawState::default()
     };
-    assert_eq!(
-        result_grade_diff_label(&SkinDrawState { select_ex_score: Some(100), ..nearest.clone() }),
-        Some("F+100".to_string())
-    );
-    assert_eq!(
-        result_grade_diff_label(&SkinDrawState { select_ex_score: Some(300), ..nearest.clone() }),
-        Some("E-145".to_string())
-    );
-    assert_eq!(
-        skin_state_number(154, &SkinDrawState { select_ex_score: Some(300), ..nearest.clone() }),
-        Some(-145)
-    );
-    assert_eq!(
-        result_grade_diff_label(&SkinDrawState { select_ex_score: Some(500), ..nearest.clone() }),
-        Some("E+55".to_string())
-    );
-    assert_eq!(
-        result_grade_diff_label(&SkinDrawState { select_ex_score: Some(1900), ..nearest.clone() }),
-        Some("MAX-100".to_string())
-    );
-    assert_eq!(
-        result_grade_diff_label(&SkinDrawState { select_ex_score: Some(2000), ..nearest.clone() }),
-        Some("MAX+0".to_string())
-    );
-    let screenshot_score = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
-        ex_score: 1100,
-        total_notes: 594,
+    assert_eq!(skin_state_number(154, &unavailable), None);
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &unavailable), None);
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_AVAILABLE, &[], &unavailable));
+    assert_eq!(skin_state_number(154, &SkinDrawState::default()), None);
+}
+
+#[test]
+fn score_grade_facts_are_identical_across_select_play_and_result() {
+    let select = SkinDrawState {
+        select_screen: true,
+        select_ex_score: Some(63),
+        select_total_notes: 102,
+        select_play_count: 1,
+        ..SkinDrawState::default()
+    };
+    let play = SkinDrawState { ex_score: 63, total_notes: 102, ..SkinDrawState::default() };
+    let result = SkinDrawState {
         result_failed: Some(false),
-        ..SkinDrawState::default()
+        ex_score: 63,
+        total_notes: 102,
+        ..Default::default()
     };
-    assert_eq!(result_grade_diff_label(&screenshot_score), Some("AAA+44".to_string()));
-    assert_eq!(skin_state_number(154, &screenshot_score), Some(44));
-    assert_eq!(grade_diff_rank_target_grade(&screenshot_score, true), Some("AAA"));
-    let next_screenshot_score = SkinDrawState {
-        result_grade_diff_display: ResultGradeDiffDisplay::Next,
-        ..screenshot_score
-    };
-    assert_eq!(result_grade_diff_label(&next_screenshot_score), Some("-88".to_string()));
-    assert_eq!(skin_state_number(154, &next_screenshot_score), Some(-88));
-    assert_eq!(grade_diff_rank_target_grade(&next_screenshot_score, true), Some("MAX"));
+
+    for ref_id in 154..=154 {
+        assert_eq!(skin_state_number(ref_id, &select), skin_state_number(ref_id, &play));
+        assert_eq!(skin_state_number(ref_id, &play), skin_state_number(ref_id, &result));
+    }
+    for ref_id in SKIN_REF_BMZ_SCORE_GRADE_CURRENT..=SKIN_REF_BMZ_SCORE_GRADE_NEAREST_ABS {
+        assert_eq!(skin_state_number(ref_id, &select), skin_state_number(ref_id, &play));
+        assert_eq!(skin_state_number(ref_id, &play), skin_state_number(ref_id, &result));
+    }
 }
 
 #[test]

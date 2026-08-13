@@ -56,7 +56,6 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
     .unwrap();
 
     assert_eq!(play.target, TargetOptionConfig::None);
-    assert_eq!(play.grade_diff_display, ResultGradeDiffDisplay::Nearest);
     assert_eq!(play.rule_mode, RuleMode::Beatoraja);
     assert_eq!(play.ln_mode_policy, LnPolicySetting::AutoLn);
     assert!(!play.seven_to_six);
@@ -150,8 +149,8 @@ fn lane_view_preserves_explicit_hispeed_auto_adjust_off() {
 }
 
 #[test]
-fn grade_diff_display_uses_next_nearest_keys() {
-    fn parse_grade_diff_display(value: &str) -> ResultGradeDiffDisplay {
+fn removed_grade_diff_display_is_ignored_and_not_serialized() {
+    for value in ["Next", "Nearest"] {
         let toml = format!(
             r#"
                 gauge = "Normal"
@@ -163,22 +162,9 @@ fn grade_diff_display_uses_next_nearest_keys() {
                 auto_play = false
                 "#
         );
-        toml::from_str::<PlayDefaultsConfig>(&toml).unwrap().grade_diff_display
+        let play: PlayDefaultsConfig = toml::from_str(&toml).unwrap();
+        assert!(!toml::to_string(&play).unwrap().contains("grade_diff_display"));
     }
-
-    assert_eq!(parse_grade_diff_display("Next"), ResultGradeDiffDisplay::Next);
-    assert_eq!(parse_grade_diff_display("Nearest"), ResultGradeDiffDisplay::Nearest);
-
-    let mut play = PlayDefaultsConfig {
-        grade_diff_display: ResultGradeDiffDisplay::Next,
-        ..ProfileConfig::new_default("default", "Default", 0).play
-    };
-    let serialized = toml::to_string(&play).unwrap();
-    assert!(serialized.contains(r#"grade_diff_display = "Next""#));
-
-    play.grade_diff_display = ResultGradeDiffDisplay::Nearest;
-    let serialized = toml::to_string(&play).unwrap();
-    assert!(serialized.contains(r#"grade_diff_display = "Nearest""#));
 }
 
 #[test]
@@ -189,7 +175,6 @@ fn target_option_uses_beatoraja_ids_with_legacy_aliases() {
                 gauge = "Normal"
                 random = "Off"
                 target = "{value}"
-                grade_diff_display = "Next"
                 lane_effect = "Off"
                 assist = "None"
                 auto_play = false

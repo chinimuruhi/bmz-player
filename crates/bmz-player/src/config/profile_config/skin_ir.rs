@@ -466,7 +466,6 @@ impl ProfileConfig {
                 double_option: DoubleOptionConfig::Off,
                 hs_fix: HsFixConfig::Off,
                 target: TargetOptionConfig::None,
-                grade_diff_display: ResultGradeDiffDisplay::default(),
                 lane_effect: LaneEffectConfig::Off,
                 assist: AssistOptionConfig::default(),
                 session_mode: Some(SessionMode::Normal),

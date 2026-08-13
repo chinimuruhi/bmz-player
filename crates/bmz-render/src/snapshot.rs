@@ -7,7 +7,6 @@ use bmz_core::time::TimeUs;
 use bmz_gameplay::session::SkinRuntimeEvent;
 
 pub use crate::chart_graph::BpmGraphSegment;
-use crate::scene::ResultGradeDiffDisplay;
 use crate::skin_offset::SkinOffsetValues;
 
 /// Play skin が fadeout 時間も timer=2 destination も持たない場合の黒フェード時間。
@@ -186,8 +185,6 @@ pub struct RenderSnapshot {
     pub max_combo: u32,
     pub ex_score: u32,
     pub total_notes: u32,
-    /// Play skin に渡すランク差分表示モード (`0=NEAREST`, `1=NEXT`)。
-    pub grade_diff_display: ResultGradeDiffDisplay,
     /// beatoraja NUMBER_SONGGAUGE_TOTAL / FLOAT_CHART_TOTALGAUGE (368)。
     pub chart_total_gauge: f32,
     pub past_notes: u32,

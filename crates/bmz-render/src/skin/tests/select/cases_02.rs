@@ -63,7 +63,7 @@ fn select_detail_artist_shows_config_value_in_settings() {
 }
 
 #[test]
-fn nearest_select_diff_number_renders_e_minus_when_f_rank_destination_is_missing() {
+fn nearest_select_diff_uses_bmz_refs_without_grade_fallback() {
     let document: SkinDocument = serde_json::from_str(
         r#"
             {
@@ -74,8 +74,14 @@ fn nearest_select_diff_number_renders_e_minus_when_f_rank_destination_is_missing
                     {"id": "rank", "path": "rank.png"}
                 ],
                 "image": [
-                    {"id": "RANK_s_E", "src": "rank", "x": 0, "y": 0, "w": 45, "h": 19}
+                    {"id": "rank_f", "src": "rank", "x": 0, "y": 0, "w": 45, "h": 19},
+                    {"id": "rank_e", "src": "rank", "x": 45, "y": 0, "w": 45, "h": 19}
                 ],
+                "imageset": [{
+                    "id": "nearest_rank",
+                    "ref": 1976,
+                    "images": ["rank_f", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e"]
+                }],
                 "value": [
                     {
                         "id": "RANK_Diff_Exscore",
@@ -87,14 +93,14 @@ fn nearest_select_diff_number_renders_e_minus_when_f_rank_destination_is_missing
                         "divx": 12,
                         "divy": 2,
                         "digit": 4,
-                        "ref": 154,
+                        "ref": 1980,
                         "zeropadding": 2
                     }
                 ],
                 "destination": [
                     {
-                        "id": "RANK_s_E",
-                        "op": [307],
+                        "id": "nearest_rank",
+                        "op": [1985],
                         "dst": [{"x": 0, "y": 20, "w": 10, "h": 10}]
                     },
                     {
@@ -120,7 +126,7 @@ fn nearest_select_diff_number_renders_e_minus_when_f_rank_destination_is_missing
             SkinDocumentTexture {
                 source_id: "rank".to_string(),
                 texture: SkinTextureId(7),
-                source_size: SkinImageSize { width: 45.0, height: 19.0 },
+                source_size: SkinImageSize { width: 90.0, height: 19.0 },
             },
         ),
     ]);
@@ -133,7 +139,6 @@ fn nearest_select_diff_number_renders_e_minus_when_f_rank_destination_is_missing
             ..SelectRowSnapshot::default()
         }],
         chart_count: 1,
-        grade_diff_display: ResultGradeDiffDisplay::Nearest,
         ..SelectSnapshot::default()
     };
 
@@ -163,8 +168,14 @@ fn next_select_diff_number_renders_next_rank_label() {
                     {"id": "rank", "path": "rank.png"}
                 ],
                 "image": [
-                    {"id": "RANK_s_E", "src": "rank", "x": 0, "y": 0, "w": 45, "h": 19}
+                    {"id": "rank_f", "src": "rank", "x": 0, "y": 0, "w": 45, "h": 19},
+                    {"id": "rank_e", "src": "rank", "x": 45, "y": 0, "w": 45, "h": 19}
                 ],
+                "imageset": [{
+                    "id": "next_rank",
+                    "ref": 1975,
+                    "images": ["rank_f", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e", "rank_e"]
+                }],
                 "value": [
                     {
                         "id": "RANK_Diff_Exscore",
@@ -182,8 +193,8 @@ fn next_select_diff_number_renders_next_rank_label() {
                 ],
                 "destination": [
                     {
-                        "id": "RANK_s_E",
-                        "op": [307],
+                        "id": "next_rank",
+                        "op": [1985],
                         "dst": [{"x": 0, "y": 20, "w": 10, "h": 10}]
                     },
                     {
@@ -209,7 +220,7 @@ fn next_select_diff_number_renders_next_rank_label() {
             SkinDocumentTexture {
                 source_id: "rank".to_string(),
                 texture: SkinTextureId(7),
-                source_size: SkinImageSize { width: 45.0, height: 19.0 },
+                source_size: SkinImageSize { width: 90.0, height: 19.0 },
             },
         ),
     ]);
@@ -223,7 +234,6 @@ fn next_select_diff_number_renders_next_rank_label() {
             ..SelectRowSnapshot::default()
         }],
         chart_count: 1,
-        grade_diff_display: ResultGradeDiffDisplay::Next,
         ..SelectSnapshot::default()
     };
 
@@ -234,13 +244,16 @@ fn next_select_diff_number_renders_next_rank_label() {
     });
 
     let (state, _) = document.select_draw_state(&snapshot, None);
-    assert_eq!(skin_state_number(154, &state), Some(-501));
+    assert_eq!(skin_state_number(154, &state), Some(1002));
     assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.0));
-    assert!(
-        items
-            .iter()
-            .any(|item| matches!(item, SkinRenderItem::Image { texture: SkinTextureId(7), .. }))
-    );
+    assert!(items.iter().any(|item| matches!(
+        item,
+        SkinRenderItem::Image {
+            texture: SkinTextureId(7),
+            uv: TextureRegion { x, .. },
+            ..
+        } if approx_eq(*x, 0.5)
+    )));
 
     let no_play_snapshot = SelectSnapshot {
         rows: vec![SelectRowSnapshot {
@@ -252,7 +265,6 @@ fn next_select_diff_number_renders_next_rank_label() {
             ..SelectRowSnapshot::default()
         }],
         chart_count: 1,
-        grade_diff_display: ResultGradeDiffDisplay::Next,
         ..SelectSnapshot::default()
     };
     let no_play_items = document.select_render_items(&sources, &no_play_snapshot);
@@ -273,7 +285,6 @@ fn next_select_diff_number_renders_next_rank_label() {
             ..SelectRowSnapshot::default()
         }],
         chart_count: 1,
-        grade_diff_display: ResultGradeDiffDisplay::Next,
         ..SelectSnapshot::default()
     };
     let no_play_zero_items = document.select_render_items(&sources, &no_play_zero_snapshot);
@@ -346,7 +357,7 @@ fn select_diff_number_renders_max_zero_as_positive_row() {
 
     let (state, _) = document.select_draw_state(&snapshot, None);
     assert_eq!(skin_state_number(154, &state), Some(0));
-    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.5));
+    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.0));
 }
 
 #[test]

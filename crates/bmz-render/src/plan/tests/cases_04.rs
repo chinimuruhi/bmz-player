@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn play_plan_passes_grade_diff_display_mode_to_skin_options() {
+fn play_plan_keeps_deprecated_grade_diff_options_on_fixed_next() {
     let document: SkinDocument = serde_json::from_str(
         r##"
             {
@@ -22,34 +22,25 @@ fn play_plan_passes_grade_diff_display_mode_to_skin_options() {
     .unwrap();
     let skin = SkinContext::from_manifest_and_document(SkinManifest::default(), document, []);
 
-    for (grade_diff_display, expected, unexpected) in [
-        (
-            crate::scene::ResultGradeDiffDisplay::Nearest,
-            Color::rgb(0x12 as f32 / 255.0, 0xAB as f32 / 255.0, 0x34 as f32 / 255.0),
-            Color::rgb(0xFE as f32 / 255.0, 0xDC as f32 / 255.0, 0xBA as f32 / 255.0),
-        ),
-        (
-            crate::scene::ResultGradeDiffDisplay::Next,
-            Color::rgb(0xFE as f32 / 255.0, 0xDC as f32 / 255.0, 0xBA as f32 / 255.0),
-            Color::rgb(0x12 as f32 / 255.0, 0xAB as f32 / 255.0, 0x34 as f32 / 255.0),
-        ),
-    ] {
-        let plan = DrawPlan::from_scene_with_skin(
-            &AppSceneSnapshot::Play(RenderSnapshot {
-                grade_diff_display,
-                ..RenderSnapshot::default()
-            }),
-            &skin,
-            &mut crate::skin::DynamicTimerRuntime::default(),
-        );
+    let plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(RenderSnapshot::default()),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+    let next = Color::rgb(0xFE as f32 / 255.0, 0xDC as f32 / 255.0, 0xBA as f32 / 255.0);
+    let nearest = Color::rgb(0x12 as f32 / 255.0, 0xAB as f32 / 255.0, 0x34 as f32 / 255.0);
 
-        assert!(plan.commands.iter().any(
-            |command| matches!(command, DrawCommand::Rect { color, .. } if *color == expected)
-        ));
-        assert!(!plan.commands.iter().any(
-            |command| matches!(command, DrawCommand::Rect { color, .. } if *color == unexpected)
-        ));
-    }
+    assert!(
+        plan.commands
+            .iter()
+            .any(|command| matches!(command, DrawCommand::Rect { color, .. } if *color == next))
+    );
+    assert!(
+        !plan
+            .commands
+            .iter()
+            .any(|command| matches!(command, DrawCommand::Rect { color, .. } if *color == nearest))
+    );
 }
 
 #[test]

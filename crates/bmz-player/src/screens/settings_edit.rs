@@ -14,7 +14,6 @@ use crate::config::profile_config::{
 use crate::config::settings_registry::{
     SettingsEntryId, adjust_settings_value, eight_key_hispeed_lane, format_settings_value,
 };
-use bmz_render::scene::ResultGradeDiffDisplay;
 
 use crate::ln_policy::LnPolicySetting;
 
@@ -239,7 +238,6 @@ enum SettingsBaseline {
     DoubleOption(DoubleOptionConfig),
     HsFix(HsFixConfig),
     Target(TargetOptionConfig),
-    GradeDiffDisplay(ResultGradeDiffDisplay),
     LaneEffect(LaneEffectConfig),
     Assist(AssistOptionConfig),
     BgaMode(BgaModeConfig),
@@ -307,9 +305,6 @@ impl SettingsEditSession {
             }
             SettingsEntryId::HsFix => SettingsBaseline::HsFix(profile.play.hs_fix),
             SettingsEntryId::Target => SettingsBaseline::Target(profile.play.target),
-            SettingsEntryId::GradeDiffDisplay => {
-                SettingsBaseline::GradeDiffDisplay(profile.play.grade_diff_display)
-            }
             SettingsEntryId::LaneEffect => SettingsBaseline::LaneEffect(profile.play.lane_effect),
             SettingsEntryId::Assist => SettingsBaseline::Assist(profile.play.assist),
             SettingsEntryId::BgaMode => SettingsBaseline::BgaMode(profile.play.bga),
@@ -487,9 +482,6 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::Target, SettingsBaseline::Target(value)) => {
                 profile.play.target = *value;
-            }
-            (SettingsEntryId::GradeDiffDisplay, SettingsBaseline::GradeDiffDisplay(value)) => {
-                profile.play.grade_diff_display = *value;
             }
             (SettingsEntryId::LaneEffect, SettingsBaseline::LaneEffect(value)) => {
                 profile.play.lane_effect = *value;

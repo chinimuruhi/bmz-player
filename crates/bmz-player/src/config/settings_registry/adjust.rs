@@ -77,11 +77,6 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         SettingsEntryId::Target => cycle_enum(delta, profile.play.target, cycle_target)
             .map(|next| profile.play.target = next)
             .is_some(),
-        SettingsEntryId::GradeDiffDisplay => {
-            cycle_enum(delta, profile.play.grade_diff_display, cycle_grade_diff_display)
-                .map(|next| profile.play.grade_diff_display = next)
-                .is_some()
-        }
         SettingsEntryId::LaneEffect => {
             cycle_enum(delta, profile.play.lane_effect, cycle_lane_effect)
                 .map(|next| profile.play.lane_effect = next)

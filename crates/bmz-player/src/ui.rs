@@ -11,7 +11,6 @@ use std::process::Command;
 
 use bmz_core::input::InputDeviceKind;
 use bmz_gameplay::rule::RuleMode;
-use bmz_render::scene::ResultGradeDiffDisplay;
 use bmz_render::skin::{SkinDocument, SkinFilepathDef, SkinOffsetDef, SkinPropertyDef};
 use bmz_render::skin_offset::SKIN_OFFSET_BAR_LINE;
 use bmz_render::ui::EguiFrame;

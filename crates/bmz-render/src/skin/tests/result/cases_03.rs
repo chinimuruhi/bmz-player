@@ -6,7 +6,6 @@ fn luxe_flat_nearest_rank_uses_runtime_result_score() {
         ex_score: 2246,
         total_notes: 1261,
         result_failed: Some(false),
-        result_grade_diff_display: ResultGradeDiffDisplay::Nearest,
         ..Default::default()
     };
     let value =

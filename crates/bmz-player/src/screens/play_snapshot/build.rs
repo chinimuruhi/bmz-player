@@ -284,7 +284,6 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         max_combo: session.display_max_combo(),
         ex_score: session.score.ex_score(),
         total_notes: session.scored_total_notes,
-        grade_diff_display: Default::default(),
         chart_total_gauge: gauge_total_for_chart(
             session.chart.metadata.total,
             session.scored_total_notes,

@@ -356,7 +356,6 @@ profile-play-random = ランダム
 profile-play-random-2p = ランダム 2P
 profile-play-dp-option = DP オプション
 profile-play-target = ターゲット
-profile-play-result-diff = リザルト差分表示
 profile-play-lane-effect = レーンエフェクト
 profile-play-assist = アシスト
 profile-play-bga-display = BGA 表示

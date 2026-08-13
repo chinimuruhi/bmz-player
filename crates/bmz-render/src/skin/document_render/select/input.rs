@@ -15,8 +15,6 @@ pub(in crate::skin::document_render) fn select_search_input_anchors<'a>(
     enabled_options: &[i32],
 ) -> Vec<SelectSearchInputAnchor<'a>> {
     let destinations = document.all_destinations(enabled_options);
-    let has_nearest_f_diff_rank_destination =
-        nearest_f_diff_rank_destination_available(&destinations);
     let mut anchors = Vec::new();
 
     for destination in destinations {
@@ -35,12 +33,7 @@ pub(in crate::skin::document_render) fn select_search_input_anchors<'a>(
             eval_skin_draw_condition,
             |ops, enabled_options, state| {
                 if ops.len() == destination.op.len() && ops.iter().eq(destination.op.iter()) {
-                    destination_ops_match(
-                        destination,
-                        enabled_options,
-                        state,
-                        has_nearest_f_diff_rank_destination,
-                    )
+                    destination_ops_match(destination, enabled_options, state)
                 } else {
                     test_skin_ops(ops, enabled_options, state)
                 }

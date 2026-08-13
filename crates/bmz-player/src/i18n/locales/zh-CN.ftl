@@ -356,7 +356,6 @@ profile-play-random = 随机
 profile-play-random-2p = 随机 2P
 profile-play-dp-option = DP 选项
 profile-play-target = 目标
-profile-play-result-diff = 结果等级差显示
 profile-play-lane-effect = 轨道效果
 profile-play-assist = 辅助
 profile-play-bga-display = BGA 显示

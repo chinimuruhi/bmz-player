@@ -156,6 +156,15 @@ pub(in crate::skin) fn skin_state_event_index(event_id: i32, state: &SkinDrawSta
             select_settings_row_kind_index(state.select_row_kind)
         }
         SKIN_REF_BMZ_SELECT_SESSION_MODE => state.select_session_mode_index as i32,
+        SKIN_REF_BMZ_SCORE_GRADE_CURRENT => {
+            score_grade_facts(state).map_or(0, |facts| facts.current_index as i32)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEXT => {
+            score_grade_facts(state).map_or(0, |facts| facts.next_index as i32)
+        }
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST => {
+            score_grade_facts(state).map_or(0, |facts| facts.nearest_index as i32)
+        }
         SKIN_EVENT_HSFIX => state.hsfix_index,
         _ => skin_random_lane_ref_number(event_id, state)
             .and_then(|value| i32::try_from(value).ok())

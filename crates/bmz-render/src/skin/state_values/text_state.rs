@@ -161,6 +161,18 @@ pub(super) fn skin_main_state_text(
         SKIN_REF_BMZ_RESULT_IR_SCOPE => {
             draw_state.map(|state| state.ir_ranking.scope.label().to_string()).unwrap_or_default()
         }
+        SKIN_REF_BMZ_SCORE_GRADE_CURRENT => draw_state
+            .and_then(score_grade_facts)
+            .map(|facts| facts.current_label().to_string())
+            .unwrap_or_default(),
+        SKIN_REF_BMZ_SCORE_GRADE_NEXT => draw_state
+            .and_then(score_grade_facts)
+            .map(|facts| facts.next_label().to_string())
+            .unwrap_or_default(),
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST => draw_state
+            .and_then(score_grade_facts)
+            .map(|facts| facts.nearest_label().to_string())
+            .unwrap_or_default(),
         SKIN_TEXT_BMZ_DAILY_RANK => draw_state
             .map(|state| daily_rank_label(&state.player_stats.daily).to_string())
             .unwrap_or_default(),
@@ -225,6 +237,9 @@ pub(super) fn lua_main_state_text_values(
         1021,
         1900,
         SKIN_TEXT_BMZ_DAILY_RANK,
+        SKIN_REF_BMZ_SCORE_GRADE_CURRENT,
+        SKIN_REF_BMZ_SCORE_GRADE_NEXT,
+        SKIN_REF_BMZ_SCORE_GRADE_NEAREST,
     ];
     refs.extend(120..=129);
     refs.extend(150..=159);

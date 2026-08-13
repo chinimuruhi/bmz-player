@@ -132,17 +132,59 @@ BMZ 対応 select skin で4種類を区別する場合は、BMZ 拡張 ref `1970
 `2=AUTO BATTLE`, `3=BATTLE` を返す。BMZ デフォルトスキンの play mode panel も
 この ref を使用する。
 
-### BMZ Grade Difference Display Ref
+### BMZ Score Grade Refs
 
-選曲設定のランク差分表示モードは、select / play / result skin 共通で次の BMZ 拡張
-ref / option から取得できる。play skin の `ref=154` などのランク差分値も、この設定に
-応じて NEXT / NEAREST の計算へ切り替わる。
+ランク差分の NEXT / NEAREST はプレイヤー設定ではなく skin が選ぶ。beatoraja
+`NUMBER_NEXT_RANK_EXSCORE` (`ref=154`) は、次の正式な DJ LEVEL 境界までに必要な
+EX SCORE を常に0以上で返す。select / play / result のいずれでも、現在のEX SCOREと
+譜面全体のノート数を使用する。スコアが無いselect行または総ノート数0では値を返さない。
+
+総ノート数を `N`、MAX EX SCOREを `M=2N` とし、境界は整数演算で次のように求める。
+
+| grade | minimum EX SCORE |
+| --- | ---: |
+| F | `0` |
+| E | `ceil(2M/9)` |
+| D | `ceil(3M/9)` |
+| C | `ceil(4M/9)` |
+| B | `ceil(5M/9)` |
+| A | `ceil(6M/9)` |
+| AA | `ceil(7M/9)` |
+| AAA | `ceil(8M/9)` |
+| MAX | `M` |
+
+beatorajaの実装に含まれる浮動小数点の丸め誤差、正式なDJ LEVELではない`1/9`境界、
+play中だけ経過ノート数を差分量に使う挙動は引き継がない。現在値が境界と一致する場合、
+NEXTはさらに上の境界を指す。MAXではMAXを指して差分0を返す。
+
+BMZ拡張は次をselect / play / result skin共通で公開する。grade indexは
+`0=F`, `1=E`, `2=D`, `3=C`, `4=B`, `5=A`, `6=AA`, `7=AAA`, `8=MAX`。
+1974〜1976はnumberに加えて同じ値をevent index / imageset refとして使用でき、textでは
+grade labelを返す。
 
 | ref / option | kind | meaning |
 | ---: | --- | --- |
-| 1971 | number | `0=NEAREST`, `1=NEXT` |
-| 1972 | option | NEAREST のとき真 |
-| 1973 | option | NEXT のとき真 |
+| 1974 | number / event index / text | 現在到達済みのgrade |
+| 1975 | number / event index / text | 現在より高い次のgrade。MAX時はMAX |
+| 1976 | number / event index / text | 最も近いgrade |
+| 1977 | number | `EX SCORE - current border` |
+| 1978 | number | `next border - EX SCORE`。`ref=154`と同値 |
+| 1979 | number | `EX SCORE - nearest border`。次側なら負 |
+| 1980 | number | `abs(ref 1979)` |
+| 1981 | option | NEARESTが現在側。完全一致と同距離を含む |
+| 1982 | option | NEARESTが次側 |
+| 1983 | option | grade境界に完全一致 |
+| 1984 | option | 現在側と次側から同距離 |
+| 1985 | option | grade計算に必要なスコアが存在する |
+
+NEARESTは現在側までの距離が次側以下なら現在側を選ぶため、同距離では現在側になる。
+別のtie policyが必要なLua skinは1977と1978を比較して独自に選択できる。JSON skinは
+1976をimageset ref、1980を差分値、1981 / 1982を符号画像のopとして利用できる。
+スコア無しでimagesetの先頭画像へフォールバックさせたくない場合は、destinationに
+`op: [1985]`を指定する。
+
+削除済みの表示設定で使っていた1971〜1973は再利用しない。旧BMZ skin向けに
+`number(1971)=1`, `option(1972)=false`, `option(1973)=true`の固定NEXT値を返す。
 
 ### Select Rival and Chart Replication
 

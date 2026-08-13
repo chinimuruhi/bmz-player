@@ -359,7 +359,6 @@ profile-play-random = Random
 profile-play-random-2p = Random 2P
 profile-play-dp-option = DP option
 profile-play-target = Target
-profile-play-result-diff = Result grade difference
 profile-play-lane-effect = Lane effect
 profile-play-assist = Assist
 profile-play-bga-display = BGA display

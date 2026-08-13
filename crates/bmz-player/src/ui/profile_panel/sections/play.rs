@@ -145,20 +145,6 @@ pub(in crate::ui::profile_panel) fn build_profile_play_section(
                         ui.selectable_value(&mut profile.play.target, value, label);
                     }
                 });
-            egui::ComboBox::new("profile_result_diff", tr!(text, "profile-play-result-diff"))
-                .selected_text(grade_diff_display_label(profile.play.grade_diff_display))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut profile.play.grade_diff_display,
-                        ResultGradeDiffDisplay::Next,
-                        grade_diff_display_label(ResultGradeDiffDisplay::Next),
-                    );
-                    ui.selectable_value(
-                        &mut profile.play.grade_diff_display,
-                        ResultGradeDiffDisplay::Nearest,
-                        grade_diff_display_label(ResultGradeDiffDisplay::Nearest),
-                    );
-                });
             egui::ComboBox::new("profile_lane_effect", tr!(text, "profile-play-lane-effect"))
                 .selected_text(lane_effect_label(profile.play.lane_effect))
                 .show_ui(ui, |ui| {

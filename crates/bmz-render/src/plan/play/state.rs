@@ -58,7 +58,6 @@ pub(super) fn build_play_skin_state(
         max_combo: snapshot.max_combo,
         ex_score: snapshot.ex_score,
         total_notes: snapshot.total_notes,
-        result_grade_diff_display: snapshot.grade_diff_display,
         select_chart_total_gauge: snapshot.chart_total_gauge,
         past_notes: snapshot.past_notes,
         judge_counts: snapshot.judge_counts,

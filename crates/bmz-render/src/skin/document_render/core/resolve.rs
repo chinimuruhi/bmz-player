@@ -14,23 +14,15 @@ macro_rules! skin_document_render_core_resolve_methods {
                 text_state,
                 sources,
                 runtime_graphs,
-                has_nearest_f_diff_rank_destination,
                 cache,
             } = context;
-            let state =
-                apply_nearest_f_diff_rank_fallback(state, has_nearest_f_diff_rank_destination);
-            let state = state.as_ref();
             if let Some(judge_def) = self.judge.iter().find(|judge| judge.id == destination.id) {
                 // SkinJudge 自身に destination が設定されている場合は、beatoraja の
                 // `super.prepare` と同じく外側の timer/op/draw も先に評価する。
                 // dst が空なら SkinJudge constructor の既定 destination が残る。
                 if !destination.dst.is_empty() {
-                    if !destination_ops_match(
-                        destination,
-                        enabled_options,
-                        state,
-                        has_nearest_f_diff_rank_destination,
-                    ) || !eval_skin_draw_condition(&destination.draw, state)
+                    if !destination_ops_match(destination, enabled_options, state)
+                        || !eval_skin_draw_condition(&destination.draw, state)
                     {
                         return None;
                     }
@@ -177,11 +169,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             }
 
             if let Some(value) = value_for_destination {
-                let number = skin_value_number_for_destination(
-                    value,
-                    state,
-                    has_nearest_f_diff_rank_destination,
-                )?;
+                let number = skin_value_number_for_destination(value, state)?;
                 let signed_render = signed_number_render_for_value(value, state);
                 return Some(self.value_number_render_items(
                     &value.id,
@@ -442,18 +430,8 @@ macro_rules! skin_document_render_core_resolve_methods {
             text_state: &SkinTextState<'_>,
             sources: &HashMap<String, SkinDocumentTexture>,
         ) -> Option<Vec<SkinRenderItem>> {
-            let destinations = self.all_destinations(enabled_options);
-            let has_nearest_f_diff_rank_destination =
-                nearest_f_diff_rank_destination_available(&destinations);
-            let state =
-                apply_nearest_f_diff_rank_fallback(state, has_nearest_f_diff_rank_destination);
-            let state = state.as_ref();
-            if !destination_ops_match(
-                destination,
-                enabled_options,
-                state,
-                has_nearest_f_diff_rank_destination,
-            ) || !eval_skin_draw_condition(&destination.draw, state)
+            if !destination_ops_match(destination, enabled_options, state)
+                || !eval_skin_draw_condition(&destination.draw, state)
             {
                 return None;
             }
@@ -519,11 +497,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             }
 
             if let Some(value) = self.value.iter().find(|value| value.id == destination.id) {
-                let number = skin_value_number_for_destination(
-                    value,
-                    state,
-                    has_nearest_f_diff_rank_destination,
-                )?;
+                let number = skin_value_number_for_destination(value, state)?;
                 let signed_render = signed_number_render_for_value(value, state);
                 return Some(self.value_number_render_items(
                     &value.id,

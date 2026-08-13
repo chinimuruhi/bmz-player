@@ -65,7 +65,6 @@ pub struct SelectSnapshot {
     pub select_ln_mode: String,
     pub judge_algorithm: String,
     pub bga: String,
-    pub grade_diff_display: ResultGradeDiffDisplay,
     /// Select detail option panelで表示する判定表示オフセット(ms)。
     pub judge_timing_offset_ms: i32,
     pub judge_timing_auto_adjust: bool,
@@ -202,7 +201,6 @@ impl Default for SelectSnapshot {
             select_ln_mode: String::new(),
             judge_algorithm: String::new(),
             bga: String::new(),
-            grade_diff_display: ResultGradeDiffDisplay::default(),
             judge_timing_offset_ms: 0,
             judge_timing_auto_adjust: false,
             lanecover_enabled: false,

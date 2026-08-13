@@ -206,7 +206,6 @@ pub(super) fn build_result_skin_draw_state(
         ex_score: snapshot.ex_score,
         total_notes: snapshot.total_notes,
         past_notes: snapshot.total_notes,
-        result_grade_diff_display: snapshot.grade_diff_display,
         total_duration_ms: snapshot
             .note_display_duration_ms
             .map(crate::skin::green_duration_to_duration_i32)

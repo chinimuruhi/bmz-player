@@ -130,10 +130,6 @@ macro_rules! skin_document_render_select_render_methods {
             let destination_count = planning
                 .as_ref()
                 .map_or(destinations.len(), |planning| planning.destinations.len());
-            let has_nearest_f_diff_rank_destination = planning.as_ref().map_or_else(
-                || nearest_f_diff_rank_destination_available(&destinations),
-                |planning| planning.has_nearest_f_diff_rank_destination,
-            );
             let search_input_anchors = select::select_search_input_anchors(
                 self,
                 snapshot,
@@ -212,12 +208,7 @@ macro_rules! skin_document_render_select_render_methods {
                     |ops, enabled_options, state| {
                         if ops.len() == destination.op.len() && ops.iter().eq(destination.op.iter())
                         {
-                            destination_ops_match(
-                                destination,
-                                enabled_options,
-                                state,
-                                has_nearest_f_diff_rank_destination,
-                            )
+                            destination_ops_match(destination, enabled_options, state)
                         } else {
                             test_skin_ops(ops, enabled_options, state)
                         }
@@ -280,7 +271,6 @@ macro_rules! skin_document_render_select_render_methods {
                                     text_state: &text,
                                     sources,
                                     runtime_graphs: SkinRuntimeGraphs::from_document(self),
-                                    has_nearest_f_diff_rank_destination,
                                     cache: None,
                                 },
                             )
@@ -301,7 +291,6 @@ macro_rules! skin_document_render_select_render_methods {
                         text_state: &text,
                         sources,
                         runtime_graphs: SkinRuntimeGraphs::from_document(self),
-                        has_nearest_f_diff_rank_destination,
                         cache: None,
                     },
                 ) {
@@ -414,7 +403,6 @@ macro_rules! skin_document_render_select_render_methods {
                     .unwrap_or(0)
                     .min(i32::MAX as i64) as i32,
                 duration_green_ms,
-                result_grade_diff_display: snapshot.grade_diff_display,
                 select_scroll_progress: select_scroll_progress(snapshot),
                 select_master_volume: snapshot.master_volume,
                 select_key_volume: snapshot.key_volume,

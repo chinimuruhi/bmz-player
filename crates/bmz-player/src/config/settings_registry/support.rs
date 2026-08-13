@@ -161,13 +161,6 @@ pub(super) fn format_target(value: TargetOptionConfig) -> String {
     }
 }
 
-pub(super) fn format_grade_diff_display(value: ResultGradeDiffDisplay) -> String {
-    match value {
-        ResultGradeDiffDisplay::Next => "NEXT".to_string(),
-        ResultGradeDiffDisplay::Nearest => "NEAREST".to_string(),
-    }
-}
-
 pub(super) fn format_lane_effect(value: LaneEffectConfig) -> String {
     match value {
         LaneEffectConfig::Off => "OFF".to_string(),
@@ -367,15 +360,6 @@ pub(super) fn cycle_target(current: TargetOptionConfig, forward: bool) -> Target
     } else {
         current
     };
-    cycle_in_slice(&VALUES, current, forward)
-}
-
-pub(super) fn cycle_grade_diff_display(
-    current: ResultGradeDiffDisplay,
-    forward: bool,
-) -> ResultGradeDiffDisplay {
-    const VALUES: [ResultGradeDiffDisplay; 2] =
-        [ResultGradeDiffDisplay::Nearest, ResultGradeDiffDisplay::Next];
     cycle_in_slice(&VALUES, current, forward)
 }
 

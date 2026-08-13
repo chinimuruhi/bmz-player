@@ -88,11 +88,35 @@ pub const SKIN_REF_BMZ_IR_SCOPE_TOTAL: i32 = 1969;
 /// BMZ extension: select session mode (`0=NORMAL`, `1=AUTOPLAY`,
 /// `2=AUTO BATTLE`, `3=BATTLE`).
 pub const SKIN_REF_BMZ_SELECT_SESSION_MODE: i32 = 1970;
-/// BMZ extension: grade difference display (`0=NEAREST`, `1=NEXT`).
+/// Deprecated BMZ extension: the removed grade difference display setting.
+///
+/// These IDs remain reserved for old BMZ skins. The renderer exposes a fixed
+/// NEXT mode (`1971=1`, `1972=false`, `1973=true`).
 pub const SKIN_REF_BMZ_GRADE_DIFF_DISPLAY: i32 = 1971;
-/// BMZ extension: grade difference display mode options.
 pub const SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST: i32 = 1972;
 pub const SKIN_OPTION_BMZ_GRADE_DIFF_NEXT: i32 = 1973;
+/// BMZ extension: exact DJ LEVEL border facts.
+///
+/// Grade indices use `0=F`, `1=E`, `2=D`, `3=C`, `4=B`, `5=A`, `6=AA`,
+/// `7=AAA`, `8=MAX`.
+pub const SKIN_REF_BMZ_SCORE_GRADE_CURRENT: i32 = 1974;
+pub const SKIN_REF_BMZ_SCORE_GRADE_NEXT: i32 = 1975;
+pub const SKIN_REF_BMZ_SCORE_GRADE_NEAREST: i32 = 1976;
+/// EX SCORE gained since the current lower grade border.
+pub const SKIN_REF_BMZ_SCORE_GRADE_CURRENT_DIFF: i32 = 1977;
+/// EX SCORE required for the next higher grade border. This is an alias of
+/// beatoraja `NUMBER_NEXT_RANK_EXSCORE` (`ref=154`) with BMZ's exact borders.
+pub const SKIN_REF_BMZ_SCORE_GRADE_NEXT_DIFF: i32 = 1978;
+/// Signed distance from the nearest border (`score - border`).
+pub const SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF: i32 = 1979;
+/// Absolute distance from the nearest border.
+pub const SKIN_REF_BMZ_SCORE_GRADE_NEAREST_ABS: i32 = 1980;
+/// BMZ extension: nearest-border selection and score availability options.
+pub const SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_CURRENT: i32 = 1981;
+pub const SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_NEXT: i32 = 1982;
+pub const SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_EXACT: i32 = 1983;
+pub const SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_TIE: i32 = 1984;
+pub const SKIN_OPTION_BMZ_SCORE_GRADE_AVAILABLE: i32 = 1985;
 /// Backward-compatible Rust aliases for the initial Result-only names.
 pub const SKIN_REF_BMZ_RESULT_IR_SCOPE: i32 = SKIN_REF_BMZ_IR_SCOPE;
 pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL: i32 = SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL;

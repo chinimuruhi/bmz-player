@@ -78,6 +78,7 @@ impl NumberPadding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SignedNumberRowOrder {
     PositiveFirst,
+    #[cfg(test)]
     NegativeFirst,
 }
 
@@ -168,10 +169,12 @@ pub(super) fn display_signed_number_digits_with_row_order(
     }
     let negative_row = match row_order {
         SignedNumberRowOrder::PositiveFirst => divx as u8,
+        #[cfg(test)]
         SignedNumberRowOrder::NegativeFirst => 0,
     };
     let positive_row = match row_order {
         SignedNumberRowOrder::PositiveFirst => 0,
+        #[cfg(test)]
         SignedNumberRowOrder::NegativeFirst => divx as u8,
     };
     let row_offset = if value < 0 { negative_row } else { positive_row };
@@ -216,7 +219,7 @@ pub(super) fn display_signed_number_digits_with_row_order(
 /// `ref_id` が符号付き表示を要求する Result 系 ref か。
 /// beatoraja の `NUMBER_DIFF_*` 系と次 DJ LEVEL までの差分を対象とする。
 pub(super) fn ref_id_is_signed(ref_id: i32) -> bool {
-    matches!(ref_id, 152 | 153 | 154 | 172 | 175 | 178)
+    matches!(ref_id, 152 | 153 | 154 | 172 | 175 | 178 | SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF)
 }
 
 pub(super) fn value_ref_is_signed_for_state(ref_id: i32, state: &SkinDrawState) -> bool {
@@ -248,17 +251,8 @@ pub(super) fn signed_number_render_for_value(
 }
 
 pub(super) fn signed_number_row_order_for_value(
-    value: &SkinValueDef,
-    state: &SkinDrawState,
+    _value: &SkinValueDef,
+    _state: &SkinDrawState,
 ) -> SignedNumberRowOrder {
-    if state.select_screen
-        && value.ref_id == 154
-        && value.id == "RANK_Diff_Exscore"
-        && value.divx >= 12
-        && value.divy >= 2
-    {
-        SignedNumberRowOrder::NegativeFirst
-    } else {
-        SignedNumberRowOrder::PositiveFirst
-    }
+    SignedNumberRowOrder::PositiveFirst
 }

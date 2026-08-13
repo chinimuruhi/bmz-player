@@ -9,7 +9,6 @@ use super::profile_config::{
 };
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
-use bmz_render::scene::ResultGradeDiffDisplay;
 
 use crate::ln_policy::LnPolicySetting;
 
@@ -37,7 +36,6 @@ pub enum SettingsEntryId {
     DoubleOption,
     HsFix,
     Target,
-    GradeDiffDisplay,
     LaneEffect,
     Assist,
     BgaMode,
@@ -116,7 +114,6 @@ impl SettingsEntryId {
         Self::DoubleOption,
         Self::HsFix,
         Self::Target,
-        Self::GradeDiffDisplay,
         Self::LaneEffect,
         Self::BgaMode,
         Self::BgaExpand,
@@ -202,7 +199,6 @@ impl SettingsEntryId {
             Self::DoubleOption => "DP OPTION",
             Self::HsFix => "HS-FIX",
             Self::Target => "TARGET",
-            Self::GradeDiffDisplay => "GRADE DIFF",
             Self::LaneEffect => "LANE FX",
             Self::Assist => "ASSIST",
             Self::BgaMode => "BGA",
@@ -356,16 +352,6 @@ mod tests {
         profile.play.gauge = GaugeTypeConfig::Hazard;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::Gauge, 1));
         assert_eq!(profile.play.gauge, GaugeTypeConfig::AutoShift);
-    }
-
-    #[test]
-    fn cycle_grade_diff_display_wraps() {
-        let mut profile = ProfileConfig::new_default("default", "Default", 0);
-        assert!(SettingsEntryId::PLAY_ENTRIES.contains(&SettingsEntryId::GradeDiffDisplay));
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::GradeDiffDisplay), "NEAREST");
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::GradeDiffDisplay, 1));
-        assert_eq!(profile.play.grade_diff_display, ResultGradeDiffDisplay::Next);
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::GradeDiffDisplay), "NEXT");
     }
 
     #[test]

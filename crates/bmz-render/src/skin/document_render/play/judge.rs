@@ -59,7 +59,7 @@ macro_rules! skin_document_render_play_judge_methods {
             };
             let image_destination = judge.images.get(effective_judge_index)?;
             let enabled_options = self.enabled_options();
-            if !destination_ops_match(image_destination, &enabled_options, state, false)
+            if !destination_ops_match(image_destination, &enabled_options, state)
                 || !eval_skin_draw_condition(&image_destination.draw, state)
             {
                 return None;
@@ -95,7 +95,7 @@ macro_rules! skin_document_render_play_judge_methods {
                 None
             })
             .filter(|destination| {
-                destination_ops_match(destination, &enabled_options, state, false)
+                destination_ops_match(destination, &enabled_options, state)
                     && eval_skin_draw_condition(&destination.draw, state)
             });
             let number_elapsed_ms = number_destination.and_then(|destination| {

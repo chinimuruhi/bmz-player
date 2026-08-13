@@ -9,49 +9,8 @@ pub(in crate::skin) fn destination_ops_match(
     destination: &SkinDestinationDef,
     enabled_options: &[i32],
     state: &SkinDrawState,
-    has_nearest_f_diff_rank_destination: bool,
 ) -> bool {
-    if is_grade_diff_rank_destination(destination, state) {
-        return destination.op.iter().all(|&op| {
-            test_grade_diff_rank_op(
-                destination,
-                op,
-                enabled_options,
-                state,
-                has_nearest_f_diff_rank_destination,
-            )
-        });
-    }
     test_skin_ops(&destination.op, enabled_options, state)
-}
-
-pub(in crate::skin) fn test_grade_diff_rank_op(
-    destination: &SkinDestinationDef,
-    op: i32,
-    enabled_options: &[i32],
-    state: &SkinDrawState,
-    has_nearest_f_diff_rank_destination: bool,
-) -> bool {
-    if op < 0 {
-        return op.checked_neg().is_some_and(|positive| {
-            !test_grade_diff_rank_op(
-                destination,
-                positive,
-                enabled_options,
-                state,
-                has_nearest_f_diff_rank_destination,
-            )
-        });
-    }
-    match op {
-        300..=307 => grade_diff_rank_destination_matches(
-            destination,
-            op,
-            state,
-            has_nearest_f_diff_rank_destination,
-        ),
-        _ => test_skin_op(op, enabled_options, state),
-    }
 }
 
 pub(in crate::skin) fn test_skin_op(
@@ -76,12 +35,22 @@ pub(in crate::skin) fn test_skin_op(
         }
         SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL_SUPPORTED => state.ir_ranking.global_scope_supported,
         SKIN_OPTION_BMZ_RESULT_IR_SCOPE_RIVAL_SUPPORTED => state.ir_ranking.rival_scope_supported,
-        SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST => {
-            state.result_grade_diff_display == ResultGradeDiffDisplay::Nearest
+        // Deprecated grade-difference mode options use a fixed NEXT fallback.
+        SKIN_OPTION_BMZ_GRADE_DIFF_NEAREST => false,
+        SKIN_OPTION_BMZ_GRADE_DIFF_NEXT => true,
+        SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_CURRENT => {
+            score_grade_facts(state).is_some_and(ScoreGradeFacts::nearest_is_current)
         }
-        SKIN_OPTION_BMZ_GRADE_DIFF_NEXT => {
-            state.result_grade_diff_display == ResultGradeDiffDisplay::Next
+        SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_NEXT => {
+            score_grade_facts(state).is_some_and(ScoreGradeFacts::nearest_is_next)
         }
+        SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_EXACT => {
+            score_grade_facts(state).is_some_and(|facts| facts.nearest_diff == 0)
+        }
+        SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_TIE => {
+            score_grade_facts(state).is_some_and(|facts| facts.nearest_tie)
+        }
+        SKIN_OPTION_BMZ_SCORE_GRADE_AVAILABLE => score_grade_facts(state).is_some(),
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
         }

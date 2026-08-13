@@ -193,16 +193,7 @@ pub(in crate::skin) fn integer_property_value(value: f32) -> i64 {
 pub(in crate::skin) fn skin_value_number_for_destination(
     value: &SkinValueDef,
     state: &SkinDrawState,
-    has_nearest_f_diff_rank_destination: bool,
 ) -> Option<i64> {
-    if value.ref_id == 154
-        && value.expr.trim().is_empty()
-        && value.value_expr.trim().is_empty()
-        && state.result_grade_diff_display == ResultGradeDiffDisplay::Nearest
-        && !has_nearest_f_diff_rank_destination
-    {
-        return nearest_grade_diff_for_destination(state, false).map(|diff| diff.value);
-    }
     if value.ref_id == 0 && value.expr.trim().is_empty() && value.value_expr.trim().is_empty() {
         return Some(if state.play_level != 0 {
             state.play_level

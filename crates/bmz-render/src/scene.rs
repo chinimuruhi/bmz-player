@@ -12,13 +12,6 @@ use crate::snapshot::{
     SkinLogicalInputSnapshot,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub enum ResultGradeDiffDisplay {
-    #[default]
-    Nearest,
-    Next,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 // シーン snapshot は毎フレーム構築されるため、variant の Box 化による
 // フレーム単位のヒープ割当を避け、値のまま renderer へ受け渡す。
@@ -123,7 +116,6 @@ mod tests {
             gauge_value: 100.0,
             gauge_type: 2,
             total_notes: 10,
-            grade_diff_display: ResultGradeDiffDisplay::default(),
             duration_ms: 0,
             note_display_duration_ms: None,
             initial_bpm: 0.0,
@@ -210,7 +202,6 @@ mod tests {
             gauge_value: 100.0,
             gauge_type: 2,
             total_notes: 0,
-            grade_diff_display: ResultGradeDiffDisplay::default(),
             duration_ms: 0,
             note_display_duration_ms: None,
             initial_bpm: 0.0,

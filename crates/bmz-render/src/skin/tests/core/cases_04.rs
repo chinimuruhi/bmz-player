@@ -30,7 +30,7 @@ fn skin_value_number_for_destination_prefers_value_expr_over_ref_zero_fallback()
         value_expr: "0.6*number(312)".to_string(),
         ..Default::default()
     };
-    assert_eq!(skin_value_number_for_destination(&value, &state, false), Some(300));
+    assert_eq!(skin_value_number_for_destination(&value, &state), Some(300));
 }
 
 #[test]

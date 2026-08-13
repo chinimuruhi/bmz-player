@@ -194,13 +194,6 @@ pub(in crate::ui) fn target_label(value: TargetOptionConfig) -> String {
     }
 }
 
-pub(in crate::ui) fn grade_diff_display_label(value: ResultGradeDiffDisplay) -> &'static str {
-    match value {
-        ResultGradeDiffDisplay::Next => "NEXT",
-        ResultGradeDiffDisplay::Nearest => "NEAREST",
-    }
-}
-
 pub(in crate::ui) fn lane_effect_label(value: LaneEffectConfig) -> &'static str {
     match value {
         LaneEffectConfig::Off => "OFF",

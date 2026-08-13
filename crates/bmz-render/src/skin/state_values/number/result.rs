@@ -42,25 +42,13 @@ pub(in crate::skin) fn ir_total_clear_count(
 }
 
 pub(in crate::skin) fn result_grade_diff_number(state: &SkinDrawState) -> Option<i64> {
-    if !grade_diff_score_available(state) {
-        return None;
-    }
-    match state.result_grade_diff_display {
-        ResultGradeDiffDisplay::Next => next_rank_diff(state),
-        ResultGradeDiffDisplay::Nearest => {
-            nearest_grade_diff_for_state(state).map(|diff| diff.value)
-        }
-    }
+    next_rank_diff(state)
 }
 
 pub(crate) fn result_grade_diff_label(state: &SkinDrawState) -> Option<String> {
-    if !grade_diff_score_available(state) {
-        return None;
-    }
-    match state.result_grade_diff_display {
-        ResultGradeDiffDisplay::Next => next_rank_diff(state).map(|value| format!("{value:+}")),
-        ResultGradeDiffDisplay::Nearest => nearest_grade_diff(state).map(|diff| diff.label()),
-    }
+    // The fallback result view chooses NEAREST as its own presentation policy.
+    // ref=154 itself is always the beatoraja-compatible NEXT primitive.
+    nearest_grade_diff(state).map(|diff| diff.label())
 }
 
 pub(in crate::skin) fn grade_diff_score_available(state: &SkinDrawState) -> bool {
@@ -69,21 +57,87 @@ pub(in crate::skin) fn grade_diff_score_available(state: &SkinDrawState) -> bool
         || state.select_ex_score.is_some_and(|score| score > 0)
 }
 
-pub(in crate::skin) fn next_rank_diff(state: &SkinDrawState) -> Option<i64> {
-    let ex_score = state.select_ex_score.unwrap_or(state.ex_score) as i64;
-    let total_notes = state.select_total_notes.max(state.total_notes) as i64;
-    let max_score = total_notes.checked_mul(2)?;
-    if max_score <= 0 {
+const SCORE_GRADE_LABELS: [&str; 9] = ["F", "E", "D", "C", "B", "A", "AA", "AAA", "MAX"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::skin) struct ScoreGradeFacts {
+    pub(in crate::skin) current_index: usize,
+    pub(in crate::skin) next_index: usize,
+    pub(in crate::skin) nearest_index: usize,
+    pub(in crate::skin) current_diff: i64,
+    pub(in crate::skin) next_diff: i64,
+    pub(in crate::skin) nearest_diff: i64,
+    pub(in crate::skin) nearest_tie: bool,
+}
+
+impl ScoreGradeFacts {
+    fn new(ex_score: u32, total_notes: u32) -> Option<Self> {
+        let max_score = i64::from(total_notes).checked_mul(2)?;
+        if max_score <= 0 {
+            return None;
+        }
+        let score = i64::from(ex_score).clamp(0, max_score);
+        let mut borders = [0_i64; SCORE_GRADE_LABELS.len()];
+        for numerator in 2_i64..=8 {
+            borders[(numerator - 1) as usize] = div_ceil(max_score * numerator, 9);
+        }
+        borders[8] = max_score;
+
+        // Tiny charts can have duplicate integer borders. CURRENT takes the
+        // highest grade already reached and NEXT skips every equal border.
+        let current_index = borders.iter().rposition(|&border| border <= score)?;
+        let next_index = borders.iter().position(|&border| border > score).unwrap_or(8);
+        let current_diff = score - borders[current_index];
+        let next_diff = borders[next_index] - score;
+        let nearest_tie = current_index != next_index && current_diff == next_diff;
+        let nearest_index = if current_diff <= next_diff { current_index } else { next_index };
+        let nearest_diff = if nearest_index == current_index { current_diff } else { -next_diff };
+
+        Some(Self {
+            current_index,
+            next_index,
+            nearest_index,
+            current_diff,
+            next_diff,
+            nearest_diff,
+            nearest_tie,
+        })
+    }
+
+    pub(in crate::skin) fn current_label(self) -> &'static str {
+        SCORE_GRADE_LABELS[self.current_index]
+    }
+
+    pub(in crate::skin) fn next_label(self) -> &'static str {
+        SCORE_GRADE_LABELS[self.next_index]
+    }
+
+    pub(in crate::skin) fn nearest_label(self) -> &'static str {
+        SCORE_GRADE_LABELS[self.nearest_index]
+    }
+
+    pub(in crate::skin) fn nearest_is_current(self) -> bool {
+        self.nearest_index == self.current_index
+    }
+
+    pub(in crate::skin) fn nearest_is_next(self) -> bool {
+        self.nearest_index == self.next_index && self.current_index != self.next_index
+    }
+}
+
+pub(in crate::skin) fn score_grade_facts(state: &SkinDrawState) -> Option<ScoreGradeFacts> {
+    if !grade_diff_score_available(state) {
         return None;
     }
-    let ex_score = ex_score.clamp(0, max_score);
-    for rank_step in (0..=24).step_by(3) {
-        let threshold = div_ceil(rank_step as i64 * max_score, 27);
-        if ex_score < threshold {
-            return Some(ex_score - threshold);
-        }
+    if state.select_screen {
+        ScoreGradeFacts::new(state.select_ex_score.unwrap_or_default(), state.select_total_notes)
+    } else {
+        ScoreGradeFacts::new(state.ex_score, state.total_notes)
     }
-    Some(ex_score - max_score)
+}
+
+pub(in crate::skin) fn next_rank_diff(state: &SkinDrawState) -> Option<i64> {
+    Some(score_grade_facts(state)?.next_diff)
 }
 
 /// Computes the forward difference used by WMII PLAY's Lua `next_rank_info`.
@@ -162,37 +216,6 @@ pub(in crate::skin) fn wmii_next_rank_stage_with_max_minus(
     Some(0)
 }
 
-pub(in crate::skin) fn next_rank_grade(state: &SkinDrawState) -> Option<&'static str> {
-    let ex_score = state.select_ex_score.unwrap_or(state.ex_score) as i64;
-    let total_notes = state.select_total_notes.max(state.total_notes) as i64;
-    let max_score = total_notes.checked_mul(2)?;
-    if max_score <= 0 {
-        return None;
-    }
-    let ex_score = ex_score.clamp(0, max_score);
-    for rank_step in (3..=24).step_by(3) {
-        let threshold = div_ceil(rank_step as i64 * max_score, 27);
-        if ex_score < threshold {
-            return next_rank_grade_for_step(rank_step);
-        }
-    }
-    Some("MAX")
-}
-
-pub(in crate::skin) fn next_rank_grade_for_step(rank_step: i32) -> Option<&'static str> {
-    match rank_step {
-        3 => Some("E"),
-        6 => Some("D"),
-        9 => Some("C"),
-        12 => Some("B"),
-        15 => Some("A"),
-        18 => Some("AA"),
-        21 => Some("AAA"),
-        24 => Some("AAA"),
-        _ => None,
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::skin) struct NearestGradeDiff {
     pub(in crate::skin) grade: &'static str,
@@ -206,58 +229,8 @@ impl NearestGradeDiff {
 }
 
 pub(in crate::skin) fn nearest_grade_diff(state: &SkinDrawState) -> Option<NearestGradeDiff> {
-    let score = state.select_ex_score.unwrap_or(state.ex_score) as i64;
-    let total_notes = state.select_total_notes.max(state.total_notes) as i64;
-    let max = total_notes.checked_mul(2)?;
-    if max <= 0 {
-        return None;
-    }
-    let score = score.clamp(0, max);
-    if score * 9 < max * 2 {
-        return Some(if score * 18 < max * 2 {
-            NearestGradeDiff { grade: "F", value: score }
-        } else {
-            NearestGradeDiff { grade: "E", value: -div_ceil(max * 2 - score * 9, 9) }
-        });
-    }
-    for (lower_step, plus_grade, minus_grade, half_step, upper_step) in [
-        (2, "E", "D", 5, 3),
-        (3, "D", "C", 7, 4),
-        (4, "C", "B", 9, 5),
-        (5, "B", "A", 11, 6),
-        (6, "A", "AA", 13, 7),
-        (7, "AA", "AAA", 15, 8),
-    ] {
-        if score * 9 < max * upper_step {
-            return Some(if score * 18 < max * half_step {
-                NearestGradeDiff {
-                    grade: plus_grade,
-                    value: (score - div_ceil(max * lower_step, 9)).max(0),
-                }
-            } else {
-                NearestGradeDiff {
-                    grade: minus_grade,
-                    value: -div_ceil(max * upper_step - score * 9, 9),
-                }
-            });
-        }
-    }
-    if score * 18 < max * 17 {
-        Some(NearestGradeDiff { grade: "AAA", value: (score - div_ceil(max * 8, 9)).max(0) })
-    } else if score < max {
-        Some(NearestGradeDiff { grade: "MAX", value: -(max - score) })
-    } else {
-        Some(NearestGradeDiff { grade: "MAX", value: 0 })
-    }
-}
-
-pub(in crate::skin) fn nearest_grade_diff_for_state(
-    state: &SkinDrawState,
-) -> Option<NearestGradeDiff> {
-    if state.result_grade_diff_f_fallback_to_e {
-        return nearest_grade_diff_for_destination(state, false);
-    }
-    nearest_grade_diff(state)
+    let facts = score_grade_facts(state)?;
+    Some(NearestGradeDiff { grade: facts.nearest_label(), value: facts.nearest_diff })
 }
 
 pub(in crate::skin) fn projected_score_at_progress(final_score: u32, state: &SkinDrawState) -> u32 {

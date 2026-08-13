@@ -18,17 +18,11 @@ macro_rules! skin_document_render_select_interaction_methods {
             let enabled_options = self.enabled_options();
             let images = self.image_map();
             let destinations = self.all_destinations(&enabled_options);
-            let has_nearest_f_diff_rank_destination =
-                nearest_f_diff_rank_destination_available(&destinations);
             destinations
                 .into_iter()
                 .filter(|destination| {
-                    destination_ops_match(
-                        destination,
-                        &enabled_options,
-                        state,
-                        has_nearest_f_diff_rank_destination,
-                    ) && eval_skin_draw_condition(&destination.draw, state)
+                    destination_ops_match(destination, &enabled_options, state)
+                        && eval_skin_draw_condition(&destination.draw, state)
                 })
                 .filter_map(|destination| {
                     Some(SkinClickHit {
@@ -48,17 +42,11 @@ macro_rules! skin_document_render_select_interaction_methods {
         ) -> Option<SkinSliderHit> {
             let enabled_options = self.enabled_options();
             let destinations = self.all_destinations(&enabled_options);
-            let has_nearest_f_diff_rank_destination =
-                nearest_f_diff_rank_destination_available(&destinations);
             destinations
                 .into_iter()
                 .filter(|destination| {
-                    destination_ops_match(
-                        destination,
-                        &enabled_options,
-                        state,
-                        has_nearest_f_diff_rank_destination,
-                    ) && eval_skin_draw_condition(&destination.draw, state)
+                    destination_ops_match(destination, &enabled_options, state)
+                        && eval_skin_draw_condition(&destination.draw, state)
                 })
                 .filter_map(|destination| {
                     let slider = self.slider.iter().find(|slider| slider.id == destination.id)?;

@@ -150,8 +150,6 @@ pub struct PlayDefaultsConfig {
     pub hs_fix: HsFixConfig,
     #[serde(default)]
     pub target: TargetOptionConfig,
-    #[serde(default)]
-    pub grade_diff_display: ResultGradeDiffDisplay,
     pub lane_effect: LaneEffectConfig,
     #[serde(default)]
     pub assist: AssistOptionConfig,

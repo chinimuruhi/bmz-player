@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
-use bmz_render::scene::ResultGradeDiffDisplay;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::i18n::AppLocale;
