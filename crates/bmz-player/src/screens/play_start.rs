@@ -329,8 +329,9 @@ pub fn start_running_play_session_for_chart_with_audio_runtime_and_input_backend
     )?;
     let score_key = prepared.score_key;
     let mut running = open_prepared_play_audio(runtime, prepared, score_key);
+    // 表示値とFIRST_PLAY判定にはscore保存可否にかかわらず既存履歴が必要。
+    running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
     if !running.score_save_disabled {
-        running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
         running.best_ghost =
             score_db.best_ghost(score_key, running.session.scored_total_notes).unwrap_or(None);
     }
@@ -379,8 +380,9 @@ pub fn open_prepared_winit_play_session(
 ) -> Result<StartedInputPlaySession> {
     let score_key = prepared.prepared.score_key;
     let mut running = open_prepared_play_audio(runtime, prepared.prepared, score_key);
+    // 表示値とFIRST_PLAY判定にはscore保存可否にかかわらず既存履歴が必要。
+    running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
     if !running.score_save_disabled {
-        running.best_ex_score = score_db.best_ex_score(score_key).unwrap_or(None);
         running.best_ghost =
             score_db.best_ghost(score_key, running.session.scored_total_notes).unwrap_or(None);
     }
@@ -392,9 +394,12 @@ fn resolve_local_target_ex_score(running: &mut RunningPlaySession) {
     if running.resolved_target.is_some() {
         return;
     }
+    // 既存挙動どおり、保存無効プレイではMyBestターゲットの解決にDB値を使わない。
+    // best_ex_score自体はskin表示とFIRST_PLAY判定のため保持する。
+    let target_best = if running.score_save_disabled { None } else { running.best_ex_score };
     running.target_ex_score = running
         .target_option
-        .target_ex_score_with_best(running.session.scored_total_notes, running.best_ex_score);
+        .target_ex_score_with_best(running.session.scored_total_notes, target_best);
 }
 
 pub fn start_running_play_session_for_chart_with_winit_input(

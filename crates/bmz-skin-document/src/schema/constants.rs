@@ -117,6 +117,9 @@ pub const SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_NEXT: i32 = 1982;
 pub const SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_EXACT: i32 = 1983;
 pub const SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_TIE: i32 = 1984;
 pub const SKIN_OPTION_BMZ_SCORE_GRADE_AVAILABLE: i32 = 1985;
+/// BMZ extension: no persisted best existed for the current score key when
+/// the play attempt started. Result keeps the value captured by that attempt.
+pub const SKIN_OPTION_BMZ_FIRST_PLAY: i32 = 1986;
 /// Backward-compatible Rust aliases for the initial Result-only names.
 pub const SKIN_REF_BMZ_RESULT_IR_SCOPE: i32 = SKIN_REF_BMZ_IR_SCOPE;
 pub const SKIN_OPTION_BMZ_RESULT_IR_SCOPE_GLOBAL: i32 = SKIN_OPTION_BMZ_IR_SCOPE_GLOBAL;

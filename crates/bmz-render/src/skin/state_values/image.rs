@@ -208,7 +208,14 @@ pub(super) fn result_diff_misscount(state: &SkinDrawState) -> Option<i64> {
 }
 
 pub(super) fn result_mybest_ex_score(state: &SkinDrawState) -> Option<u32> {
-    if state.result_failed.is_some() { state.previous_best_ex_score } else { state.best_ex_score }
+    if state.result_failed.is_some() {
+        state.previous_best_ex_score
+    } else if state.play_screen && state.practice_mode {
+        // beatoraja PracticePlayerはsetTargetScoreのbestを0で初期化する。
+        Some(0)
+    } else {
+        state.best_ex_score
+    }
 }
 
 pub(super) fn result_mybest_clear_index(state: &SkinDrawState) -> Option<i64> {

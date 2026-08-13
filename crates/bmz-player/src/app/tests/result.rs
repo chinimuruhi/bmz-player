@@ -139,6 +139,36 @@ fn result_lua_runtime_values_cover_load_time_result_decisions() {
 }
 
 #[test]
+fn first_play_result_lua_values_match_beatoraja_missing_score_sentinels() {
+    let mut summary = debug_boot_result_summary();
+    summary.previous_best_ex_score = None;
+    summary.previous_best_bp = None;
+
+    let values = result_lua_runtime_number_values_for_summary(&summary);
+    assert_eq!(values.get(&150), Some(&0));
+    assert_eq!(values.get(&170), Some(&0));
+    assert_eq!(values.get(&176), Some(&i32::MIN));
+    assert_eq!(values.get(&178), Some(&i32::MIN));
+
+    let mut runtime_state = bmz_skin::LuaLoadRuntimeState::default();
+    apply_result_summary_lua_load_state(&mut runtime_state, &summary, "", "", "");
+    assert_eq!(
+        runtime_state.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY),
+        Some(&true)
+    );
+    assert_eq!(runtime_state.option_values.get(&327), Some(&true));
+    assert!((320..327).all(|option| runtime_state.option_values.get(&option) == Some(&false)));
+
+    summary.previous_best_ex_score = Some(0);
+    apply_result_summary_lua_load_state(&mut runtime_state, &summary, "", "", "");
+    assert_eq!(
+        runtime_state.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY),
+        Some(&false)
+    );
+    assert_eq!(runtime_state.option_values.get(&327), Some(&true));
+}
+
+#[test]
 fn result_lua_runtime_state_exposes_ir_connection_options() {
     let online = lua_runtime_state_for_result(
         false,

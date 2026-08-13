@@ -186,6 +186,20 @@ NEARESTは現在側までの距離が次側以下なら現在側を選ぶため�
 削除済みの表示設定で使っていた1971〜1973は再利用しない。旧BMZ skin向けに
 `number(1971)=1`, `option(1972)=false`, `option(1973)=true`の固定NEXT値を返す。
 
+### First Play Compatibility and BMZ Option
+
+Play / Result skinの初回プレイ値はbeatoraja互換として扱う。保存済みスコアが無い場合、
+`NUMBER_HIGHSCORE` (`ref=150`) と `NUMBER_HIGHSCORE2` (`ref=170`) は`0`を返す。
+Resultの前回ミスカウント (`ref=176`) とミスカウント差分 (`ref=178`) は通常のnumber表示では
+非表示のまま、Luaの`main_state.number()`では`Integer.MIN_VALUE` (`-2147483648`)を返す。
+そのため既存Lua skinは`main_state.number(176) < 0`で初回を判定できる。Resultの前回ランクは
+初回時にFとして扱い、option `327`が有効になる。
+
+値が`0`の保存済みスコアと未プレイを明確に区別するため、BMZ拡張option `1986`を公開する。
+Play開始時に現在のScoreKey（SHA256、LN方針、DP区分、rule mode）に対応する保存済みベストが
+存在しなければtrueになる。Resultでも保存前の状態を維持する。JSON skinは`op: [1986]`、
+Lua skinは`main_state.option(1986)`で参照でき、`op: [-1986]`は既プレイ時に有効になる。
+
 ### Select Rival and Chart Replication
 
 beatoraja互換の選曲イベントを次のように扱う。

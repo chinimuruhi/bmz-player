@@ -254,11 +254,34 @@ pub(in crate::skin) fn result_or_select_length_ms(state: &SkinDrawState) -> i64 
 }
 
 pub(in crate::skin) fn projected_best_score_at_progress(state: &SkinDrawState) -> Option<u32> {
+    if state.result_failed.is_some() {
+        return result_mybest_ex_score_display(state);
+    }
+    if state.play_screen {
+        if state.practice_mode {
+            return Some(0);
+        }
+        return state.projected_best_ex_score.or_else(|| {
+            state.best_ex_score.map(|score| projected_score_at_progress(score, state)).or(Some(0))
+        });
+    }
     state.projected_best_ex_score.or_else(|| {
-        result_mybest_ex_score(state)
-            .map(|score| projected_score_at_progress(score, state))
-            .or_else(|| state.result_failed.is_some().then_some(0))
+        result_mybest_ex_score(state).map(|score| projected_score_at_progress(score, state))
     })
+}
+
+/// beatoraja NUMBER_HIGHSCORE / NUMBER_HIGHSCORE2.
+///
+/// Playでは保存済みの最終EXスコアを進捗で投影せず返す。未プレイは空の
+/// ScoreDataと同じ0。Resultでは保存前のベストを使い、初回は同じく0。
+pub(in crate::skin) fn best_score_number(state: &SkinDrawState) -> Option<u32> {
+    if state.result_failed.is_some() {
+        result_mybest_ex_score_display(state)
+    } else if state.play_screen {
+        Some(if state.practice_mode { 0 } else { state.best_ex_score.unwrap_or(0) })
+    } else {
+        state.best_ex_score
+    }
 }
 
 pub(in crate::skin) fn div_ceil(numerator: i64, denominator: i64) -> i64 {

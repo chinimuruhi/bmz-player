@@ -220,11 +220,19 @@ pub(super) fn result_lua_runtime_number_values_for_summary(
         number_values.insert(374, average_timing_ms as i32);
         number_values.insert(375, (average_timing_ms * 100.0) as i32 % 100);
     }
-    if let Some(previous_best_bp) = summary.previous_best_bp
-        && let (Ok(current), Ok(previous)) =
+    if let Some(previous_best_bp) = summary.previous_best_bp {
+        number_values.insert(176, value(previous_best_bp));
+        if let (Ok(current), Ok(previous)) =
             (i32::try_from(summary.bp), i32::try_from(previous_best_bp))
-    {
-        number_values.insert(178, current.saturating_sub(previous));
+        {
+            number_values.insert(178, current.saturating_sub(previous));
+        }
+    } else {
+        // beatorajaの空ScoreDataはminbp=Integer.MAX_VALUEを持ち、skin ref
+        // 176/178ではInteger.MIN_VALUEへ変換される。Luaの`misscount < 0`
+        // 判定を保ちつつ、rendererの通常number表示はNoneのまま非表示にする。
+        number_values.insert(176, i32::MIN);
+        number_values.insert(178, i32::MIN);
     }
     number_values
 }
@@ -319,6 +327,18 @@ pub(super) fn apply_result_summary_lua_load_state(
     table_level: &str,
     table_full: &str,
 ) {
+    runtime_state.option_values.insert(
+        bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY,
+        summary.previous_best_ex_score.is_none(),
+    );
+    for option in 320..=327 {
+        runtime_state.option_values.insert(option, false);
+    }
+    if let Some(option) =
+        result_best_rank_option_id(summary.previous_best_ex_score.unwrap_or(0), summary.total_notes)
+    {
+        runtime_state.option_values.insert(option, true);
+    }
     let full_title = if summary.subtitle.is_empty() {
         summary.title.clone()
     } else {
@@ -372,6 +392,33 @@ pub(super) fn apply_result_summary_lua_load_state(
         i32::try_from(bmz_render::skin::extended_arrange_index(&summary.arrange_2p))
             .unwrap_or_default(),
     );
+}
+
+fn result_best_rank_option_id(ex_score: u32, total_notes: u32) -> Option<i32> {
+    let max_score = total_notes.checked_mul(2)?;
+    if max_score == 0 {
+        return None;
+    }
+    let score = u64::from(ex_score.min(max_score));
+    let max = u64::from(max_score);
+    let rank = if score * 9 >= max * 8 {
+        0
+    } else if score * 9 >= max * 7 {
+        1
+    } else if score * 9 >= max * 6 {
+        2
+    } else if score * 9 >= max * 5 {
+        3
+    } else if score * 9 >= max * 4 {
+        4
+    } else if score * 9 >= max * 3 {
+        5
+    } else if score * 9 >= max * 2 {
+        6
+    } else {
+        7
+    };
+    Some(320 + rank)
 }
 
 pub(super) fn result_judge_rank_option_id(judge_rank: Option<i32>) -> Option<i32> {
@@ -437,6 +484,7 @@ pub(super) fn lua_runtime_state_for_play(
     options: &PlayStartOptions,
     profile_autoplay: bool,
     key_mode: KeyMode,
+    previous_best_ex_score: Option<u32>,
     player_name: &str,
 ) -> bmz_skin::LuaLoadRuntimeState {
     let replay_playback = options.replay_player.is_some();
@@ -451,8 +499,16 @@ pub(super) fn lua_runtime_state_for_play(
         (82, !autoplay && !replay_playback),
         (84, replay_playback),
         (1080, options.practice_mode),
+        (bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY, previous_best_ex_score.is_none()),
     ]);
-    let mut number_values = BTreeMap::new();
+    // beatorajaのPracticePlayerは保存済みベストを読まず、highscoreを0にする。
+    // 初回判定optionは実際の保存履歴から独立して保持する。
+    let previous_best_ex_score =
+        if options.practice_mode { 0 } else { previous_best_ex_score.unwrap_or(0) };
+    let mut number_values = BTreeMap::from([
+        (150, i32::try_from(previous_best_ex_score).unwrap_or(i32::MAX)),
+        (170, i32::try_from(previous_best_ex_score).unwrap_or(i32::MAX)),
+    ]);
     extend_bmz_key_mode_lua_state(&mut number_values, &mut option_values, key_mode);
     bmz_skin::LuaLoadRuntimeState {
         number_values,

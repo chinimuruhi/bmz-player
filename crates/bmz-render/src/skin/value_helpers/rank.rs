@@ -4,7 +4,12 @@ pub(super) fn best_rank_op_matches(op: i32, state: &SkinDrawState) -> bool {
     if state.in_settings {
         return false;
     }
-    let Some(rank) = rank_index(result_mybest_ex_score(state), state.total_notes) else {
+    let score = if state.result_failed.is_some() {
+        result_mybest_ex_score_display(state)
+    } else {
+        result_mybest_ex_score(state)
+    };
+    let Some(rank) = rank_index(score, state.total_notes) else {
         return false;
     };
     op == 320 + rank as i32

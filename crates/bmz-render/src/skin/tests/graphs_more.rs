@@ -61,6 +61,7 @@ fn static_render_items_resolve_gauge_in_destination_order() {
 #[test]
 fn best_and_target_scores_follow_note_progress() {
     let state = SkinDrawState {
+        play_screen: true,
         ex_score: 450,
         total_notes: 1000,
         past_notes: 250,
@@ -69,8 +70,8 @@ fn best_and_target_scores_follow_note_progress() {
         ..SkinDrawState::default()
     };
 
-    assert_eq!(skin_state_number(150, &state), Some(450));
-    assert_eq!(skin_state_number(170, &state), Some(450));
+    assert_eq!(skin_state_number(150, &state), Some(1800));
+    assert_eq!(skin_state_number(170, &state), Some(1800));
     assert_eq!(skin_state_number(121, &state), Some(400));
     assert_eq!(skin_state_number(151, &state), Some(400));
     assert_eq!(skin_state_number(152, &state), Some(0));
@@ -408,17 +409,40 @@ fn skin_state_number_best_and_target_score() {
     // NUMBER_TARGET_SCORE (121)
     assert_eq!(skin_state_number(121, &state), Some(800));
     let ghost_projected = SkinDrawState {
+        play_screen: true,
         best_ex_score: Some(1500),
         projected_best_ex_score: Some(321),
         ex_score: 400,
         ..SkinDrawState::default()
     };
-    assert_eq!(skin_state_number(150, &ghost_projected), Some(321));
+    assert_eq!(skin_state_number(150, &ghost_projected), Some(1500));
     assert_eq!(skin_state_number(152, &ghost_projected), Some(79));
     // When None → None
     let no_scores = SkinDrawState::default();
     assert_eq!(skin_state_number(150, &no_scores), None);
     assert_eq!(skin_state_number(121, &no_scores), None);
+
+    let first_play = SkinDrawState { play_screen: true, ex_score: 400, ..SkinDrawState::default() };
+    assert_eq!(skin_state_number(150, &first_play), Some(0));
+    assert_eq!(skin_state_number(152, &first_play), Some(400));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_FIRST_PLAY, &[], &first_play));
+
+    let played_zero =
+        SkinDrawState { play_screen: true, best_ex_score: Some(0), ..SkinDrawState::default() };
+    assert_eq!(skin_state_number(150, &played_zero), Some(0));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_FIRST_PLAY, &[], &played_zero));
+
+    let practice = SkinDrawState {
+        play_screen: true,
+        practice_mode: true,
+        best_ex_score: Some(1500),
+        ex_score: 400,
+        ..SkinDrawState::default()
+    };
+    assert_eq!(skin_state_number(150, &practice), Some(0));
+    assert_eq!(skin_state_number(152, &practice), Some(400));
+    assert_eq!(graph_value(113, &practice), 0.0);
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_FIRST_PLAY, &[], &practice));
 }
 
 #[test]

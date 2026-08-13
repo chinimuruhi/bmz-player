@@ -532,6 +532,9 @@ fn skin_state_number_maps_result_value_refs() {
     assert_eq!(skin_state_number(152, &first_play_result_state), Some(1888));
     assert_eq!(skin_state_number(176, &first_play_result_state), None);
     assert_eq!(skin_state_number(178, &first_play_result_state), None);
+    assert_eq!(lua_main_state_number(176, &first_play_result_state), i64::from(i32::MIN));
+    assert_eq!(lua_main_state_number(178, &first_play_result_state), i64::from(i32::MIN));
+    assert!(eval_skin_draw_condition("number(176)<0", &first_play_result_state));
     assert!(!test_skin_op(332, &[], &first_play_result_state));
     assert!(!test_skin_op(1332, &[], &first_play_result_state));
     assert_eq!(skin_state_number(183, &first_play_result_state), Some(0));
@@ -539,6 +542,8 @@ fn skin_state_number_maps_result_value_refs() {
     assert_eq!(skin_state_number(371, &first_play_result_state), Some(0));
     assert_eq!(graph_value(113, &first_play_result_state), 0.0);
     assert!(!test_skin_op(320, &[], &first_play_result_state));
+    assert!(test_skin_op(327, &[], &first_play_result_state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_FIRST_PLAY, &[], &first_play_result_state));
 
     let zero_rank_state = SkinDrawState {
         ex_score: 0,

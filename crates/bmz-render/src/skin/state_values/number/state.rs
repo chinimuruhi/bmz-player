@@ -330,8 +330,9 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
             let count = state.rival_judge_counts?[(ref_id - 285) as usize];
             (notes > 0).then_some(i64::from(count) * 100 / i64::from(notes))
         }
-        // ベストスコア / ターゲットスコア (DB から供給、未取得時は None)
-        150 | 170 => projected_best_score_at_progress(state).map(|s| s as i64),
+        // NUMBER_HIGHSCORE / NUMBER_HIGHSCORE2。Playでは保存済み最終値、
+        // Resultでは保存前ベストを返し、未プレイはいずれも0。
+        150 | 170 => best_score_number(state).map(i64::from),
         121 | 151 => state.target_ex_score.map(|s| projected_score_at_progress(s, state) as i64),
         122 | 123 | 135 | 136 | 157 | 158 => {
             state.target_ex_score.map(|target| score_rate_parts(target, state.total_notes)).map(
@@ -344,7 +345,8 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         }),
         400 => state.judge_rank.map(|rank| rank as i64),
         154 => result_grade_diff_number(state),
-        // NUMBER_DIFF_HIGHSCORE=152, NUMBER_DIFF_HIGHSCORE2=172 (符号付き、ex_score - best)
+        // NUMBER_DIFF_HIGHSCORE=152, NUMBER_DIFF_HIGHSCORE2=172
+        // (符号付き、ex_score - 現在ノート位置までのbest)
         152 | 172 => {
             projected_best_score_at_progress(state).map(|best| state.ex_score as i64 - best as i64)
         }

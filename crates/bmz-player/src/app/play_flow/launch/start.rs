@@ -18,6 +18,7 @@ impl WinitApp {
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
+            self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
@@ -52,6 +53,7 @@ impl WinitApp {
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
+            self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
@@ -187,6 +189,11 @@ impl WinitApp {
         mut snapshot: RenderSnapshot,
     ) {
         self.normalize_seven_to_six_options(chart_id, &mut options);
+        // active sessionのinstall前からref 150とFIRST_PLAYを正しいScoreKeyで
+        // 評価できるよう、選曲行の集約値を今回のプレイ条件の値で置き換える。
+        let previous_best_ex_score = self.play_skin_previous_best_ex_score(chart_id, &options);
+        snapshot.best_ex_score = previous_best_ex_score;
+        snapshot.projected_best_ex_score = previous_best_ex_score.map(|_| 0);
         // Decide / retry / direct boot のどの経路でも、Play 入場後の常時表示が
         // pending state の破棄に左右されないよう、ここで今回の mode を記録する。
         self.result.last_play_session_mode = options.session_mode;

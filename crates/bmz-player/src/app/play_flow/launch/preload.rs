@@ -157,6 +157,9 @@ impl WinitApp {
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
+            chart_metadata
+                .as_ref()
+                .and_then(|chart| self.play_skin_previous_best_ex_score_for_chart(chart, &options)),
             &self.boot.profile_config.display_name,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
@@ -315,6 +318,55 @@ impl WinitApp {
         )
     }
 
+    /// Playスキンをロードする時点で、実プレイと同じScoreKeyの保存済み
+    /// ベストEXスコアを取得する。EX=0の保存レコードも`Some(0)`として扱い、
+    /// 「未プレイ」と区別する。
+    pub(super) fn play_skin_previous_best_ex_score(
+        &self,
+        chart_id: i64,
+        options: &PlayStartOptions,
+    ) -> Option<u32> {
+        let chart = self
+            .boot
+            .library_db
+            .list_charts_by_ids(&[chart_id])
+            .ok()
+            .and_then(|mut charts| charts.pop())?;
+        self.play_skin_previous_best_ex_score_for_chart(&chart, options)
+    }
+
+    fn play_skin_previous_best_ex_score_for_chart(
+        &self,
+        chart: &ChartListItem,
+        options: &PlayStartOptions,
+    ) -> Option<u32> {
+        let (ln_policy_setting, rule_mode) = self
+            .play
+            .active_course
+            .as_ref()
+            .map(|course| (course.ln_policy_setting, course.rule_mode))
+            .unwrap_or((
+                self.boot.profile_config.play.ln_mode_policy,
+                self.boot.profile_config.play.rule_mode,
+            ));
+        let source_key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
+        let score_key = play_skin_score_key(
+            chart.sha256,
+            chart.ln_profile,
+            source_key_mode,
+            options,
+            ln_policy_setting,
+            rule_mode,
+        );
+        match self.boot.score_db.best_ex_score(score_key) {
+            Ok(score) => score,
+            Err(error) => {
+                tracing::warn!(chart_id = chart.chart_id, %error, "failed to load best score for play skin");
+                None
+            }
+        }
+    }
+
     pub(super) fn normalize_seven_to_six_options(
         &self,
         chart_id: i64,
@@ -410,6 +462,30 @@ impl WinitApp {
         snapshot.table_text_fallback = fallback;
         snapshot
     }
+}
+
+fn play_skin_score_key(
+    chart_sha256: [u8; 32],
+    ln_profile: crate::ln_policy::ChartLnProfile,
+    source_key_mode: KeyMode,
+    options: &PlayStartOptions,
+    ln_policy_setting: LnPolicySetting,
+    rule_mode: RuleMode,
+) -> ScoreKey {
+    let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
+    let battle_presentation =
+        options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
+    let double_option = if seven_to_six || battle_presentation {
+        DoubleOption::Off
+    } else {
+        options.double_option.normalize_for_key_mode(source_key_mode)
+    };
+    let ln_policy = crate::ln_policy::course_score_ln_policy(
+        ln_policy_setting,
+        options.ln_mode_override,
+        ln_profile,
+    );
+    ScoreKey::with_options(chart_sha256, ln_policy, double_option.score_bucket(), rule_mode)
 }
 
 pub(in crate::app) fn rival_arrange_options(
@@ -510,5 +586,44 @@ mod rival_replication_tests {
             rival_arrange_options(&score),
             (ArrangeOption::Mirror, ArrangeOption::Random, DoubleOption::Flip)
         );
+    }
+}
+
+#[cfg(test)]
+mod first_play_score_key_tests {
+    use super::*;
+    use crate::ln_policy::{ChartLnProfile, LnScorePolicy};
+    use crate::select_options::DoubleOptionScoreBucket;
+
+    #[test]
+    fn play_skin_score_key_matches_ln_double_and_rule_dimensions() {
+        let options =
+            PlayStartOptions { double_option: DoubleOption::Battle, ..PlayStartOptions::default() };
+        let battle_key = play_skin_score_key(
+            [7; 32],
+            ChartLnProfile { has_undefined_ln: true, ..ChartLnProfile::default() },
+            KeyMode::K7,
+            &options,
+            LnPolicySetting::ForceCn,
+            RuleMode::Dx,
+        );
+        assert_eq!(battle_key.chart_sha256, [7; 32]);
+        assert_eq!(battle_key.ln_policy, LnScorePolicy::ForceCn);
+        assert_eq!(battle_key.double_option, DoubleOptionScoreBucket::Battle);
+        assert_eq!(battle_key.rule_mode, RuleMode::Dx);
+
+        let presentation_key = play_skin_score_key(
+            [7; 32],
+            ChartLnProfile::default(),
+            KeyMode::K7,
+            &PlayStartOptions {
+                session_mode: SessionMode::AutoplayBattle,
+                double_option: DoubleOption::Battle,
+                ..PlayStartOptions::default()
+            },
+            LnPolicySetting::ForceLn,
+            RuleMode::Beatoraja,
+        );
+        assert_eq!(presentation_key.double_option, DoubleOptionScoreBucket::Off);
     }
 }

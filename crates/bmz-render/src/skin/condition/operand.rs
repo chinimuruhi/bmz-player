@@ -57,7 +57,9 @@ pub(in crate::skin) fn eval_skin_draw_atom_operand(
         return Some(skin_state_event_index(event_id, state) as f32);
     }
     if let Some(ref_id) = parse_skin_number_operand(operand) {
-        return skin_state_number(ref_id, state).map(|value| value as f32);
+        return skin_state_number(ref_id, state)
+            .or_else(|| lua_missing_number_sentinel(ref_id, state))
+            .map(|value| value as f32);
     }
     if let Some(timer_id) = parse_skin_timer_operand(operand) {
         return Some(skin_timer_elapsed_ms(Some(timer_id), state).unwrap_or(i32::MIN) as f32);

@@ -2,8 +2,13 @@ use super::*;
 
 #[test]
 fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
-    let normal =
-        lua_runtime_state_for_play(&PlayStartOptions::default(), false, KeyMode::K7, "Player");
+    let normal = lua_runtime_state_for_play(
+        &PlayStartOptions::default(),
+        false,
+        KeyMode::K7,
+        None,
+        "Player",
+    );
     assert_eq!(normal.text_values.get(&2).map(String::as_str), Some("Player"));
     assert_eq!(normal.option_values.get(&61), Some(&true));
     assert_eq!(normal.option_values.get(&82), Some(&true));
@@ -12,11 +17,45 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
     assert_eq!(normal.number_values.get(&SKIN_REF_BMZ_ACTIVE_LANE_COUNT), Some(&8));
     assert_eq!(normal.option_values.get(&(SKIN_OPTION_BMZ_KEY_MODE_BASE + 3)), Some(&true));
     assert_eq!(normal.option_values.get(&SKIN_OPTION_BMZ_SINGLE_PLAY), Some(&true));
+    assert_eq!(normal.number_values.get(&150), Some(&0));
+    assert_eq!(normal.number_values.get(&170), Some(&0));
+    assert_eq!(
+        normal.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY),
+        Some(&true)
+    );
+
+    let played_zero = lua_runtime_state_for_play(
+        &PlayStartOptions::default(),
+        false,
+        KeyMode::K7,
+        Some(0),
+        "Player",
+    );
+    assert_eq!(played_zero.number_values.get(&150), Some(&0));
+    assert_eq!(
+        played_zero.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY),
+        Some(&false)
+    );
+
+    let played = lua_runtime_state_for_play(
+        &PlayStartOptions::default(),
+        false,
+        KeyMode::K7,
+        Some(1234),
+        "Player",
+    );
+    assert_eq!(played.number_values.get(&150), Some(&1234));
+    assert_eq!(played.number_values.get(&170), Some(&1234));
+    assert_eq!(
+        played.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY),
+        Some(&false)
+    );
 
     let autoplay = lua_runtime_state_for_play(
         &PlayStartOptions { autoplay: true, ..PlayStartOptions::default() },
         false,
         KeyMode::K7,
+        None,
         "Player",
     );
     assert_eq!(autoplay.option_values.get(&33), Some(&true));
@@ -30,6 +69,7 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         },
         false,
         KeyMode::K7,
+        None,
         "Player",
     );
     assert_eq!(replay.option_values.get(&33), Some(&false));
@@ -39,11 +79,17 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         &PlayStartOptions { practice_mode: true, ..PlayStartOptions::default() },
         false,
         KeyMode::K7,
+        Some(1234),
         "Player",
     );
     assert_eq!(practice.option_values.get(&60), Some(&true));
     assert_eq!(practice.option_values.get(&82), Some(&true));
     assert_eq!(practice.option_values.get(&1080), Some(&true));
+    assert_eq!(practice.number_values.get(&150), Some(&0));
+    assert_eq!(
+        practice.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY),
+        Some(&false)
+    );
 }
 
 #[test]

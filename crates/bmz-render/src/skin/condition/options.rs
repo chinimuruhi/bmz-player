@@ -51,6 +51,13 @@ pub(in crate::skin) fn test_skin_op(
             score_grade_facts(state).is_some_and(|facts| facts.nearest_tie)
         }
         SKIN_OPTION_BMZ_SCORE_GRADE_AVAILABLE => score_grade_facts(state).is_some(),
+        SKIN_OPTION_BMZ_FIRST_PLAY => {
+            if state.result_failed.is_some() {
+                state.previous_best_ex_score.is_none()
+            } else {
+                state.play_screen && state.best_ex_score.is_none()
+            }
+        }
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
         }

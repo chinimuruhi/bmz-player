@@ -302,7 +302,18 @@ pub fn lua_main_state_option(
 }
 
 pub fn lua_main_state_number(ref_id: i32, state: &SkinDrawState) -> i64 {
-    skin_state_number(ref_id, state).unwrap_or_default()
+    skin_state_number(ref_id, state)
+        .or_else(|| lua_missing_number_sentinel(ref_id, state))
+        .unwrap_or_default()
+}
+
+/// beatorajaは未プレイResultの前回BPとBP差分をInteger.MIN_VALUEでLuaへ返し、
+/// SkinNumber側だけを非表示にする。通常のnumber描画はNoneのまま維持する。
+pub(in crate::skin) fn lua_missing_number_sentinel(
+    ref_id: i32,
+    state: &SkinDrawState,
+) -> Option<i64> {
+    (state.result_failed.is_some() && matches!(ref_id, 176 | 178)).then_some(i64::from(i32::MIN))
 }
 
 pub fn lua_main_state_float(ref_id: i32, state: &SkinDrawState) -> f64 {
