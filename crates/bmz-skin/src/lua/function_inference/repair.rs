@@ -1,13 +1,14 @@
 use super::*;
 
-pub(in crate::lua) fn register_runtime_draw_path(
+pub(in crate::lua) fn register_runtime_callback(
     main_state_probe: &Arc<Mutex<MainStateProbe>>,
     field_path: &str,
+    kind: LuaRuntimeCallbackKind,
 ) -> Result<usize> {
     let mut probe =
         main_state_probe.lock().map_err(|_| anyhow!("main_state probe lock poisoned"))?;
-    let callback_id = probe.runtime_draw_paths.len();
-    probe.runtime_draw_paths.push(field_path.to_string());
+    let callback_id = probe.runtime_callbacks.len();
+    probe.runtime_callbacks.push(LuaRuntimeCallbackSpec { path: field_path.to_string(), kind });
     Ok(callback_id)
 }
 

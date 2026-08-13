@@ -16,10 +16,13 @@ impl LuaInstructionBudget {
         self.callback_remaining.store(LUA_INSTRUCTION_LIMIT, Ordering::Relaxed);
     }
 
-    pub(super) fn begin_runtime_callback(&self) {
-        // Runtime has no inference-wide work to preserve. Reset both counters so
-        // every draw invocation gets an independent, bounded instruction slice.
-        self.total_remaining.store(LUA_INSTRUCTION_LIMIT, Ordering::Relaxed);
+    pub(super) fn begin_runtime_callback(&self, new_frame: bool) {
+        // A callback has its own ceiling, while all callbacks evaluated for the
+        // same frame share an aggregate budget so a skin cannot multiply the
+        // per-call allowance by creating hundreds of dynamic properties.
+        if new_frame {
+            self.total_remaining.store(LUA_RUNTIME_FRAME_INSTRUCTION_LIMIT, Ordering::Relaxed);
+        }
         self.begin_callback();
     }
 }

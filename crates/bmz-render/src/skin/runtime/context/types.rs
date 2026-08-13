@@ -1,7 +1,7 @@
 use super::*;
 
-/// Renderer-facing interface for Lua draw sidecars. Implementations own the VM
-/// outside `SkinDocument`; the renderer only supplies a read-only frame state.
+/// Renderer-facing interface for Lua runtime sidecars. Implementations own the
+/// VM outside `SkinDocument`; the renderer only supplies a read-only frame state.
 pub trait SkinLuaDrawRuntime: std::fmt::Debug + Send + Sync {
     fn evaluate_draw(
         &self,
@@ -10,6 +10,26 @@ pub trait SkinLuaDrawRuntime: std::fmt::Debug + Send + Sync {
         enabled_options: &[i32],
         text_values: &BTreeMap<i32, String>,
     ) -> bool;
+
+    fn evaluate_number(
+        &self,
+        _callback_id: usize,
+        _state: &SkinDrawState,
+        _enabled_options: &[i32],
+        _text_values: &BTreeMap<i32, String>,
+    ) -> Option<f64> {
+        None
+    }
+
+    fn evaluate_text(
+        &self,
+        _callback_id: usize,
+        _state: &SkinDrawState,
+        _enabled_options: &[i32],
+        _text_values: &BTreeMap<i32, String>,
+    ) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone)]

@@ -22,11 +22,19 @@ pub fn load_lua_skin_value_with_path_context(
     runtime_state: &LuaLoadRuntimeState,
     virtual_io_files: &BTreeMap<String, String>,
 ) -> Result<LoadedLuaSkinValue> {
-    let ExecutedLuaSkin { value, warnings, files, dependencies, lua_runtime, runtime_draw_paths } =
+    let ExecutedLuaSkin { value, warnings, files, dependencies, lua_runtime, runtime_callbacks } =
         execute_lua_skin(path_context, options, files, runtime_state, virtual_io_files)?;
+    let runtime_callback_paths =
+        runtime_callbacks.iter().map(|callback| callback.path.clone()).collect::<Vec<_>>();
+    let runtime_draw_paths = runtime_callbacks
+        .iter()
+        .filter(|callback| callback.kind == LuaRuntimeCallbackKind::Draw)
+        .map(|callback| callback.path.clone())
+        .collect();
     Ok(LoadedLuaSkinValue {
         value,
         lua_runtime,
+        runtime_callback_paths,
         runtime_draw_paths,
         warnings: warnings.into_iter().map(|message| SkinLoadWarning { message }).collect(),
         files,
@@ -47,6 +55,7 @@ pub fn load_lua_skin_header_value_with_path_context(
     Ok(LoadedLuaSkinValue {
         value,
         lua_runtime: None,
+        runtime_callback_paths: Vec::new(),
         runtime_draw_paths: Vec::new(),
         warnings: warnings.into_iter().map(|message| SkinLoadWarning { message }).collect(),
         files: BTreeMap::new(),
@@ -71,17 +80,21 @@ pub fn convert_lua_skin_to_json_with_path_context(
     options: &BTreeMap<String, String>,
     files: &BTreeMap<String, String>,
 ) -> Result<ConvertReport> {
-    let ExecutedLuaSkin { value: json, warnings, runtime_draw_paths, .. } = execute_lua_skin(
+    let ExecutedLuaSkin { value: json, warnings, runtime_callbacks, .. } = execute_lua_skin(
         path_context,
         options,
         files,
         &LuaLoadRuntimeState::default(),
         &BTreeMap::new(),
     )?;
-    if !runtime_draw_paths.is_empty() {
+    if !runtime_callbacks.is_empty() {
         bail!(
-            "lua-to-json cannot serialize runtime draw callbacks: {}",
-            runtime_draw_paths.join(", ")
+            "lua-to-json cannot serialize runtime callbacks: {}",
+            runtime_callbacks
+                .iter()
+                .map(|callback| callback.path.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     if let Some(parent) = output.parent() {

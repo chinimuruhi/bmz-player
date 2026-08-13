@@ -149,12 +149,41 @@ pub(in crate::skin) fn skin_value_number(
         return skin_state_number_expr(&value.expr, state);
     }
     if !value.value_expr.trim().is_empty() {
+        if let Some(number) = evaluate_lua_number_expr(&value.value_expr, state) {
+            return Some(number as i64);
+        }
         if let Some(number) = skin_builtin_value_i64(&value.value_expr, state) {
             return Some(number);
         }
         return skin_state_float_expr(&value.value_expr, state).map(integer_property_value);
     }
     skin_state_number(value.ref_id, state)
+}
+
+pub(in crate::skin) fn lua_value_callback_id(expr: &str) -> Option<usize> {
+    expr.trim().strip_prefix(LUA_VALUE_CALLBACK_PREFIX).and_then(|id| id.parse::<usize>().ok())
+}
+
+pub(in crate::skin) fn evaluate_lua_number_expr(expr: &str, state: &SkinDrawState) -> Option<f64> {
+    let callback_id = lua_value_callback_id(expr)?;
+    let runtime = state.lua_runtime.as_ref()?;
+    runtime.runtime.evaluate_number(
+        callback_id,
+        state,
+        &runtime.enabled_options,
+        &runtime.text_values,
+    )
+}
+
+pub(in crate::skin) fn evaluate_lua_text_expr(expr: &str, state: &SkinDrawState) -> Option<String> {
+    let callback_id = lua_value_callback_id(expr)?;
+    let runtime = state.lua_runtime.as_ref()?;
+    runtime.runtime.evaluate_text(
+        callback_id,
+        state,
+        &runtime.enabled_options,
+        &runtime.text_values,
+    )
 }
 
 pub(in crate::skin) fn integer_property_value(value: f32) -> i64 {

@@ -68,7 +68,7 @@ beatoraja の参照ソースは `.local/beatoraja/`、beatoraja 対応スキン�
 - `crates/bmz-skin`
   - beatoraja JSON skin / Lua skin の document decode crate です。
   - JSON skin loader、Lua sandbox、`skin_config`、Lua table to JSON、`main_state` function 推論を扱います。
-  - v1 はロード時だけ Lua を実行し、描画中の毎フレーム Lua 実行はしません。
+  - 通常はLua functionをロード時に推論し、推論不能な対応済みfieldは永続VMのruntime callbackへフォールバックします。`--lua-skin-runtime compat` はスキン開発向けに対応済みfunctionを実行時評価します。
   - document 型は `bmz-skin-document` を参照し、`bmz-render` には依存しません。
 
 - `crates/bmz-skin-convert`
@@ -375,8 +375,8 @@ database:
 - beatoraja JSON skin と Lua skin 互換を進めます。
 - `bmz-skin` は decode 専用 crate とし、GPU texture upload や renderer 操作は持たせません。
 - `bmz-player` は `.json` / `.luaskin` / `.lua` を profile の `[skin]` の `select` / `play4` / `play5` / `play6` / `play7` / `play10` / `play14` / `result` (および decide) から同じように受け付けます。プレイスキンは決定画面でチャートの `key_mode` から該当 1 本を選び、起動時には decode しません。
-- Lua skin はロード時のみ sandbox 実行し、返された table を `SkinDocument` 相当へ変換します。
-- 描画中の Lua function 評価は v1 では行いません。`value` / `draw` function は推論できるものだけ `ref` / `expr` / `draw` 条件へ変換し、未対応 function は warning として drop します。
+- Lua skin はsandbox内で実行し、返されたtableを `SkinDocument` 相当へ変換します。runtime callbackが必要な場合は、推論用VMとは別の永続VMをクリーンにロードしてclosure stateを保持します。
+- `auto` は `value` / `draw` functionを可能なら `ref` / `expr` / `draw` 条件へ変換し、推論不能な対応済みfieldをruntimeへ残します。`--lua-skin-runtime compat` は対応済みfunctionを推論せず実行時評価します。
 - LR2 csvskin は将来検討です。
 - Skin ID は読み込み時に `String` 化し、`100` と `"100"` は同一扱いにします。
 - BMZ 独自 play skin type は `docs/skin.md` を正とします。現在は `19` / `20` を予約し、`21=2K`, `22=4K`, `23=6K`, `24=8K` を BMZ 拡張枠にします。
@@ -427,16 +427,18 @@ database:
 - sandbox: `os` / `io` / `debug` / `package.loadlib` を無効化します。
 - `require` / `dofile` / `loadfile`: 明示された skin library root 配下だけ許可します。
 - Lua hook による命令数上限、table 深さ・配列長・総 entry 数の上限を持ちます。
+- runtime callbackはcall単位とframe全体の命令数上限を持ち、失敗時は安全な値へフォールバックします。
 - `main_state.number(...)` / `main_state.option(...)` / `main_state.timer(...)` / `main_state.gauge_type()` の一部 function 推論。
 - `draw` function: 単一 ref 比較に加え、複数 ref の `or` / 2 ref 比較+`and`、定数 tail (`number(N)==0` 等) をロード時に draw 条件文字列へ変換。
 - `graph.value` function: 加算式の除算 (`value_expr`) と graph type `148`/`149` (fast/slow 比率、12 ref 合計の `fastall/fsall` パターンをロード時推論) をサポート。
 - Lua `draw` function: 複数 ref の `> 0` / `== 0` / `< 0` の OR、`number` と `skin_config.option` 定数の AND (`number(N) == 0` へ畳み込み) をサポート。
+- 推論不能な `draw` と `value[]` / `text[]` / `graph[]` / `slider[]` の `value` は永続Lua VMで実行時評価します。compatモードでは推論可能なものもruntimeへ残します。
 - `timer_util.timer_observe_boolean`: `dynamicTimer` + ID `9000+` に変換し、描画時は `DynamicTimerRuntime` で observe 条件のエッジから経過 ms を供給。
 - 未対応 function は `lua skin load warning` としてログに出し、ロード自体は継続します。
 
 未対応/今後の候補:
 
-- Lua `draw` / `value` のさらに複雑な式 (3 ref 以上の任意 boolean、実行時に変わる `skin_config.option` 参照)
+- Lua runtime callback未対応field (`timer`, `act` / event, float writerなど)
 - Lua function warning の object id / source context 付き診断
 - destination `center`, `offset`, `offsets`, `filter`
 - destination `stretch` for non-static image objects

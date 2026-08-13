@@ -18,6 +18,7 @@ pub const PRACTICE_SHORT_ARG: &str = "-p";
 pub const PRACTICE_ARG: &str = "--practice";
 pub const PRACTICE_START_MS_ARG: &str = "--practice-start-ms";
 pub const PRACTICE_END_MS_ARG: &str = "--practice-end-ms";
+pub const LUA_SKIN_RUNTIME_ARG: &str = "--lua-skin-runtime";
 
 mod help;
 mod ir;

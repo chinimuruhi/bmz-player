@@ -227,6 +227,7 @@ impl WinitApp {
             apply_course_mode_lua_options(&mut runtime_state, None);
             apply_course_result_lua_load_state(&mut runtime_state, course);
         }
+        runtime_state.runtime_mode = self.skin.lua_runtime_mode;
         runtime_state
     }
 

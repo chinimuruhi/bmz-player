@@ -86,3 +86,11 @@ pub(super) fn lua_runtime_state_with_skin_offsets(
     apply_skin_offsets_to_lua_runtime_state(&mut runtime_state, offsets);
     runtime_state
 }
+
+pub(super) fn lua_runtime_state_with_mode(
+    mut runtime_state: bmz_skin::LuaLoadRuntimeState,
+    runtime_mode: bmz_skin::LuaSkinRuntimeMode,
+) -> bmz_skin::LuaLoadRuntimeState {
+    runtime_state.runtime_mode = runtime_mode;
+    runtime_state
+}

@@ -20,6 +20,7 @@ pub(super) struct SkinDocumentCacheKey {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SkinDocumentDependencyFingerprint {
+    pub(super) lua_runtime_mode: bmz_skin::LuaSkinRuntimeMode,
     pub(super) number_values: BTreeMap<i32, i32>,
     pub(super) text_values: BTreeMap<i32, String>,
     pub(super) option_values: BTreeMap<i32, bool>,

@@ -93,6 +93,7 @@ impl WinitApp {
             0,
             &boot.profile_config.display_name,
             &boot.profile_config.skin,
+            options.lua_skin_runtime_mode,
         );
         skin_pipeline.set_pending(SkinKind::Select, pending_select_skin);
         skin_pipeline.set_pending(SkinKind::Decide, pending_decide_skin);
@@ -142,13 +143,16 @@ impl WinitApp {
         let initial_result_skin_signature = result_skin_signature_for_config(
             &boot.profile_config.skin,
             ResultSkinSlot::Normal,
-            lua_runtime_state_for_result(
-                false,
-                None,
-                false,
-                KeyMode::default(),
-                BTreeMap::new(),
-                &boot.profile_config.display_name,
+            lua_runtime_state_with_mode(
+                lua_runtime_state_for_result(
+                    false,
+                    None,
+                    false,
+                    KeyMode::default(),
+                    BTreeMap::new(),
+                    &boot.profile_config.display_name,
+                ),
+                options.lua_skin_runtime_mode,
             ),
         );
         let difficulty_tables = match boot.library_db.list_difficulty_tables() {
@@ -337,6 +341,7 @@ impl WinitApp {
                 app_started_at: now,
             },
             skin: SkinRuntimeState {
+                lua_runtime_mode: options.lua_skin_runtime_mode,
                 skin_catalog,
                 skin_defs_cache: BTreeMap::new(),
                 default_skin_manifest,

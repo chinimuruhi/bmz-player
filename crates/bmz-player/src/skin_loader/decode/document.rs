@@ -66,6 +66,7 @@ pub(in crate::skin_loader) fn lr2_document_dependency_fingerprint(
     let loaded_files = current_loaded_file_dependencies(&dependencies.loaded_files)
         .context("failed to inspect lr2 skin loaded file dependencies")?;
     Ok(SkinDocumentDependencyFingerprint {
+        lua_runtime_mode: bmz_skin::LuaSkinRuntimeMode::Auto,
         number_values: BTreeMap::new(),
         text_values: BTreeMap::new(),
         option_values,
@@ -136,6 +137,7 @@ pub(in crate::skin_loader) fn document_dependency_fingerprint(
         .map(|path| (path.clone(), virtual_files.get(path).cloned()))
         .collect();
     Some(SkinDocumentDependencyFingerprint {
+        lua_runtime_mode: runtime_state.runtime_mode,
         number_values,
         text_values,
         option_values,

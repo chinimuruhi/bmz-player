@@ -475,3 +475,4 @@ pub(in crate::skin) struct DestinationResolveContext<'a, 'text> {
 /// beatoraja `PlaySkin.judgeregion` 上限 (TIMER_JUDGE_1P/2P/3P = 46/47/247)。
 pub const MAX_JUDGE_REGIONS: usize = 3;
 pub(in crate::skin) const LUA_DRAW_CALLBACK_PREFIX: &str = "bmz:lua_draw_callback:";
+pub(in crate::skin) const LUA_VALUE_CALLBACK_PREFIX: &str = "bmz:lua_value_callback:";

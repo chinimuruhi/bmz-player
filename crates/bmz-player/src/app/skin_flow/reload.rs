@@ -14,6 +14,7 @@ impl WinitApp {
             texture_request,
             &self.boot.profile_config.display_name,
             &skin,
+            self.skin.lua_runtime_mode,
         );
         if request.select {
             self.skin.skin_pipeline.set_pending(SkinKind::Select, pending_select);
@@ -145,6 +146,7 @@ impl WinitApp {
         key_mode: KeyMode,
         mut runtime_state: bmz_skin::LuaLoadRuntimeState,
     ) {
+        runtime_state.runtime_mode = self.skin.lua_runtime_mode;
         let selection = play_skin_selection_for_session(
             &self.boot.profile_config.skin,
             key_mode,

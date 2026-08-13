@@ -40,6 +40,11 @@ pub(super) fn skin_state_text_with_draw_state(
     state: &SkinTextState<'_>,
 ) -> String {
     if let Some(draw_state) = draw_state
+        && lua_value_callback_id(&text.value_expr).is_some()
+    {
+        return evaluate_lua_text_expr(&text.value_expr, draw_state).unwrap_or_default();
+    }
+    if let Some(draw_state) = draw_state
         && let Some(value) = m_select_daily_stats_text(&text.id, &draw_state.player_stats.daily)
     {
         return value;

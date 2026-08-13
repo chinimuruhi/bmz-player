@@ -4,7 +4,7 @@ pub(super) struct ExecutedLuaSkin {
     pub(super) files: BTreeMap<String, String>,
     pub(super) dependencies: SkinLoadDependencies,
     pub(super) lua_runtime: Option<LuaSkinRuntime>,
-    pub(super) runtime_draw_paths: Vec<String>,
+    pub(super) runtime_callbacks: Vec<LuaRuntimeCallbackSpec>,
 }
 
 pub(super) fn execute_lua_skin(
@@ -228,12 +228,12 @@ pub(super) fn execute_lua_skin(
         )
     }));
 
-    let runtime_draw_paths = main_state_probe
+    let runtime_callbacks = main_state_probe
         .lock()
         .map_err(|_| anyhow!("main_state probe lock poisoned"))?
-        .runtime_draw_paths
+        .runtime_callbacks
         .clone();
-    let lua_runtime = if runtime_draw_paths.is_empty() {
+    let lua_runtime = if runtime_callbacks.is_empty() {
         None
     } else {
         match build_lua_skin_runtime(LuaSkinRuntimeRequest {
@@ -247,12 +247,12 @@ pub(super) fn execute_lua_skin(
             skin_offsets: &skin_offsets,
             runtime_state,
             virtual_io_files,
-            runtime_draw_paths: &runtime_draw_paths,
+            runtime_callbacks: &runtime_callbacks,
         }) {
             Ok(runtime) => Some(runtime),
             Err(error) => {
                 warnings.push(format!(
-                    "ERROR: failed to build Lua draw callback runtime for {}: {error:#}; callbacks fall back to false",
+                    "ERROR: failed to build Lua callback runtime for {}: {error:#}; callbacks use safe fallback values",
                     input.display()
                 ));
                 None
@@ -263,14 +263,14 @@ pub(super) fn execute_lua_skin(
         dependencies.lock().map_err(|_| anyhow!("lua dependency tracker lock poisoned"))?.clone();
     // A cached document cannot safely clone its sidecar VM. Keeping runtime
     // callback documents out of the document cache preserves registry/VM IDs.
-    dependencies.opaque |= !runtime_draw_paths.is_empty();
+    dependencies.opaque |= !runtime_callbacks.is_empty();
     Ok(ExecutedLuaSkin {
         value: json,
         warnings,
         files: skin_named_files,
         dependencies,
         lua_runtime,
-        runtime_draw_paths,
+        runtime_callbacks,
     })
 }
 
@@ -285,7 +285,7 @@ pub(super) struct LuaSkinRuntimeRequest<'a> {
     pub(super) skin_offsets: &'a BTreeMap<String, LuaSkinOffsetValue>,
     pub(super) runtime_state: &'a LuaLoadRuntimeState,
     pub(super) virtual_io_files: &'a BTreeMap<String, String>,
-    pub(super) runtime_draw_paths: &'a [String],
+    pub(super) runtime_callbacks: &'a [LuaRuntimeCallbackSpec],
 }
 
 pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Result<LuaSkinRuntime> {
@@ -300,7 +300,7 @@ pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Resu
         skin_offsets,
         runtime_state,
         virtual_io_files,
-        runtime_draw_paths,
+        runtime_callbacks,
     } = request;
     let lua = Lua::new();
     let instruction_budget = install_instruction_limit(&lua);
@@ -324,8 +324,9 @@ pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Resu
         .eval::<Value>()
         .with_context(|| format!("failed to execute runtime Lua skin: {}", input.display()))?;
 
-    let mut callbacks = Vec::with_capacity(runtime_draw_paths.len());
-    for (callback_id, path) in runtime_draw_paths.iter().enumerate() {
+    let mut callbacks = Vec::with_capacity(runtime_callbacks.len());
+    for (callback_id, spec) in runtime_callbacks.iter().enumerate() {
+        let path = &spec.path;
         let callback =
             lua_value_at_field_path(value.clone(), path).ok().and_then(|value| match value {
                 Value::Function(function) => lua.create_registry_value(function).ok(),
@@ -337,7 +338,8 @@ pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Resu
                 callback_id,
                 field_path = path,
                 classification = "RUNTIME",
-                "registered Lua draw callback"
+                kind = ?spec.kind,
+                "registered Lua callback"
             );
         } else {
             tracing::warn!(
@@ -345,10 +347,11 @@ pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Resu
                 callback_id,
                 field_path = path,
                 classification = "ERROR",
-                "failed to register Lua draw callback; callback falls back to false"
+                kind = ?spec.kind,
+                "failed to register Lua callback; callback uses its safe fallback value"
             );
         }
-        callbacks.push(LuaRuntimeCallback { path: path.clone(), key: callback });
+        callbacks.push(LuaRuntimeCallback { path: path.clone(), kind: spec.kind, key: callback });
     }
     let main_state: Table = lua.globals().get("bmz_main_state")?;
     let main_state_key = lua.create_registry_value(main_state)?;
@@ -360,6 +363,7 @@ pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Resu
         skin_path: input.to_path_buf(),
         failed_callbacks: BTreeSet::new(),
         failure_log_count: 0,
+        last_frame_time_us: None,
     })
 }
 

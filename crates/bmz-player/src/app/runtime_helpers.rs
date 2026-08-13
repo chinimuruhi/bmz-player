@@ -145,6 +145,9 @@ pub(super) fn lookup_boot_chart_id(
 }
 
 pub(super) fn log_startup_options(options: &AppOptions) {
+    if options.lua_skin_runtime_mode == bmz_skin::LuaSkinRuntimeMode::Compat {
+        tracing::info!(arg = LUA_SKIN_RUNTIME_ARG, "Lua skin runtime compatibility mode enabled");
+    }
     if let Some(path) = &options.boot_play_path {
         tracing::info!(boot_play_path = %path, "boot chart path specified");
     }

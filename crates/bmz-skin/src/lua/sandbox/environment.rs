@@ -14,6 +14,11 @@ pub(super) fn install_sandbox(
 ) -> Result<Arc<Mutex<MainStateProbe>>> {
     lua.set_memory_limit(LUA_MEMORY_LIMIT_BYTES).context("failed to set Lua skin memory limit")?;
     let main_state_probe = Arc::new(Mutex::new(MainStateProbe::default()));
+    {
+        let mut probe =
+            main_state_probe.lock().map_err(|_| anyhow!("main_state probe lock poisoned"))?;
+        probe.runtime_mode = runtime_state.runtime_mode;
+    }
     if let Some(load_dependencies) = load_dependencies.clone() {
         let mut probe =
             main_state_probe.lock().map_err(|_| anyhow!("main_state probe lock poisoned"))?;

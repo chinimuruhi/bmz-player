@@ -71,14 +71,44 @@ pub(super) fn handle_function_field(
     instruction_budget.begin_callback();
     match key {
         "value" => {
-            infer_value_field(
-                function,
-                path,
-                metadata.object_id.as_deref(),
-                object,
-                warnings,
-                main_state_probe,
-            );
+            let runtime_supported = runtime_value_field_supported(path);
+            let compat = main_state_probe
+                .lock()
+                .map_err(|_| anyhow!("main_state probe lock poisoned"))?
+                .runtime_mode
+                == LuaSkinRuntimeMode::Compat;
+            let inferred = if compat && runtime_supported {
+                false
+            } else {
+                infer_value_field(
+                    function,
+                    path,
+                    metadata.object_id.as_deref(),
+                    object,
+                    main_state_probe,
+                )
+            };
+            if !inferred && runtime_supported {
+                let field_path = format!("{path}.value");
+                let callback_id = register_runtime_callback(
+                    main_state_probe,
+                    &field_path,
+                    LuaRuntimeCallbackKind::Value,
+                )?;
+                insert_expr(
+                    object,
+                    "value_expr",
+                    format!("{LUA_VALUE_CALLBACK_PREFIX}{callback_id}"),
+                );
+                tracing::debug!(
+                    %field_path,
+                    callback_id,
+                    classification = "RUNTIME",
+                    "classified Lua value property"
+                );
+            } else if !inferred {
+                warnings.push(format!("skipping unsupported value function at {path}.value"));
+            }
             Ok(true)
         }
         "act" => Ok(infer_act_field(lua, function, object, main_state_probe)),
@@ -104,50 +134,49 @@ fn infer_value_field(
     path: &str,
     object_id: Option<&str>,
     object: &mut JsonMap<String, JsonValue>,
-    warnings: &mut Vec<String>,
     main_state_probe: &Arc<Mutex<MainStateProbe>>,
-) {
+) -> bool {
     let is_graph = path.contains(".graph[");
     if matches!(object_id, Some("val-hits-per-sec")) {
         insert_expr(object, "value_expr", "bmz:keylogger_nps");
-        return;
+        return true;
     }
     if is_graph && let Some(value_expr) = object_id.and_then(keylogger_graph_value_expr_from_id) {
         insert_expr(object, "value_expr", value_expr);
-        return;
+        return true;
     }
     if is_graph
         && let Some(value_expr) =
             object_id.and_then(milliondollar_fast_slow_graph_value_expr_from_id)
     {
         insert_expr(object, "value_expr", value_expr);
-        return;
+        return true;
     }
     if !is_graph
         && path.contains(".imageset[")
         && let Some(ref_id) = infer_gauge_type_imageset_ref(function, main_state_probe)
     {
         insert_number(object, "ref", ref_id);
-        return;
+        return true;
     }
     if !is_graph && path.contains(".text[") {
         if let Some(ref_id) = infer_ir_ranking_name_ref(function, object_id, main_state_probe) {
             insert_number(object, "ref", ref_id);
-            return;
+            return true;
         }
         if let Some(value_expr) =
             infer_course_table_text_expr(function, object_id, main_state_probe)
         {
             insert_expr(object, "value_expr", value_expr);
-            return;
+            return true;
         }
         if let Some(value_expr) = infer_text_concat_expr(function, main_state_probe) {
             insert_expr(object, "value_expr", value_expr);
-            return;
+            return true;
         }
         if let Some(ref_id) = infer_main_state_text_ref(function, main_state_probe) {
             insert_number(object, "ref", ref_id);
-            return;
+            return true;
         }
     }
     if !is_graph
@@ -155,45 +184,59 @@ fn infer_value_field(
         && let Some(value_expr) = infer_slider_value_expr(function, object_id, main_state_probe)
     {
         insert_expr(object, "value_expr", value_expr);
-        return;
+        return true;
     }
     if !is_graph && infer_non_graph_value_field(function, object_id, object, main_state_probe) {
-        return;
+        return true;
     }
     if is_graph
         && let Some(value_expr) =
             infer_ir_ranking_score_value_expr(function, object_id, main_state_probe)
     {
         insert_expr(object, "value_expr", value_expr);
+        true
     } else if is_graph
         && let Some(graph_type) = infer_fast_slow_ratio_graph_type(function, main_state_probe)
     {
         insert_number(object, "type", graph_type);
+        true
     } else if !is_graph && let Some(expr) = infer_main_state_number_expr(function, main_state_probe)
     {
         insert_expr(object, "expr", expr);
+        true
     } else if is_graph && matches!(object_id, Some("default_chart_gauge")) {
         insert_expr(object, "value_expr", "bmz:default_chart_gauge");
+        true
     } else if !is_graph && matches!(object_id, Some("default_chart_total_count")) {
         insert_expr(object, "value_expr", "bmz:default_chart_total_count");
+        true
     } else if let Some(value_expr) = infer_value_float_expr(function, main_state_probe) {
         insert_expr(object, "value_expr", value_expr);
+        true
     } else if path.contains(".text[")
         && let Some(ref_id) = infer_constant_text_ref_at_load(function, main_state_probe)
     {
         insert_number(object, "ref", ref_id);
+        true
     } else if path.contains(".text[")
         && let Some(text) = infer_constant_text_at_load(function, main_state_probe)
     {
         insert_expr(object, "constantText", text);
+        true
     } else if let Some(value_expr) = infer_constant_number_at_load(function, main_state_probe) {
         insert_expr(object, "value_expr", value_expr);
+        true
     } else if matches!(object_id, Some("Number_Info_Level_Insane")) {
         // 空の難易度表レベルから nil を返す場合は、非表示 destination 用の不活性値にする。
         insert_expr(object, "value_expr", "0");
+        true
     } else {
-        warnings.push(format!("skipping unsupported value function at {path}.value"));
+        false
     }
+}
+
+fn runtime_value_field_supported(path: &str) -> bool {
+    [".value[", ".text[", ".graph[", ".slider["].into_iter().any(|segment| path.contains(segment))
 }
 
 fn infer_non_graph_value_field(
@@ -274,37 +317,53 @@ fn infer_draw_field(
     main_state_probe: &Arc<Mutex<MainStateProbe>>,
 ) -> Result<()> {
     let object_id = metadata.object_id.as_deref();
-    let draw = infer_result_panel_draw_condition(lua, function, object_id, main_state_probe)
-        .or_else(|| infer_luxe_flat_select_score_draw(lua, function, object_id, main_state_probe))
-        .or_else(|| infer_result_score_draw(function, object_id, main_state_probe))
-        .or_else(|| {
-            metadata.gauge_lead_glow.as_ref().map(|(group, below_border, part)| {
-                format!(
-                    "gauge_lead_glow({group},{part},{})",
-                    if *below_border { "below" } else { "above" }
-                )
+    let compat = main_state_probe
+        .lock()
+        .map_err(|_| anyhow!("main_state probe lock poisoned"))?
+        .runtime_mode
+        == LuaSkinRuntimeMode::Compat;
+    let draw = if compat {
+        None
+    } else {
+        infer_result_panel_draw_condition(lua, function, object_id, main_state_probe)
+            .or_else(|| {
+                infer_luxe_flat_select_score_draw(lua, function, object_id, main_state_probe)
             })
-        })
-        .or_else(|| {
-            let keylogger = metadata.keylogger.as_ref()?;
-            Some(format!(
-                "keylogger_{}({},{},{})",
-                keylogger.graph_kind,
-                keylogger.lane,
-                keylogger.slot?,
-                keylogger.kind.as_deref()?
-            ))
-        })
-        .or_else(|| infer_gauge_value_digit_draw_condition(function, object_id, main_state_probe))
-        .or_else(|| infer_select_score_available_draw_condition(lua, function, main_state_probe))
-        .or_else(|| infer_boolean_predicate(function, main_state_probe, object_id));
+            .or_else(|| infer_result_score_draw(function, object_id, main_state_probe))
+            .or_else(|| {
+                metadata.gauge_lead_glow.as_ref().map(|(group, below_border, part)| {
+                    format!(
+                        "gauge_lead_glow({group},{part},{})",
+                        if *below_border { "below" } else { "above" }
+                    )
+                })
+            })
+            .or_else(|| {
+                let keylogger = metadata.keylogger.as_ref()?;
+                Some(format!(
+                    "keylogger_{}({},{},{})",
+                    keylogger.graph_kind,
+                    keylogger.lane,
+                    keylogger.slot?,
+                    keylogger.kind.as_deref()?
+                ))
+            })
+            .or_else(|| {
+                infer_gauge_value_digit_draw_condition(function, object_id, main_state_probe)
+            })
+            .or_else(|| {
+                infer_select_score_available_draw_condition(lua, function, main_state_probe)
+            })
+            .or_else(|| infer_boolean_predicate(function, main_state_probe, object_id))
+    };
 
     let field_path = format!("{path}.draw");
     if let Some(draw) = draw {
         insert_expr(object, "draw", draw);
         tracing::debug!(%field_path, classification = "COMPILED", "classified Lua draw condition");
     } else {
-        let callback_id = register_runtime_draw_path(main_state_probe, &field_path)?;
+        let callback_id =
+            register_runtime_callback(main_state_probe, &field_path, LuaRuntimeCallbackKind::Draw)?;
         insert_expr(object, "draw", format!("{LUA_DRAW_CALLBACK_PREFIX}{callback_id}"));
         tracing::debug!(%field_path, callback_id, classification = "RUNTIME", "classified Lua draw condition");
     }

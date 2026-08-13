@@ -267,6 +267,57 @@ return {
 }
 
 #[test]
+fn lua_document_cache_does_not_reuse_auto_document_for_compat_mode() {
+    let root = unique_test_dir("bmz-lua-document-cache-runtime-mode");
+    std::fs::create_dir_all(&root).unwrap();
+    let skin_path = root.join("play.luaskin");
+    std::fs::write(
+        &skin_path,
+        r#"
+local main_state = require("main_state")
+return {
+    type = 0,
+    destination = {{
+        id = "runtime",
+        draw = function() return main_state.option(46) end,
+        dst = {{ x = 0, y = 0, w = 1, h = 1 }},
+    }},
+}
+"#,
+    )
+    .unwrap();
+    let cache = Arc::new(Mutex::new(SkinDocumentCache::default()));
+
+    let auto = load_skin_document(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &LuaLoadRuntimeState::default(),
+        Some(cache.clone()),
+    )
+    .unwrap();
+    assert_eq!(auto.cache_status, DocumentCacheStatus::Miss);
+    assert!(auto.lua_runtime.is_none());
+
+    let compat_state = LuaLoadRuntimeState {
+        runtime_mode: bmz_skin::LuaSkinRuntimeMode::Compat,
+        ..Default::default()
+    };
+    let compat = load_skin_document(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &compat_state,
+        Some(cache),
+    )
+    .unwrap();
+    assert_eq!(compat.cache_status, DocumentCacheStatus::Miss);
+    assert!(compat.lua_runtime.is_some());
+}
+
+#[test]
 fn lua_document_cache_misses_when_runtime_offset_changes() {
     let root = unique_test_dir("bmz-lua-document-cache-offset");
     std::fs::create_dir_all(&root).unwrap();

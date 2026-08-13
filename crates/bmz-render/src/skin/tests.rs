@@ -70,6 +70,26 @@ impl SkinLuaDrawRuntime for AlternatingLuaDrawRuntime {
         assert_eq!(callback_id, 0);
         (self.calls.fetch_add(1, Ordering::Relaxed) + 1).is_multiple_of(2)
     }
+
+    fn evaluate_number(
+        &self,
+        callback_id: usize,
+        _state: &SkinDrawState,
+        _enabled_options: &[i32],
+        _text_values: &BTreeMap<i32, String>,
+    ) -> Option<f64> {
+        (callback_id == 1).then_some(42.75)
+    }
+
+    fn evaluate_text(
+        &self,
+        callback_id: usize,
+        _state: &SkinDrawState,
+        _enabled_options: &[i32],
+        _text_values: &BTreeMap<i32, String>,
+    ) -> Option<String> {
+        (callback_id == 2).then(|| "runtime text".to_string())
+    }
 }
 
 #[path = "tests/core.rs"]

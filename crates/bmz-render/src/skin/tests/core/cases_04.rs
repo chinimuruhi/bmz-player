@@ -34,6 +34,26 @@ fn skin_value_number_for_destination_prefers_value_expr_over_ref_zero_fallback()
 }
 
 #[test]
+fn lua_runtime_value_callbacks_feed_number_and_text_rendering() {
+    let mut state = SkinDrawState::default();
+    state.lua_runtime = Some(SkinLuaRuntimeContext {
+        runtime: Arc::new(AlternatingLuaDrawRuntime::default()),
+        enabled_options: Arc::from([]),
+        text_values: Arc::new(BTreeMap::new()),
+    });
+    let value =
+        SkinValueDef { value_expr: "bmz:lua_value_callback:1".to_string(), ..Default::default() };
+    assert_eq!(skin_value_number(&value, &state), Some(42));
+
+    let text =
+        SkinTextDef { value_expr: "bmz:lua_value_callback:2".to_string(), ..Default::default() };
+    assert_eq!(
+        skin_state_text_with_draw_state(&text, Some(&state), &SkinTextState::default()),
+        "runtime text"
+    );
+}
+
+#[test]
 fn skin_value_number_evaluates_floor_division_value_expr() {
     let state = SkinDrawState {
         total_notes: 74,

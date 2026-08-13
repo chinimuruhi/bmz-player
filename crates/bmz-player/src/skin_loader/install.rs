@@ -125,6 +125,38 @@ impl SkinLuaDrawRuntime for LuaSkinDrawRuntimeAdapter {
         }
         result
     }
+
+    fn evaluate_number(
+        &self,
+        callback_id: usize,
+        state: &SkinDrawState,
+        enabled_options: &[i32],
+        text_values: &BTreeMap<i32, String>,
+    ) -> Option<f64> {
+        let mut runtime = self.runtime.lock().ok().and_then(|mut slot| slot.take())?;
+        let provider = RenderLuaMainState { state, enabled_options, text_values };
+        let result = runtime.evaluate_number(callback_id, &provider);
+        if let Ok(mut slot) = self.runtime.lock() {
+            *slot = Some(runtime);
+        }
+        result
+    }
+
+    fn evaluate_text(
+        &self,
+        callback_id: usize,
+        state: &SkinDrawState,
+        enabled_options: &[i32],
+        text_values: &BTreeMap<i32, String>,
+    ) -> Option<String> {
+        let mut runtime = self.runtime.lock().ok().and_then(|mut slot| slot.take())?;
+        let provider = RenderLuaMainState { state, enabled_options, text_values };
+        let result = runtime.evaluate_text(callback_id, &provider);
+        if let Ok(mut slot) = self.runtime.lock() {
+            *slot = Some(runtime);
+        }
+        result
+    }
 }
 
 #[derive(Debug, Clone, Default)]

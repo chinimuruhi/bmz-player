@@ -215,15 +215,13 @@ fn lua_skin_stops_infinite_inference_callback() {
     )
     .unwrap();
 
-    let loaded =
+    let mut loaded =
         load_lua_skin_value(&root.join("play7.luaskin"), &BTreeMap::new(), &BTreeMap::new())
-            .expect("an uninferrable callback should be dropped without hanging the loader");
-    assert!(
-        loaded
-            .warnings
-            .iter()
-            .any(|warning| warning.message.contains("unsupported value function"))
-    );
+            .expect("an uninferrable callback should become a bounded runtime callback");
+    assert_eq!(loaded.runtime_callback_paths, ["$.value[1].value"]);
+    let runtime = loaded.lua_runtime.as_mut().expect("runtime value fallback");
+    assert_eq!(runtime.evaluate_number(0, &TestLuaMainState::default()), None);
+    assert_eq!(runtime.failure_log_count(), 1);
 }
 
 #[test]

@@ -449,6 +449,67 @@ fn lua_inferable_draw_keeps_compiled_path() {
 }
 
 #[test]
+fn lua_compat_mode_keeps_inferable_draw_in_runtime_vm() {
+    let root = unique_test_dir("bmz-skin-compat-draw");
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("skin.luaskin");
+    fs::write(
+        &path,
+        r#"
+            local main_state = require("main_state")
+            return {
+                type = 0,
+                destination = {{
+                    id = "runtime",
+                    draw = function() return main_state.option(46) end,
+                    dst = {{ x = 0, y = 0, w = 1, h = 1 }}
+                }}
+            }
+        "#,
+    )
+    .unwrap();
+    let runtime_state =
+        LuaLoadRuntimeState { runtime_mode: LuaSkinRuntimeMode::Compat, ..Default::default() };
+    let mut loaded =
+        load_lua_skin_with_runtime_state(&path, &BTreeMap::new(), &BTreeMap::new(), &runtime_state)
+            .unwrap();
+    assert_eq!(only_destination_draw(&loaded), "bmz:lua_draw_callback:0");
+    let runtime = loaded.lua_runtime.as_mut().expect("compat runtime");
+    let mut state = TestLuaMainState::default();
+    assert!(!runtime.evaluate_draw(0, &state));
+    state.options.insert(46, true);
+    assert!(runtime.evaluate_draw(0, &state));
+}
+
+#[test]
+fn lua_compat_mode_evaluates_number_and_text_functions_from_current_state() {
+    let mut loaded = load_runtime_value_fixture(
+        "bmz-skin-compat-values",
+        LuaSkinRuntimeMode::Compat,
+        r#"
+            local number_value = function() return main_state.number(999) + 0.75 end
+            local text_value = function() return "[" .. main_state.text(10) .. "]" end
+        "#,
+    );
+    let number_expr = &loaded.document.value[0].value_expr;
+    let text_expr = &loaded.document.text[0].value_expr;
+    assert!(number_expr.starts_with("bmz:lua_value_callback:"));
+    assert!(text_expr.starts_with("bmz:lua_value_callback:"));
+    let number_callback = number_expr.rsplit(':').next().unwrap().parse::<usize>().unwrap();
+    let text_callback = text_expr.rsplit(':').next().unwrap().parse::<usize>().unwrap();
+    let runtime = loaded.lua_runtime.as_mut().expect("compat runtime");
+    let mut state = TestLuaMainState::default();
+    state.numbers.insert(999, 4);
+    state.texts.insert(10, "first".to_string());
+    assert_eq!(runtime.evaluate_number(number_callback, &state), Some(4.75));
+    assert_eq!(runtime.evaluate_text(text_callback, &state).as_deref(), Some("[first]"));
+    state.numbers.insert(999, 8);
+    state.texts.insert(10, "updated".to_string());
+    assert_eq!(runtime.evaluate_number(number_callback, &state), Some(8.75));
+    assert_eq!(runtime.evaluate_text(text_callback, &state).as_deref(), Some("[updated]"));
+}
+
+#[test]
 fn lua_stateful_draw_uses_clean_runtime_vm_and_runs_each_call() {
     let mut loaded = load_runtime_draw_fixture(
         "bmz-skin-stateful-runtime-draw",
@@ -588,7 +649,7 @@ fn lua_to_json_rejects_runtime_draw_callbacks() {
     .unwrap();
     let error = convert_lua_skin_to_json_file(&input, &output, &BTreeMap::new(), &BTreeMap::new())
         .unwrap_err();
-    assert!(error.to_string().contains("cannot serialize runtime draw callbacks"));
+    assert!(error.to_string().contains("cannot serialize runtime callbacks"));
     assert!(error.to_string().contains("$.destination[1].draw"));
     assert!(!output.exists());
 }

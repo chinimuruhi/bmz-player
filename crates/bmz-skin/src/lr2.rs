@@ -245,6 +245,7 @@ pub fn load_lr2_csv_skin_value(
     Ok(LoadedLuaSkinValue {
         value: builder.finish(),
         lua_runtime: None,
+        runtime_callback_paths: Vec::new(),
         runtime_draw_paths: Vec::new(),
         warnings,
         files: BTreeMap::new(),

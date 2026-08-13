@@ -43,6 +43,8 @@ pub struct LoadedSkinDocument {
 pub struct LoadedLuaSkinValue {
     pub value: JsonValue,
     pub lua_runtime: Option<LuaSkinRuntime>,
+    pub runtime_callback_paths: Vec<String>,
+    /// Backward-compatible subset containing only `draw` callback paths.
     pub runtime_draw_paths: Vec<String>,
     pub warnings: Vec<SkinLoadWarning>,
     pub files: BTreeMap<String, String>,
@@ -87,8 +89,21 @@ pub struct LuaSkinOffsetValue {
     pub a: i32,
 }
 
+/// Lua function fields の評価方法。
+///
+/// `Auto` は推論できる function を宣言的な skin document へ変換し、推論できない
+/// 対応済み field だけ runtime callback に残す。`Compat` はスキン開発・beatoraja
+/// 比較向けに、対応済み function field を可能な限り永続 Lua VM で評価する。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LuaSkinRuntimeMode {
+    #[default]
+    Auto,
+    Compat,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LuaLoadRuntimeState {
+    pub runtime_mode: LuaSkinRuntimeMode,
     pub number_values: BTreeMap<i32, i32>,
     pub text_values: BTreeMap<i32, String>,
     pub option_values: BTreeMap<i32, bool>,

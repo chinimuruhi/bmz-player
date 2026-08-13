@@ -40,6 +40,18 @@ fn app_options_parse_practice_flags() {
 }
 
 #[test]
+fn app_options_parse_lua_skin_runtime_mode() {
+    let separated = AppOptions::parse_args(["--lua-skin-runtime", "compat"]).unwrap();
+    assert_eq!(separated.lua_skin_runtime_mode, bmz_skin::LuaSkinRuntimeMode::Compat);
+
+    let equals = AppOptions::parse_args(["--lua-skin-runtime=auto"]).unwrap();
+    assert_eq!(equals.lua_skin_runtime_mode, bmz_skin::LuaSkinRuntimeMode::Auto);
+
+    assert!(AppOptions::parse_args(["--lua-skin-runtime=fast"]).is_err());
+    assert!(AppOptions::parse_args(["--lua-skin-runtime"]).is_err());
+}
+
+#[test]
 fn parse_beatoraja_replay_flag_maps_slots() {
     assert_eq!(parse_beatoraja_replay_flag("-r1"), Some(0));
     assert_eq!(parse_beatoraja_replay_flag("-r4"), Some(3));
@@ -149,6 +161,7 @@ fn help_text_lists_supported_options() {
     assert!(help.contains("--boot-play-sample"));
     assert!(help.contains("--boot-result-sample"));
     assert!(help.contains("--autoplay-on-start"));
+    assert!(help.contains("--lua-skin-runtime <auto|compat>"));
     assert!(help.contains("--smoke-exit-after-frames"));
     assert!(help.contains("--smoke-exit-after-play-frames"));
     assert!(help.contains("--smoke-exit-after-result-frames"));

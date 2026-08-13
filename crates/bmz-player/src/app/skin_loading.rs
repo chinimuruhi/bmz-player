@@ -15,6 +15,7 @@ pub(super) fn load_initial_skin_textures(
     generation: u64,
     player_name: &str,
     skin: &SkinConfig,
+    lua_runtime_mode: bmz_skin::LuaSkinRuntimeMode,
 ) -> (Option<SkinManifest>, HashMap<SkinKind, Vec<ActiveSkinVideoSource>>, bool, bool, bool) {
     // Decide / Result の JSON skin は Select の同期ロードより**前**に decode スレッドを起動して
     // CPU をフル活用する。Select の sync 処理 (PNG GPU upload など) と並列に decode が進む。
@@ -59,9 +60,12 @@ pub(super) fn load_initial_skin_textures(
                     } else {
                         skin.decide_files.clone()
                     },
-                    lua_runtime_state_with_skin_offsets(
-                        lua_runtime_state_for_player(player_name),
-                        &skin.decide_offsets,
+                    lua_runtime_state_with_mode(
+                        lua_runtime_state_with_skin_offsets(
+                            lua_runtime_state_for_player(player_name),
+                            &skin.decide_offsets,
+                        ),
+                        lua_runtime_mode,
                     ),
                 )
                 .with_library_roots(app_paths.skin_library_roots()),
@@ -102,16 +106,19 @@ pub(super) fn load_initial_skin_textures(
                     } else {
                         skin.result_files.clone()
                     },
-                    lua_runtime_state_with_skin_offsets(
-                        lua_runtime_state_for_result(
-                            false,
-                            None,
-                            false,
-                            KeyMode::default(),
-                            BTreeMap::new(),
-                            player_name,
+                    lua_runtime_state_with_mode(
+                        lua_runtime_state_with_skin_offsets(
+                            lua_runtime_state_for_result(
+                                false,
+                                None,
+                                false,
+                                KeyMode::default(),
+                                BTreeMap::new(),
+                                player_name,
+                            ),
+                            &skin.result_offsets,
                         ),
-                        &skin.result_offsets,
+                        lua_runtime_mode,
                     ),
                 )
                 .with_library_roots(app_paths.skin_library_roots()),
@@ -155,9 +162,12 @@ pub(super) fn load_initial_skin_textures(
                     default_manifest.as_ref(),
                     active_select_options,
                     active_select_files,
-                    &lua_runtime_state_with_skin_offsets(
-                        lua_runtime_state_for_player(player_name),
-                        &skin.select_offsets,
+                    &lua_runtime_state_with_mode(
+                        lua_runtime_state_with_skin_offsets(
+                            lua_runtime_state_for_player(player_name),
+                            &skin.select_offsets,
+                        ),
+                        lua_runtime_mode,
                     ),
                 );
                 if !video_sources.is_empty() {
@@ -213,6 +223,7 @@ pub(super) fn reload_skin_textures(
     request: SkinReloadRequest,
     player_name: &str,
     skin: &SkinConfig,
+    lua_runtime_mode: bmz_skin::LuaSkinRuntimeMode,
 ) -> (bool, bool, bool) {
     let mut pending_select = false;
     let mut pending_decide = false;
@@ -274,9 +285,12 @@ pub(super) fn reload_skin_textures(
                     kind,
                     if trimmed.is_empty() { BTreeMap::new() } else { options.clone() },
                     if trimmed.is_empty() { BTreeMap::new() } else { files.clone() },
-                    lua_runtime_state_with_skin_offsets(
-                        lua_runtime_state_for_player(player_name),
-                        offsets,
+                    lua_runtime_state_with_mode(
+                        lua_runtime_state_with_skin_offsets(
+                            lua_runtime_state_for_player(player_name),
+                            offsets,
+                        ),
+                        lua_runtime_mode,
                     ),
                 )
                 .with_library_roots(app_paths.skin_library_roots()),

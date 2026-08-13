@@ -15,6 +15,18 @@ pub(super) enum LuaRuntimeScalar {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LuaRuntimeCallbackKind {
+    Draw,
+    Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct LuaRuntimeCallbackSpec {
+    pub(super) path: String,
+    pub(super) kind: LuaRuntimeCallbackKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LuaAudioActionKindProbe {
     Play,
     Loop,
@@ -51,6 +63,7 @@ pub struct ConvertReport {
 
 pub(super) struct LuaRuntimeCallback {
     pub(super) path: String,
+    pub(super) kind: LuaRuntimeCallbackKind,
     pub(super) key: Option<RegistryKey>,
 }
 
@@ -67,6 +80,7 @@ pub struct LuaSkinRuntime {
     pub(super) skin_path: PathBuf,
     pub(super) failed_callbacks: BTreeSet<usize>,
     pub(super) failure_log_count: usize,
+    pub(super) last_frame_time_us: Option<i32>,
 }
 
 impl fmt::Debug for LuaSkinRuntime {
@@ -96,12 +110,19 @@ impl LuaSkinRuntime {
     }
 
     pub fn evaluate_draw(&mut self, callback_id: usize, state: &dyn LuaMainState) -> bool {
-        self.instruction_budget.begin_runtime_callback();
+        self.begin_runtime_callback(state.time_us());
         let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            self.evaluate_draw_inner(callback_id, state)
+            self.evaluate_callback_inner(callback_id, LuaRuntimeCallbackKind::Draw, state)
         }));
         match result {
-            Ok(Ok(value)) => value,
+            Ok(Ok(LuaRuntimeEvaluatedValue::Boolean(value))) => value,
+            Ok(Ok(value)) => {
+                self.log_callback_failure_once(
+                    callback_id,
+                    &format!("Lua draw callback returned {}, expected boolean", value.type_name()),
+                );
+                false
+            }
             Ok(Err(error)) => {
                 self.log_callback_failure_once(callback_id, &error.to_string());
                 false
@@ -113,19 +134,85 @@ impl LuaSkinRuntime {
         }
     }
 
-    fn evaluate_draw_inner(
-        &self,
+    pub fn evaluate_number(&mut self, callback_id: usize, state: &dyn LuaMainState) -> Option<f64> {
+        self.begin_runtime_callback(state.time_us());
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            self.evaluate_callback_inner(callback_id, LuaRuntimeCallbackKind::Value, state)
+        }));
+        match result {
+            Ok(Ok(LuaRuntimeEvaluatedValue::Integer(value))) => Some(value as f64),
+            Ok(Ok(LuaRuntimeEvaluatedValue::Number(value))) if value.is_finite() => Some(value),
+            Ok(Ok(value)) => {
+                self.log_callback_failure_once(
+                    callback_id,
+                    &format!("Lua value callback returned {}, expected number", value.type_name()),
+                );
+                None
+            }
+            Ok(Err(error)) => {
+                self.log_callback_failure_once(callback_id, &error.to_string());
+                None
+            }
+            Err(_) => {
+                self.log_callback_failure_once(callback_id, "panic while executing Lua callback");
+                None
+            }
+        }
+    }
+
+    pub fn evaluate_text(
+        &mut self,
         callback_id: usize,
         state: &dyn LuaMainState,
-    ) -> mlua::Result<bool> {
+    ) -> Option<String> {
+        self.begin_runtime_callback(state.time_us());
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            self.evaluate_callback_inner(callback_id, LuaRuntimeCallbackKind::Value, state)
+        }));
+        match result {
+            Ok(Ok(value)) => value.into_text().or_else(|| {
+                self.log_callback_failure_once(
+                    callback_id,
+                    "Lua text callback returned unsupported value",
+                );
+                None
+            }),
+            Ok(Err(error)) => {
+                self.log_callback_failure_once(callback_id, &error.to_string());
+                None
+            }
+            Err(_) => {
+                self.log_callback_failure_once(callback_id, "panic while executing Lua callback");
+                None
+            }
+        }
+    }
+
+    fn begin_runtime_callback(&mut self, frame_time_us: i32) {
+        let new_frame = self.last_frame_time_us != Some(frame_time_us);
+        if new_frame {
+            self.last_frame_time_us = Some(frame_time_us);
+        }
+        self.instruction_budget.begin_runtime_callback(new_frame);
+    }
+
+    fn evaluate_callback_inner(
+        &self,
+        callback_id: usize,
+        expected_kind: LuaRuntimeCallbackKind,
+        state: &dyn LuaMainState,
+    ) -> mlua::Result<LuaRuntimeEvaluatedValue> {
         let callback = self.callbacks.get(callback_id).ok_or_else(|| {
-            mlua::Error::runtime(format!("unknown Lua draw callback ID {callback_id}"))
+            mlua::Error::runtime(format!("unknown Lua callback ID {callback_id}"))
         })?;
+        if callback.kind != expected_kind {
+            return Err(mlua::Error::runtime(format!(
+                "Lua callback kind mismatch at {}: expected {expected_kind:?}, registered {:?}",
+                callback.path, callback.kind
+            )));
+        }
         let key = callback.key.as_ref().ok_or_else(|| {
-            mlua::Error::runtime(format!(
-                "Lua draw callback was not registered at {}",
-                callback.path
-            ))
+            mlua::Error::runtime(format!("Lua callback was not registered at {}", callback.path))
         })?;
         let function: Function = self.lua.registry_value(key)?;
         let main_state: Table = self.lua.registry_value(&self.main_state_key)?;
@@ -177,15 +264,7 @@ impl LuaSkinRuntime {
                 })?,
             )?;
 
-            let result = match function.call::<Value>(()) {
-                Ok(Value::Boolean(value)) => Ok(value),
-                Ok(Value::Nil) => Err(mlua::Error::runtime("Lua draw callback returned nil")),
-                Ok(value) => Err(mlua::Error::runtime(format!(
-                    "Lua draw callback returned {}, expected boolean",
-                    value.type_name()
-                ))),
-                Err(error) => Err(error),
-            };
+            let result = function.call::<Value>(()).and_then(LuaRuntimeEvaluatedValue::from_lua);
 
             // Scoped functions borrow the current frame snapshot. Restore the
             // persistent load-time stubs before the scope invalidates them.
@@ -208,8 +287,52 @@ impl LuaSkinRuntime {
             field_path = path,
             classification = "ERROR",
             error,
-            "Lua draw callback failed; falling back to false"
+            "Lua callback failed; using safe fallback value"
         );
+    }
+}
+
+enum LuaRuntimeEvaluatedValue {
+    Nil,
+    Boolean(bool),
+    Integer(i64),
+    Number(f64),
+    String(String),
+}
+
+impl LuaRuntimeEvaluatedValue {
+    fn from_lua(value: Value) -> mlua::Result<Self> {
+        match value {
+            Value::Nil => Ok(Self::Nil),
+            Value::Boolean(value) => Ok(Self::Boolean(value)),
+            Value::Integer(value) => Ok(Self::Integer(value)),
+            Value::Number(value) => Ok(Self::Number(value)),
+            Value::String(value) => Ok(Self::String(value.to_string_lossy())),
+            value => Err(mlua::Error::runtime(format!(
+                "Lua callback returned unsupported {} value",
+                value.type_name()
+            ))),
+        }
+    }
+
+    fn type_name(&self) -> &'static str {
+        match self {
+            Self::Nil => "nil",
+            Self::Boolean(_) => "boolean",
+            Self::Integer(_) | Self::Number(_) => "number",
+            Self::String(_) => "string",
+        }
+    }
+
+    fn into_text(self) -> Option<String> {
+        match self {
+            Self::Nil => Some("nil".to_string()),
+            Self::Boolean(value) => Some(value.to_string()),
+            Self::Integer(value) => Some(value.to_string()),
+            Self::Number(value) if value.is_finite() => Some(value.to_string()),
+            Self::String(value) => Some(value),
+            Self::Number(_) => None,
+        }
     }
 }
 use super::*;

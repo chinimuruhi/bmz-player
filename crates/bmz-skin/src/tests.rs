@@ -101,6 +101,40 @@ fn load_runtime_draw_fixture(name: &str, draw_source: &str) -> LoadedSkinDocumen
     load_lua_skin(&path, SkinKind::Play, &BTreeMap::new(), &BTreeMap::new()).unwrap()
 }
 
+fn load_runtime_value_fixture(
+    name: &str,
+    runtime_mode: LuaSkinRuntimeMode,
+    value_source: &str,
+) -> LoadedSkinDocument {
+    let root = unique_test_dir(name);
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("skin.luaskin");
+    fs::write(
+        &path,
+        format!(
+            r#"
+                local main_state = require("main_state")
+                {value_source}
+                return {{
+                    type = 0,
+                    value = {{{{
+                        id = "runtime-number",
+                        value = number_value
+                    }}}},
+                    text = {{{{
+                        id = "runtime-text",
+                        value = text_value
+                    }}}}
+                }}
+                "#
+        ),
+    )
+    .unwrap();
+    let runtime_state = LuaLoadRuntimeState { runtime_mode, ..Default::default() };
+    load_lua_skin_with_runtime_state(&path, &BTreeMap::new(), &BTreeMap::new(), &runtime_state)
+        .unwrap()
+}
+
 fn only_destination_draw(loaded: &LoadedSkinDocument) -> &str {
     let bmz_skin_document::DestinationListEntry::Single(destination) =
         &loaded.document.destination[0]

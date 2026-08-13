@@ -3,6 +3,21 @@
 BMZ は beatoraja JSON / Lua skin の互換を基本にする。既存 beatoraja skin type は
 そのまま扱い、BMZ 独自の key mode だけ拡張 skin type を予約する。
 
+## Lua Runtime Compatibility Mode
+
+通常の `auto` モードはLua functionをロード時に宣言的なref/式へ変換し、推論できない
+対応済みfieldだけ永続Lua VMのruntime callbackへ残す。スキン開発・beatoraja比較では
+`--lua-skin-runtime compat` を指定すると、次のfunction fieldを推論せず実行時に評価する。
+
+- destination `draw`
+- `value[]`, `text[]`, `graph[]`, `slider[]` の `value`
+
+Luaファイル全体をフレームごとに再ロードするのではなく、ロード時に作成したclosureと
+module stateを保持する。callbackからは現在フレームの `main_state` を参照できる。
+各callbackの命令数上限、フレーム全体の命令数上限、Lua VMのメモリ上限を適用し、失敗時は
+draw=false、数値/文字列は未取得として扱う。runtime callbackを含むdocumentはVMをclone
+できないためdocument cacheとLua-to-JSON変換の対象外になる。
+
 ## Skin Type
 
 beatoraja 互換の主な play skin type:

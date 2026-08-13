@@ -52,9 +52,9 @@ use crate::audio::{AppAudioOutput, AudioOutputDiagnostics, AudioRuntime};
 use crate::bootstrap::{self, BootstrappedApp};
 use crate::chart_preview::SelectChartPreview;
 use crate::cli::{
-    AUTOPLAY_ON_START_ARG, AppOptions, BOOT_RESULT_SAMPLE_ARG, SMOKE_EXIT_AFTER_FRAMES_ARG,
-    SMOKE_EXIT_AFTER_PLAY_FRAMES_ARG, SMOKE_EXIT_AFTER_RESULT_FRAMES_ARG, SMOKE_EXIT_ON_RESULT_ARG,
-    SMOKE_SCREENSHOT_ARG,
+    AUTOPLAY_ON_START_ARG, AppOptions, BOOT_RESULT_SAMPLE_ARG, LUA_SKIN_RUNTIME_ARG,
+    SMOKE_EXIT_AFTER_FRAMES_ARG, SMOKE_EXIT_AFTER_PLAY_FRAMES_ARG,
+    SMOKE_EXIT_AFTER_RESULT_FRAMES_ARG, SMOKE_EXIT_ON_RESULT_ARG, SMOKE_SCREENSHOT_ARG,
 };
 use crate::config::app_config::{
     AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind,

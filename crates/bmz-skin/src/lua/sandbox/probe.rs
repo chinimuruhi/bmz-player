@@ -39,7 +39,8 @@ pub(super) struct MainStateProbe {
     pub(super) gauge_value_destination_occurrences: BTreeMap<String, usize>,
     pub(super) gauge_value_overlay_mode: Option<&'static str>,
     pub(super) result_panel_default: Option<i32>,
-    pub(super) runtime_draw_paths: Vec<String>,
+    pub(super) runtime_mode: LuaSkinRuntimeMode,
+    pub(super) runtime_callbacks: Vec<LuaRuntimeCallbackSpec>,
     pub(super) load_dependencies: Option<Arc<Mutex<SkinLoadDependencies>>>,
 }
 
@@ -83,7 +84,8 @@ impl Default for MainStateProbe {
             gauge_value_destination_occurrences: BTreeMap::new(),
             gauge_value_overlay_mode: None,
             result_panel_default: None,
-            runtime_draw_paths: Vec::new(),
+            runtime_mode: LuaSkinRuntimeMode::Auto,
+            runtime_callbacks: Vec::new(),
             load_dependencies: None,
         }
     }

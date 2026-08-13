@@ -25,7 +25,7 @@ use bmz_skin_document::{
 
 use crate::path_context::canonicalize_skin_path;
 use crate::{
-    LoadedLuaSkinValue, LuaLoadRuntimeState, LuaMainState, LuaSkinOffsetValue,
+    LoadedLuaSkinValue, LuaLoadRuntimeState, LuaMainState, LuaSkinOffsetValue, LuaSkinRuntimeMode,
     SkinLoadDependencies, SkinLoadWarning, SkinLoadedFileDependency, SkinPathContext,
 };
 
@@ -55,6 +55,7 @@ use sandbox_probe::*;
 
 const LUA_INSTRUCTION_LIMIT: i64 = 2_000_000;
 const LUA_INFERENCE_INSTRUCTION_LIMIT: i64 = 16_000_000;
+const LUA_RUNTIME_FRAME_INSTRUCTION_LIMIT: i64 = 8_000_000;
 const LUA_HOOK_INTERVAL: u32 = 1_000;
 const LUA_MAX_TABLE_DEPTH: usize = 64;
 const LUA_MAX_TABLE_ENTRIES: usize = 200_000;
@@ -62,6 +63,7 @@ const LUA_IO_MAX_READ_BYTES: usize = 8 * 1024 * 1024;
 const LUA_MEMORY_LIMIT_BYTES: usize = 256 * 1024 * 1024;
 const TIMER_OFF_VALUE: i32 = i32::MIN;
 pub const LUA_DRAW_CALLBACK_PREFIX: &str = "bmz:lua_draw_callback:";
+pub const LUA_VALUE_CALLBACK_PREFIX: &str = "bmz:lua_value_callback:";
 
 mod config;
 mod execution;

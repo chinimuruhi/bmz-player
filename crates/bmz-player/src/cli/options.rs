@@ -28,6 +28,9 @@ pub struct AppOptions {
     pub boot_practice: bool,
     pub practice_start_ms: Option<u32>,
     pub practice_end_ms: Option<u32>,
+    /// Lua skin developer mode. `Compat` keeps supported function fields in a
+    /// persistent runtime VM instead of compiling them at load time.
+    pub lua_skin_runtime_mode: bmz_skin::LuaSkinRuntimeMode,
 }
 
 impl AppOptions {
@@ -86,6 +89,10 @@ impl AppOptions {
             }
             if let Some(value) = arg.strip_prefix("--practice-end-ms=") {
                 options.practice_end_ms = Some(parse_practice_ms(value, PRACTICE_END_MS_ARG)?);
+                continue;
+            }
+            if let Some(value) = arg.strip_prefix("--lua-skin-runtime=") {
+                options.lua_skin_runtime_mode = parse_lua_skin_runtime_mode(value)?;
                 continue;
             }
 
@@ -170,6 +177,12 @@ impl AppOptions {
                     options.practice_end_ms =
                         Some(parse_practice_ms(value.as_ref(), PRACTICE_END_MS_ARG)?);
                 }
+                LUA_SKIN_RUNTIME_ARG => {
+                    let Some(value) = args.next() else {
+                        bail!("{LUA_SKIN_RUNTIME_ARG} requires a mode (auto or compat)");
+                    };
+                    options.lua_skin_runtime_mode = parse_lua_skin_runtime_mode(value.as_ref())?;
+                }
                 _ if let Some(slot) = parse_beatoraja_replay_flag(arg) => {
                     options.boot_replay_slot = Some(slot);
                 }
@@ -183,7 +196,7 @@ impl AppOptions {
 }
 use super::help::{
     parse_beatoraja_replay_flag, parse_boot_course_id, parse_boot_course_replay_id,
-    parse_boot_replay_slot, parse_practice_ms, parse_renderer_backend,
+    parse_boot_replay_slot, parse_lua_skin_runtime_mode, parse_practice_ms, parse_renderer_backend,
     parse_smoke_exit_after_frames_value, parse_smoke_exit_after_play_frames_value,
     parse_smoke_exit_after_result_frames_value, parse_smoke_screenshot_path,
 };
