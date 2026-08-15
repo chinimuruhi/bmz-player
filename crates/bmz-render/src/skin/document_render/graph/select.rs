@@ -36,7 +36,7 @@ macro_rules! skin_document_render_graph_select_methods {
                 return Vec::new();
             }
             let frame_alpha = frame.a as f32 / 255.0;
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let max_density = select_note_distribution_max_density(&row.chart_distribution) as f32;
             let count = row.chart_distribution.len().max(1) as f32;
             let pixel_w = 1.0 / self.w.max(1) as f32;
@@ -152,7 +152,7 @@ macro_rules! skin_document_render_graph_select_methods {
             }
             let rect = normalize_skin_frame_rect(frame, self.w, self.h);
             let frame_alpha = frame.a as f32 / 255.0;
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let main_bpm = state.main_bpm.max(1.0);
             let canvas_w = self.w.max(1) as f32;
             let canvas_h = self.h.max(1) as f32;

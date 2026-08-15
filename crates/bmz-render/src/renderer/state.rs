@@ -8,6 +8,7 @@ pub(super) struct WgpuRenderer {
     pub(super) rect_buffer_capacity: usize,
     pub(super) image_pipeline: wgpu::RenderPipeline,
     pub(super) image_add_pipeline: wgpu::RenderPipeline,
+    pub(super) image_multiply_pipeline: wgpu::RenderPipeline,
     pub(super) image_premultiplied_pipeline: wgpu::RenderPipeline,
     pub(super) image_layer_pipeline: wgpu::RenderPipeline,
     pub(super) image_bind_group_layout: wgpu::BindGroupLayout,

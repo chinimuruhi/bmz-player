@@ -271,11 +271,11 @@ pub(in crate::skin) fn test_skin_op(
         82 => state.play_screen && !state.autoplay && !state.replay_playback,
         84 => state.play_screen && state.replay_playback,
         1080 => state.play_screen && state.practice_mode,
-        // OPTION_1P/2P/3P_PERFECT and EARLY/LATE judge-detail conditions.
+        // LR2 OPTION_1P/2P/3P_PERFECT..MISS and EARLY/LATE judge-detail conditions.
         // beatoraja maps FAST/EARLY to positive recent judge timing, LATE/SLOW to negative.
         // beatoraja の EARLY/LATE は `getNowJudge(player) > 1` も要求するため、
         // ThresholdMs=0 で timing sign が残る場合でも PGREAT とは同時成立しない。
-        241 => state.judge_index[0] == Some(0),
+        241..=246 => state.judge_index[0] == Some((op - 241) as usize),
         1242 => {
             state.judge_index[0].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[0] == Some(1)
@@ -284,7 +284,7 @@ pub(in crate::skin) fn test_skin_op(
             state.judge_index[0].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[0] == Some(-1)
         }
-        261 => state.judge_index[1] == Some(0),
+        261..=266 => state.judge_index[1] == Some((op - 261) as usize),
         1262 => {
             state.judge_index[1].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[1] == Some(1)
@@ -293,7 +293,7 @@ pub(in crate::skin) fn test_skin_op(
             state.judge_index[1].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[1] == Some(-1)
         }
-        361 => state.judge_index[2] == Some(0),
+        361..=366 => state.judge_index[2] == Some((op - 361) as usize),
         1362 => {
             state.judge_index[2].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[2] == Some(1)

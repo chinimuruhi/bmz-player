@@ -1,6 +1,31 @@
 use super::*;
 
 #[test]
+fn static_image_destination_maps_lr2_multiply_blend() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+        {
+            "w": 100,
+            "h": 100,
+            "source": [{ "id": 1, "path": "colors.png" }],
+            "image": [{ "id": "judge-color", "src": 1, "x": 0, "y": 0, "w": 1, "h": 1 }],
+            "destination": [{
+                "id": "judge-color",
+                "blend": 4,
+                "dst": [{ "x": 10, "y": 20, "w": 30, "h": 10 }]
+            }]
+        }
+        "#,
+    )
+    .unwrap();
+    let sources = mock_source("1", 6.0, 1.0);
+
+    let items = document.static_image_render_items(&sources, &SkinDrawState::default());
+
+    assert!(matches!(items.as_slice(), [SkinRenderItem::Image { blend: BlendMode::Multiply, .. }]));
+}
+
+#[test]
 fn static_render_items_require_an_exact_destination_image_id() {
     let document: SkinDocument = serde_json::from_str(
             r#"

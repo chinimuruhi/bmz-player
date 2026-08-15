@@ -191,7 +191,7 @@ pub(super) fn stacked_result_note_graph_rect_batch<
         return Arc::from([]);
     }
     let frame_alpha = frame.a as f32 / 255.0;
-    let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+    let blend = skin_blend_mode(destination.blend);
     let max_stack =
         buckets.iter().map(|bucket| bucket.values().into_iter().sum::<u32>()).max().unwrap_or(0);
     let graph_max = beatoraja_note_graph_max(max_stack);

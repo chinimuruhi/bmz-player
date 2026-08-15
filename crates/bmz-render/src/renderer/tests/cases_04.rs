@@ -254,6 +254,18 @@ fn additive_image_blend_uses_source_alpha() {
 }
 
 #[test]
+fn multiply_image_blend_modulates_destination_with_source_color() {
+    let blend = image_blend_state(BlendMode::Multiply);
+
+    assert_eq!(blend.color.src_factor, wgpu::BlendFactor::Zero);
+    assert_eq!(blend.color.dst_factor, wgpu::BlendFactor::Src);
+    assert_eq!(blend.color.operation, wgpu::BlendOperation::Add);
+    assert_eq!(blend.alpha.src_factor, wgpu::BlendFactor::Zero);
+    assert_eq!(blend.alpha.dst_factor, wgpu::BlendFactor::Src);
+    assert_eq!(blend.alpha.operation, wgpu::BlendOperation::Add);
+}
+
+#[test]
 fn premultiplied_image_blend_does_not_apply_source_alpha_twice() {
     let blend = image_blend_state(BlendMode::Premultiplied);
 
