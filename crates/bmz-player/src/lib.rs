@@ -46,6 +46,7 @@ pub mod random_trainer;
 pub mod screens;
 pub mod select_options;
 pub mod skin_audio;
+pub(crate) mod skin_extension;
 pub mod skin_loader;
 pub mod song_download;
 pub mod songs_cmd;

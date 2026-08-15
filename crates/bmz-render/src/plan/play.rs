@@ -6,7 +6,8 @@ mod state;
 
 use default::push_default_playfield;
 use document::push_document_playfield;
-use state::{build_play_skin_state, build_play_skin_text, play_elapsed_ms};
+pub(super) use state::build_play_skin_state;
+use state::{build_play_skin_text, play_elapsed_ms};
 
 #[derive(Clone, Copy)]
 struct PlayfieldLayout<'a> {

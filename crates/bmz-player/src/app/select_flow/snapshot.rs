@@ -90,6 +90,14 @@ impl WinitApp {
         let note_display_duration_ms = mode_config
             .as_ref()
             .map(|config| config.target_green_number.max(1).min(i32::MAX as u32) as i32);
+        let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
+        let ln_score_policy = match selected {
+            Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| {
+                crate::ln_policy::score_ln_policy(ln_policy_setting, chart.ln_profile)
+            }),
+            Some(SelectItem::Course(row)) => Some(row.ln_policy),
+            _ => None,
+        };
         let battle_choices = self.select_battle_choices();
         let displayed_index = if self.select.ir_battle.active {
             self.select.ir_battle.cursor
@@ -217,6 +225,14 @@ impl WinitApp {
                 .ln_mode_policy
                 .display_label()
                 .to_string(),
+            rule_mode_index: crate::skin_extension::rule_mode_index(
+                self.boot.profile_config.play.rule_mode,
+            ),
+            ln_policy_setting_index: crate::skin_extension::ln_policy_setting_index(
+                ln_policy_setting,
+            ),
+            ln_score_policy_index: ln_score_policy
+                .map(crate::skin_extension::ln_score_policy_index),
             judge_algorithm: self
                 .boot
                 .profile_config

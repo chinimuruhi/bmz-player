@@ -367,6 +367,67 @@ fn removed_grade_diff_mode_refs_have_fixed_next_compatibility_values() {
 }
 
 #[test]
+fn bmz_rule_and_ln_policy_refs_keep_setting_score_key_and_effective_mode_separate() {
+    let state = SkinDrawState {
+        rule_mode_index: 2,
+        ln_policy_setting_index: Some(4),
+        ln_score_policy_index: Some(1),
+        result_ln_mode_index: Some(2),
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_RULE_MODE, &state), Some(2));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LN_POLICY_SETTING, &state), Some(4));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LN_SCORE_POLICY, &state), Some(1));
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_RULE_MODE, &state), 2);
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_LN_POLICY_SETTING, &state), 4);
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_LN_SCORE_POLICY, &state), 1);
+    assert_eq!(skin_state_imageset_index(SKIN_REF_BMZ_RULE_MODE, &state), Some(2));
+    assert_eq!(skin_state_imageset_index(SKIN_REF_BMZ_LN_POLICY_SETTING, &state), Some(4));
+    assert_eq!(skin_state_imageset_index(SKIN_REF_BMZ_LN_SCORE_POLICY, &state), Some(1));
+    // Existing ref 308 remains the effective rendered LN kind.
+    assert_eq!(skin_state_event_index(308, &state), 2);
+
+    assert!(test_skin_op(1990, &[], &state));
+    assert!(!test_skin_op(1988, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_LN_POLICY_SETTING_BASE + 4, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_LN_POLICY_SETTING_FORCE, &[], &state));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_LN_POLICY_SETTING_AUTO, &[], &state));
+    assert!(test_skin_op(19_152, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_LN_SCORE_POLICY_AUTO, &[], &state));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_LN_SCORE_POLICY_FORCE, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_LN_SCORE_POLICY_AVAILABLE, &[], &state));
+
+    let text = SkinTextState::default();
+    assert_eq!(skin_main_state_text(SKIN_REF_BMZ_RULE_MODE, Some(&state), &text), "DX");
+    assert_eq!(
+        skin_main_state_text(SKIN_REF_BMZ_LN_POLICY_SETTING, Some(&state), &text),
+        "FORCE(CN)"
+    );
+    assert_eq!(skin_main_state_text(SKIN_REF_BMZ_LN_SCORE_POLICY, Some(&state), &text), "AUTO(CN)");
+    let lua_text = lua_main_state_text_values(&state, &text);
+    assert_eq!(lua_text.get(&SKIN_REF_BMZ_RULE_MODE).map(String::as_str), Some("DX"));
+    assert_eq!(lua_text.get(&SKIN_REF_BMZ_LN_SCORE_POLICY).map(String::as_str), Some("AUTO(CN)"));
+}
+
+#[test]
+fn bmz_ln_policy_refs_are_unavailable_without_a_selected_or_running_score_key() {
+    let state = SkinDrawState::default();
+
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LN_POLICY_SETTING, &state), None);
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LN_SCORE_POLICY, &state), None);
+    assert_eq!(skin_state_imageset_index(SKIN_REF_BMZ_LN_POLICY_SETTING, &state), None);
+    assert_eq!(skin_state_imageset_index(SKIN_REF_BMZ_LN_SCORE_POLICY, &state), None);
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_LN_POLICY_SETTING_BASE, &[], &state));
+    assert!(!test_skin_op(19_151, &[], &state));
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_LN_SCORE_POLICY_AVAILABLE, &[], &state));
+    assert_eq!(
+        skin_main_state_text(SKIN_REF_BMZ_LN_SCORE_POLICY, Some(&state), &SkinTextState::default()),
+        ""
+    );
+}
+
+#[test]
 fn score_grade_refs_use_exact_official_borders() {
     let state = SkinDrawState {
         select_screen: true,

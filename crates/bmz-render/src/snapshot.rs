@@ -224,6 +224,9 @@ pub struct RenderSnapshot {
     pub min_bpm: f32,
     pub max_bpm: f32,
     pub has_bga: bool,
+    /// beatoraja OPTION_NO_LN / OPTION_LN (172/173) 用。
+    /// None は開始譜面をまだ特定できない placeholder。
+    pub has_long_notes: Option<bool>,
     pub has_bpm_stop: bool,
     pub bga_enabled: bool,
     pub bga_base: Option<DisplayBgaFrame>,
@@ -256,6 +259,10 @@ pub struct RenderSnapshot {
     pub autoplay: bool,
     /// リプレイ再生中かどうか。プレイ中 FAST/SLOW 表示など、入力由来の表示制御に使う。
     pub replay_playback: bool,
+    /// BMZ extension: frozen scoring rule mode index for Decide/Play.
+    pub rule_mode_index: usize,
+    /// BMZ extension: normalized LN policy index stored in the score key.
+    pub ln_score_policy_index: Option<usize>,
     /// プラクティス再生中かどうか。beatoraja OPTION_PRACTICE (1080) 用。
     pub practice_mode: bool,
     /// beatoraja assist button 301..307 の選択状態。

@@ -411,6 +411,9 @@ fn apply_running_play_mode_to_snapshot(
     snapshot: &mut RenderSnapshot,
     running: &RunningPlaySession,
 ) {
+    snapshot.rule_mode_index = crate::skin_extension::rule_mode_index(running.score_key.rule_mode);
+    snapshot.ln_score_policy_index =
+        Some(crate::skin_extension::ln_score_policy_index(running.score_key.ln_policy));
     snapshot.practice_mode = running.practice_mode;
     snapshot.score_save_enabled = !snapshot.autoplay
         && !snapshot.replay_playback

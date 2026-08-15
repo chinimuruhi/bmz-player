@@ -39,6 +39,7 @@ pub fn apply_prepared_chart_to_render_snapshot(
     snapshot.min_bpm = cache.min_bpm;
     snapshot.max_bpm = cache.max_bpm;
     snapshot.has_bga = chart.metadata.has_bga;
+    snapshot.has_long_notes = Some(!chart.long_notes.is_empty());
     snapshot.has_bpm_stop = cache.has_bpm_stop;
     snapshot.key_mode = chart.metadata.key_mode;
     let primary_key_mode = if battle {
@@ -315,6 +316,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         min_bpm: cache.min_bpm,
         max_bpm: cache.max_bpm,
         has_bga: session.chart.metadata.has_bga,
+        has_long_notes: Some(!session.chart.long_notes.is_empty()),
         has_bpm_stop: cache.has_bpm_stop,
         bga_enabled: session.bga_enabled,
         bga_base: session
@@ -364,6 +366,8 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         bpm_graph_segments: Arc::clone(&cache.bpm_graph_segments),
         autoplay: session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full()),
         replay_playback: session.replay_player.is_some() && session.replay_lane_mask.is_none(),
+        rule_mode_index: crate::skin_extension::rule_mode_index(session.rule_mode),
+        ln_score_policy_index: None,
         practice_mode: false,
         assist_flags: crate::assist::mask_flags(session.assist.configured_mask),
         assist_extra_note_depth: session.assist.extra_note_depth,

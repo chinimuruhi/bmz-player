@@ -316,6 +316,9 @@ fn select_draw_state_maps_extended_option_refs() {
         double_option: "BATTLE AS".to_string(),
         hs_fix: "MAIN BPM".to_string(),
         hispeed_auto_adjust: true,
+        rule_mode_index: 1,
+        ln_policy_setting_index: 5,
+        ln_score_policy_index: Some(2),
         note_display_duration_ms: Some(300),
         ..SelectSnapshot::default()
     };
@@ -327,6 +330,9 @@ fn select_draw_state_maps_extended_option_refs() {
     assert_eq!(skin_state_number(54, &state), Some(3));
     assert_eq!(skin_state_number(55, &state), Some(3));
     assert_eq!(skin_state_number(342, &state), Some(1));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_RULE_MODE, &state), Some(1));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LN_POLICY_SETTING, &state), Some(5));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LN_SCORE_POLICY, &state), Some(2));
 }
 
 #[test]

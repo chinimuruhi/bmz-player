@@ -197,6 +197,10 @@ pub struct ResultSnapshot {
     pub has_long_notes: bool,
     /// 実効LN種別のimageset index (0=LN, 1=CN, 2=HCN)。
     pub ln_mode_index: usize,
+    /// BMZ extension: frozen scoring rule mode index for this attempt.
+    pub rule_mode_index: usize,
+    /// BMZ extension: normalized LN policy index stored in this attempt's score key.
+    pub ln_score_policy_index: Option<usize>,
     pub result_gauge_graph_type: i32,
     /// Lua Result スキンの展開パネル (0=非表示、1=IR、2=グラフ)。
     pub result_panel: i32,

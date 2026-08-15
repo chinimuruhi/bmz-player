@@ -189,6 +189,11 @@ impl WinitApp {
         mut snapshot: RenderSnapshot,
     ) {
         self.normalize_seven_to_six_options(chart_id, &mut options);
+        if let Some(score_key) = self.play_skin_score_key_for_chart_id(chart_id, &options) {
+            snapshot.rule_mode_index = crate::skin_extension::rule_mode_index(score_key.rule_mode);
+            snapshot.ln_score_policy_index =
+                Some(crate::skin_extension::ln_score_policy_index(score_key.ln_policy));
+        }
         // active sessionのinstall前からref 150とFIRST_PLAYを正しいScoreKeyで
         // 評価できるよう、選曲行の集約値を今回のプレイ条件の値で置き換える。
         let previous_best_ex_score = self.play_skin_previous_best_ex_score(chart_id, &options);
@@ -225,6 +230,12 @@ impl WinitApp {
         snapshot.stagefile_image_size = self.play.play_stagefile_size;
         snapshot.backbmp_background = self.play.play_backbmp_loaded;
         let prepared_chart = self.play_preload_prepared_chart(chart_id);
+        if let Some(prepared) = &prepared_chart {
+            snapshot.rule_mode_index =
+                crate::skin_extension::rule_mode_index(prepared.score_key.rule_mode);
+            snapshot.ln_score_policy_index =
+                Some(crate::skin_extension::ln_score_policy_index(prepared.score_key.ln_policy));
+        }
         if let Some(prepared) = &prepared_chart {
             let battle_presentation = uses_battle_presentation(
                 self.key_mode_for_chart(chart_id),

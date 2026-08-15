@@ -323,6 +323,9 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         SKIN_REF_BMZ_SCORE_GRADE_NEAREST => {
             score_grade_facts(state).map(|facts| facts.nearest_index as i64)
         }
+        SKIN_REF_BMZ_RULE_MODE => Some(state.rule_mode_index as i64),
+        SKIN_REF_BMZ_LN_POLICY_SETTING => state.ln_policy_setting_index.map(|index| index as i64),
+        SKIN_REF_BMZ_LN_SCORE_POLICY => state.ln_score_policy_index.map(|index| index as i64),
         321..=324 => {
             let slot = (ref_id - 321) as usize;
             Some(state.select_replay_slot_rule_indices[slot])

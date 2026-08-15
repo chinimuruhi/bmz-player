@@ -392,9 +392,12 @@ fn lr2_nowjudge_adds_beatoraja_judge_detail_objects() {
         .destinations
         .iter()
         .filter(|destination| {
-            destination["op"]
-                .as_array()
-                .is_some_and(|ops| ops.iter().any(|op| matches!(op.as_i64(), Some(1998 | 1999))))
+            destination["op"].as_array().is_some_and(|ops| {
+                ops.iter().any(|op| {
+                    op.as_i64() == Some(i64::from(SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_EARLY_LATE))
+                        || op.as_i64() == Some(i64::from(SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_MS))
+                })
+            })
         })
         .collect::<Vec<_>>();
     assert_eq!(detail_destinations.len(), 4);

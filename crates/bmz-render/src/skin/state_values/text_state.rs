@@ -173,6 +173,17 @@ pub(super) fn skin_main_state_text(
             .and_then(score_grade_facts)
             .map(|facts| facts.nearest_label().to_string())
             .unwrap_or_default(),
+        SKIN_REF_BMZ_RULE_MODE => draw_state
+            .map(|state| rule_mode_label(state.rule_mode_index).to_string())
+            .unwrap_or_default(),
+        SKIN_REF_BMZ_LN_POLICY_SETTING => draw_state
+            .and_then(|state| state.ln_policy_setting_index)
+            .map(|index| ln_policy_label(index).to_string())
+            .unwrap_or_default(),
+        SKIN_REF_BMZ_LN_SCORE_POLICY => draw_state
+            .and_then(|state| state.ln_score_policy_index)
+            .map(|index| ln_policy_label(index).to_string())
+            .unwrap_or_default(),
         SKIN_TEXT_BMZ_DAILY_RANK => draw_state
             .map(|state| daily_rank_label(&state.player_stats.daily).to_string())
             .unwrap_or_default(),
@@ -240,6 +251,9 @@ pub(super) fn lua_main_state_text_values(
         SKIN_REF_BMZ_SCORE_GRADE_CURRENT,
         SKIN_REF_BMZ_SCORE_GRADE_NEXT,
         SKIN_REF_BMZ_SCORE_GRADE_NEAREST,
+        SKIN_REF_BMZ_RULE_MODE,
+        SKIN_REF_BMZ_LN_POLICY_SETTING,
+        SKIN_REF_BMZ_LN_SCORE_POLICY,
     ];
     refs.extend(120..=129);
     refs.extend(150..=159);
@@ -249,6 +263,27 @@ pub(super) fn lua_main_state_text_values(
     refs.into_iter()
         .map(|ref_id| (ref_id, skin_main_state_text(ref_id, Some(draw_state), text_state)))
         .collect()
+}
+
+fn rule_mode_label(index: usize) -> &'static str {
+    match index {
+        0 => "BEATORAJA",
+        1 => "LR2ORAJA",
+        2 => "DX",
+        _ => "",
+    }
+}
+
+fn ln_policy_label(index: usize) -> &'static str {
+    match index {
+        0 => "AUTO(LN)",
+        1 => "AUTO(CN)",
+        2 => "AUTO(HCN)",
+        3 => "FORCE(LN)",
+        4 => "FORCE(CN)",
+        5 => "FORCE(HCN)",
+        _ => "",
+    }
 }
 
 fn random_mix_option_text(ref_id: i32, state: &SkinDrawState) -> String {

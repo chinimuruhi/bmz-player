@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn result_long_note_options_and_index_use_effective_chart_state() {
     let no_ln = SkinDrawState {
-        result_has_long_notes: Some(false),
+        chart_has_long_notes: Some(false),
         result_ln_mode_index: Some(0),
         ..SkinDrawState::default()
     };
@@ -12,7 +12,7 @@ fn result_long_note_options_and_index_use_effective_chart_state() {
 
     for (index, expected) in [(0, 0), (1, 1), (2, 2)] {
         let with_ln = SkinDrawState {
-            result_has_long_notes: Some(true),
+            chart_has_long_notes: Some(true),
             result_ln_mode_index: Some(index),
             ..SkinDrawState::default()
         };

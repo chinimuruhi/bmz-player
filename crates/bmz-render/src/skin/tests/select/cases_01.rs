@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn select_long_note_options_follow_the_selected_chart() {
+    let document: SkinDocument = serde_json::from_str(r#"{ "type": 5 }"#).unwrap();
+    let mut snapshot = SelectSnapshot {
+        rows: vec![SelectRowSnapshot {
+            index: 0,
+            kind: SelectRowKind::Song,
+            in_library: true,
+            has_long_notes: true,
+            ..SelectRowSnapshot::default()
+        }],
+        ..SelectSnapshot::default()
+    };
+
+    let (with_ln, _) = document.select_draw_state(&snapshot, None);
+    assert_eq!(with_ln.chart_has_long_notes, Some(true));
+    assert!(!test_skin_op(172, &[], &with_ln));
+    assert!(test_skin_op(173, &[], &with_ln));
+
+    snapshot.rows[0].has_long_notes = false;
+    let (without_ln, _) = document.select_draw_state(&snapshot, None);
+    assert_eq!(without_ln.chart_has_long_notes, Some(false));
+    assert!(test_skin_op(172, &[], &without_ln));
+    assert!(!test_skin_op(173, &[], &without_ln));
+
+    snapshot.rows[0].kind = SelectRowKind::Folder;
+    snapshot.rows[0].is_folder = true;
+    let (folder, _) = document.select_draw_state(&snapshot, None);
+    assert_eq!(folder.chart_has_long_notes, None);
+    assert!(!test_skin_op(172, &[], &folder));
+    assert!(!test_skin_op(173, &[], &folder));
+}
+
+#[test]
 fn select_document_options_follow_selected_song_text_presence() {
     let no_document = SkinDrawState {
         select_screen: true,

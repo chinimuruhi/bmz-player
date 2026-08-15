@@ -132,6 +132,66 @@ BMZ 対応 select skin で4種類を区別する場合は、BMZ 拡張 ref `1970
 `2=AUTO BATTLE`, `3=BATTLE` を返す。BMZ デフォルトスキンの play mode panel も
 この ref を使用する。
 
+### Play Gauge Type Ref
+
+`ref=44`は、Lua skinのimageset `value`が`main_state.gauge_type()`を返す場合に、BMZが
+JSONのimage indexへ変換するための内部bridgeである。beatorajaの公開NumberPropertyや
+スコア互換Rule Modeではなく、image / imagesetの`ref`専用として扱う。値は現在適用中の
+gauge typeで、`0=ASSIST EASY`, `1=EASY`, `2=NORMAL`, `3=HARD`, `4=EX HARD`,
+`5=HAZARD`, `6=CLASS`, `7=EX CLASS`, `8=EX HARD CLASS`。JSON `gauge.type`の
+ゲージアニメーション種別とも別の値である。
+
+### BMZ Rule Mode / LN Policy Refs
+
+スコア互換ルール、選曲設定のLN方針、ScoreKeyへ正規化されたLN方針を別の状態として公開する。
+JSON skinではnumber/value・imagesetの`ref`、textの`ref`、destinationの`op`から参照できる。
+Lua skinでは`main_state.number()` / `event_index()` / `text()` / `option()`から同じ値を参照できる。
+
+Rule Modeは次のindexとlabelを使う。
+
+| index | text | exact option |
+| ---: | --- | ---: |
+| 0 | `BEATORAJA` | 1988 |
+| 1 | `LR2ORAJA` | 1989 |
+| 2 | `DX` | 1990 |
+
+`ref=1987`はnumber / event index / imageset refでは上表のindex、textではlabelを返す。
+Selectでは現在のprofile設定、Decide / Playでは開始する試行のScoreKey、Resultでは終了した
+単曲またはコース試行に保存されたRule Modeを使う。Replayとコースでもprofileの現在値へ
+読み替えず、試行開始時に固定された値を維持する。
+
+LN方針のindexとlabelは、設定値と正規化済みScoreKeyで共通の次の順序を使う。
+
+| index | text | setting exact option | score policy exact option |
+| ---: | --- | ---: | ---: |
+| 0 | `AUTO(LN)` | 19161 | 19151 |
+| 1 | `AUTO(CN)` | 19162 | 19152 |
+| 2 | `AUTO(HCN)` | 19163 | 19153 |
+| 3 | `FORCE(LN)` | 19164 | 19154 |
+| 4 | `FORCE(CN)` | 19165 | 19155 |
+| 5 | `FORCE(HCN)` | 19166 | 19156 |
+
+`ref=19160`はSelectで現在のprofileに設定された`LnPolicySetting`を返す。譜面内容による
+AUTO解決前の値で、19167はAUTO系、19168はFORCE系のときtrueになる。Select以外では
+settingのnumber / imageset ref / textは値なし、setting optionはすべてfalseになる。
+
+`ref=19150`は譜面内容、コース制約、Replay情報を反映してScoreKeyへ正規化された
+`LnScorePolicy`を返す。19157はAUTO系、19158はFORCE系、19159は値を取得できるときtrueになる。
+Selectの曲行では選択譜面から正規化し、コース行ではコース共通ScoreKeyを使う。フォルダ・設定行
+では値なし。Decide / Play / Resultではその試行に固定されたScoreKeyを使う。値なしの場合、
+number / imageset refは未取得、textは空文字、exact / AUTO / FORCE optionはfalseになる。
+`event_index()`だけはAPI仕様上`0`へフォールバックするため、未取得とAUTO(LN)を区別する場合は
+必ず`option(19159)`または`op: [19159]`を併用する。
+
+既存のbeatoraja互換`ref=308`は、設定やScoreKeyではなく、変換後の実効譜面を描画する
+`0=LN`, `1=CN`, `2=HCN`の3値を引き続き返す。AUTO/FORCEの区別には19160または19150を使う。
+
+LNの有無はbeatoraja互換option `172=OPTION_NO_LN` / `173=OPTION_LN`で判定する。
+Selectでは選択中のライブラリ譜面、Decide / PlayではLN policy適用後の開始譜面、Resultでは
+終了した実効譜面を使う。フォルダ・設定行や開始譜面未確定時は172/173の両方がfalseになる。
+Selectで個数も必要な場合は`ref=351`（通常LN数）と`ref=353`（ロングスクラッチ数）を使う。
+`ref=308`はLNが存在しない場合でもLN種別indexを返し得るため、LN有無の判定には使わない。
+
 ### BMZ Score Grade Refs
 
 ランク差分の NEXT / NEAREST はプレイヤー設定ではなく skin が選ぶ。beatoraja
@@ -334,8 +394,9 @@ select snapshotへ予定配置を設定する。
 
 ### BMZ Hispeed Mode Refs
 
-`1900` 台は BMZ play runtime extension として扱う。beatoraja 互換 ref と衝突させないため、
-BMZ 独自のプレイ中状態はこの範囲へ追加する。
+`1900..1996` はBMZ共通extension、`1997..1999`はLR2変換のJudge Detail用に予約し、
+`19000`以降はBMZの高位extensionとして扱う。beatoraja互換ref / option / timerと
+衝突させないため、BMZ独自状態はこれらの管理済み範囲へ追加する。
 
 | ref | kind | meaning |
 | ---: | --- | --- |

@@ -4,7 +4,7 @@ pub(super) fn play_elapsed_ms(snapshot: &RenderSnapshot) -> i32 {
     (snapshot.play_elapsed_time.0 / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32
 }
 
-pub(super) fn build_play_skin_state(
+pub(in crate::plan) fn build_play_skin_state(
     snapshot: &RenderSnapshot,
     skin: &SkinContext,
     play_elapsed_ms: i32,
@@ -37,6 +37,9 @@ pub(super) fn build_play_skin_state(
         rhythm_timer_ms: snapshot.rhythm_timer_elapsed_ms,
         quarter_note_elapsed_ms: snapshot.quarter_note_elapsed_ms,
         key_mode: snapshot.key_mode,
+        chart_has_long_notes: snapshot.has_long_notes,
+        rule_mode_index: snapshot.rule_mode_index,
+        ln_score_policy_index: snapshot.ln_score_policy_index,
         logical_input_held: snapshot.skin_input.held,
         select_arrange_index: crate::skin::select_arrange_index(&snapshot.arrange),
         select_arrange_2p_index: crate::skin::select_arrange_index(&snapshot.arrange_2p),

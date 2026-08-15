@@ -58,6 +58,28 @@ pub(in crate::skin) fn test_skin_op(
                 state.play_screen && state.best_ex_score.is_none()
             }
         }
+        SKIN_OPTION_BMZ_RULE_MODE_BASE..=SKIN_OPTION_BMZ_RULE_MODE_LAST => {
+            state.rule_mode_index == (op - SKIN_OPTION_BMZ_RULE_MODE_BASE) as usize
+        }
+        SKIN_OPTION_BMZ_LN_POLICY_SETTING_BASE..=SKIN_OPTION_BMZ_LN_POLICY_SETTING_LAST => state
+            .ln_policy_setting_index
+            .is_some_and(|index| index == (op - SKIN_OPTION_BMZ_LN_POLICY_SETTING_BASE) as usize),
+        SKIN_OPTION_BMZ_LN_POLICY_SETTING_AUTO => {
+            state.ln_policy_setting_index.is_some_and(|index| index < 3)
+        }
+        SKIN_OPTION_BMZ_LN_POLICY_SETTING_FORCE => {
+            state.ln_policy_setting_index.is_some_and(|index| index >= 3)
+        }
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_BASE..=SKIN_OPTION_BMZ_LN_SCORE_POLICY_LAST => state
+            .ln_score_policy_index
+            .is_some_and(|index| index == (op - SKIN_OPTION_BMZ_LN_SCORE_POLICY_BASE) as usize),
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_AUTO => {
+            state.ln_score_policy_index.is_some_and(|index| index < 3)
+        }
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_FORCE => {
+            state.ln_score_policy_index.is_some_and(|index| index >= 3)
+        }
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_AVAILABLE => state.ln_score_policy_index.is_some(),
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
         }
@@ -139,14 +161,10 @@ pub(in crate::skin) fn test_skin_op(
         300..=318 if state.result_failed.is_some() => result_rank_op_matches(op, state),
         300..=307 => select_small_rank_op_matches(op, state),
         320..=327 => best_rank_op_matches(op, state),
-        // OPTION_NO_LN / OPTION_LN. Resultでは、選曲設定ではなく
-        // LN policy / course constraint適用後の実効譜面を使う。
-        172 if state.result_has_long_notes.is_some() => {
-            !state.result_has_long_notes.unwrap_or_default()
-        }
-        173 if state.result_has_long_notes.is_some() => {
-            state.result_has_long_notes.unwrap_or_default()
-        }
+        // OPTION_NO_LN / OPTION_LN. 譜面未選択・未確定時は両方 false。
+        // Play / ResultではLN policy適用後の実効譜面を使う。
+        172 => state.chart_has_long_notes.is_some_and(|has_long_notes| !has_long_notes),
+        173 => state.chart_has_long_notes == Some(true),
         170 => !state.has_bga,
         171 => state.has_bga,
         // SongDataBooleanProperty returns false for both branches without a selected song.

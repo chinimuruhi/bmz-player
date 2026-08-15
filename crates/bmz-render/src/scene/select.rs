@@ -63,6 +63,12 @@ pub struct SelectSnapshot {
     pub random_mix_options: [u32; 7],
     pub select_sort: String,
     pub select_ln_mode: String,
+    /// BMZ extension: current profile scoring rule mode index.
+    pub rule_mode_index: usize,
+    /// BMZ extension: current profile LN setting index before normalization.
+    pub ln_policy_setting_index: usize,
+    /// BMZ extension: selected chart/course score-key LN policy index.
+    pub ln_score_policy_index: Option<usize>,
     pub judge_algorithm: String,
     pub bga: String,
     /// Select detail option panelで表示する判定表示オフセット(ms)。
@@ -199,6 +205,9 @@ impl Default for SelectSnapshot {
             random_mix_options: [0, 0, 0, 10, 0, 0, 5],
             select_sort: String::new(),
             select_ln_mode: String::new(),
+            rule_mode_index: 0,
+            ln_policy_setting_index: 0,
+            ln_score_policy_index: None,
             judge_algorithm: String::new(),
             bga: String::new(),
             judge_timing_offset_ms: 0,
