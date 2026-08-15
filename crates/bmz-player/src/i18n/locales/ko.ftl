@@ -229,10 +229,10 @@ settings-input-auto-assign = 연결 순서로 자동 할당
 settings-input-swap = 1P / 2P 바꾸기
 settings-input-clear-assignment = 할당 해제
 settings-input-assignment-help = 할당하지 않은 슬롯은 연결 순서(첫 번째=1P, 두 번째=2P)를 사용합니다. 다음 플레이 시작부터 적용됩니다.
-settings-logging-title = 로그 (미구현)
+settings-logging-title = 로그
 settings-logging-level = 레벨
-settings-logging-file-unimplemented = 파일 출력 (미구현)
-settings-logging-help = 로그 설정은 미구현입니다. 현재는 시작 시 고정 설정을 사용합니다.
+settings-logging-file = 파일에 저장
+settings-logging-help = 변경 사항은 다음 실행부터 적용됩니다. RUST_LOG가 설정되어 있으면 우선하며, 로그는 logs 디렉터리에 저장됩니다.
 settings-obs-enabled = OBS WebSocket 연동
 settings-obs-connection-status = 연결 상태
 settings-obs-next-retry = 다음 재시도: { $seconds }초

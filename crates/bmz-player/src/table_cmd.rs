@@ -8,7 +8,7 @@ use crate::cli::TableCommand;
 use crate::config::app_config::DifficultyTableSource;
 use crate::config::load::load_app_config;
 use crate::config::save::save_app_config;
-use crate::paths::resolve_app_paths;
+use crate::paths::{AppPaths, resolve_app_paths};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::migration::migrate_library_db;
 
@@ -77,15 +77,19 @@ impl TableFetchReport {
 }
 
 pub async fn run_table_command(cmd: TableCommand) -> Result<()> {
+    let app_paths = resolve_app_paths()?;
+    run_table_command_with_paths(cmd, &app_paths).await
+}
+
+pub async fn run_table_command_with_paths(cmd: TableCommand, app_paths: &AppPaths) -> Result<()> {
     match cmd {
-        TableCommand::Add { url } => add_table(&url).await,
-        TableCommand::List => list_tables(),
-        TableCommand::Fetch { url } => fetch_tables(url.as_deref()).await,
+        TableCommand::Add { url } => add_table(app_paths, &url).await,
+        TableCommand::List => list_tables(app_paths),
+        TableCommand::Fetch { url } => fetch_tables(app_paths, url.as_deref()).await,
     }
 }
 
-async fn add_table(url: &str) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+async fn add_table(app_paths: &AppPaths, url: &str) -> Result<()> {
     app_paths.ensure_dirs()?;
 
     let mut app_config = if app_paths.config_toml.exists() {
@@ -110,8 +114,7 @@ async fn add_table(url: &str) -> Result<()> {
     Ok(())
 }
 
-fn list_tables() -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn list_tables(app_paths: &AppPaths) -> Result<()> {
     migrate_library_db(&app_paths.library_db)?;
     let library_db = LibraryDatabase::open(&app_paths.library_db)?;
     let tables = library_db.list_difficulty_tables()?;
@@ -128,8 +131,7 @@ fn list_tables() -> Result<()> {
     Ok(())
 }
 
-async fn fetch_tables(url: Option<&str>) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+async fn fetch_tables(app_paths: &AppPaths, url: Option<&str>) -> Result<()> {
     app_paths.ensure_dirs()?;
 
     migrate_library_db(&app_paths.library_db)?;

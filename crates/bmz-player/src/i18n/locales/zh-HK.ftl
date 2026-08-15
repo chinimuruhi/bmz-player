@@ -230,10 +230,10 @@ settings-input-auto-assign = 按連線順序自動分配
 settings-input-swap = 交換 1P / 2P
 settings-input-clear-assignment = 清除分配
 settings-input-assignment-help = 未分配時按連線順序備援（第1台=1P，第2台=2P）。下次開始遊玩時套用。
-settings-logging-title = 記錄（尚未實作）
+settings-logging-title = 記錄
 settings-logging-level = 等級
-settings-logging-file-unimplemented = 輸出至檔案（尚未實作）
-settings-logging-help = 記錄設定尚未實作，目前使用啟動時的固定設定。
+settings-logging-file = 儲存至檔案
+settings-logging-help = 變更將於下次啟動時生效。若已設定 RUST_LOG，則會優先使用，記錄會儲存於 logs 資料夾。
 settings-obs-enabled = OBS WebSocket 整合
 settings-obs-connection-status = 連線狀態
 settings-obs-next-retry = 下次重試：{ $seconds } 秒

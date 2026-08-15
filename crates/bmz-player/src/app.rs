@@ -92,6 +92,7 @@ use crate::ir::table::{
 };
 use crate::ln_policy::LnPolicySetting;
 use crate::logging::LogBuffer;
+use crate::paths::AppPaths;
 use crate::practice_ui::PracticePanelContext;
 use crate::random_trainer::RandomTrainerState;
 use crate::screens::course_session::{ActiveCourseSession, CourseEntryResult, CourseResultSummary};
@@ -394,7 +395,16 @@ pub async fn run_with_options_and_log_buffer(
     options: AppOptions,
     log_buffer: LogBuffer,
 ) -> Result<()> {
-    let boot = bootstrap::bootstrap()?;
+    let app_paths = crate::paths::resolve_app_paths()?;
+    run_with_options_log_buffer_and_paths(options, log_buffer, app_paths).await
+}
+
+pub async fn run_with_options_log_buffer_and_paths(
+    options: AppOptions,
+    log_buffer: LogBuffer,
+    app_paths: AppPaths,
+) -> Result<()> {
+    let boot = bootstrap::bootstrap_with_paths(app_paths)?;
 
     // Raw Input へ実行中に切り替えられるよう、Windows message hook は起動時から
     // 常設する。デバイス usage の登録は RawInputBackend の attach 時まで行わない。

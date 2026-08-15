@@ -1,5 +1,10 @@
 pub async fn run_ir_command(cmd: IrCommand) -> Result<()> {
-    let (profile_paths, mut profile) = load_active_profile()?;
+    let app_paths = resolve_app_paths()?;
+    run_ir_command_with_paths(cmd, &app_paths).await
+}
+
+pub async fn run_ir_command_with_paths(cmd: IrCommand, app_paths: &AppPaths) -> Result<()> {
+    let (profile_paths, mut profile) = load_active_profile_with_paths(app_paths)?;
     match cmd {
         IrCommand::Login { email, password, base_url, provider } => {
             login(&profile_paths, &mut profile, &provider, &email, password, base_url).await
@@ -9,7 +14,7 @@ pub async fn run_ir_command(cmd: IrCommand) -> Result<()> {
         IrCommand::Ranking { sha256, ln_policy, scope, limit } => {
             ranking(&profile_paths, &profile, &sha256, &ln_policy, &scope, limit).await
         }
-        IrCommand::Sync => sync(&profile_paths, &profile).await,
+        IrCommand::Sync => sync(app_paths, &profile_paths, &profile).await,
         IrCommand::UploadLocal {
             provider,
             limit,
@@ -28,7 +33,8 @@ pub async fn run_ir_command(cmd: IrCommand) -> Result<()> {
                 include_course_stages,
                 include_replay,
             };
-            upload_local(&profile_paths, &profile, options, sync_after_enqueue, all).await
+            upload_local(app_paths, &profile_paths, &profile, options, sync_after_enqueue, all)
+                .await
         }
         IrCommand::DownloadScores { provider, limit, dry_run } => {
             download_scores(
@@ -39,7 +45,15 @@ pub async fn run_ir_command(cmd: IrCommand) -> Result<()> {
             .await
         }
         IrCommand::AttestSubmitted { provider, sync, all } => {
-            attest_submitted_scores(&profile_paths, &profile, provider.as_deref(), sync, all).await
+            attest_submitted_scores(
+                app_paths,
+                &profile_paths,
+                &profile,
+                provider.as_deref(),
+                sync,
+                all,
+            )
+            .await
         }
         IrCommand::CleanupImported { provider, apply } => {
             cleanup_imported_scores(&profile_paths, &profile, provider.as_deref(), apply).await
@@ -59,7 +73,7 @@ pub async fn run_ir_command(cmd: IrCommand) -> Result<()> {
         IrCommand::Replay { score_id } => replay(&profile_paths, &profile, &score_id).await,
     }
 }
-use super::account::{device_key, load_active_profile, replay, rivals};
+use super::account::{device_key, load_active_profile_with_paths, replay, rivals};
 use super::auth::{login, logout, status};
 use super::cleanup::{cleanup_duplicate_score_history, cleanup_imported_scores};
 use super::download::download_scores;

@@ -23,7 +23,7 @@ use crate::ir::sync::{
     IrSyncThrottle, ensure_fresh_credentials, sync_pending_ir_jobs, sync_pending_ir_jobs_filtered,
 };
 use crate::ir::types::IrRankingScope;
-use crate::paths::{ProfilePaths, resolve_app_paths, resolve_profile_paths};
+use crate::paths::{AppPaths, ProfilePaths, resolve_app_paths, resolve_profile_paths};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::network_db::{IrJobKind, NetworkDatabase};
 use crate::storage::score_db::ScoreDatabase;
@@ -38,7 +38,7 @@ mod ranking;
 mod upload;
 
 pub use account::sync_ir_rivals_into_profile;
-pub use dispatch::run_ir_command;
+pub use dispatch::{run_ir_command, run_ir_command_with_paths};
 #[cfg(test)]
 use upload::ensure_full_upload_progress;
 

@@ -229,10 +229,10 @@ settings-input-auto-assign = 接続順で自動割り当て
 settings-input-swap = 1P / 2P を入れ替え
 settings-input-clear-assignment = 割り当て解除
 settings-input-assignment-help = 未割当は接続順フォールバック（1台目=1P、2台目=2P）。変更は次回プレイ開始から反映されます。
-settings-logging-title = ログ（未実装）
+settings-logging-title = ログ
 settings-logging-level = レベル
-settings-logging-file-unimplemented = ファイル出力（未実装）
-settings-logging-help = ログ設定は未実装です。現在は起動時の固定ログ設定を使用します。
+settings-logging-file = ファイルに保存
+settings-logging-help = 変更は次回起動時から有効です。RUST_LOG が設定されている場合はそちらが優先され、ログは logs ディレクトリに保存されます。
 settings-obs-enabled = OBS WebSocket 連携
 settings-obs-connection-status = 接続状態
 settings-obs-next-retry = 次の再試行: { $seconds } 秒

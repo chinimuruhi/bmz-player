@@ -268,10 +268,7 @@ pub(super) fn build_integration_settings_sections(
                         log_level_label(&LogLevel::Error),
                     );
                 });
-            ui.checkbox(
-                &mut config.logging.file_logging,
-                tr!(text, "settings-logging-file-unimplemented"),
-            );
+            ui.checkbox(&mut config.logging.file_logging, tr!(text, "settings-logging-file"));
             ui.label(tr!(text, "settings-logging-help"));
         });
 

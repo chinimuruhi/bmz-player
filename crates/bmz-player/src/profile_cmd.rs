@@ -13,18 +13,22 @@ use crate::storage::migration::{migrate_collection_db, migrate_network_db, migra
 
 pub fn run_profile_command(cmd: ProfileCommand) -> Result<()> {
     let app_paths = resolve_app_paths()?;
+    run_profile_command_with_paths(cmd, &app_paths)
+}
+
+pub fn run_profile_command_with_paths(cmd: ProfileCommand, app_paths: &AppPaths) -> Result<()> {
     app_paths.ensure_dirs()?;
 
     match cmd {
-        ProfileCommand::List => print_profiles(&app_paths),
-        ProfileCommand::Current => print_current_profile(&app_paths),
+        ProfileCommand::List => print_profiles(app_paths),
+        ProfileCommand::Current => print_current_profile(app_paths),
         ProfileCommand::Use { id } => {
-            activate_profile(&app_paths, &id)?;
+            activate_profile(app_paths, &id)?;
             println!("Active profile: {id}");
             Ok(())
         }
         ProfileCommand::Create { id, display_name, activate } => {
-            create_profile(&app_paths, &id, display_name.as_deref(), activate)?;
+            create_profile(app_paths, &id, display_name.as_deref(), activate)?;
             println!("Created profile: {id}");
             if activate {
                 println!("Active profile: {id}");
@@ -32,7 +36,7 @@ pub fn run_profile_command(cmd: ProfileCommand) -> Result<()> {
             Ok(())
         }
         ProfileCommand::Copy { source_id, target_id, display_name, activate } => {
-            copy_profile(&app_paths, &source_id, &target_id, display_name.as_deref(), activate)?;
+            copy_profile(app_paths, &source_id, &target_id, display_name.as_deref(), activate)?;
             println!("Copied profile: {source_id} -> {target_id}");
             if activate {
                 println!("Active profile: {target_id}");

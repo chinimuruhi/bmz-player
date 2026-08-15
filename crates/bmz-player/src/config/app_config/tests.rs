@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn app_config_loads_missing_logging_section_with_defaults() {
+    let serialized = toml::to_string(&AppConfig::default()).unwrap();
+    let mut document: toml::Value = toml::from_str(&serialized).unwrap();
+    document.as_table_mut().unwrap().remove("logging");
+
+    let config: AppConfig = document.try_into().unwrap();
+
+    assert_eq!(config.logging.level, LogLevel::Info);
+    assert!(config.logging.file_logging);
+}
+
+#[test]
 fn app_config_defaults_screenshot_settings() {
     let config = AppConfig::default();
 

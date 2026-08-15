@@ -229,10 +229,10 @@ settings-input-auto-assign = Assign by connection order
 settings-input-swap = Swap 1P / 2P
 settings-input-clear-assignment = Clear assignments
 settings-input-assignment-help = Unassigned slots fall back to connection order (first=1P, second=2P). Changes apply at the next play start.
-settings-logging-title = Logging (not implemented)
+settings-logging-title = Logging
 settings-logging-level = Level
-settings-logging-file-unimplemented = File output (not implemented)
-settings-logging-help = Logging settings are not implemented. The fixed startup configuration is currently used.
+settings-logging-file = Save to file
+settings-logging-help = Changes take effect on the next launch. RUST_LOG takes priority when set, and logs are saved in the logs directory.
 settings-obs-enabled = OBS WebSocket integration
 settings-obs-connection-status = Connection status
 settings-obs-next-retry = Next retry: { $seconds } seconds

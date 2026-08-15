@@ -229,10 +229,10 @@ settings-input-auto-assign = 按连接顺序自动分配
 settings-input-swap = 交换 1P / 2P
 settings-input-clear-assignment = 清除分配
 settings-input-assignment-help = 未分配时按连接顺序回退（第1台=1P，第2台=2P）。下次开始游玩时生效。
-settings-logging-title = 日志（未实现）
+settings-logging-title = 日志
 settings-logging-level = 级别
-settings-logging-file-unimplemented = 输出到文件（未实现）
-settings-logging-help = 日志设置尚未实现，目前使用启动时的固定设置。
+settings-logging-file = 保存到文件
+settings-logging-help = 更改将在下次启动时生效。设置 RUST_LOG 时将优先使用，日志保存在 logs 目录中。
 settings-obs-enabled = OBS WebSocket 集成
 settings-obs-connection-status = 连接状态
 settings-obs-next-retry = 下次重试：{ $seconds } 秒
