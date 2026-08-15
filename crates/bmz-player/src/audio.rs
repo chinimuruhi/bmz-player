@@ -101,6 +101,7 @@ pub struct AudioRuntime {
 
 pub struct RunningPlaySession {
     pub session: GameSession,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     /// Duration recorded in `library.db` when this play was preloaded.
     pub chart_length_ms: u64,
@@ -294,6 +295,7 @@ pub fn open_prepared_play_audio(
     RunningPlaySession {
         render_snapshot_cache: prepared.render_snapshot_cache,
         session,
+        skin_attempt: prepared.skin_attempt,
         source_ln_profile: prepared.source_ln_profile,
         chart_length_ms: prepared.chart_length_ms,
         play_duration_ms: None,

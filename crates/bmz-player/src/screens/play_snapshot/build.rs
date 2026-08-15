@@ -42,6 +42,11 @@ pub fn apply_prepared_chart_to_render_snapshot(
     snapshot.has_long_notes = Some(!chart.long_notes.is_empty());
     snapshot.has_bpm_stop = cache.has_bpm_stop;
     snapshot.key_mode = chart.metadata.key_mode;
+    snapshot.skin_attempt.effective_key_mode = Some(chart.metadata.key_mode);
+    snapshot.skin_attempt.ln_mode_index =
+        Some(crate::skin_extension::long_note_mode_index(chart.metadata.long_note_mode));
+    snapshot.skin_attempt.has_bga = Some(chart.metadata.has_bga);
+    snapshot.skin_attempt.has_random_sequence = Some(chart.metadata.has_bms_random);
     let primary_key_mode = if battle {
         match chart.metadata.key_mode {
             KeyMode::K10 => KeyMode::K5,
@@ -254,6 +259,27 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         play_elapsed_time,
         operating_time_ms: 0,
         skin_input: Default::default(),
+        skin_attempt: bmz_render::snapshot::SkinAttemptState {
+            effective_key_mode: Some(session.chart.metadata.key_mode),
+            hsfix_index: usize::try_from(session.hsfix_index).ok(),
+            gauge_auto_shift_index: Some(crate::skin_extension::gauge_auto_shift_index(
+                session.gauge.auto_shift_mode,
+            )),
+            bottom_shiftable_gauge_index: Some(
+                crate::skin_extension::bottom_shiftable_gauge_index(
+                    session.gauge.bottom_shiftable_gauge,
+                ),
+            ),
+            judge_algorithm_index: Some(crate::skin_extension::judge_algorithm_index(
+                session.judge.algorithm,
+            )),
+            ln_mode_index: Some(crate::skin_extension::long_note_mode_index(
+                session.chart.metadata.long_note_mode,
+            )),
+            has_bga: Some(session.chart.metadata.has_bga),
+            has_random_sequence: Some(session.chart.metadata.has_bms_random),
+            ..Default::default()
+        },
         ready_elapsed_time: None,
         rhythm_timer_elapsed_ms: rhythm_timer_elapsed_ms(
             &session.timing_map,

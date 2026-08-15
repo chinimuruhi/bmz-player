@@ -21,6 +21,7 @@ const RESULT_GAUGE_GRAPH_SAMPLE_MS: i32 = 500;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResultSummary {
     pub clear_type: ClearType,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     /// beatoraja STRING_RIVAL/STRING_TARGET (1/3) に渡すプレイ時ターゲット名。
     pub target_name: String,
     pub arrange: String,
@@ -150,6 +151,15 @@ impl ResultSummary {
         let initial_bpm = metadata.initial_bpm as f32;
         Self {
             clear_type: result.clear_type,
+            skin_attempt: bmz_render::snapshot::SkinAttemptState {
+                effective_key_mode: Some(metadata.key_mode),
+                ln_mode_index: Some(crate::skin_extension::long_note_mode_index(
+                    metadata.long_note_mode,
+                )),
+                has_bga: Some(metadata.has_bga),
+                has_random_sequence: Some(metadata.has_bms_random),
+                ..Default::default()
+            },
             target_name: String::new(),
             arrange: "NORMAL".to_string(),
             arrange_2p: "NORMAL".to_string(),

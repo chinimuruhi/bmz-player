@@ -119,6 +119,7 @@ impl WinitApp {
                     target_name: summary.target_name.clone(),
                     current_fps: 0,
                     skin_input: Default::default(),
+                    skin_attempt: summary.skin_attempt,
                     skin_offsets: skin_offset_values_from_config(
                         match self.current_result_skin_slot() {
                             ResultSkinSlot::Normal => &self.boot.profile_config.skin.result_offsets,

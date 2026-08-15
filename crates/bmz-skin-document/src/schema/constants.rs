@@ -168,6 +168,23 @@ pub const SKIN_OPTION_BMZ_LN_POLICY_SETTING_FORCE: i32 = 19_168;
 /// Values are `0=blank`, `1=FAST`, `2=SLOW`. LR2 play skin decode rewrites
 /// the legacy ref to this ID so beatoraja's standard `ref=210` meaning remains intact.
 pub const SKIN_REF_BMZ_LR2_FAST_SLOW_1P: i32 = 19_170;
+/// BMZ extension: source chart key mode before BATTLE / 7K-to-6K conversion.
+pub const SKIN_REF_BMZ_SOURCE_KEY_MODE: i32 = 19_180;
+/// BMZ extension: exact source key mode options in K4/K5/K6/K7/K8/K9/K10/K14 order.
+pub const SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE: i32 = 19_181;
+pub const SKIN_OPTION_BMZ_SOURCE_KEY_MODE_COUNT: usize = 8;
+pub const SKIN_OPTION_BMZ_SOURCE_KEY_MODE_LAST: i32 = 19_188;
+/// BMZ extension: the active chart was converted from source 7K to effective 6K.
+pub const SKIN_OPTION_BMZ_SEVEN_TO_SIX: i32 = 19_189;
+/// BMZ extension: source-chart LN profile bit mask.
+/// bit0=undefined LN, bit1=defined LN, bit2=defined CN, bit3=defined HCN.
+pub const SKIN_REF_BMZ_SOURCE_LN_PROFILE: i32 = 19_190;
+pub const SKIN_OPTION_BMZ_SOURCE_LN_UNDEFINED: i32 = 19_191;
+pub const SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_LN: i32 = 19_192;
+pub const SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_CN: i32 = 19_193;
+pub const SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_HCN: i32 = 19_194;
+pub const SKIN_OPTION_BMZ_SOURCE_LN_MIXED: i32 = 19_195;
+pub const SKIN_OPTION_BMZ_SOURCE_LN_PROFILE_AVAILABLE: i32 = 19_196;
 /// Lua result skin の定数 `Expand_op` 代入を宣言的クリックイベントへ変換する ID。
 /// beatoraja の正数イベント ID と衝突しない BMZ 内部予約値を使う。
 pub const SKIN_EVENT_RESULT_PANEL_IR: i32 = -10_001;

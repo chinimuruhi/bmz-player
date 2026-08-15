@@ -77,8 +77,10 @@ pub struct ChartListItem {
     pub backbmp_file: String,
     pub preview_file: String,
     pub has_document: bool,
+    pub has_bga: bool,
     pub has_long_notes: bool,
     pub has_mines: bool,
+    pub has_bms_random: bool,
     pub judge_rank: Option<i32>,
     /// Effective BMS-scale TOTAL (`model.getTotal()` after BMSON normalization).
     /// Unset BMS charts store `0.0`.

@@ -17,6 +17,55 @@ pub use bmz_skin_document::{
     ResultNoteGraphBucket, ResultTimingDistribution, ResultTimingPoint,
 };
 
+pub const SKIN_SOURCE_LN_UNDEFINED_BIT: u8 = 1 << 0;
+pub const SKIN_SOURCE_LN_DEFINED_LN_BIT: u8 = 1 << 1;
+pub const SKIN_SOURCE_LN_DEFINED_CN_BIT: u8 = 1 << 2;
+pub const SKIN_SOURCE_LN_DEFINED_HCN_BIT: u8 = 1 << 3;
+
+/// Selectでは開始予定、Decide/Play/Resultでは試行開始時に固定されたskin公開状態。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SkinAttemptState {
+    /// BATTLE / 7K-to-6K変換前の譜面キーモード。
+    pub source_key_mode: Option<KeyMode>,
+    /// skinが描画する変換後のキーモード。Selectでは開始予定値。
+    pub effective_key_mode: Option<KeyMode>,
+    pub seven_to_six: bool,
+    /// [`SKIN_SOURCE_LN_UNDEFINED_BIT`] などのbit mask。Noneは譜面未確定。
+    pub source_ln_profile_bits: Option<u8>,
+    /// 0=NORMAL, 1=AUTOPLAY, 2=AUTOPLAY BATTLE, 3=G-BATTLE。
+    pub session_mode_index: Option<usize>,
+    pub double_option_index: Option<usize>,
+    pub hsfix_index: Option<usize>,
+    pub gauge_auto_shift_index: Option<usize>,
+    pub bottom_shiftable_gauge_index: Option<usize>,
+    pub judge_algorithm_index: Option<usize>,
+    /// 0=LN, 1=CN, 2=HCN。Noneは譜面未確定。
+    pub ln_mode_index: Option<usize>,
+    /// SongDataBooleanProperty互換。Noneは譜面未選択・未確定。
+    pub has_bga: Option<bool>,
+    pub has_random_sequence: Option<bool>,
+}
+
+impl SkinAttemptState {
+    /// 譜面preloadで確定した値を反映し、まだ取得できないprofile由来値は保持する。
+    pub fn merge_known(&mut self, newer: Self) {
+        self.source_key_mode = newer.source_key_mode.or(self.source_key_mode);
+        self.effective_key_mode = newer.effective_key_mode.or(self.effective_key_mode);
+        self.seven_to_six = newer.seven_to_six;
+        self.source_ln_profile_bits = newer.source_ln_profile_bits.or(self.source_ln_profile_bits);
+        self.session_mode_index = newer.session_mode_index.or(self.session_mode_index);
+        self.double_option_index = newer.double_option_index.or(self.double_option_index);
+        self.hsfix_index = newer.hsfix_index.or(self.hsfix_index);
+        self.gauge_auto_shift_index = newer.gauge_auto_shift_index.or(self.gauge_auto_shift_index);
+        self.bottom_shiftable_gauge_index =
+            newer.bottom_shiftable_gauge_index.or(self.bottom_shiftable_gauge_index);
+        self.judge_algorithm_index = newer.judge_algorithm_index.or(self.judge_algorithm_index);
+        self.ln_mode_index = newer.ln_mode_index.or(self.ln_mode_index);
+        self.has_bga = newer.has_bga.or(self.has_bga);
+        self.has_random_sequence = newer.has_random_sequence.or(self.has_random_sequence);
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ResultTimingMetrics {
     pub initialized: bool,
@@ -151,6 +200,7 @@ pub struct RenderSnapshot {
     /// beatoraja の NUMBER_OPERATING_TIME_HOUR/MINUTE/SECOND (27..29) に使う。
     pub operating_time_ms: i32,
     pub skin_input: SkinLogicalInputSnapshot,
+    pub skin_attempt: SkinAttemptState,
     /// READY timer (TIMER_READY=40) elapsed time. None while READY is not active yet.
     pub ready_elapsed_time: Option<TimeUs>,
     /// 直近の小節線からの60 BPM換算拍時間 (TIMER_RHYTHM=140)。

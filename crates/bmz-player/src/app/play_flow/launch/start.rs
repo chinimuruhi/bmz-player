@@ -14,12 +14,14 @@ impl WinitApp {
         self.normalize_seven_to_six_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
             self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
+            skin_attempt,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.ensure_skin_ready(SkinKind::Play);
@@ -49,12 +51,14 @@ impl WinitApp {
         self.normalize_seven_to_six_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
             self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
+            skin_attempt,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.ensure_skin_ready(SkinKind::Play);
@@ -248,6 +252,7 @@ impl WinitApp {
                 &prepared.render_snapshot_cache,
                 battle_presentation,
             );
+            snapshot.skin_attempt.merge_known(prepared.skin_attempt);
         }
         // preload 完了で install_active_play がフル snapshot に置き換えるまでの間、
         // 初期ゲージや緑数字が空表示にならないようセッション開始時相当の値を埋める。
@@ -281,6 +286,7 @@ impl WinitApp {
                 &prepared.render_snapshot_cache,
                 battle_presentation,
             );
+            snapshot.skin_attempt.merge_known(prepared.skin_attempt);
         }
         // 譜面変換はWAVロードより先に完了する。preload workerが先行公開した
         // 実配置を使い、Play入場直後のロード画面からRANDOM refを表示する。

@@ -25,7 +25,11 @@ use crate::scene::{
 use crate::skin_offset::{
     BEATORAJA_SKIN_OFFSET_MAX, SKIN_OFFSET_BAR_LINE, SkinOffsetValue, SkinOffsetValues,
 };
-use crate::snapshot::{CourseStageMarker, DisplayJudgeCounts, LongBodyState};
+use crate::snapshot::{
+    CourseStageMarker, DisplayJudgeCounts, LongBodyState, SKIN_SOURCE_LN_DEFINED_CN_BIT,
+    SKIN_SOURCE_LN_DEFINED_HCN_BIT, SKIN_SOURCE_LN_DEFINED_LN_BIT, SKIN_SOURCE_LN_UNDEFINED_BIT,
+    SkinAttemptState,
+};
 use bmz_chart::model::LongNoteMode;
 
 pub use bmz_skin_document::*;
@@ -287,11 +291,17 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         41 | 77 => Some(state.select_target_index as i64),
         42 => Some(arrange_ref_index(state) as i64),
         43 => Some(arrange_2p_ref_index(state) as i64),
-        54 => Some(state.select_double_option_index as i64),
-        55 => Some(state.select_hs_fix_index as i64),
+        54 => {
+            Some(state.skin_attempt.double_option_index.unwrap_or(state.select_double_option_index)
+                as i64)
+        }
+        55 => Some(state.skin_attempt.hsfix_index.unwrap_or(state.select_hs_fix_index) as i64),
         72 => Some(state.select_bga_index as i64),
         75 => Some(i64::from(state.judge_timing_auto_adjust)),
-        78 => Some(state.select_gauge_auto_shift_index as i64),
+        78 => Some(
+            state.skin_attempt.gauge_auto_shift_index.unwrap_or(state.select_gauge_auto_shift_index)
+                as i64,
+        ),
         89 if state.select_screen && select_chart_metadata_available(state) => {
             Some(i64::from(state.select_favorite_song))
         }
@@ -302,15 +312,26 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
             Some(i64::from(state.result_favorite_chart.unwrap_or(false)))
         }
         301..=307 => Some(i64::from(state.assist_flags[(ref_id - 301) as usize])),
-        308 if state.result_ln_mode_index.is_some() => {
-            Some(state.result_ln_mode_index.unwrap_or_default() as i64)
-        }
-        308 => Some(state.select_ln_mode_index as i64),
+        308 => Some(
+            state
+                .skin_attempt
+                .ln_mode_index
+                .or(state.result_ln_mode_index)
+                .unwrap_or(state.select_ln_mode_index) as i64,
+        ),
         330 => Some(i64::from(state.lanecover_enabled)),
         331 => Some(i64::from(state.lift_enabled)),
         332 => Some(i64::from(state.hidden_enabled)),
-        340 => Some(state.select_judge_algorithm_index as i64),
-        341 => Some(state.select_bottom_shiftable_gauge_index as i64),
+        340 => Some(
+            state.skin_attempt.judge_algorithm_index.unwrap_or(state.select_judge_algorithm_index)
+                as i64,
+        ),
+        341 => Some(
+            state
+                .skin_attempt
+                .bottom_shiftable_gauge_index
+                .unwrap_or(state.select_bottom_shiftable_gauge_index) as i64,
+        ),
         342 => Some(i64::from(state.hispeed_auto_adjust)),
         344 => Some(extended_arrange_ref_index(state) as i64),
         345 => Some(extended_arrange_2p_ref_index(state) as i64),
@@ -326,6 +347,10 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         SKIN_REF_BMZ_RULE_MODE => Some(state.rule_mode_index as i64),
         SKIN_REF_BMZ_LN_POLICY_SETTING => state.ln_policy_setting_index.map(|index| index as i64),
         SKIN_REF_BMZ_LN_SCORE_POLICY => state.ln_score_policy_index.map(|index| index as i64),
+        SKIN_REF_BMZ_SOURCE_KEY_MODE => {
+            state.skin_attempt.source_key_mode.map(skin_key_mode_number_i64)
+        }
+        SKIN_REF_BMZ_SOURCE_LN_PROFILE => state.skin_attempt.source_ln_profile_bits.map(i64::from),
         321..=324 => {
             let slot = (ref_id - 321) as usize;
             Some(state.select_replay_slot_rule_indices[slot])

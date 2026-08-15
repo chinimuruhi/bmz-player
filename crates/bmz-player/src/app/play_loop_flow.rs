@@ -140,6 +140,7 @@ impl WinitApp {
                         },
                     ) {
                         Ok(mut finished) => {
+                            finished.summary.skin_attempt = active_play.running.skin_attempt;
                             finished.summary.graph = Arc::new(
                                 active_play
                                     .running
@@ -278,10 +279,11 @@ impl WinitApp {
             return;
         };
         let finished = match result {
-            Ok(finished) => {
+            Ok(mut finished) => {
                 let Some(active_play) = &mut self.play.active_play else {
                     return;
                 };
+                finished.summary.skin_attempt = active_play.running.skin_attempt;
                 active_play.running.pending_finished = None;
                 active_play.running.finished = Some(finished.clone());
                 active_play.running.finish_error = None;

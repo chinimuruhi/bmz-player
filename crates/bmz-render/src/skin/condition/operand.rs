@@ -137,19 +137,30 @@ pub(in crate::skin) fn skin_state_event_index(event_id: i32, state: &SkinDrawSta
         41 => state.select_target_index as i32,
         42 => arrange_ref_index(state) as i32,
         43 => arrange_2p_ref_index(state) as i32,
-        54 => state.select_double_option_index as i32,
-        55 if state.select_screen => state.select_hs_fix_index as i32,
+        54 => state.skin_attempt.double_option_index.unwrap_or(state.select_double_option_index)
+            as i32,
+        55 => state.skin_attempt.hsfix_index.unwrap_or(state.select_hs_fix_index) as i32,
         72 => state.select_bga_index as i32,
         73 => state.select_assist_index as i32,
         75 => i32::from(state.judge_timing_auto_adjust),
-        78 => state.select_gauge_auto_shift_index as i32,
-        308 if state.result_ln_mode_index.is_some() => {
-            state.result_ln_mode_index.unwrap_or_default() as i32
+        78 => {
+            state.skin_attempt.gauge_auto_shift_index.unwrap_or(state.select_gauge_auto_shift_index)
+                as i32
         }
-        308 => state.select_ln_mode_index as i32,
+        308 => state
+            .skin_attempt
+            .ln_mode_index
+            .or(state.result_ln_mode_index)
+            .unwrap_or(state.select_ln_mode_index) as i32,
         309 => state.select_difficulty_filter_index as i32,
-        340 => state.select_judge_algorithm_index as i32,
-        341 => state.select_bottom_shiftable_gauge_index as i32,
+        340 => {
+            state.skin_attempt.judge_algorithm_index.unwrap_or(state.select_judge_algorithm_index)
+                as i32
+        }
+        341 => state
+            .skin_attempt
+            .bottom_shiftable_gauge_index
+            .unwrap_or(state.select_bottom_shiftable_gauge_index) as i32,
         344 => extended_arrange_ref_index(state) as i32,
         345 => extended_arrange_2p_ref_index(state) as i32,
         1900 => skin_hispeed_mode_index(state),
@@ -157,7 +168,15 @@ pub(in crate::skin) fn skin_state_event_index(event_id: i32, state: &SkinDrawSta
         SKIN_REF_BMZ_SELECT_SETTINGS_ROW_KIND => {
             select_settings_row_kind_index(state.select_row_kind)
         }
-        SKIN_REF_BMZ_SELECT_SESSION_MODE => state.select_session_mode_index as i32,
+        SKIN_REF_BMZ_SELECT_SESSION_MODE => {
+            state.skin_attempt.session_mode_index.unwrap_or(state.select_session_mode_index) as i32
+        }
+        SKIN_REF_BMZ_SOURCE_KEY_MODE => {
+            state.skin_attempt.source_key_mode.map_or(0, skin_key_mode_number)
+        }
+        SKIN_REF_BMZ_SOURCE_LN_PROFILE => {
+            i32::from(state.skin_attempt.source_ln_profile_bits.unwrap_or_default())
+        }
         SKIN_REF_BMZ_RULE_MODE => state.rule_mode_index as i32,
         SKIN_REF_BMZ_LN_POLICY_SETTING => state.ln_policy_setting_index.unwrap_or_default() as i32,
         SKIN_REF_BMZ_LN_SCORE_POLICY => state.ln_score_policy_index.unwrap_or_default() as i32,
@@ -170,7 +189,6 @@ pub(in crate::skin) fn skin_state_event_index(event_id: i32, state: &SkinDrawSta
         SKIN_REF_BMZ_SCORE_GRADE_NEAREST => {
             score_grade_facts(state).map_or(0, |facts| facts.nearest_index as i32)
         }
-        SKIN_EVENT_HSFIX => state.hsfix_index,
         _ => skin_random_lane_ref_number(event_id, state)
             .and_then(|value| i32::try_from(value).ok())
             .or_else(|| skin_state_lane_judge_event_index(event_id, state))

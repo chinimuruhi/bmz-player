@@ -161,6 +161,7 @@ pub struct ResultSnapshot {
     /// beatoraja NUMBER_CURRENT_FPS (20)。
     pub current_fps: u32,
     pub skin_input: SkinLogicalInputSnapshot,
+    pub skin_attempt: SkinAttemptState,
     /// 現在のリザルトスキンスロットに設定された destination offset。
     pub skin_offsets: SkinOffsetValues,
     /// beatoraja image/index ref 342。

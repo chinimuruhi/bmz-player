@@ -8,7 +8,7 @@ use crate::chart_graph::BpmGraphSegment;
 use crate::skin::SkinImageSize;
 use crate::skin_offset::SkinOffsetValues;
 use crate::snapshot::{
-    DisplayJudgeCounts, FastSlowJudgeCounts, OverlaySnapshot, RenderSnapshot,
+    DisplayJudgeCounts, FastSlowJudgeCounts, OverlaySnapshot, RenderSnapshot, SkinAttemptState,
     SkinLogicalInputSnapshot,
 };
 
@@ -95,6 +95,7 @@ mod tests {
             target_name: String::new(),
             current_fps: 0,
             skin_input: SkinLogicalInputSnapshot::default(),
+            skin_attempt: SkinAttemptState::default(),
             skin_offsets: SkinOffsetValues::default(),
             hispeed_auto_adjust: false,
             assist_flags: [false; 7],
@@ -183,6 +184,7 @@ mod tests {
             target_name: String::new(),
             current_fps: 0,
             skin_input: SkinLogicalInputSnapshot::default(),
+            skin_attempt: SkinAttemptState::default(),
             skin_offsets: SkinOffsetValues::default(),
             hispeed_auto_adjust: false,
             assist_flags: [false; 7],

@@ -220,6 +220,7 @@ impl WinitApp {
             &prepared.render_snapshot_cache,
             battle_presentation,
         );
+        snapshot.skin_attempt.merge_known(prepared.skin_attempt);
         apply_play_arrange_to_snapshot(snapshot, &prepared.applied_arrange);
         snapshot.target = options
             .resolved_target

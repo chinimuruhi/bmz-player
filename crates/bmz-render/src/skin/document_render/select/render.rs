@@ -342,6 +342,23 @@ macro_rules! skin_document_render_select_render_methods {
                         && row.in_library
                 })
                 .map(|row| row.has_long_notes);
+            let selected_chart = selected_row.filter(|row| {
+                !snapshot.in_settings
+                    && row.kind == SelectRowKind::Song
+                    && !row.is_folder
+                    && row.in_library
+            });
+            let mut skin_attempt = snapshot.skin_attempt;
+            if let Some(row) = selected_chart {
+                skin_attempt.source_key_mode = skin_attempt.source_key_mode.or(row.chart_key_mode);
+                skin_attempt.effective_key_mode =
+                    skin_attempt.effective_key_mode.or(row.chart_key_mode);
+                skin_attempt.source_ln_profile_bits =
+                    skin_attempt.source_ln_profile_bits.or(row.source_ln_profile_bits);
+                skin_attempt.has_bga = skin_attempt.has_bga.or(Some(row.has_bga));
+                skin_attempt.has_random_sequence =
+                    skin_attempt.has_random_sequence.or(Some(row.has_random));
+            }
             let mouse_position = snapshot.mouse_position.map(|(x, y)| {
                 (x.clamp(0.0, 1.0) * self.w as f32, (1.0 - y.clamp(0.0, 1.0)) * self.h as f32)
             });
@@ -368,6 +385,7 @@ macro_rules! skin_document_render_select_render_methods {
                     },
                 ),
                 select_option_panel: snapshot.option_panel,
+                skin_attempt,
                 select_arrange_index: select_arrange_index(&snapshot.arrange),
                 select_arrange_2p_index: select_arrange_index(&snapshot.arrange_2p),
                 select_extended_arrange_index: extended_arrange_index(&snapshot.arrange),

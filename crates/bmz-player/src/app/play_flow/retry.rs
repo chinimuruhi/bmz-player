@@ -143,6 +143,7 @@ impl WinitApp {
             chart,
             opponent_chart,
             source_ln_profile,
+            skin_attempt,
             render_snapshot_cache,
             applied_arrange,
             score_key,
@@ -156,17 +157,19 @@ impl WinitApp {
                     .as_ref()
                     .map(|opponent| Arc::clone(&opponent.chart)),
                 Some(active.running.source_ln_profile),
+                Some(active.running.skin_attempt),
                 Some(active.running.render_snapshot_cache.clone()),
                 Some(active.running.applied_arrange.clone()),
                 Some(active.running.score_key),
             ),
-            ResultRetryMode::DifferentArrange => (None, None, None, None, None, None),
+            ResultRetryMode::DifferentArrange => (None, None, None, None, None, None, None),
         };
         Some(PlayMediaCache {
             chart_id,
             chart,
             opponent_chart,
             source_ln_profile,
+            skin_attempt,
             chart_length_ms: active.running.chart_length_ms,
             render_snapshot_cache,
             chart_normalization_gain: active.running.session.audio_mix.chart_normalization_gain,
@@ -195,6 +198,7 @@ impl WinitApp {
                 .as_ref()
                 .map(|opponent| Arc::clone(&opponent.chart)),
             source_ln_profile: Some(running.source_ln_profile),
+            skin_attempt: Some(running.skin_attempt),
             chart_length_ms: running.chart_length_ms,
             render_snapshot_cache: Some(running.render_snapshot_cache.clone()),
             chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
@@ -313,6 +317,7 @@ impl WinitApp {
         let opponent_chart = cache.opponent_chart.clone();
         let source_ln_profile =
             cache.source_ln_profile.expect("SameArrange cache includes source LN profile");
+        let skin_attempt = cache.skin_attempt.expect("SameArrange cache includes skin attempt");
         let chart_length_ms = cache.chart_length_ms;
         let render_snapshot_cache = cache
             .render_snapshot_cache
@@ -342,6 +347,7 @@ impl WinitApp {
         let preview_prepared_chart = Arc::new(OnceLock::new());
         let prepared_chart = PreparedPlayChart {
             chart: Arc::clone(&chart),
+            skin_attempt,
             source_ln_profile,
             chart_length_ms,
             render_snapshot_cache: render_snapshot_cache.clone(),
@@ -498,6 +504,7 @@ impl WinitApp {
                     },
                 ) {
                     Ok(mut finished) => {
+                        finished.summary.skin_attempt = active_play.running.skin_attempt;
                         finished.summary.graph = Arc::new(
                             active_play
                                 .running

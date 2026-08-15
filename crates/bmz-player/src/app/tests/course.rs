@@ -72,6 +72,7 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
     fn entry_summary(ex_score: u32, notes: u32, max_combo: u32, duration_ms: i32) -> ResultSummary {
         ResultSummary {
             clear_type: ClearType::NoPlay,
+            skin_attempt: Default::default(),
             target_name: "RANK AAA".to_string(),
             arrange: "NORMAL".to_string(),
             arrange_2p: "NORMAL".to_string(),

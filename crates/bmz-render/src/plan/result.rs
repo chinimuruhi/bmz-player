@@ -179,6 +179,7 @@ pub(super) fn build_result_skin_draw_state(
         current_fps: snapshot.current_fps,
         logical_input_held: snapshot.skin_input.held,
         skin_offsets: snapshot.skin_offsets,
+        skin_attempt: snapshot.skin_attempt,
         select_arrange_index: crate::skin::select_arrange_index(&snapshot.arrange),
         select_arrange_2p_index: crate::skin::select_arrange_index(&snapshot.arrange_2p),
         select_double_option_index: crate::skin::select_double_option_index(

@@ -37,6 +37,7 @@ pub(in crate::plan) fn build_play_skin_state(
         rhythm_timer_ms: snapshot.rhythm_timer_elapsed_ms,
         quarter_note_elapsed_ms: snapshot.quarter_note_elapsed_ms,
         key_mode: snapshot.key_mode,
+        skin_attempt: snapshot.skin_attempt,
         chart_has_long_notes: snapshot.has_long_notes,
         rule_mode_index: snapshot.rule_mode_index,
         ln_score_policy_index: snapshot.ln_score_policy_index,

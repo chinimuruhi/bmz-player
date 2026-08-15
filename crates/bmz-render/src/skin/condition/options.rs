@@ -80,6 +80,37 @@ pub(in crate::skin) fn test_skin_op(
             state.ln_score_policy_index.is_some_and(|index| index >= 3)
         }
         SKIN_OPTION_BMZ_LN_SCORE_POLICY_AVAILABLE => state.ln_score_policy_index.is_some(),
+        SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE..=SKIN_OPTION_BMZ_SOURCE_KEY_MODE_LAST => {
+            state.skin_attempt.source_key_mode.is_some_and(|mode| {
+                key_mode_option_matches(
+                    SKIN_OPTION_BMZ_KEY_MODE_BASE + (op - SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE),
+                    mode,
+                )
+            })
+        }
+        SKIN_OPTION_BMZ_SEVEN_TO_SIX => state.skin_attempt.seven_to_six,
+        SKIN_OPTION_BMZ_SOURCE_LN_UNDEFINED => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_UNDEFINED_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_LN => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_DEFINED_LN_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_CN => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_DEFINED_CN_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_HCN => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_DEFINED_HCN_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_MIXED => {
+            state.skin_attempt.source_ln_profile_bits.is_some_and(|bits| bits.count_ones() > 1)
+        }
+        SKIN_OPTION_BMZ_SOURCE_LN_PROFILE_AVAILABLE => {
+            state.skin_attempt.source_ln_profile_bits.is_some()
+        }
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
         }
@@ -165,13 +196,22 @@ pub(in crate::skin) fn test_skin_op(
         // Play / ResultではLN policy適用後の実効譜面を使う。
         172 => state.chart_has_long_notes.is_some_and(|has_long_notes| !has_long_notes),
         173 => state.chart_has_long_notes == Some(true),
-        170 => !state.has_bga,
-        171 => state.has_bga,
+        170 => {
+            state.skin_attempt.has_bga.or_else(|| (!state.select_screen).then_some(state.has_bga))
+                == Some(false)
+        }
+        171 => {
+            state.skin_attempt.has_bga.or_else(|| (!state.select_screen).then_some(state.has_bga))
+                == Some(true)
+        }
         // SongDataBooleanProperty returns false for both branches without a selected song.
         174 => select_song_option_matches(state) && !state.select_has_document,
         175 => select_song_option_matches(state) && state.select_has_document,
         // OPTION_BPMCHANGE (BPM変化あり) / OPTION_BPMSTOP (STOP命令あり)
-        177 => state.min_bpm < state.max_bpm,
+        176 => chart_metadata_option_available(state) && state.min_bpm >= state.max_bpm,
+        177 => chart_metadata_option_available(state) && state.min_bpm < state.max_bpm,
+        178 => state.skin_attempt.has_random_sequence == Some(false),
+        179 => state.skin_attempt.has_random_sequence == Some(true),
         1177 => state.has_bpm_stop,
         // OPTION_NOW_LOADING / OPTION_LOADED
         80 => !state.skin_loaded,
@@ -325,6 +365,10 @@ fn play_rank_option_matches(op: i32, state: &SkinDrawState) -> bool {
     let rank_index = if op == 227 { 0 } else { 24_i64.saturating_sub(i64::from(op - 220) * 3) };
     let threshold_numerator = rank_index.max(0);
     i64::from(state.ex_score) * 27 >= i64::from(state.total_notes) * 2 * threshold_numerator
+}
+
+fn chart_metadata_option_available(state: &SkinDrawState) -> bool {
+    state.chart_has_long_notes.is_some()
 }
 
 pub(in crate::skin) fn gauge_range_option_matches(op: i32, state: &SkinDrawState) -> bool {

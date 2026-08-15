@@ -170,6 +170,8 @@ impl WinitApp {
                 )
             })
             .unwrap_or_else(|| self.play_skin_key_mode_for_chart(chart_id, &options));
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
+        snapshot.skin_attempt = skin_attempt;
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
@@ -178,6 +180,7 @@ impl WinitApp {
                 .as_ref()
                 .and_then(|chart| self.play_skin_previous_best_ex_score_for_chart(chart, &options)),
             &self.boot.profile_config.display_name,
+            skin_attempt,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.start_play_preload(chart_id, options.clone());
@@ -319,6 +322,96 @@ impl WinitApp {
                 tracing::warn!(chart_id, %error, "failed to load chart key_mode for play skin");
                 KeyMode::default()
             }
+        }
+    }
+
+    pub(super) fn skin_attempt_for_chart(
+        &self,
+        chart_id: i64,
+        options: &PlayStartOptions,
+    ) -> bmz_render::snapshot::SkinAttemptState {
+        let chart = self
+            .select
+            .select_items
+            .iter()
+            .find_map(|item| match item {
+                SelectItem::Chart(row) => {
+                    row.chart.as_ref().filter(|chart| chart.chart_id == chart_id).cloned()
+                }
+                _ => None,
+            })
+            .or_else(|| {
+                self.boot
+                    .library_db
+                    .list_charts_by_ids(&[chart_id])
+                    .ok()
+                    .and_then(|mut charts| charts.pop())
+            });
+        let Some(chart) = chart else {
+            return bmz_render::snapshot::SkinAttemptState::default();
+        };
+        let Some(source_key_mode) = KeyMode::from_str_opt(&chart.mode) else {
+            return bmz_render::snapshot::SkinAttemptState::default();
+        };
+        let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
+        let applied_double_option = if seven_to_six || options.session_mode.is_battle() {
+            DoubleOption::Off
+        } else {
+            options.double_option.normalize_for_key_mode(source_key_mode)
+        };
+        let ln_policy_setting = self
+            .play
+            .active_course
+            .as_ref()
+            .map(|course| course.ln_policy_setting)
+            .unwrap_or(self.boot.profile_config.play.ln_mode_policy);
+        let ln_policy = crate::ln_policy::course_score_ln_policy(
+            ln_policy_setting,
+            options.ln_mode_override,
+            chart.ln_profile,
+        );
+        let gauge = options.gauge.unwrap_or(self.boot.profile_config.play.gauge);
+        bmz_render::snapshot::SkinAttemptState {
+            source_key_mode: Some(source_key_mode),
+            effective_key_mode: Some(crate::skin_extension::effective_key_mode(
+                source_key_mode,
+                applied_double_option,
+                options.session_mode,
+                seven_to_six,
+            )),
+            seven_to_six,
+            source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
+                chart.ln_profile,
+            )),
+            session_mode_index: Some(crate::skin_extension::session_mode_index(
+                options.session_mode,
+                options.battle_target.is_some(),
+            )),
+            double_option_index: Some(crate::skin_extension::double_option_index(
+                applied_double_option,
+            )),
+            hsfix_index: Some(crate::skin_extension::hsfix_index(options.hs_fix)),
+            gauge_auto_shift_index: Some(crate::skin_extension::gauge_auto_shift_index(
+                crate::config::play::gauge_auto_shift_from_config(gauge, options.gauge_auto_shift),
+            )),
+            bottom_shiftable_gauge_index: Some(
+                crate::skin_extension::bottom_shiftable_gauge_index(
+                    crate::config::play::bottom_shiftable_gauge_from_config(
+                        options.bottom_shiftable_gauge,
+                    ),
+                ),
+            ),
+            judge_algorithm_index: Some(crate::skin_extension::judge_algorithm_index(
+                crate::screens::play_session::judge_algorithm_from_config(
+                    self.boot.profile_config.judge.judge_algorithm,
+                ),
+            )),
+            ln_mode_index: Some(crate::skin_extension::effective_ln_mode_index(
+                chart.ln_profile,
+                ln_policy,
+            )),
+            has_bga: Some(chart.has_bga),
+            has_random_sequence: Some(chart.has_bms_random),
         }
     }
 

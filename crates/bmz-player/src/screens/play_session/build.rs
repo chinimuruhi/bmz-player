@@ -726,7 +726,7 @@ pub(super) fn placeholder_hispeed_for_mode(
     ))
 }
 
-pub(super) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeAlgorithm {
+pub(crate) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeAlgorithm {
     match value {
         JudgeAlgorithmConfig::Combo => JudgeAlgorithm::Combo,
         JudgeAlgorithmConfig::Duration => JudgeAlgorithm::Duration,

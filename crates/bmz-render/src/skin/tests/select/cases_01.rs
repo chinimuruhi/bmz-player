@@ -554,3 +554,52 @@ fn select_settings_screen_hides_bpm_numbers() {
     assert_eq!(skin_state_number(90, &state), None);
     assert_eq!(skin_state_number(91, &state), None);
 }
+
+#[test]
+fn select_song_boolean_options_use_selected_chart_metadata() {
+    let fixed_bga_chart = SkinDrawState {
+        select_screen: true,
+        select_row_kind: SelectRowKind::Song,
+        select_in_library: true,
+        chart_has_long_notes: Some(false),
+        min_bpm: 150.0,
+        max_bpm: 150.0,
+        skin_attempt: SkinAttemptState {
+            has_bga: Some(true),
+            has_random_sequence: Some(false),
+            ..Default::default()
+        },
+        ..SkinDrawState::default()
+    };
+    assert!(!test_skin_op(170, &[], &fixed_bga_chart));
+    assert!(test_skin_op(171, &[], &fixed_bga_chart));
+    assert!(test_skin_op(176, &[], &fixed_bga_chart));
+    assert!(!test_skin_op(177, &[], &fixed_bga_chart));
+    assert!(test_skin_op(178, &[], &fixed_bga_chart));
+    assert!(!test_skin_op(179, &[], &fixed_bga_chart));
+
+    let variable_random_chart = SkinDrawState {
+        min_bpm: 120.0,
+        max_bpm: 180.0,
+        skin_attempt: SkinAttemptState {
+            has_bga: Some(false),
+            has_random_sequence: Some(true),
+            ..Default::default()
+        },
+        ..fixed_bga_chart
+    };
+    assert!(test_skin_op(170, &[], &variable_random_chart));
+    assert!(!test_skin_op(171, &[], &variable_random_chart));
+    assert!(!test_skin_op(176, &[], &variable_random_chart));
+    assert!(test_skin_op(177, &[], &variable_random_chart));
+    assert!(!test_skin_op(178, &[], &variable_random_chart));
+    assert!(test_skin_op(179, &[], &variable_random_chart));
+
+    let no_chart = SkinDrawState { select_screen: true, ..Default::default() };
+    for op in 170..=179 {
+        if matches!(op, 172..=175) {
+            continue;
+        }
+        assert!(!test_skin_op(op, &[], &no_chart), "option {op}");
+    }
+}
