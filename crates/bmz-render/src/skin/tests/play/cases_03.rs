@@ -272,6 +272,33 @@ fn autoplay_pgreat_fast_slow_refs_are_neutral() {
 }
 
 #[test]
+fn lr2_fast_slow_number_bridge_maps_latest_non_pgreat_side() {
+    let fast = SkinDrawState {
+        judge_index: [Some(1), None, None],
+        judge_timing_sign: [Some(1), None, None],
+        ..SkinDrawState::default()
+    };
+    let slow = SkinDrawState {
+        judge_index: [Some(4), None, None],
+        judge_timing_sign: [Some(-1), None, None],
+        ..SkinDrawState::default()
+    };
+    let pgreat = SkinDrawState {
+        judge_index: [Some(0), None, None],
+        judge_timing_sign: [Some(1), None, None],
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LR2_FAST_SLOW_1P, &fast), Some(1));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LR2_FAST_SLOW_1P, &slow), Some(2));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_LR2_FAST_SLOW_1P, &pgreat), Some(0));
+    assert_eq!(
+        skin_state_number(SKIN_REF_BMZ_LR2_FAST_SLOW_1P, &SkinDrawState::default()),
+        Some(0)
+    );
+}
+
+#[test]
 fn display_number_digits_uses_absolute_value_like_beatoraja_skin_number() {
     assert_eq!(display_number_digits(-34, 2, NumberPadding::Zero), vec![3, 4]);
     assert_eq!(display_number_digits(-34, 4, NumberPadding::Blank), vec![10, 10, 3, 4]);

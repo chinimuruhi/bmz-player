@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use bmz_skin_document::{
     SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_EARLY_LATE, SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_MS,
-    SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_OFF,
+    SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_OFF, SKIN_REF_BMZ_LR2_FAST_SLOW_1P,
 };
 use encoding_rs::SHIFT_JIS;
 use serde_json::{Value as JsonValue, json};

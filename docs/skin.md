@@ -492,6 +492,20 @@ FAST/SLOW optionとタイミング差refには、既存の判定表示設定と�
 このため拡張IDを参照しない既存skinの表示は変わらない。拡張IDはbeatorajaおよび古いBMZでは
 利用できない。
 
+### Modified LR2 FAST/SLOW Refs
+
+LR2プレイスキンのdecode時に、改造LR2 / OpenLR2のFAST/SLOW拡張refを次のBMZ状態へ変換する。
+JSON / Lua skinの同名refは変換せず、beatorajaの意味を維持する。
+
+| LR2 ref | decode後 | meaning |
+| ---: | ---: | --- |
+| 210 | 19170 | 最新の1P判定。`0=非表示`, `1=FAST`, `2=SLOW`。PGREATは常に`0` |
+| 212 | 423 | FAST合計。GREAT / GOOD / BAD / POOR / EMPTY POORを集計 |
+| 214 | 424 | SLOW合計。GREAT / GOOD / BAD / POOR / EMPTY POORを集計 |
+
+`19170`はLR2変換専用の内部ref。`212/214`は既存のBMZ `423/424`へaliasするため、
+OpenLR2の原仕様と異なりPOOR / EMPTY POORも合計へ含む。
+
 ### BMZ Result IR Scope
 
 リザルトの IR パネル (`result_panel(1)`) は、BMZ 対応 skin に限り全体ランキングと

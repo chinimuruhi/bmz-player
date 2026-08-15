@@ -164,6 +164,10 @@ pub const SKIN_OPTION_BMZ_LN_POLICY_SETTING_COUNT: usize = 6;
 pub const SKIN_OPTION_BMZ_LN_POLICY_SETTING_LAST: i32 = 19_166;
 pub const SKIN_OPTION_BMZ_LN_POLICY_SETTING_AUTO: i32 = 19_167;
 pub const SKIN_OPTION_BMZ_LN_POLICY_SETTING_FORCE: i32 = 19_168;
+/// BMZ LR2 conversion bridge: modified-LR2 `ref=210` FAST/SLOW state.
+/// Values are `0=blank`, `1=FAST`, `2=SLOW`. LR2 play skin decode rewrites
+/// the legacy ref to this ID so beatoraja's standard `ref=210` meaning remains intact.
+pub const SKIN_REF_BMZ_LR2_FAST_SLOW_1P: i32 = 19_170;
 /// Lua result skin の定数 `Expand_op` 代入を宣言的クリックイベントへ変換する ID。
 /// beatoraja の正数イベント ID と衝突しない BMZ 内部予約値を使う。
 pub const SKIN_EVENT_RESULT_PANEL_IR: i32 = -10_001;
