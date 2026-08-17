@@ -333,8 +333,7 @@ mod tests {
             stored_course(4, LOCAL_COURSE_SOURCE, "Delta"),
         ];
 
-        let ids =
-            local_first_courses(&courses).into_iter().map(|course| course.id).collect::<Vec<_>>();
+        let ids = local_first_courses(&courses).map(|course| course.id).collect::<Vec<_>>();
 
         assert_eq!(ids, [2, 4, 1, 3]);
     }
