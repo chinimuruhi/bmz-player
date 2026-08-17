@@ -10,6 +10,7 @@ pub(super) struct SettingsPanelActions {
     pub(super) song_scan_requests: Vec<SongScanRequest>,
     pub(super) table_fetch_urls: Vec<String>,
     pub(super) score_import_request: Option<ScoreImportRequest>,
+    pub(super) replay_import_request: Option<ImportBeatorajaReplaysRequest>,
     /// 音声出力(cpal ストリーム)を現在の設定で開き直す要求。
     pub(super) apply_audio: bool,
 }
@@ -24,6 +25,11 @@ pub(super) struct SettingsPanelState<'a> {
     pub(super) score_import_device_type: &'a mut InputDeviceKind,
     pub(super) score_import_status: &'a str,
     pub(super) score_import_error: &'a str,
+    pub(super) replay_import_path: &'a mut String,
+    pub(super) replay_import_device_type: &'a mut InputDeviceKind,
+    pub(super) replay_import_overwrite: &'a mut bool,
+    pub(super) replay_import_status: &'a str,
+    pub(super) replay_import_error: &'a str,
     pub(super) audio_device_picker: &'a mut AudioDevicePickerState,
     pub(super) obs_scene_picker: &'a mut ObsScenePickerState,
     pub(super) obs_connection_status: &'a crate::obs::ObsConnectionStatus,
@@ -217,7 +223,7 @@ mod score_import;
 use audio_video::{AudioVideoSectionContext, build_audio_video_settings_sections};
 use integration::build_integration_settings_sections;
 pub(super) use labels::*;
-use library::build_library_settings_sections;
+use library::{LibrarySettingsActions, build_library_settings_sections};
 pub(super) use main::build_settings_panel;
 pub(super) use obs::build_obs_settings_section;
-pub(super) use score_import::build_score_import_section;
+pub(super) use score_import::{build_replay_import_section, build_score_import_section};

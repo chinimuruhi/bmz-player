@@ -4,8 +4,14 @@ pub enum Command {
     Table(TableCommand),
     Songs(SongsCommand),
     Course(CourseCommand),
+    Replay(ReplayCommand),
     Ir(IrCommand),
     Profile(ProfileCommand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplayCommand {
+    Import { path: String, overwrite: bool, controller: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -60,6 +60,20 @@ pub struct ReplayImportReport {
     pub threshold_warning: Option<String>,
 }
 
+impl ReplayImportReport {
+    pub fn summary(&self) -> String {
+        format!(
+            "scanned={}, imported={}, replaced={}, missing_chart={}, protected_slot={}, unsupported={}",
+            self.scanned,
+            self.imported,
+            self.replaced,
+            self.missing_chart,
+            self.protected_slot,
+            self.unsupported
+        )
+    }
+}
+
 enum ImportOneOutcome {
     Imported { replaced: bool },
     MissingChart(String),

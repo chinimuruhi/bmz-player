@@ -168,6 +168,7 @@ fn help_text_lists_supported_options() {
     assert!(help.contains("--smoke-exit-on-result"));
     assert!(help.contains("--smoke-screenshot"));
     assert!(help.contains("--renderer"));
+    assert!(help.contains("replay import <PATH> [--overwrite] [--controller]"));
     assert!(help.contains("table add"));
     assert!(help.contains("table list"));
     assert!(help.contains("table fetch"));
@@ -431,6 +432,20 @@ fn parse_command_routes_course_subcommands() {
         Command::Course(CourseCommand::Import { path: "/course".to_string() })
     );
     assert_eq!(parse_command(["course", "list"]).unwrap(), Command::Course(CourseCommand::List));
+}
+
+#[test]
+fn parse_command_routes_replay_import() {
+    assert_eq!(
+        parse_command(["replay", "import", "/player", "--overwrite", "--controller"]).unwrap(),
+        Command::Replay(ReplayCommand::Import {
+            path: "/player".to_string(),
+            overwrite: true,
+            controller: true,
+        })
+    );
+    assert!(parse_command(["replay", "import", "/player", "--unknown"]).is_err());
+    assert!(parse_command(["replay", "import", "/player", "/other"]).is_err());
 }
 
 #[test]

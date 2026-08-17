@@ -285,6 +285,7 @@ pub struct EguiOutput {
     /// 難易度表の取得要求。空なら取得しない。
     pub table_fetch_urls: Vec<String>,
     pub score_import_request: Option<ScoreImportRequest>,
+    pub replay_import_request: Option<ImportBeatorajaReplaysRequest>,
     /// 現在の設定で音声出力(cpal ストリーム)を開き直す要求。
     pub apply_audio_output: bool,
     pub check_for_update: bool,
@@ -414,6 +415,11 @@ pub struct EguiLayer {
     pub(super) score_import_device_type: InputDeviceKind,
     pub(super) score_import_status: String,
     pub(super) score_import_error: String,
+    pub(super) replay_import_path: String,
+    pub(super) replay_import_device_type: InputDeviceKind,
+    pub(super) replay_import_overwrite: bool,
+    pub(super) replay_import_status: String,
+    pub(super) replay_import_error: String,
     /// 本体設定パネル: 出力デバイス選択用の列挙キャッシュ。
     pub(super) audio_device_picker: AudioDevicePickerState,
     /// 本体設定パネル: OBS scene list 取得状態。

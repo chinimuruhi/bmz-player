@@ -20,6 +20,18 @@ pub fn app_help_text() -> String {
             "  cargo run -p bmz-player -- songs load\n",
             "  cargo run -p bmz-player -- songs load --everything\n",
         )
+        .replace(
+            "  bmz-player course <SUBCOMMAND>\n",
+            "  bmz-player course <SUBCOMMAND>\n  bmz-player replay <SUBCOMMAND>\n",
+        )
+        .replace(
+            "  course attempt <SCORE_ID>        Show per-chart breakdown of a single attempt\n\nProfile subcommands:",
+            "  course attempt <SCORE_ID>        Show per-chart breakdown of a single attempt\n\nReplay subcommands:\n  replay import <PATH> [--overwrite] [--controller]\n      Import beatoraja .brd files from a player/replay directory or one file\n\nProfile subcommands:",
+        )
+        .replace(
+            "  cargo run -p bmz-player -- course list\n",
+            "  cargo run -p bmz-player -- course list\n  cargo run -p bmz-player -- replay import /path/to/player\n",
+        )
 }
 
 pub(super) fn parse_lua_skin_runtime_mode(value: &str) -> Result<bmz_skin::LuaSkinRuntimeMode> {

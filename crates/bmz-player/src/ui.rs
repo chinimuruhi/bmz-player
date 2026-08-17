@@ -49,6 +49,7 @@ use crate::select_options::SessionMode;
 use crate::skin_loader::{RANDOM_FILE_SELECTION, is_lua_skin_path};
 use crate::songs_cmd::add_song_root_entry;
 use crate::storage::difficulty_table_db::DifficultyTableRecord;
+use crate::storage::replay_import::ImportBeatorajaReplaysRequest;
 use crate::storage::score_import::{ScoreImportKind, ScoreImportRequest};
 use crate::update::{UpdateAssetKind, UpdateCandidate, current_version};
 use crate::window_config::monitor_config_name;

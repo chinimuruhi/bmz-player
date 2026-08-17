@@ -555,6 +555,9 @@ impl WinitApp {
         if let Some(request) = output.score_import_request {
             self.import_external_scores(request);
         }
+        if let Some(request) = output.replay_import_request {
+            self.import_beatoraja_replay_files(request);
+        }
         if output.save_profile_config {
             match save_profile_config(
                 &self.boot.profile_paths.profile_toml,

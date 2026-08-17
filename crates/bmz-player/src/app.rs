@@ -165,6 +165,7 @@ use crate::storage::difficulty_table_db::DifficultyTableRecord;
 use crate::storage::library_db::{ChartDistributionSecond, ChartListItem, LibraryDatabase};
 use crate::storage::migration::{migrate_library_db, migrate_network_db};
 use crate::storage::replay::load_replay_for_chart_policy_and_double_option;
+use crate::storage::replay_import::{ImportBeatorajaReplaysRequest, import_beatoraja_replays};
 use crate::storage::scan::{ScanProgress, ScanReport};
 use crate::storage::score_db::{DailyPlayerStats, PlayerStats, ScoreDatabase, ScoreKey};
 use crate::storage::score_import::{ScoreImportRequest, import_scores};

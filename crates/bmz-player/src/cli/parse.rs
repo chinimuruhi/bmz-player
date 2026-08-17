@@ -87,6 +87,35 @@ where
                 None => bail!("course requires a subcommand: import, list, history, attempt"),
             }
         }
+        Some("replay") => {
+            let rest = &args[1..];
+            match rest.first().map(|s| s.as_str()) {
+                Some("import") => {
+                    let flags = &rest[1..];
+                    let paths =
+                        flags.iter().filter(|arg| !arg.starts_with('-')).collect::<Vec<_>>();
+                    let path = paths
+                        .first()
+                        .ok_or_else(|| anyhow::anyhow!("replay import requires a PATH"))?
+                        .to_string();
+                    if paths.len() > 1 {
+                        bail!("replay import accepts only one PATH, got: {}", paths[1]);
+                    }
+                    for flag in flags.iter().filter(|arg| arg.starts_with('-')) {
+                        if !matches!(flag.as_str(), "--overwrite" | "--controller") {
+                            bail!("unknown replay import flag: {flag}");
+                        }
+                    }
+                    Ok(Command::Replay(ReplayCommand::Import {
+                        path,
+                        overwrite: flags.iter().any(|arg| arg == "--overwrite"),
+                        controller: flags.iter().any(|arg| arg == "--controller"),
+                    }))
+                }
+                Some(sub) => bail!("unknown replay subcommand: {sub}. Use: import"),
+                None => bail!("replay requires a subcommand: import"),
+            }
+        }
         Some("profile") => parse_profile_command(&args[1..]),
         Some("ir") => parse_ir_command(&args[1..]),
         _ => Ok(Command::Run(AppOptions::parse_args(args)?)),

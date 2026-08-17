@@ -89,6 +89,43 @@ impl WinitApp {
         }
     }
 
+    pub(super) fn import_beatoraja_replay_files(&mut self, request: ImportBeatorajaReplaysRequest) {
+        let path = request.source.display().to_string();
+        match import_beatoraja_replays(
+            &self.boot.library_db,
+            &mut self.boot.score_db,
+            &self.boot.profile_paths,
+            &request,
+        ) {
+            Ok(report) => {
+                let summary = report.summary();
+                tracing::info!(path, summary, "beatoraja replays imported");
+                for issue in &report.issues {
+                    tracing::warn!(
+                        replay_path = %issue.path.display(),
+                        issue_kind = ?issue.kind,
+                        message = %issue.message,
+                        "beatoraja replay was not imported"
+                    );
+                }
+                self.reload_select_items();
+                if let Some(egui) = self.ui.egui.as_mut() {
+                    let status = match &report.threshold_warning {
+                        Some(warning) => format!("{summary}\nwarning: {warning}"),
+                        None => summary,
+                    };
+                    egui.set_replay_import_status(status, false);
+                }
+            }
+            Err(error) => {
+                tracing::error!(path, error = %format_error_chain(&error), "beatoraja replay import failed");
+                if let Some(egui) = self.ui.egui.as_mut() {
+                    egui.set_replay_import_status(format!("import failed: {error:#}"), true);
+                }
+            }
+        }
+    }
+
     pub(super) fn song_load_roots_from_stack(&self) -> Vec<PathEntry> {
         if let Some(folder) = self.select.folder_stack.last()
             && !folder.starts_with(TABLE_ROOT_PATH)
