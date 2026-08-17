@@ -359,39 +359,15 @@ impl WinitApp {
         }
 
         if matches!(self.view_state(), AppViewState::Select)
-            && event.physical_key == PhysicalKey::Code(KeyCode::F5)
+            && !in_settings_stack(&self.select.folder_stack)
             && event.state == ElementState::Pressed
             && !event.repeat
+            && let Some(control) = physical_key_name(event.physical_key)
+            && let Some(action) =
+                configurable_select_shortcut_action(&control, &self.select.select_keys)
         {
-            self.reload_from_select_context();
+            self.apply_select_action(action, Some(&control));
             return;
-        }
-
-        if matches!(self.view_state(), AppViewState::Select)
-            && event.state == ElementState::Pressed
-            && !event.repeat
-        {
-            match event.physical_key {
-                PhysicalKey::Code(KeyCode::F3) => self.handle_select_f3_action(),
-                PhysicalKey::Code(KeyCode::F10) => self.start_autoplay_folder_selected(),
-                PhysicalKey::Code(KeyCode::F11) => self.open_primary_ir_for_selected(),
-                PhysicalKey::Code(KeyCode::Digit7 | KeyCode::Numpad7) => self.cycle_active_rival(1),
-                PhysicalKey::Code(KeyCode::Numpad9) => self.open_selected_chart_documents(),
-                _ => {}
-            }
-            if matches!(
-                event.physical_key,
-                PhysicalKey::Code(
-                    KeyCode::F3
-                        | KeyCode::F10
-                        | KeyCode::F11
-                        | KeyCode::Digit7
-                        | KeyCode::Numpad7
-                        | KeyCode::Numpad9
-                )
-            ) {
-                return;
-            }
         }
 
         if matches!(self.view_state(), AppViewState::Select)

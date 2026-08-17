@@ -340,8 +340,9 @@ use result_support::*;
 use result_timing_support::*;
 use rival_sync::*;
 use scene_input::{
-    DecideAction, ResultAction, SelectAction, SelectMove, decide_action as scene_decide_action,
-    result_action as scene_result_action, select_action as scene_select_action,
+    DecideAction, ResultAction, SelectAction, SelectMove, configurable_select_shortcut_action,
+    decide_action as scene_decide_action, result_action as scene_result_action,
+    select_action as scene_select_action,
 };
 use select_assets::{
     PreparedSelectPreview, SelectAssetRuntime, SelectMetaImageSlot, SelectPreviewFade,

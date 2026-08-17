@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_keys_common_lists_e_actions() {
+    fn settings_keys_common_lists_configurable_actions() {
         let items = load_settings_items(CONFIG_KEYS_COMMON_PATH);
         assert_eq!(items.len(), COMMON_ACTIONS.len() * KEY_BINDING_SLOTS.len() + 1);
         assert!(matches!(items.first(), Some(SelectItem::SettingsBack)));
@@ -420,6 +420,25 @@ mod tests {
                     action: InputActionConfig::E4,
                     slot: KeyBindingSlot::Controller,
                 }
+        )));
+        assert!(items.iter().any(|item| matches!(
+            item,
+            SelectItem::KeyBinding(row)
+                if row.target == KeyBindingTarget::Action {
+                    action: InputActionConfig::Screenshot,
+                    slot: KeyBindingSlot::KeyboardPrimary,
+                }
+        )));
+        assert!(!items.iter().any(|item| matches!(
+            item,
+            SelectItem::KeyBinding(row)
+                if matches!(
+                    row.target,
+                    KeyBindingTarget::Action {
+                        action: InputActionConfig::SelectEnter | InputActionConfig::SelectOptionBga,
+                        ..
+                    }
+                )
         )));
     }
 

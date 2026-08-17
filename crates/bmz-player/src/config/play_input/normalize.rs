@@ -17,6 +17,26 @@ pub fn normalize_profile_input(input: &mut ProfileInputConfig) {
     if input.ui.bindings.is_empty() {
         input.ui.bindings = crate::config::profile_config::default_ui_bindings();
     }
+    migrate_configurable_shortcut_bindings(&mut input.ui);
+}
+
+fn migrate_configurable_shortcut_bindings(ui: &mut crate::config::profile_config::UiInputConfig) {
+    use crate::config::profile_config::{
+        CONFIGURABLE_SHORTCUT_ACTIONS, UI_INPUT_BINDING_VERSION,
+        default_configurable_shortcut_bindings,
+    };
+
+    if ui.version >= UI_INPUT_BINDING_VERSION {
+        return;
+    }
+    let defaults = default_configurable_shortcut_bindings();
+    for &action in CONFIGURABLE_SHORTCUT_ACTIONS {
+        if ui.bindings.iter().any(|entry| entry.action == Some(action)) {
+            continue;
+        }
+        ui.bindings.extend(defaults.iter().filter(|entry| entry.action == Some(action)).cloned());
+    }
+    ui.version = UI_INPUT_BINDING_VERSION;
 }
 
 fn migrate_legacy_analog_scratch_config(input: &mut ProfileInputConfig) {
@@ -51,6 +71,7 @@ pub fn default_profile_input() -> ProfileInputConfig {
         select_input_mode: crate::config::profile_config::SelectInputModeConfig::Key7Key14,
         start_key: None,
         ui: crate::config::profile_config::UiInputConfig {
+            version: crate::config::profile_config::UI_INPUT_BINDING_VERSION,
             bindings: crate::config::profile_config::default_ui_bindings(),
         },
         play,

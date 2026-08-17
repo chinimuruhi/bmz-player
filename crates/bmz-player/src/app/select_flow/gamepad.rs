@@ -333,6 +333,13 @@ impl WinitApp {
             control_event.physical.as_ref().expect("gamepad control always has a physical value");
         let has_play_control_context =
             self.play.active_play.is_some() || self.play.pending_play_start.is_some();
+        if pressed
+            && self.select.key_config_edit.is_none()
+            && self.select.select_keys.is_screenshot(button)
+        {
+            self.request_manual_screenshot();
+            return;
+        }
         if self.route_practice_gamepad_control(button, pressed) {
             return;
         }

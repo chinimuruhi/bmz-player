@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::profile_config::BindingConfigEntry;
 
 #[test]
 fn operating_time_is_applied_to_select_snapshot() {
@@ -328,6 +329,73 @@ fn select_action_maps_collection_keys() {
         select_action(PhysicalKey::Code(KeyCode::Numpad5), ElementState::Pressed, false, &keys),
         Some(SelectAction::ReplayPlay)
     );
+}
+
+#[test]
+fn select_action_maps_configurable_shortcuts() {
+    let keys = default_select_keys();
+    for (key, expected) in [
+        (KeyCode::F3, SelectAction::OpenFolder),
+        (KeyCode::F5, SelectAction::Reload),
+        (KeyCode::F10, SelectAction::AutoplayFolder),
+        (KeyCode::F11, SelectAction::OpenPrimaryIr),
+        (KeyCode::Digit7, SelectAction::CycleRival),
+        (KeyCode::Numpad7, SelectAction::CycleRival),
+        (KeyCode::Numpad9, SelectAction::OpenDocuments),
+    ] {
+        assert_eq!(
+            select_action(PhysicalKey::Code(key), ElementState::Pressed, false, &keys),
+            Some(expected),
+        );
+    }
+    assert!(keys.is_screenshot("F12"));
+}
+
+#[test]
+fn configurable_select_shortcut_replaces_its_default_key() {
+    let mut input = crate::config::play_input::default_profile_input();
+    apply_play_binding(
+        &mut input,
+        KeyMode::K7,
+        KeyBindingTarget::Action {
+            action: InputActionConfig::SelectOpenFolder,
+            slot: KeyBindingSlot::KeyboardPrimary,
+        },
+        "A",
+    )
+    .unwrap();
+    let keys = SelectKeyBindings::from_profile(&input);
+
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::KeyA), ElementState::Pressed, false, &keys),
+        Some(SelectAction::OpenFolder),
+    );
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::F3), ElementState::Pressed, false, &keys),
+        None,
+    );
+}
+
+#[test]
+fn deprecated_select_enter_and_option_bga_bindings_are_ignored() {
+    let mut input = crate::config::play_input::default_profile_input();
+    for action in [InputActionConfig::SelectEnter, InputActionConfig::SelectOptionBga] {
+        input.ui.bindings.push(BindingConfigEntry {
+            device: "keyboard".to_string(),
+            control: "A".to_string(),
+            keyboard_slot: None,
+            lane: None,
+            action: Some(action),
+            scratch: None,
+        });
+    }
+    let keys = SelectKeyBindings::from_profile(&input);
+
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::KeyA), ElementState::Pressed, false, &keys),
+        None,
+    );
+    assert_ne!(keys.cycle_bga(), Some("A"));
 }
 
 #[test]

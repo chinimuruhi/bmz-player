@@ -813,6 +813,12 @@ impl WinitApp {
                 SelectAction::ExitFolder => {
                     self.close_select_ir_battle();
                 }
+                SelectAction::OpenFolder => self.handle_select_open_folder_action(),
+                SelectAction::Reload => self.reload_from_select_context(),
+                SelectAction::AutoplayFolder => self.start_autoplay_folder_selected(),
+                SelectAction::OpenPrimaryIr => self.open_primary_ir_for_selected(),
+                SelectAction::CycleRival => self.cycle_active_rival(1),
+                SelectAction::OpenDocuments => self.open_selected_chart_documents(),
                 SelectAction::Move(select_move) => {
                     self.move_selection(select_move);
                     if matches!(
@@ -838,6 +844,12 @@ impl WinitApp {
         match action {
             SelectAction::EnterOrPlay => self.enter_or_play_selected(),
             SelectAction::ExitFolder => self.exit_folder(),
+            SelectAction::OpenFolder => self.handle_select_open_folder_action(),
+            SelectAction::Reload => self.reload_from_select_context(),
+            SelectAction::AutoplayFolder => self.start_autoplay_folder_selected(),
+            SelectAction::OpenPrimaryIr => self.open_primary_ir_for_selected(),
+            SelectAction::CycleRival => self.cycle_active_rival(1),
+            SelectAction::OpenDocuments => self.open_selected_chart_documents(),
             SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
             SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
             SelectAction::SameFolder => self.open_same_folder_for_selected(),

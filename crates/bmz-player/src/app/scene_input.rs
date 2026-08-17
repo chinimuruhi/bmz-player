@@ -7,6 +7,12 @@ use super::select_key_bindings::SelectKeyBindings;
 pub(super) enum SelectAction {
     EnterOrPlay,
     ExitFolder,
+    OpenFolder,
+    Reload,
+    AutoplayFolder,
+    OpenPrimaryIr,
+    CycleRival,
+    OpenDocuments,
     FavoriteSong,
     FavoriteChart,
     SameFolder,
@@ -55,6 +61,9 @@ pub(super) fn select_action(
 }
 
 fn keyboard_select_action(control: &str, bindings: &SelectKeyBindings) -> Option<SelectAction> {
+    if let Some(action) = configurable_select_shortcut_action(control, bindings) {
+        return Some(action);
+    }
     let fixed = match control {
         "Enter" | "Space" | "ArrowRight" => Some(SelectAction::EnterOrPlay),
         "ArrowLeft" => Some(SelectAction::ExitFolder),
@@ -104,6 +113,9 @@ fn keyboard_select_action(control: &str, bindings: &SelectKeyBindings) -> Option
 }
 
 fn gamepad_select_action(control: &str, bindings: &SelectKeyBindings) -> Option<SelectAction> {
+    if let Some(action) = configurable_select_shortcut_action(control, bindings) {
+        return Some(action);
+    }
     let fixed = match control {
         "DPadUp" => Some(SelectAction::Move(SelectMove::Previous)),
         "DPadDown" => Some(SelectAction::Move(SelectMove::Next)),
@@ -139,6 +151,27 @@ fn gamepad_select_action(control: &str, bindings: &SelectKeyBindings) -> Option<
         Some(SelectAction::ReplayCycle)
     } else if bindings.is_replay_play(control) {
         Some(SelectAction::ReplayPlay)
+    } else {
+        None
+    }
+}
+
+pub(super) fn configurable_select_shortcut_action(
+    control: &str,
+    bindings: &SelectKeyBindings,
+) -> Option<SelectAction> {
+    if bindings.is_open_folder(control) {
+        Some(SelectAction::OpenFolder)
+    } else if bindings.is_reload(control) {
+        Some(SelectAction::Reload)
+    } else if bindings.is_autoplay_folder(control) {
+        Some(SelectAction::AutoplayFolder)
+    } else if bindings.is_open_ir(control) {
+        Some(SelectAction::OpenPrimaryIr)
+    } else if bindings.is_rival_cycle(control) {
+        Some(SelectAction::CycleRival)
+    } else if bindings.is_open_documents(control) {
+        Some(SelectAction::OpenDocuments)
     } else {
         None
     }

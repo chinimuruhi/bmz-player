@@ -71,14 +71,8 @@ impl SettingsBindings {
             {
                 continue;
             }
-            match entry.action {
-                Some(InputActionConfig::SelectEnter) => {
-                    confirm.insert(entry.control.clone());
-                }
-                Some(InputActionConfig::E2) => {
-                    back.insert(entry.control.clone());
-                }
-                _ => {}
+            if entry.action == Some(InputActionConfig::E2) {
+                back.insert(entry.control.clone());
             }
         }
 
