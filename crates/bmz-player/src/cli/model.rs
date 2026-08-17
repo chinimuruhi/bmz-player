@@ -65,8 +65,8 @@ pub enum TableCommand {
 pub enum SongsCommand {
     Add { path: String, recursive: bool, enabled: bool },
     List,
-    Load { target: Option<String> },
-    Reload { target: Option<String> },
+    Load { target: Option<String>, use_everything: Option<bool> },
+    Reload { target: Option<String>, use_everything: Option<bool> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

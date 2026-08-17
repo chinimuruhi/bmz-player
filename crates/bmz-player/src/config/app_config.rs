@@ -73,6 +73,10 @@ pub fn normalize_song_root_paths(roots: &mut Vec<PathEntry>) -> bool {
 pub struct ScanConfig {
     pub follow_symlinks: bool,
     pub skip_hidden: bool,
+    /// Windows の Everything インデックスを曲ファイル探索に使用する。
+    /// 利用できない場合は通常のファイルシステム探索へフォールバックする。
+    #[serde(default)]
+    pub use_everything: bool,
     pub auto_rescan_on_startup: bool,
     pub rescan_missing_files: bool,
 }
@@ -559,6 +563,7 @@ impl Default for AppConfig {
             scan: ScanConfig {
                 follow_symlinks: true,
                 skip_hidden: true,
+                use_everything: false,
                 auto_rescan_on_startup: false,
                 rescan_missing_files: true,
             },

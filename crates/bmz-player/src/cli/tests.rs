@@ -364,6 +364,14 @@ fn parse_command_rejects_unknown_table_subcommand() {
 }
 
 #[test]
+fn help_describes_everything_scan_overrides() {
+    let help = app_help_text();
+
+    assert!(help.contains("songs load [PATH|NAME] [--everything|--no-everything]"));
+    assert!(help.contains("songs load --everything"));
+}
+
+#[test]
 fn parse_command_routes_songs_subcommands() {
     assert_eq!(
         parse_command(["songs", "add", "/bms"]).unwrap(),
@@ -384,20 +392,36 @@ fn parse_command_routes_songs_subcommands() {
     assert_eq!(parse_command(["songs", "list"]).unwrap(), Command::Songs(SongsCommand::List));
     assert_eq!(
         parse_command(["songs", "load"]).unwrap(),
-        Command::Songs(SongsCommand::Load { target: None })
+        Command::Songs(SongsCommand::Load { target: None, use_everything: None })
     );
     assert_eq!(
         parse_command(["songs", "load", "my-folder"]).unwrap(),
-        Command::Songs(SongsCommand::Load { target: Some("my-folder".to_string()) })
+        Command::Songs(SongsCommand::Load {
+            target: Some("my-folder".to_string()),
+            use_everything: None,
+        })
+    );
+    assert_eq!(
+        parse_command(["songs", "load", "--everything", "my-folder"]).unwrap(),
+        Command::Songs(SongsCommand::Load {
+            target: Some("my-folder".to_string()),
+            use_everything: Some(true),
+        })
     );
     assert_eq!(
         parse_command(["songs", "reload"]).unwrap(),
-        Command::Songs(SongsCommand::Reload { target: None })
+        Command::Songs(SongsCommand::Reload { target: None, use_everything: None })
     );
     assert_eq!(
-        parse_command(["songs", "reload", "/bms"]).unwrap(),
-        Command::Songs(SongsCommand::Reload { target: Some("/bms".to_string()) })
+        parse_command(["songs", "reload", "/bms", "--no-everything"]).unwrap(),
+        Command::Songs(SongsCommand::Reload {
+            target: Some("/bms".to_string()),
+            use_everything: Some(false),
+        })
     );
+    assert!(parse_command(["songs", "load", "--unknown"]).is_err());
+    assert!(parse_command(["songs", "load", "one", "two"]).is_err());
+    assert!(parse_command(["songs", "load", "--everything", "--no-everything"]).is_err());
 }
 
 #[test]

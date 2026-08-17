@@ -13,11 +13,22 @@ fn app_config_defaults_scan_symlinks_and_background_frame_limit() {
     let config = AppConfig::default();
 
     assert!(config.scan.follow_symlinks);
+    assert!(!config.scan.use_everything);
     assert!(!config.scan.auto_rescan_on_startup);
     assert_eq!(config.video.vsync_mode, VsyncModeConfig::Vsync);
     assert_eq!(config.video.frame_latency_mode, FrameLatencyModeConfig::Auto);
     assert_eq!(config.video.internal_resolution, InternalResolutionModeConfig::Native);
     assert_eq!(config.video.frame_limit_in_background, 60);
+}
+
+#[test]
+fn app_config_loads_missing_everything_setting_as_disabled() {
+    let toml =
+        toml::to_string(&AppConfig::default()).unwrap().replace("use_everything = false\n", "");
+
+    let config: AppConfig = toml::from_str(&toml).unwrap();
+
+    assert!(!config.scan.use_everything);
 }
 
 #[test]

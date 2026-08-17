@@ -17,8 +17,12 @@ pub fn run_songs_command(cmd: SongsCommand) -> Result<()> {
     match cmd {
         SongsCommand::Add { path, recursive, enabled } => add_song_root(&path, recursive, enabled),
         SongsCommand::List => list_song_roots(),
-        SongsCommand::Load { target } => load_songs(target.as_deref(), false),
-        SongsCommand::Reload { target } => load_songs(target.as_deref(), true),
+        SongsCommand::Load { target, use_everything } => {
+            load_songs(target.as_deref(), false, use_everything)
+        }
+        SongsCommand::Reload { target, use_everything } => {
+            load_songs(target.as_deref(), true, use_everything)
+        }
     }
 }
 
@@ -158,7 +162,7 @@ fn list_song_roots() -> Result<()> {
     Ok(())
 }
 
-fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
+fn load_songs(target: Option<&str>, force: bool, use_everything: Option<bool>) -> Result<()> {
     let app_paths = resolve_app_paths()?;
     app_paths.ensure_dirs()?;
 
@@ -178,9 +182,15 @@ fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
+    let mut scan_config = app_config.scan.clone();
+    if let Some(use_everything) = use_everything {
+        scan_config.use_everything = use_everything;
+    }
+
     let verb = if force { "Reloading" } else { "Scanning" };
-    println!("{verb} {} root(s)...", roots.len());
-    let report = scan_songs(&mut library_db, &roots, &app_config.scan, now, force)
+    let discovery = if scan_config.use_everything { "everything" } else { "native" };
+    println!("{verb} {} root(s) with {discovery} discovery...", roots.len());
+    let report = scan_songs(&mut library_db, &roots, &scan_config, now, force)
         .with_context(|| format!("failed to scan song roots (force={force})"))?;
 
     let s = &report.summary;
@@ -201,6 +211,10 @@ fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
     println!(
         "Timing: total={}ms discovery={}ms fingerprint={}ms skip={}ms parse={}ms write={}ms",
         t.total_ms, t.discovery_ms, t.fingerprint_ms, t.skip_check_ms, t.parse_ms, t.write_ms
+    );
+    println!(
+        "Discovery backends: everything={} native={} fallback={}",
+        s.everything_discovery_roots, s.native_discovery_roots, s.everything_fallback_roots
     );
 
     for issue in &report.discovery_issues {

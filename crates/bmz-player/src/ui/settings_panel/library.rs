@@ -160,6 +160,14 @@ pub(super) fn build_library_settings_sections(
                 tr!(text, "settings-scan-follow-symlinks"),
             );
             ui.checkbox(&mut config.scan.skip_hidden, tr!(text, "settings-scan-skip-hidden"));
+            #[cfg(windows)]
+            {
+                ui.checkbox(
+                    &mut config.scan.use_everything,
+                    tr!(text, "settings-scan-use-everything"),
+                );
+                ui.small(tr!(text, "settings-scan-use-everything-help"));
+            }
             ui.checkbox(
                 &mut config.scan.auto_rescan_on_startup,
                 tr!(text, "settings-scan-on-startup"),
