@@ -57,6 +57,7 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
                 arrange_pattern: None,
                 s_random_scheme: SRandomScheme::default(),
                 s_random_scheme_2p: None,
+                h_random_threshold_ms: None,
             }),
             opponent_chart: Some(opponent_chart),
             ..PlaySessionOptions::default()

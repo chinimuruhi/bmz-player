@@ -147,6 +147,9 @@ pub struct PlaySessionOptions {
     pub s_random_scheme: SRandomScheme,
     /// Optional 2P S-RANDOM generation for mixed ghost/replay arrangements.
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    /// beatoraja H-RANDOM/ALL-SCR key-lane threshold recovered for a replay.
+    /// None keeps BMZ's historical 100 ms behavior.
+    pub h_random_threshold_ms: Option<u32>,
     /// Independent seed used only while selecting BMS `#RANDOM` branches.
     pub bms_random_seed: Option<u64>,
     /// Recorded `#RANDOM` decisions, in source order, for exact replay.
@@ -197,6 +200,7 @@ pub struct BattleOpponentOptions {
     pub arrange_pattern: Option<Vec<u8>>,
     pub s_random_scheme: SRandomScheme,
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -214,6 +218,7 @@ pub struct AppliedArrange {
     pub s_random_scheme: SRandomScheme,
     /// 2P generation for DP charts. `None` means this is an SP chart.
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
     /// BMS `#RANDOM` decisions applied before the arrange modifier.
     pub bms_random_choices: Vec<i32>,
     pub pattern: Option<Vec<u8>>,
@@ -343,6 +348,7 @@ impl Default for PlaySessionOptions {
             legacy_arrange_seed: false,
             s_random_scheme: SRandomScheme::default(),
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             bms_random_seed: None,
             bms_random_choices: None,
             arrange_pattern: None,

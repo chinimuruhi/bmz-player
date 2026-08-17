@@ -409,6 +409,45 @@ fn cn_release_uses_long_note_end_window() {
 }
 
 #[test]
+fn opposite_scratch_direction_finishes_bss() {
+    let mut chart = chart_with_lane_long_start(Lane::Scratch, TimeUs(1_000_000), TimeUs(2_000_000));
+    chart.long_notes[0].mode = Some(LongNoteMode::Cn);
+    let mut engine = JudgeEngine::new_with_window_set(
+        crate::judge::window::beatoraja_judge_windows_for_keymode(KeyMode::K7),
+        RuleMode::Beatoraja,
+    );
+    let mut start = press_lane_at(Lane::Scratch, TimeUs(1_000_000));
+    start.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+    let mut end = press_lane_at(Lane::Scratch, TimeUs(2_000_000));
+    end.scratch_direction = Some(bmz_core::input::ScratchDirection::Up);
+
+    let start_outcome = engine.process_input(&chart, start);
+    let end_outcome = engine.process_input(&chart, end);
+
+    assert_eq!(start_outcome.events[0].judge, Judge::PGreat);
+    assert_eq!(end_outcome.events[0].note_id, Some(NoteId(2)));
+    assert_eq!(end_outcome.events[0].judge, Judge::PGreat);
+    assert!(engine.lanes[Lane::Scratch.index()].active_long.is_none());
+}
+
+#[test]
+fn releasing_inactive_scratch_direction_keeps_bss_held() {
+    let mut chart = chart_with_lane_long_start(Lane::Scratch, TimeUs(1_000_000), TimeUs(2_000_000));
+    chart.long_notes[0].mode = Some(LongNoteMode::Cn);
+    let mut engine = JudgeEngine::new(windows());
+    let mut start = press_lane_at(Lane::Scratch, TimeUs(1_000_000));
+    start.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+    let mut wrong_release = release_lane_at(Lane::Scratch, TimeUs(1_500_000));
+    wrong_release.scratch_direction = Some(bmz_core::input::ScratchDirection::Up);
+
+    engine.process_input(&chart, start);
+    let outcome = engine.process_input(&chart, wrong_release);
+
+    assert!(outcome.events.is_empty());
+    assert!(engine.lanes[Lane::Scratch.index()].active_long.is_some());
+}
+
+#[test]
 fn dx_9key_ln_early_bad_release_can_be_cancelled_during_margin() {
     let chart = chart_with_long_start(TimeUs(1_000_000), TimeUs(2_000_000));
     let mut engine = JudgeEngine::new_with_window_set_algorithm_and_keymode(

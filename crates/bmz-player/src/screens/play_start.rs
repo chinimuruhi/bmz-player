@@ -71,6 +71,8 @@ pub struct PlayStartOptions {
     pub chart_zero_time: TimeUs,
     /// Override profile gauge type. None means use the profile default.
     pub gauge: Option<GaugeTypeConfig>,
+    /// Gauge stored in a replay, which takes priority over the current profile.
+    pub replay_gauge_override: Option<GaugeType>,
     pub gauge_auto_shift: GaugeAutoShiftConfig,
     pub bottom_shiftable_gauge: crate::config::profile_config::BottomShiftableGaugeConfig,
     pub arrange: ArrangeOption,
@@ -87,6 +89,7 @@ pub struct PlayStartOptions {
     pub legacy_arrange_seed: bool,
     pub s_random_scheme: SRandomScheme,
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
     pub bms_random_seed: Option<u64>,
     pub bms_random_choices: Option<Vec<i32>>,
     pub arrange_pattern: Option<Vec<u8>>,
@@ -143,6 +146,7 @@ pub fn play_session_options_from_start(
 ) -> PlaySessionOptions {
     let gauge_override = start_options
         .course_gauge_override
+        .or(start_options.replay_gauge_override)
         .or_else(|| start_options.gauge.map(gauge_type_from_config));
     let gauge_auto_shift = start_options
         .gauge
@@ -160,6 +164,7 @@ pub fn play_session_options_from_start(
             arrange_pattern,
             s_random_scheme,
             s_random_scheme_2p,
+            h_random_threshold_ms,
             packed_seed,
         ) = match &target.playback {
             BattleTargetPlayback::Replay(replay) => (
@@ -173,6 +178,7 @@ pub fn play_session_options_from_start(
                 replay.lane_shuffle_pattern.clone(),
                 replay.effective_s_random_scheme().unwrap_or_default(),
                 replay.effective_s_random_scheme_2p().ok(),
+                replay.h_random_threshold_ms,
                 None,
             ),
             BattleTargetPlayback::Seed { arrange, arrange_2p, double_option, packed_seed } => (
@@ -185,6 +191,7 @@ pub fn play_session_options_from_start(
                 None,
                 None,
                 SRandomScheme::default(),
+                None,
                 None,
                 *packed_seed,
             ),
@@ -202,6 +209,7 @@ pub fn play_session_options_from_start(
             arrange_pattern,
             s_random_scheme,
             s_random_scheme_2p,
+            h_random_threshold_ms,
         }
     });
 
@@ -246,6 +254,7 @@ pub fn play_session_options_from_start(
         legacy_arrange_seed: start_options.legacy_arrange_seed,
         s_random_scheme: start_options.s_random_scheme,
         s_random_scheme_2p: start_options.s_random_scheme_2p,
+        h_random_threshold_ms: start_options.h_random_threshold_ms,
         bms_random_seed: start_options.bms_random_seed,
         bms_random_choices: start_options.bms_random_choices,
         arrange_pattern: start_options.arrange_pattern,
@@ -528,6 +537,7 @@ pub fn apply_arrange_override(
     options.legacy_arrange_seed = arrange.legacy_seed;
     options.s_random_scheme = arrange.s_random_scheme;
     options.s_random_scheme_2p = arrange.s_random_scheme_2p;
+    options.h_random_threshold_ms = arrange.h_random_threshold_ms;
     options.bms_random_choices = Some(arrange.bms_random_choices.clone());
     options.arrange_pattern = arrange.pattern.clone();
     options.seven_to_six = arrange.seven_to_six;
@@ -549,6 +559,8 @@ pub fn apply_queued_replay(
     options.legacy_arrange_seed = replay.replay.uses_legacy_seed_scheme();
     options.s_random_scheme = replay.replay.effective_s_random_scheme()?;
     options.s_random_scheme_2p = Some(replay.replay.effective_s_random_scheme_2p()?);
+    options.h_random_threshold_ms = replay.replay.h_random_threshold_ms;
+    options.replay_gauge_override = replay.replay.recorded_gauge_type();
     options.bms_random_choices = replay.replay.bms_random_choices.clone();
     options.arrange_pattern = replay.replay.lane_shuffle_pattern.clone();
     options.seven_to_six = false;
@@ -581,6 +593,7 @@ mod tests {
             legacy_seed: false,
             s_random_scheme: SRandomScheme::Legacy40MsV1,
             s_random_scheme_2p: Some(SRandomScheme::Lm120HzV1),
+            h_random_threshold_ms: Some(125),
             bms_random_choices: vec![2],
             pattern: Some(vec![3, 1, 2, 0]),
             seven_to_six: true,

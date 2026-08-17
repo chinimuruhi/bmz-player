@@ -431,6 +431,7 @@ pub(super) fn make_active_long(
             end_time: pair.end_time,
         },
         started_at,
+        scratch_direction: None,
         pending_release: None,
     })
 }

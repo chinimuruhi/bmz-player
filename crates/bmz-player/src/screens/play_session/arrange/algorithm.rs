@@ -5,6 +5,7 @@ pub(super) struct NoteArrangeEngine {
     pub(super) rng: ArrangeRng,
     pub(super) groups: Vec<NoteArrangeGroup>,
     pub(super) s_random_scheme: SRandomScheme,
+    pub(super) h_random_threshold_ms: Option<u32>,
 }
 
 impl NoteArrangeEngine {
@@ -14,12 +15,14 @@ impl NoteArrangeEngine {
         groups: &[Vec<usize>],
         legacy_seed: bool,
         s_random_scheme: SRandomScheme,
+        h_random_threshold_ms: Option<u32>,
     ) -> Self {
         Self {
             arrange,
             rng: ArrangeRng::new(seed, legacy_seed),
             groups: groups.iter().map(|lanes| NoteArrangeGroup::new(lanes)).collect(),
             s_random_scheme,
+            h_random_threshold_ms,
         }
     }
 
@@ -31,8 +34,14 @@ impl NoteArrangeEngine {
     ) {
         let time = notes.first().map(|note| note.time).unwrap_or(TimeUs(0));
         for group in &mut self.groups {
-            let map =
-                group.randomize(notes, time, self.arrange, self.s_random_scheme, &mut self.rng);
+            let map = group.randomize(
+                notes,
+                time,
+                self.arrange,
+                self.s_random_scheme,
+                self.h_random_threshold_ms,
+                &mut self.rng,
+            );
             for note in notes.iter_mut() {
                 let source = note.lane.index();
                 let Some(&dest) = map.get(&source) else {
@@ -137,6 +146,7 @@ impl NoteArrangeGroup {
         time: TimeUs,
         arrange: ArrangeOption,
         s_random_scheme: SRandomScheme,
+        h_random_threshold_ms: Option<u32>,
         rng: &mut ArrangeRng,
     ) -> std::collections::HashMap<usize, usize> {
         if self.lanes.is_empty() {
@@ -164,7 +174,9 @@ impl NoteArrangeGroup {
         let threshold = match arrange {
             ArrangeOption::SRandom => TimeUs(40_000),
             ArrangeOption::SRandomEx => TimeUs(40_000),
-            ArrangeOption::HRandom | ArrangeOption::AllScratch => TimeUs(100_000),
+            ArrangeOption::HRandom | ArrangeOption::AllScratch => {
+                TimeUs(i64::from(h_random_threshold_ms.unwrap_or(100)) * 1_000)
+            }
             _ => TimeUs(40_000),
         };
         map.extend(self.time_based_shuffle(notes, time, threshold, rng, changeable, assignable));

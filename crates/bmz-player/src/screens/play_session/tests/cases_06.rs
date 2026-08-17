@@ -237,6 +237,7 @@ events = []
         replay.lane_shuffle_pattern.as_deref(),
         replay.uses_legacy_seed_scheme(),
         scheme,
+        None,
     );
 
     assert_eq!(
@@ -267,6 +268,7 @@ fn rng_and_s_random_scheme_combinations_are_deterministic_and_independent() {
                 None,
                 legacy_rng,
                 scheme,
+                None,
             );
             let second_applied = apply_arrange_internal(
                 &mut second,
@@ -275,6 +277,7 @@ fn rng_and_s_random_scheme_combinations_are_deterministic_and_independent() {
                 None,
                 legacy_rng,
                 scheme,
+                None,
             );
 
             assert_eq!(lanes_for_notes(&first), lanes_for_notes(&second));
@@ -308,6 +311,7 @@ fn lm_120hz_v1_has_fixed_golden_rng_order_and_is_deterministic() {
             None,
             false,
             SRandomScheme::Lm120HzV1,
+            None,
         );
         assert_eq!(applied.s_random_scheme, SRandomScheme::Lm120HzV1);
         assert_eq!(lanes_for_notes(&actual), expected);
@@ -331,6 +335,7 @@ fn arranged_dp_chart(seed_1p: i64, seed_2p: i64) -> PlayableChart {
         false,
         SRandomScheme::Lm120HzV1,
         Some(SRandomScheme::Lm120HzV1),
+        None,
         None,
     );
     assert_eq!(applied.seed, Some(seed_1p));
@@ -481,6 +486,7 @@ fn lm_s_random_keeps_a_complete_bijection_in_every_supported_key_mode() {
                 Some(22),
                 false,
                 SRandomScheme::Lm120HzV1,
+                None,
                 None,
                 None,
             );

@@ -77,6 +77,7 @@ fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
                 kind: InputKind::Press,
                 time: TimeUs(0),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
             next_index: 0,
         }),

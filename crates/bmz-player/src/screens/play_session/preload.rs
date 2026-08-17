@@ -189,6 +189,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         opponent_options.arrange_pattern = opponent.arrange_pattern.clone();
         opponent_options.s_random_scheme = opponent.s_random_scheme;
         opponent_options.s_random_scheme_2p = opponent.s_random_scheme_2p;
+        opponent_options.h_random_threshold_ms = opponent.h_random_threshold_ms;
         Some(Arc::new(
             load_transformed_chart_for_play(library_db, chart_id, &opponent_options)?.chart,
         ))
@@ -439,6 +440,7 @@ pub(super) fn load_transformed_chart_for_play(
         options.legacy_arrange_seed,
         options.s_random_scheme,
         options.s_random_scheme_2p,
+        options.h_random_threshold_ms,
         options.arrange_pattern.as_deref(),
     );
     applied_arrange.double_option = applied_double_option;
@@ -526,6 +528,7 @@ pub fn build_practice_prepared_from_preloaded(
         false,
         options.s_random_scheme,
         options.s_random_scheme_2p,
+        options.h_random_threshold_ms,
         None,
     );
     applied_arrange.double_option = double_option;

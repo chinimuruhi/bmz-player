@@ -226,6 +226,9 @@ pub struct ActiveLongNote {
     pub end: LongNoteEndRef,
     /// HEAD が判定されてホールドが始まった時刻。beatoraja の TIMER_HOLD 相当の起点。
     pub started_at: TimeUs,
+    /// Direction that started a long scratch. None for key lanes and legacy
+    /// replays that predate directional scratch events.
+    pub scratch_direction: Option<bmz_core::input::ScratchDirection>,
     /// BAD/POOR 相当の早離しを、release margin 中だけ保留する。
     pub pending_release: Option<PendingLongRelease>,
 }

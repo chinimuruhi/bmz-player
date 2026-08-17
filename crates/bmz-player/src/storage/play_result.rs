@@ -51,6 +51,7 @@ pub struct StorePlayResultRequest {
     pub seed_scheme: String,
     pub s_random_scheme: SRandomScheme,
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
     pub arrange_pattern: Option<Vec<u8>>,
     /// false の場合は beatoraja の `updateScore=false` と同様に、
     /// クリアランプとプレイ回数だけを更新する。
@@ -139,7 +140,12 @@ pub fn store_play_result(
             )
             .with_randomization(arrange_seed_2p, bms_random_choices.clone())
             .with_seed_scheme(request.seed_scheme.clone())
-            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p);
+            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p)
+            .with_playback_metadata(
+                request.applied_double_option,
+                result.gauge_type,
+                request.h_random_threshold_ms,
+            );
             let hash = save_replay_with_hash(&path, &replay)?;
             (format!("replay/{file_name}"), Some(hash))
         } else {
@@ -213,7 +219,12 @@ pub fn store_play_result(
             )
             .with_randomization(arrange_seed_2p, bms_random_choices.clone())
             .with_seed_scheme(request.seed_scheme.clone())
-            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p);
+            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p)
+            .with_playback_metadata(
+                request.applied_double_option,
+                result.gauge_type,
+                request.h_random_threshold_ms,
+            );
             save_replay(&path, &replay)?;
             let rel_path = format!("replay/{file_name}");
             score_db.upsert_replay_slot(&ReplaySlotRecord {

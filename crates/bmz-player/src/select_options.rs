@@ -374,6 +374,14 @@ impl DoubleOptionScoreBucket {
         }
     }
 
+    pub const fn as_double_option(self) -> DoubleOption {
+        match self {
+            Self::Off => DoubleOption::Off,
+            Self::Battle => DoubleOption::Battle,
+            Self::BattleAutoScratch => DoubleOption::BattleAutoScratch,
+        }
+    }
+
     pub fn from_str_or_off(value: &str) -> Self {
         match value {
             "Battle" => Self::Battle,

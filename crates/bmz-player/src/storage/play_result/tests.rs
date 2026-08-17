@@ -53,6 +53,7 @@ fn store_play_result_writes_replay_and_score() {
                 kind: InputKind::Press,
                 time: TimeUs(10),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
             arrange: ArrangeOption::Normal,
             arrange_2p: ArrangeOption::Normal,
@@ -62,6 +63,7 @@ fn store_play_result_writes_replay_and_score() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -77,6 +79,8 @@ fn store_play_result_writes_replay_and_score() {
         replay.effective_s_random_scheme().unwrap(),
         crate::screens::play_session::SRandomScheme::Lm120HzV1
     );
+    assert_eq!(replay.double_option(), DoubleOption::Flip);
+    assert_eq!(replay.recorded_gauge_type(), Some(result.gauge_type));
     assert_eq!(score_db.recent_history(1, 0).unwrap()[0].applied_double_option, DoubleOption::Flip);
     assert_eq!(
         score_db
@@ -134,6 +138,7 @@ fn store_play_result_skips_autoplay_replay_by_default() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -188,6 +193,7 @@ fn save_existing_replay_to_slot_overwrites_requested_slot() {
                 kind: InputKind::Press,
                 time: TimeUs(10),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
             arrange: ArrangeOption::Normal,
             arrange_2p: ArrangeOption::Normal,
@@ -197,6 +203,7 @@ fn save_existing_replay_to_slot_overwrites_requested_slot() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -275,6 +282,7 @@ fn store_play_result_saves_failed_replay_for_non_autoplay() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -335,6 +343,7 @@ fn store_play_result_course_stage_updates_single_best_with_rounded_clear() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::CourseStage,
@@ -427,6 +436,7 @@ fn store_play_result_writes_history_and_default_slot_files() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -466,6 +476,7 @@ fn store_play_result_writes_history_and_default_slot_files() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -529,6 +540,7 @@ fn store_play_result_skips_slots_for_autoplay_when_disabled() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -750,24 +762,28 @@ fn classify_replay_device_type_uses_controller_majority() {
             kind: InputKind::Press,
             time: TimeUs(10),
             device_kind: InputDeviceKind::Controller,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Key2,
             kind: InputKind::Press,
             time: TimeUs(20),
             device_kind: InputDeviceKind::Controller,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Scratch,
             kind: InputKind::Press,
             time: TimeUs(30),
             device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Key1,
             kind: InputKind::Release,
             time: TimeUs(40),
             device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
         },
     ];
 
@@ -782,12 +798,14 @@ fn classify_replay_device_type_defaults_keyboard_for_ties() {
             kind: InputKind::Press,
             time: TimeUs(10),
             device_kind: InputDeviceKind::Controller,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Key2,
             kind: InputKind::Press,
             time: TimeUs(20),
             device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
         },
     ];
 

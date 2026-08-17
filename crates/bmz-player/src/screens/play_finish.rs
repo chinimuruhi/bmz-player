@@ -328,6 +328,7 @@ fn finish_session_snapshot_result(
                 },
                 s_random_scheme: applied_arrange.s_random_scheme,
                 s_random_scheme_2p: applied_arrange.s_random_scheme_2p,
+                h_random_threshold_ms: applied_arrange.h_random_threshold_ms,
                 arrange_pattern,
                 update_score: snapshot.assist.score_update_enabled(),
                 mode: finish_mode.store_mode(),

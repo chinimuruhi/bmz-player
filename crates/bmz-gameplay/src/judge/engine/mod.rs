@@ -268,6 +268,29 @@ impl JudgeEngine {
         }
 
         if let Some(mut active) = self.lanes[input.lane.index()].active_long {
+            if matches!(input.lane, Lane::Scratch | Lane::Scratch2)
+                && matches!(active.mode, LongNoteMode::Cn | LongNoteMode::Hcn)
+                && input.scratch_direction.is_some()
+                && active.scratch_direction.is_some()
+                && input.scratch_direction != active.scratch_direction
+            {
+                let delta = input.time.0 - active.end.end_time.0;
+                let windows = self.window_set.long_end_window(input.lane);
+                let judge = classify_normal_delta(delta, windows).unwrap_or(Judge::Poor);
+                self.lanes[input.lane.index()].active_long = None;
+                self.judged_notes.insert(active.end.end_note_id, judge);
+                let mut outcome = finalize_long_release(
+                    chart,
+                    input.lane,
+                    active,
+                    judge,
+                    TimeUs(delta),
+                    input.time,
+                );
+                outcome.mine_hits = mine_hits;
+                outcome.consumed_input = true;
+                return outcome;
+            }
             if active.pending_release.take().is_some() {
                 self.lanes[input.lane.index()].active_long = Some(active);
                 return JudgeOutcome { mine_hits, consumed_input: true, ..Default::default() };
@@ -335,9 +358,12 @@ impl JudgeEngine {
 
             if note_vanishes
                 && note.kind == NoteKind::LongStart
-                && let Some(active) =
+                && let Some(mut active) =
                     make_active_long(chart, note.id, candidate.judge, candidate.delta, input.time)
             {
+                if matches!(input.lane, Lane::Scratch | Lane::Scratch2) {
+                    active.scratch_direction = input.scratch_direction;
+                }
                 lane_state.active_long = Some(active);
             }
             advance_press_cursor(
@@ -392,6 +418,14 @@ impl JudgeEngine {
         let Some(mut active) = lane_state.active_long else {
             return JudgeOutcome::default();
         };
+        if matches!(input.lane, Lane::Scratch | Lane::Scratch2)
+            && input.scratch_direction.is_some()
+            && active.scratch_direction.is_some()
+            && input.scratch_direction != active.scratch_direction
+        {
+            lane_state.active_long = Some(active);
+            return JudgeOutcome::default();
+        }
         let release_margin_us = self.window_set.long_release_margin_us(input.lane);
 
         match active.mode {
