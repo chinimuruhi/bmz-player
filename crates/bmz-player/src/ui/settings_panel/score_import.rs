@@ -94,7 +94,9 @@ pub(in crate::ui) fn build_replay_import_section(
     overwrite: &mut bool,
     status: &str,
     error: &str,
+    progress: Option<ReplayImportProgress>,
     request: &mut Option<ImportBeatorajaReplaysRequest>,
+    cancel: &mut bool,
 ) {
     egui::CollapsingHeader::new("beatoraja Replay Import (.brd)")
         .id_salt("settings_replay_import")
@@ -127,7 +129,8 @@ pub(in crate::ui) fn build_replay_import_section(
                 ui.selectable_value(device_type, InputDeviceKind::Controller, "Controller");
             });
             ui.checkbox(overwrite, "既存のローカルReplayスロットも上書きする");
-            if ui.button("Replayをインポート").clicked() {
+            if ui.add_enabled(progress.is_none(), egui::Button::new("Replayをインポート")).clicked()
+            {
                 let trimmed = path.trim();
                 if trimmed.is_empty() {
                     *request = None;
@@ -136,6 +139,21 @@ pub(in crate::ui) fn build_replay_import_section(
                     next.overwrite_protected_slots = *overwrite;
                     next.device_kind = *device_type;
                     *request = Some(next);
+                }
+            }
+            if let Some(progress) = progress {
+                let fraction = if progress.total == 0 {
+                    0.0
+                } else {
+                    progress.done as f32 / progress.total as f32
+                };
+                ui.add(
+                    egui::ProgressBar::new(fraction)
+                        .show_percentage()
+                        .text(format!("{} / {}", progress.done, progress.total)),
+                );
+                if ui.button("インポートをキャンセル").clicked() {
+                    *cancel = true;
                 }
             }
             if !status.is_empty() {

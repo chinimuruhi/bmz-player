@@ -11,6 +11,7 @@ pub(super) struct SettingsPanelActions {
     pub(super) table_fetch_urls: Vec<String>,
     pub(super) score_import_request: Option<ScoreImportRequest>,
     pub(super) replay_import_request: Option<ImportBeatorajaReplaysRequest>,
+    pub(super) cancel_replay_import: bool,
     /// 音声出力(cpal ストリーム)を現在の設定で開き直す要求。
     pub(super) apply_audio: bool,
 }
@@ -30,6 +31,7 @@ pub(super) struct SettingsPanelState<'a> {
     pub(super) replay_import_overwrite: &'a mut bool,
     pub(super) replay_import_status: &'a str,
     pub(super) replay_import_error: &'a str,
+    pub(super) replay_import_progress: Option<ReplayImportProgress>,
     pub(super) audio_device_picker: &'a mut AudioDevicePickerState,
     pub(super) obs_scene_picker: &'a mut ObsScenePickerState,
     pub(super) obs_connection_status: &'a crate::obs::ObsConnectionStatus,

@@ -306,6 +306,7 @@ impl WinitApp {
             jobs: AppJobs {
                 table_fetch,
                 pending_song_scan: None,
+                pending_replay_import: None,
                 queued_song_scans: VecDeque::new(),
                 pending_chart_download: None,
                 song_scan_progress: None,

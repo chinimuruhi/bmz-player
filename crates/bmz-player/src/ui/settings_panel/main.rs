@@ -21,6 +21,7 @@ pub(in crate::ui) fn build_settings_panel(
     let mut table_fetch_urls = Vec::new();
     let mut score_import_request = None;
     let mut replay_import_request = None;
+    let mut cancel_replay_import = false;
     let mut apply_audio = false;
     localized_sized_panel_window(
         "app_settings_panel",
@@ -51,6 +52,7 @@ pub(in crate::ui) fn build_settings_panel(
                         table_fetch_urls: &mut table_fetch_urls,
                         score_import_request: &mut score_import_request,
                         replay_import_request: &mut replay_import_request,
+                        cancel_replay_import: &mut cancel_replay_import,
                     },
                 );
                 build_audio_video_settings_sections(
@@ -91,6 +93,7 @@ pub(in crate::ui) fn build_settings_panel(
         table_fetch_urls,
         score_import_request,
         replay_import_request,
+        cancel_replay_import,
         apply_audio,
     }
 }

@@ -556,7 +556,10 @@ impl WinitApp {
             self.import_external_scores(request);
         }
         if let Some(request) = output.replay_import_request {
-            self.import_beatoraja_replay_files(request);
+            self.spawn_beatoraja_replay_import(request);
+        }
+        if output.cancel_replay_import {
+            self.cancel_beatoraja_replay_import();
         }
         if output.save_profile_config {
             match save_profile_config(

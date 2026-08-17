@@ -55,6 +55,7 @@ impl EguiLayer {
             replay_import_overwrite: false,
             replay_import_status: String::new(),
             replay_import_error: String::new(),
+            replay_import_progress: None,
             audio_device_picker: AudioDevicePickerState::default(),
             obs_scene_picker: ObsScenePickerState::default(),
             ir_login: IrLoginUiState::default(),
@@ -95,6 +96,10 @@ impl EguiLayer {
             self.replay_import_status = status;
             self.replay_import_error.clear();
         }
+    }
+
+    pub fn set_replay_import_progress(&mut self, progress: Option<ReplayImportProgress>) {
+        self.replay_import_progress = progress;
     }
 
     pub fn course_editor_visible(&self) -> bool {
@@ -225,6 +230,7 @@ impl EguiLayer {
         let mut table_fetch_urls = Vec::new();
         let mut score_import_request = None;
         let mut replay_import_request = None;
+        let mut cancel_replay_import = false;
         let mut apply_audio_output = false;
         let mut check_for_update = false;
         let mut update_dialog_action = None;
@@ -332,6 +338,7 @@ impl EguiLayer {
                         replay_import_overwrite: &mut self.replay_import_overwrite,
                         replay_import_status: &self.replay_import_status,
                         replay_import_error: &self.replay_import_error,
+                        replay_import_progress: self.replay_import_progress,
                         audio_device_picker: &mut self.audio_device_picker,
                         obs_scene_picker: &mut self.obs_scene_picker,
                         obs_connection_status,
@@ -348,6 +355,7 @@ impl EguiLayer {
                 apply_audio_output |= settings_actions.apply_audio;
                 score_import_request = settings_actions.score_import_request;
                 replay_import_request = settings_actions.replay_import_request;
+                cancel_replay_import = settings_actions.cancel_replay_import;
                 let profile_settings_actions =
                     build_profile_settings_panel(ProfileSettingsPanelContext {
                         ctx,
@@ -406,6 +414,7 @@ impl EguiLayer {
             table_fetch_urls,
             score_import_request,
             replay_import_request,
+            cancel_replay_import,
             apply_audio_output,
             check_for_update,
             update_dialog_action,

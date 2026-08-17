@@ -56,6 +56,7 @@ pub struct ReplayImportReport {
     pub missing_chart: usize,
     pub protected_slot: usize,
     pub unsupported: usize,
+    pub cancelled: bool,
     pub issues: Vec<ReplayImportIssue>,
     pub threshold_warning: Option<String>,
 }
@@ -63,15 +64,22 @@ pub struct ReplayImportReport {
 impl ReplayImportReport {
     pub fn summary(&self) -> String {
         format!(
-            "scanned={}, imported={}, replaced={}, missing_chart={}, protected_slot={}, unsupported={}",
+            "scanned={}, imported={}, replaced={}, missing_chart={}, protected_slot={}, unsupported={}, cancelled={}",
             self.scanned,
             self.imported,
             self.replaced,
             self.missing_chart,
             self.protected_slot,
-            self.unsupported
+            self.unsupported,
+            self.cancelled
         )
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReplayImportProgress {
+    pub done: usize,
+    pub total: usize,
 }
 
 enum ImportOneOutcome {
@@ -86,13 +94,37 @@ pub fn import_beatoraja_replays(
     profile_paths: &ProfilePaths,
     request: &ImportBeatorajaReplaysRequest,
 ) -> Result<ReplayImportReport> {
+    import_beatoraja_replays_with_progress(
+        library_db,
+        score_db,
+        profile_paths,
+        request,
+        |_| {},
+        || false,
+    )
+}
+
+pub fn import_beatoraja_replays_with_progress(
+    library_db: &LibraryDatabase,
+    score_db: &mut ScoreDatabase,
+    profile_paths: &ProfilePaths,
+    request: &ImportBeatorajaReplaysRequest,
+    mut on_progress: impl FnMut(ReplayImportProgress),
+    is_cancelled: impl Fn() -> bool,
+) -> Result<ReplayImportReport> {
     let (replay_paths, player_root) = discover_replay_paths(&request.source)?;
     let (h_random_threshold_ms, threshold_warning) =
         load_h_random_threshold_ms(player_root.as_deref());
     profile_paths.ensure_dirs()?;
 
+    let total = replay_paths.len();
+    on_progress(ReplayImportProgress { done: 0, total });
     let mut report = ReplayImportReport { threshold_warning, ..Default::default() };
     for path in replay_paths {
+        if is_cancelled() {
+            report.cancelled = true;
+            break;
+        }
         report.scanned += 1;
         match import_one(library_db, score_db, profile_paths, request, &path, h_random_threshold_ms)
         {
@@ -125,6 +157,7 @@ pub fn import_beatoraja_replays(
                 });
             }
         }
+        on_progress(ReplayImportProgress { done: report.scanned, total });
     }
     Ok(report)
 }
@@ -315,6 +348,7 @@ fn load_h_random_threshold_ms(player_root: Option<&Path>) -> (u32, Option<String
 
 #[cfg(test)]
 mod tests {
+    use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -516,6 +550,49 @@ mod tests {
         assert_eq!(
             score_db.replay_slot(key, 0).unwrap().unwrap().source_kind,
             ScoreSourceKind::Local
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reports_progress_and_honors_cancellation() {
+        let root = temp_root("cancel");
+        let player = root.join("player");
+        let replay_dir = player.join("replay");
+        fs::create_dir_all(&replay_dir).unwrap();
+        let hash = "02".repeat(32);
+        fs::write(replay_dir.join(format!("{hash}.brd")), replay_bytes()).unwrap();
+        fs::write(replay_dir.join(format!("{hash}_1.brd")), replay_bytes()).unwrap();
+        let (library_db, mut score_db) = databases();
+        let paths = profile_paths(&root);
+        let progress = RefCell::new(Vec::new());
+        let cancel = Cell::new(false);
+
+        let report = import_beatoraja_replays_with_progress(
+            &library_db,
+            &mut score_db,
+            &paths,
+            &ImportBeatorajaReplaysRequest::new(&player),
+            |value| {
+                progress.borrow_mut().push(value);
+                if value.done == 1 {
+                    cancel.set(true);
+                }
+            },
+            || cancel.get(),
+        )
+        .unwrap();
+
+        assert_eq!(report.scanned, 1);
+        assert_eq!(report.imported, 1);
+        assert!(report.cancelled);
+        assert_eq!(
+            progress.into_inner(),
+            vec![
+                ReplayImportProgress { done: 0, total: 2 },
+                ReplayImportProgress { done: 1, total: 2 },
+            ]
         );
 
         fs::remove_dir_all(root).unwrap();

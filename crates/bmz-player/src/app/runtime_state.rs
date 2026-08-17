@@ -230,6 +230,7 @@ pub(super) struct AppJobs {
     /// 通常表・rianIR表の取得channel、queue、progress、世代状態。
     pub(super) table_fetch: TableFetchRuntime,
     pub(super) pending_song_scan: Option<PendingSongScan>,
+    pub(super) pending_replay_import: Option<PendingReplayImport>,
     /// Select外で要求されたscanを開始せず、次のSelectまでFIFOで保持する。
     pub(super) queued_song_scans: VecDeque<(Vec<PathEntry>, bool, String)>,
     pub(super) pending_chart_download: Option<Receiver<Result<ChartDownloadBatchResult>>>,

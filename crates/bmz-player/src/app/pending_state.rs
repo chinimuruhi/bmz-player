@@ -5,6 +5,13 @@ pub(super) struct PendingSongScan {
     pub(super) progress: Arc<AtomicU64>,
 }
 
+pub(super) struct PendingReplayImport {
+    pub(super) finished: Receiver<Result<ReplayImportReport>>,
+    pub(super) done: Arc<AtomicU32>,
+    pub(super) total: Arc<AtomicU32>,
+    pub(super) cancel: Arc<AtomicBool>,
+}
+
 pub(super) enum UpdateCheckWorkerResult {
     Available(Box<UpdateCandidate>),
     UpToDate,

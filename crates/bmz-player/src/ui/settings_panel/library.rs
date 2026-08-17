@@ -7,6 +7,7 @@ pub(super) struct LibrarySettingsActions<'a> {
     pub(super) table_fetch_urls: &'a mut Vec<String>,
     pub(super) score_import_request: &'a mut Option<ScoreImportRequest>,
     pub(super) replay_import_request: &'a mut Option<ImportBeatorajaReplaysRequest>,
+    pub(super) cancel_replay_import: &'a mut bool,
 }
 
 pub(super) fn build_library_settings_sections(
@@ -24,6 +25,7 @@ pub(super) fn build_library_settings_sections(
         table_fetch_urls,
         score_import_request,
         replay_import_request,
+        cancel_replay_import,
     } = actions;
     egui::CollapsingHeader::new(tr!(text, "settings-song-folders"))
         .id_salt("settings_song_folders")
@@ -401,6 +403,8 @@ pub(super) fn build_library_settings_sections(
         state.replay_import_overwrite,
         state.replay_import_status,
         state.replay_import_error,
+        state.replay_import_progress,
         replay_import_request,
+        cancel_replay_import,
     );
 }

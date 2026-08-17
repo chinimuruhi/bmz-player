@@ -291,6 +291,13 @@ impl WinitApp {
         if let Some(progress) = self.jobs.song_scan_progress {
             tasks.push(format!("SCAN {} / {}", progress.done, progress.total));
         }
+        if let Some(pending) = &self.jobs.pending_replay_import {
+            tasks.push(format!(
+                "REPLAY {} / {}",
+                pending.done.load(Ordering::Relaxed),
+                pending.total.load(Ordering::Relaxed)
+            ));
+        }
         if let Some(progress) = &self.jobs.table_fetch.progress {
             tasks.push(format!("TABLE {} / {}", progress.completed, progress.total));
         }

@@ -286,6 +286,7 @@ pub struct EguiOutput {
     pub table_fetch_urls: Vec<String>,
     pub score_import_request: Option<ScoreImportRequest>,
     pub replay_import_request: Option<ImportBeatorajaReplaysRequest>,
+    pub cancel_replay_import: bool,
     /// 現在の設定で音声出力(cpal ストリーム)を開き直す要求。
     pub apply_audio_output: bool,
     pub check_for_update: bool,
@@ -420,6 +421,7 @@ pub struct EguiLayer {
     pub(super) replay_import_overwrite: bool,
     pub(super) replay_import_status: String,
     pub(super) replay_import_error: String,
+    pub(super) replay_import_progress: Option<ReplayImportProgress>,
     /// 本体設定パネル: 出力デバイス選択用の列挙キャッシュ。
     pub(super) audio_device_picker: AudioDevicePickerState,
     /// 本体設定パネル: OBS scene list 取得状態。

@@ -89,17 +89,90 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn import_beatoraja_replay_files(&mut self, request: ImportBeatorajaReplaysRequest) {
+    pub(super) fn spawn_beatoraja_replay_import(&mut self, request: ImportBeatorajaReplaysRequest) {
+        if self.jobs.pending_replay_import.is_some() {
+            if let Some(egui) = self.ui.egui.as_mut() {
+                egui.set_replay_import_status("replay import is already running".to_string(), true);
+            }
+            return;
+        }
+
         let path = request.source.display().to_string();
-        match import_beatoraja_replays(
-            &self.boot.library_db,
-            &mut self.boot.score_db,
-            &self.boot.profile_paths,
-            &request,
-        ) {
-            Ok(report) => {
+        let library_db_path = self.boot.app_paths.library_db.clone();
+        let score_db_path = self.boot.profile_paths.score_db.clone();
+        let profile_paths = self.boot.profile_paths.clone();
+        let (tx, rx) = mpsc::channel();
+        let done = Arc::new(AtomicU32::new(0));
+        let total = Arc::new(AtomicU32::new(0));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let worker_done = Arc::clone(&done);
+        let worker_total = Arc::clone(&total);
+        let worker_cancel = Arc::clone(&cancel);
+        thread::Builder::new()
+            .name("beatoraja-replay-import".to_string())
+            .spawn(move || {
+                let result = (|| -> Result<ReplayImportReport> {
+                    migrate_library_db(&library_db_path)?;
+                    migrate_score_db(&score_db_path)?;
+                    let library_db = LibraryDatabase::open(&library_db_path)?;
+                    let mut score_db = ScoreDatabase::open(&score_db_path)?;
+                    import_beatoraja_replays_with_progress(
+                        &library_db,
+                        &mut score_db,
+                        &profile_paths,
+                        &request,
+                        |progress| {
+                            worker_done.store(
+                                u32::try_from(progress.done).unwrap_or(u32::MAX),
+                                Ordering::Relaxed,
+                            );
+                            worker_total.store(
+                                u32::try_from(progress.total).unwrap_or(u32::MAX),
+                                Ordering::Relaxed,
+                            );
+                        },
+                        || worker_cancel.load(Ordering::Relaxed),
+                    )
+                })();
+                let _ = tx.send(result);
+            })
+            .expect("failed to spawn beatoraja replay import thread");
+        self.jobs.pending_replay_import =
+            Some(PendingReplayImport { finished: rx, done, total, cancel });
+        if let Some(egui) = self.ui.egui.as_mut() {
+            egui.set_replay_import_progress(Some(ReplayImportProgress::default()));
+            egui.set_replay_import_status(format!("importing {path}"), false);
+        }
+        tracing::info!(path, "started beatoraja replay import");
+    }
+
+    pub(super) fn cancel_beatoraja_replay_import(&mut self) {
+        let Some(pending) = &self.jobs.pending_replay_import else {
+            return;
+        };
+        pending.cancel.store(true, Ordering::Relaxed);
+        if let Some(egui) = self.ui.egui.as_mut() {
+            egui.set_replay_import_status("cancelling replay import...".to_string(), false);
+        }
+    }
+
+    pub(super) fn poll_pending_replay_import(&mut self) {
+        let Some(pending) = self.jobs.pending_replay_import.take() else {
+            return;
+        };
+        let progress = ReplayImportProgress {
+            done: pending.done.load(Ordering::Relaxed) as usize,
+            total: pending.total.load(Ordering::Relaxed) as usize,
+        };
+        if let Some(egui) = self.ui.egui.as_mut() {
+            egui.set_replay_import_progress(Some(progress));
+        }
+
+        let mut keep_pending = true;
+        match pending.finished.try_recv() {
+            Ok(Ok(report)) => {
                 let summary = report.summary();
-                tracing::info!(path, summary, "beatoraja replays imported");
+                tracing::info!(summary, "beatoraja replays imported");
                 for issue in &report.issues {
                     tracing::warn!(
                         replay_path = %issue.path.display(),
@@ -110,19 +183,38 @@ impl WinitApp {
                 }
                 self.reload_select_items();
                 if let Some(egui) = self.ui.egui.as_mut() {
+                    egui.set_replay_import_progress(None);
                     let status = match &report.threshold_warning {
                         Some(warning) => format!("{summary}\nwarning: {warning}"),
                         None => summary,
                     };
                     egui.set_replay_import_status(status, false);
                 }
+                keep_pending = false;
             }
-            Err(error) => {
-                tracing::error!(path, error = %format_error_chain(&error), "beatoraja replay import failed");
+            Ok(Err(error)) => {
+                tracing::error!(error = %format_error_chain(&error), "beatoraja replay import failed");
                 if let Some(egui) = self.ui.egui.as_mut() {
+                    egui.set_replay_import_progress(None);
                     egui.set_replay_import_status(format!("import failed: {error:#}"), true);
                 }
+                keep_pending = false;
             }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => {
+                tracing::warn!("beatoraja replay import worker disconnected");
+                if let Some(egui) = self.ui.egui.as_mut() {
+                    egui.set_replay_import_progress(None);
+                    egui.set_replay_import_status(
+                        "replay import worker disconnected".to_string(),
+                        true,
+                    );
+                }
+                keep_pending = false;
+            }
+        }
+        if keep_pending {
+            self.jobs.pending_replay_import = Some(pending);
         }
     }
 
