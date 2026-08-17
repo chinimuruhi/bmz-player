@@ -1173,4 +1173,21 @@ pub const SCORE_MIGRATIONS: &[Migration] = &[
         statements: &["ALTER TABLE replay_slots
                 ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT '';"],
     },
+    Migration {
+        version: 30,
+        // Imported course `.brd` files contain playback data but no score
+        // summary.  Keep a replay-only attempt behind the existing course
+        // replay-slot foreign key, while excluding it from score history and
+        // best-score queries.
+        statements: &[
+            "ALTER TABLE course_scores
+                ADD COLUMN replay_only INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE course_scores
+                ADD COLUMN replay_source_kind TEXT NOT NULL DEFAULT 'Local';",
+            "ALTER TABLE course_scores
+                ADD COLUMN replay_source_path TEXT NOT NULL DEFAULT '';",
+            "ALTER TABLE course_scores
+                ADD COLUMN replay_source_fingerprint TEXT NOT NULL DEFAULT '';",
+        ],
+    },
 ];

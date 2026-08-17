@@ -18,8 +18,8 @@ use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use super::common::{configure_connection, hash_to_hex, hex_to_hash};
 pub use super::course_score_db::{
-    CourseBestScore, CourseReplayRecord, CourseReplaySlotRecord, CourseScoreChartRecord,
-    CourseScoreEntry, CourseScoreInsert,
+    CourseBestScore, CourseReplayRecord, CourseReplaySlotRecord, CourseReplaySlotSource,
+    CourseScoreChartRecord, CourseScoreEntry, CourseScoreInsert,
 };
 use crate::config::profile_config::ReplaySlotRule;
 use crate::ln_policy::LnScorePolicy;

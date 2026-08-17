@@ -418,6 +418,24 @@ pub fn replay_slot_file_name(
     )
 }
 
+pub fn imported_course_replay_file_name(
+    course_hash: &str,
+    ln_policy: LnScorePolicy,
+    rule_mode: RuleMode,
+    slot: u8,
+    position: usize,
+) -> String {
+    let rule_suffix = match rule_mode {
+        RuleMode::Beatoraja => String::new(),
+        other => format!("-{}", other.as_str()),
+    };
+    format!(
+        "course-{course_hash}-{}{}-slot{slot}-stage{position}.toml",
+        ln_policy.as_str(),
+        rule_suffix,
+    )
+}
+
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);

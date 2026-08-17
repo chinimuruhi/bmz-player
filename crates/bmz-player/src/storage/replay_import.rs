@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use bmz_core::course::CourseDefinition;
 use bmz_core::input::InputDeviceKind;
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
@@ -17,8 +18,13 @@ use super::beatoraja_replay::{
     load_beatoraja_replay_document_with_fingerprint,
 };
 use super::library_db::{ChartListItem, LibraryDatabase};
-use super::replay::{replay_slot_file_name, save_replay_for_import};
-use super::score_db::{ReplaySlotRecord, ScoreDatabase, ScoreKey, ScoreSourceKind};
+use super::replay::{
+    imported_course_replay_file_name, replay_slot_file_name, save_replay_for_import,
+};
+use super::score_db::{
+    CourseReplayRecord, CourseScoreChartRecord, CourseScoreInsert, ReplaySlotRecord, ScoreDatabase,
+    ScoreKey, ScoreSourceKind,
+};
 
 const DEFAULT_BEATORAJA_H_RANDOM_THRESHOLD_MS: u32 = 125;
 const REPLAY_IMPORT_DB_BATCH_SIZE: usize = 256;
@@ -47,6 +53,7 @@ pub enum ReplayImportIssueKind {
     ProtectedSlot,
     EmptyInput,
     CourseReplay,
+    MissingCourse,
     Unsupported,
 }
 
@@ -66,7 +73,9 @@ pub struct ReplayImportReport {
     pub missing_chart: usize,
     pub protected_slot: usize,
     pub empty_input: usize,
+    pub course_imported: usize,
     pub course_replay: usize,
+    pub missing_course: usize,
     pub unsupported: usize,
     pub cancelled: bool,
     pub elapsed_ms: u128,
@@ -79,7 +88,7 @@ pub struct ReplayImportReport {
 impl ReplayImportReport {
     pub fn summary(&self) -> String {
         format!(
-            "scanned={}, imported={}, replaced={}, unchanged={}, missing_chart={}, protected_slot={}, empty_input={}, course_replay={}, unsupported={}, cancelled={}, elapsed_ms={}",
+            "scanned={}, imported={}, replaced={}, unchanged={}, missing_chart={}, protected_slot={}, empty_input={}, course_imported={}, course_replay={}, missing_course={}, unsupported={}, cancelled={}, elapsed_ms={}",
             self.scanned,
             self.imported,
             self.replaced,
@@ -87,7 +96,9 @@ impl ReplayImportReport {
             self.missing_chart,
             self.protected_slot,
             self.empty_input,
+            self.course_imported,
             self.course_replay,
+            self.missing_course,
             self.unsupported,
             self.cancelled,
             self.elapsed_ms
@@ -103,11 +114,24 @@ pub struct ReplayImportProgress {
 
 enum ImportOneOutcome {
     Imported { replaced: bool, record: ReplaySlotRecord },
+    ImportedCourse { replaced: bool },
     Unchanged { fingerprint_backfill: Option<ReplaySlotRecord> },
     MissingChart(String),
     ProtectedSlot(String),
     EmptyInput(String),
     CourseReplay(String),
+    MissingCourse(String),
+}
+
+#[derive(Debug, Clone)]
+struct CourseReplayTarget {
+    source: String,
+    definition: CourseDefinition,
+    course_hash: String,
+    constraints_json: String,
+    chart_sha256s_json: String,
+    chart_sha256s: Vec<[u8; 32]>,
+    kind: String,
 }
 
 pub fn import_beatoraja_replays(
@@ -138,6 +162,7 @@ pub fn import_beatoraja_replays_with_progress(
     let (replay_paths, player_root) = discover_replay_paths(&request.source)?;
     let (h_random_threshold_ms, threshold_warning) =
         load_h_random_threshold_ms(player_root.as_deref());
+    let course_targets = replay_course_targets(library_db)?;
     profile_paths.ensure_dirs()?;
 
     let total = replay_paths.len();
@@ -150,12 +175,24 @@ pub fn import_beatoraja_replays_with_progress(
             break;
         }
         report.scanned += 1;
-        match import_one(library_db, score_db, profile_paths, request, &path, h_random_threshold_ms)
-        {
+        match import_one(
+            library_db,
+            score_db,
+            profile_paths,
+            request,
+            &path,
+            h_random_threshold_ms,
+            &course_targets,
+        ) {
             Ok(ImportOneOutcome::Imported { replaced, record }) => {
                 report.imported += 1;
                 report.replaced += usize::from(replaced);
                 pending_records.push(record);
+            }
+            Ok(ImportOneOutcome::ImportedCourse { replaced }) => {
+                report.imported += 1;
+                report.course_imported += 1;
+                report.replaced += usize::from(replaced);
             }
             Ok(ImportOneOutcome::Unchanged { fingerprint_backfill }) => {
                 report.unchanged += 1;
@@ -192,6 +229,14 @@ pub fn import_beatoraja_replays_with_progress(
                 report.issues.push(ReplayImportIssue {
                     path,
                     kind: ReplayImportIssueKind::CourseReplay,
+                    message,
+                });
+            }
+            Ok(ImportOneOutcome::MissingCourse(message)) => {
+                report.missing_course += 1;
+                report.issues.push(ReplayImportIssue {
+                    path,
+                    kind: ReplayImportIssueKind::MissingCourse,
                     message,
                 });
             }
@@ -248,16 +293,24 @@ fn import_one(
     request: &ImportBeatorajaReplaysRequest,
     source_path: &Path,
     h_random_threshold_ms: u32,
+    course_targets: &[CourseReplayTarget],
 ) -> Result<ImportOneOutcome> {
     let (document, source_fingerprint) =
         load_beatoraja_replay_document_with_fingerprint(source_path)?;
     let replay = match document {
         BeatorajaReplayDocument::Single(replay) => *replay,
         BeatorajaReplayDocument::Course(stages) => {
-            return Ok(ImportOneOutcome::CourseReplay(format!(
-                "beatoraja course replay contains {} stages",
-                stages.len()
-            )));
+            return import_course_replay(
+                library_db,
+                score_db,
+                profile_paths,
+                request,
+                source_path,
+                source_fingerprint,
+                h_random_threshold_ms,
+                course_targets,
+                stages,
+            );
         }
     };
     if !replay.has_key_input() {
@@ -354,6 +407,293 @@ fn import_one(
         source_fingerprint,
     };
     Ok(ImportOneOutcome::Imported { replaced: previous.is_some(), record })
+}
+
+fn replay_course_targets(library_db: &LibraryDatabase) -> Result<Vec<CourseReplayTarget>> {
+    Ok(library_db
+        .list_courses()?
+        .into_iter()
+        .filter_map(|stored| {
+            let identity =
+                crate::ir::course_payload::course_identity_from_stored(library_db, &stored)?;
+            Some(CourseReplayTarget {
+                source: stored.source,
+                definition: stored.definition,
+                course_hash: identity.course_hash,
+                constraints_json: identity.constraints_json,
+                chart_sha256s_json: identity.chart_sha256s_json,
+                chart_sha256s: identity.chart_sha256s,
+                kind: identity.definition.kind,
+            })
+        })
+        .collect())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn import_course_replay(
+    library_db: &LibraryDatabase,
+    score_db: &mut ScoreDatabase,
+    profile_paths: &ProfilePaths,
+    request: &ImportBeatorajaReplaysRequest,
+    source_path: &Path,
+    source_fingerprint: String,
+    h_random_threshold_ms: u32,
+    course_targets: &[CourseReplayTarget],
+    stages: Vec<BeatorajaReplay>,
+) -> Result<ImportOneOutcome> {
+    if stages.is_empty() {
+        return Ok(ImportOneOutcome::CourseReplay(
+            "beatoraja course replay contains no stages".to_string(),
+        ));
+    }
+    if let Some((position, _)) = stages.iter().enumerate().find(|(_, stage)| !stage.has_key_input())
+    {
+        return Ok(ImportOneOutcome::CourseReplay(format!(
+            "beatoraja course replay stage {} contains no key input",
+            position + 1
+        )));
+    }
+    let ln_setting = replay_ln_setting(&stages[0])?;
+    for stage in stages.iter().skip(1) {
+        if replay_ln_setting(stage)? != ln_setting {
+            return Ok(ImportOneOutcome::CourseReplay(
+                "beatoraja course replay stages disagree on long-note mode".to_string(),
+            ));
+        }
+    }
+
+    let mut stage_hashes = Vec::with_capacity(stages.len());
+    let mut charts = Vec::with_capacity(stages.len());
+    for (position, stage) in stages.iter().enumerate() {
+        let sha256 = stage.chart_sha256()?;
+        let rows = library_db.list_charts_by_sha256(sha256)?;
+        let Some(chart) = rows.first() else {
+            return Ok(ImportOneOutcome::MissingChart(format!(
+                "course stage {} chart {} is not registered in the BMZ library",
+                position + 1,
+                super::common::hash_to_hex(&sha256),
+            )));
+        };
+        ensure_consistent_chart_rows(&rows)?;
+        stage_hashes.push(sha256);
+        charts.push(chart.clone());
+    }
+
+    let source_stem = source_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .context("invalid replay filename")?;
+    // beatoraja prefixes a course filename with C/H only when at least one
+    // chart in the full course contains an undefined LN.  A failed attempt may
+    // contain only the played prefix of that course, so try the unprefixed form
+    // and the mode-specific form before resolving the full definition.
+    let ln_prefixes: &[&str] = match ln_setting {
+        LnPolicySetting::AutoCn | LnPolicySetting::ForceCn => &["", "C"],
+        LnPolicySetting::AutoHcn | LnPolicySetting::ForceHcn => &["", "H"],
+        LnPolicySetting::AutoLn | LnPolicySetting::ForceLn => &[""],
+    };
+    let mut matched = course_targets
+        .iter()
+        .filter_map(|target| {
+            if stage_hashes.len() > target.chart_sha256s.len()
+                || target.chart_sha256s[..stage_hashes.len()] != stage_hashes
+            {
+                return None;
+            }
+            ln_prefixes.iter().find_map(|ln_prefix| {
+                let base = beatoraja_course_replay_base_name(
+                    ln_prefix,
+                    &target.chart_sha256s,
+                    &target.definition,
+                );
+                course_replay_slot_from_stem(source_stem, &base).map(|slot| (target, slot))
+            })
+        })
+        .collect::<Vec<_>>();
+    matched.sort_by(|(left, _), (right, _)| left.course_hash.cmp(&right.course_hash));
+    matched.dedup_by(|(left, left_slot), (right, right_slot)| {
+        left.course_hash == right.course_hash && left_slot == right_slot
+    });
+    let Some((target, slot)) = matched.first().copied() else {
+        return Ok(ImportOneOutcome::MissingCourse(format!(
+            "no registered BMZ course matches {} ordered stages and filename constraints",
+            stages.len()
+        )));
+    };
+    if matched.len() > 1 {
+        return Ok(ImportOneOutcome::MissingCourse(format!(
+            "multiple registered BMZ courses match {} ordered stages and filename constraints",
+            stages.len()
+        )));
+    }
+
+    let rule_mode = RuleMode::Beatoraja;
+    let ln_policy = crate::screens::select_model::normalized_course_ln_policy_for_definition(
+        library_db,
+        &target.definition,
+        ln_setting,
+    )?;
+    let previous =
+        score_db.course_replay_slot_source(&target.course_hash, ln_policy, rule_mode, slot)?;
+    if let Some(previous) = previous.as_ref()
+        && (!previous.replay_only || previous.source_kind != ScoreSourceKind::Beatoraja.as_str())
+        && !request.overwrite_protected_slots
+    {
+        return Ok(ImportOneOutcome::ProtectedSlot(format!(
+            "course slot {} is owned by {} and was not overwritten",
+            slot + 1,
+            previous.source_kind,
+        )));
+    }
+    if let Some(previous) = previous.as_ref()
+        && previous.replay_only
+        && previous.source_kind == ScoreSourceKind::Beatoraja.as_str()
+        && previous.source_fingerprint == source_fingerprint
+    {
+        let files_exist = score_db
+            .list_course_replays(previous.course_score_id)?
+            .iter()
+            .all(|replay| profile_paths.root_dir.join(&replay.replay_path).is_file());
+        if files_exist {
+            return Ok(ImportOneOutcome::Unchanged { fingerprint_backfill: None });
+        }
+    }
+
+    let mut replay_records = Vec::with_capacity(stages.len());
+    let mut chart_records = Vec::with_capacity(stages.len());
+    let mut played_at = i64::MIN;
+    let mut course_arrange = "Normal".to_string();
+    for (position, ((stage, chart), sha256)) in
+        stages.iter().zip(charts.iter()).zip(stage_hashes.iter()).enumerate()
+    {
+        let key_mode = KeyMode::from_str_opt(&chart.mode)
+            .with_context(|| format!("unsupported library key mode: {}", chart.mode))?;
+        let converted = stage.to_replay_file(BeatorajaReplayConversion {
+            key_mode,
+            ln_policy,
+            device_kind: request.device_kind,
+            h_random_threshold_ms: Some(h_random_threshold_ms),
+        })?;
+        played_at = played_at.max(converted.played_at);
+        if position == 0 {
+            course_arrange = converted.arrange.clone();
+        }
+        let file_name = imported_course_replay_file_name(
+            &target.course_hash,
+            ln_policy,
+            rule_mode,
+            slot,
+            position,
+        );
+        save_replay_for_import(&profile_paths.replay_dir.join(&file_name), &converted)?;
+        replay_records.push(CourseReplayRecord {
+            position: position as i64,
+            chart_sha256: *sha256,
+            replay_path: format!("replay/{file_name}"),
+        });
+        chart_records.push(CourseScoreChartRecord {
+            position: position as i64,
+            chart_sha256: *sha256,
+            ex_score: 0,
+            max_combo: 0,
+            clear_type: "NoPlay".to_string(),
+            gauge_value: 0.0,
+        });
+    }
+    let record = CourseScoreInsert {
+        course_hash: target.course_hash.clone(),
+        ln_policy,
+        rule_mode,
+        source: target.source.clone(),
+        course_key: target.definition.key.clone(),
+        title: target.definition.title.clone(),
+        kind: target.kind.clone(),
+        constraints_json: target.constraints_json.clone(),
+        chart_sha256s_json: target.chart_sha256s_json.clone(),
+        ex_score: 0,
+        max_ex_score: 0,
+        clear_type: "NoPlay".to_string(),
+        gauge_type: String::new(),
+        gauge_value: 0.0,
+        max_combo: 0,
+        bp: 0,
+        course_failed: false,
+        course_clear: false,
+        arrange: course_arrange,
+        trophies_json: "[]".to_string(),
+        played_at,
+        charts: chart_records,
+        replays: replay_records,
+        achieved_trophies: Vec::new(),
+    };
+    score_db.insert_imported_course_replay(
+        &record,
+        slot,
+        &source_path.to_string_lossy(),
+        &source_fingerprint,
+    )?;
+    Ok(ImportOneOutcome::ImportedCourse { replaced: previous.is_some() })
+}
+
+fn beatoraja_course_replay_base_name(
+    ln_prefix: &str,
+    stage_hashes: &[[u8; 32]],
+    definition: &CourseDefinition,
+) -> String {
+    let mut name = String::from(ln_prefix);
+    for hash in stage_hashes {
+        name.push_str(&super::common::hash_to_hex(hash)[..10]);
+    }
+    let constraint_codes = if definition.constraints.source_constraints.is_empty() {
+        definition
+            .constraints
+            .canonical_names()
+            .into_iter()
+            .filter_map(beatoraja_constraint_code)
+            .collect::<String>()
+    } else {
+        definition
+            .constraints
+            .source_constraints
+            .iter()
+            .filter_map(|name| beatoraja_constraint_code(name))
+            .collect::<String>()
+    };
+    if !constraint_codes.is_empty() {
+        name.push('_');
+        name.push_str(&constraint_codes);
+    }
+    name
+}
+
+fn beatoraja_constraint_code(name: &str) -> Option<&'static str> {
+    match name {
+        "no_speed" | "NO_SPEED" => Some("04"),
+        "no_good" | "NO_GOOD" => Some("05"),
+        "no_great" | "NO_GREAT" => Some("06"),
+        "gauge_lr2" | "GAUGE_LR2" => Some("07"),
+        "gauge_5k" | "GAUGE_5KEYS" => Some("08"),
+        "gauge_7k" | "GAUGE_7KEYS" => Some("09"),
+        "gauge_9k" | "GAUGE_9KEYS" => Some("10"),
+        "gauge_24k" | "GAUGE_24KEYS" => Some("11"),
+        "ln" | "LN" => Some("12"),
+        "cn" | "CN" => Some("13"),
+        "hcn" | "HCN" => Some("14"),
+        _ => None,
+    }
+}
+
+fn course_replay_slot_from_stem(stem: &str, base: &str) -> Option<u8> {
+    if stem == base {
+        return Some(0);
+    }
+    let suffix = stem.strip_prefix(base)?.strip_prefix('_')?;
+    match suffix {
+        "1" => Some(1),
+        "2" => Some(2),
+        "3" => Some(3),
+        _ => None,
+    }
 }
 
 fn ensure_consistent_chart_rows(charts: &[ChartListItem]) -> Result<()> {
@@ -472,6 +812,10 @@ mod tests {
     use base64::engine::general_purpose::URL_SAFE;
     use bmz_chart::hash::compute_chart_identity;
     use bmz_chart::model::{ChartMetadata, PlayableChart};
+    use bmz_core::course::{
+        CourseClassConstraint, CourseConstraints, CourseEntry, CourseGaugeConstraint,
+        CourseJudgeConstraint, CourseKind, CourseLnConstraint, CourseSpeedConstraint,
+    };
     use bmz_core::time::TimeUs;
     use flate2::Compression;
     use flate2::write::GzEncoder;
@@ -767,13 +1111,129 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(report.course_replay, 1);
+        assert_eq!(report.missing_course, 1);
         assert_eq!(report.empty_input, 1);
         assert_eq!(report.unsupported, 0);
         let details = write_replay_import_details(&root.join("logs"), &player, &report).unwrap();
         let json: serde_json::Value = serde_json::from_slice(&fs::read(details).unwrap()).unwrap();
-        assert_eq!(json["report"]["course_replay"], 1);
+        assert_eq!(json["report"]["missing_course"], 1);
         assert_eq!(json["report"]["empty_input"], 1);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn imports_registered_course_replay_without_creating_score_history() {
+        let root = temp_root("course");
+        let player = root.join("player");
+        let replay_dir = player.join("replay");
+        fs::create_dir_all(&replay_dir).unwrap();
+        // The filename identifies the complete two-stage course, while the
+        // array contains only the first played stage (a failed attempt).
+        let source = replay_dir.join("02020202020303030303_07.brd");
+        fs::write(&source, gzip(json!([replay_value()]).to_string().as_bytes())).unwrap();
+        let (mut library_db, mut score_db) = databases();
+        let mut second_chart = chart();
+        second_chart.identity.file_md5 = [3; 16];
+        second_chart.identity.file_sha256 = [3; 32];
+        second_chart.metadata.title = "Unplayed Target".to_string();
+        library_db
+            .upsert_chart_import(&ChartImportRecord {
+                root_id: None,
+                file_path: Path::new("/songs/unplayed.bms"),
+                file_size: 1,
+                modified_at: 1,
+                scanned_at: 1,
+                chart: &second_chart,
+            })
+            .unwrap();
+        let definition = CourseDefinition {
+            key: "grade.json#0".to_string(),
+            title: "Replay Grade".to_string(),
+            kind: CourseKind::Dan,
+            entries: vec![
+                CourseEntry {
+                    title_hint: "Import Target".to_string(),
+                    md5: None,
+                    sha256: Some("02".repeat(32)),
+                    chart_id: None,
+                },
+                CourseEntry {
+                    title_hint: "Unplayed Target".to_string(),
+                    md5: None,
+                    sha256: Some("03".repeat(32)),
+                    chart_id: None,
+                },
+            ],
+            constraints: CourseConstraints {
+                class: CourseClassConstraint::GradeMirrorAllowed,
+                speed: CourseSpeedConstraint::Free,
+                judge: CourseJudgeConstraint::Normal,
+                gauge: CourseGaugeConstraint::Lr2,
+                ln: CourseLnConstraint::Default,
+                source_constraints: vec!["grade_mirror".to_string(), "gauge_lr2".to_string()],
+            },
+            trophies: Vec::new(),
+            release: true,
+        };
+        library_db.upsert_course("grade.json", &definition, 0, 1).unwrap();
+        let stored = library_db.list_courses().unwrap().pop().unwrap();
+        let identity =
+            crate::ir::course_payload::course_identity_from_stored(&library_db, &stored).unwrap();
+        let paths = profile_paths(&root);
+
+        let report = import_beatoraja_replays(
+            &library_db,
+            &mut score_db,
+            &paths,
+            &ImportBeatorajaReplaysRequest::new(&player),
+        )
+        .unwrap();
+
+        assert_eq!(report.imported, 1);
+        assert_eq!(report.course_imported, 1);
+        assert_eq!(report.missing_course, 0);
+        let source_row = score_db
+            .course_replay_slot_source(
+                &identity.course_hash,
+                crate::ln_policy::LnScorePolicy::ForceLn,
+                RuleMode::Beatoraja,
+                0,
+            )
+            .unwrap()
+            .unwrap();
+        assert!(source_row.replay_only);
+        assert_eq!(source_row.source_kind, "Beatoraja");
+        assert_eq!(source_row.source_path, source.to_string_lossy());
+        assert!(
+            score_db
+                .best_course_score(
+                    &identity.course_hash,
+                    crate::ln_policy::LnScorePolicy::ForceLn,
+                    RuleMode::Beatoraja,
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            score_db
+                .list_recent_course_scores_all_contexts(&identity.course_hash, 10, 0)
+                .unwrap()
+                .is_empty()
+        );
+        let replays = score_db.list_course_replays(source_row.course_score_id).unwrap();
+        assert_eq!(replays.len(), 1);
+        assert!(paths.root_dir.join(&replays[0].replay_path).is_file());
+
+        let repeated = import_beatoraja_replays(
+            &library_db,
+            &mut score_db,
+            &paths,
+            &ImportBeatorajaReplaysRequest::new(&player),
+        )
+        .unwrap();
+        assert_eq!(repeated.imported, 0);
+        assert_eq!(repeated.unchanged, 1);
 
         fs::remove_dir_all(root).unwrap();
     }

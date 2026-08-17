@@ -3,7 +3,7 @@ use bmz_core::clear::ClearType;
 use bmz_core::course::CourseTrophy;
 use bmz_gameplay::rule::RuleMode;
 use bmz_render::snapshot::{DisplayJudgeCounts, FastSlowJudgeCounts};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::ln_policy::LnScorePolicy;
 
@@ -52,6 +52,15 @@ pub struct CourseScoreInsert {
     pub charts: Vec<CourseScoreChartRecord>,
     pub replays: Vec<CourseReplayRecord>,
     pub achieved_trophies: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CourseReplaySlotSource {
+    pub course_score_id: i64,
+    pub source_kind: String,
+    pub source_path: String,
+    pub source_fingerprint: String,
+    pub replay_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,14 +131,28 @@ pub(super) fn insert_course_score(
     record: &CourseScoreInsert,
 ) -> Result<i64> {
     let tx = conn.transaction()?;
+    let course_score_id = insert_course_score_rows(&tx, record, false, "Local", "", "")?;
+    tx.commit()?;
+    Ok(course_score_id)
+}
+
+fn insert_course_score_rows(
+    tx: &Transaction<'_>,
+    record: &CourseScoreInsert,
+    replay_only: bool,
+    replay_source_kind: &str,
+    replay_source_path: &str,
+    replay_source_fingerprint: &str,
+) -> Result<i64> {
     tx.execute(
         "INSERT INTO course_scores (
             course_hash, ln_policy, rule_mode, source, course_key, title, kind, constraints_json,
             chart_sha256s_json, ex_score, max_ex_score, clear_type, gauge_type,
             gauge_value, max_combo, bp, course_failed, course_clear, arrange,
-            trophies_json, played_at
+            trophies_json, played_at, replay_only, replay_source_kind,
+            replay_source_path, replay_source_fingerprint
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                   ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                   ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
         params![
             record.course_hash,
             record.ln_policy.as_str(),
@@ -152,6 +175,10 @@ pub(super) fn insert_course_score(
             record.arrange,
             record.trophies_json,
             record.played_at,
+            replay_only,
+            replay_source_kind,
+            replay_source_path,
+            replay_source_fingerprint,
         ],
     )?;
     let course_score_id = tx.last_insert_rowid();
@@ -203,8 +230,102 @@ pub(super) fn insert_course_score(
         )?;
     }
 
+    Ok(course_score_id)
+}
+
+pub(super) fn insert_imported_course_replay(
+    conn: &mut Connection,
+    record: &CourseScoreInsert,
+    slot: u8,
+    source_path: &str,
+    source_fingerprint: &str,
+) -> Result<i64> {
+    if slot > 3 {
+        anyhow::bail!("course replay slot must be in 0..=3 (got {slot})");
+    }
+    let tx = conn.transaction()?;
+    let previous_import_id = tx
+        .query_row(
+            "SELECT slots.course_score_id
+             FROM course_replay_slots slots
+             JOIN course_scores scores ON scores.id = slots.course_score_id
+             WHERE slots.course_hash = ?1
+               AND slots.ln_policy = ?2
+               AND slots.rule_mode = ?3
+               AND slots.slot = ?4
+               AND scores.replay_only = 1",
+            params![
+                record.course_hash,
+                record.ln_policy.as_str(),
+                record.rule_mode.as_str(),
+                slot,
+            ],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    let course_score_id =
+        insert_course_score_rows(&tx, record, true, "Beatoraja", source_path, source_fingerprint)?;
+    if !course_replay_attempt_is_complete(&tx, course_score_id)? {
+        anyhow::bail!("imported course replay is incomplete");
+    }
+    tx.execute(
+        "INSERT INTO course_replay_slots (
+            course_hash, ln_policy, rule_mode, slot, rule, course_score_id,
+            played_at, ex_score, bp, max_combo, clear_rank
+         ) VALUES (?1, ?2, ?3, ?4, 'Always', ?5, ?6, 0, 0, 0, 0)
+         ON CONFLICT(course_hash, ln_policy, rule_mode, slot) DO UPDATE SET
+            rule = excluded.rule,
+            course_score_id = excluded.course_score_id,
+            played_at = excluded.played_at,
+            ex_score = excluded.ex_score,
+            bp = excluded.bp,
+            max_combo = excluded.max_combo,
+            clear_rank = excluded.clear_rank",
+        params![
+            record.course_hash,
+            record.ln_policy.as_str(),
+            record.rule_mode.as_str(),
+            slot,
+            course_score_id,
+            record.played_at,
+        ],
+    )?;
+    if let Some(previous_import_id) = previous_import_id {
+        tx.execute("DELETE FROM course_scores WHERE id = ?1", params![previous_import_id])?;
+    }
     tx.commit()?;
     Ok(course_score_id)
+}
+
+pub(super) fn course_replay_slot_source(
+    conn: &Connection,
+    course_hash: &str,
+    ln_policy: LnScorePolicy,
+    rule_mode: RuleMode,
+    slot: u8,
+) -> Result<Option<CourseReplaySlotSource>> {
+    conn.query_row(
+        "SELECT scores.id, scores.replay_source_kind, scores.replay_source_path,
+                scores.replay_source_fingerprint, scores.replay_only
+         FROM course_replay_slots slots
+         JOIN course_scores scores ON scores.id = slots.course_score_id
+         WHERE slots.course_hash = ?1
+           AND slots.ln_policy = ?2
+           AND slots.rule_mode = ?3
+           AND slots.slot = ?4",
+        params![course_hash, ln_policy.as_str(), rule_mode.as_str(), slot],
+        |row| {
+            Ok(CourseReplaySlotSource {
+                course_score_id: row.get(0)?,
+                source_kind: row.get(1)?,
+                source_path: row.get(2)?,
+                source_fingerprint: row.get(3)?,
+                replay_only: row.get(4)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
 }
 
 pub(super) fn best_course_score(
@@ -222,15 +343,18 @@ pub(super) fn best_course_score(
                 (SELECT COUNT(*) FROM course_scores count_cs
                     WHERE count_cs.course_hash = cs.course_hash
                       AND count_cs.ln_policy = cs.ln_policy
-                      AND count_cs.rule_mode = cs.rule_mode),
+                      AND count_cs.rule_mode = cs.rule_mode
+                      AND count_cs.replay_only = 0),
                 (SELECT COUNT(*) FROM course_scores clear_cs
                     WHERE clear_cs.course_hash = cs.course_hash
                       AND clear_cs.ln_policy = cs.ln_policy
                       AND clear_cs.rule_mode = cs.rule_mode
+                      AND clear_cs.replay_only = 0
                       AND clear_cs.clear_type NOT IN ('', 'NoPlay', 'Failed')),
                 cs.played_at
          FROM course_scores cs
          WHERE cs.course_hash = ?1 AND cs.ln_policy = ?2 AND cs.rule_mode = ?3
+           AND cs.replay_only = 0
          ORDER BY cs.ex_score DESC,
                   CASE cs.clear_type
                       WHEN 'NoPlay' THEN 0
@@ -270,6 +394,7 @@ pub(super) fn best_course_clear(
             "SELECT clear_type
              FROM course_scores
              WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3
+               AND replay_only = 0
              ORDER BY CASE clear_type
                           WHEN 'NoPlay' THEN 0
                           WHEN 'Failed' THEN 1
@@ -329,6 +454,7 @@ pub(super) fn achieved_trophy_names_for_definition(
          WHERE course_hash = ?1
            AND ln_policy = ?2
            AND rule_mode = ?3
+           AND replay_only = 0
            AND course_clear = 1
            AND arrange IN ('Normal', 'Mirror', 'Random')",
     )?;
@@ -375,17 +501,20 @@ pub(super) fn best_course_score_for_trophy(
                 (SELECT COUNT(*) FROM course_scores count_cs
                     WHERE count_cs.course_hash = cs.course_hash
                       AND count_cs.ln_policy = cs.ln_policy
-                      AND count_cs.rule_mode = cs.rule_mode),
+                      AND count_cs.rule_mode = cs.rule_mode
+                      AND count_cs.replay_only = 0),
                 (SELECT COUNT(*) FROM course_scores clear_cs
                     WHERE clear_cs.course_hash = cs.course_hash
                       AND clear_cs.ln_policy = cs.ln_policy
                       AND clear_cs.rule_mode = cs.rule_mode
+                      AND clear_cs.replay_only = 0
                       AND clear_cs.clear_type NOT IN ('', 'NoPlay', 'Failed')),
                 cs.played_at
          FROM course_scores cs
          JOIN course_trophy_achievements cta
              ON cta.course_score_id = cs.id
          WHERE cs.course_hash = ?1 AND cs.ln_policy = ?2 AND cs.rule_mode = ?3
+           AND cs.replay_only = 0
            AND cta.trophy_name = ?4
          ORDER BY cs.ex_score DESC,
                   CASE cs.clear_type
@@ -471,6 +600,7 @@ pub(super) fn list_recent_course_scores(
                 gauge_value, max_combo, bp, course_failed, course_clear, played_at
          FROM course_scores
          WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3
+           AND replay_only = 0
          ORDER BY played_at DESC, id DESC
          LIMIT ?4 OFFSET ?5",
     )?;
@@ -495,7 +625,7 @@ pub(super) fn list_recent_course_scores_all_contexts(
                 chart_sha256s_json, ex_score, max_ex_score, clear_type, gauge_type,
                 gauge_value, max_combo, bp, course_failed, course_clear, played_at
          FROM course_scores
-         WHERE course_hash = ?1
+         WHERE course_hash = ?1 AND replay_only = 0
          ORDER BY played_at DESC, id DESC
          LIMIT ?2 OFFSET ?3",
     )?;
@@ -566,6 +696,7 @@ pub(super) fn latest_course_score_id(
     conn.query_row(
         "SELECT id FROM course_scores
          WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3
+           AND replay_only = 0
          ORDER BY played_at DESC, id DESC
          LIMIT 1",
         params![course_hash, ln_policy.as_str(), rule_mode.as_str()],
