@@ -23,7 +23,25 @@ pub(super) fn build_select_course_builder_panel(
                 ui.label(text.text("select-course-builder-mode"));
                 ui.label(data.key_mode.map(bmz_core::lane::KeyMode::as_str).unwrap_or("-"));
                 ui.end_row();
+                ui.label(text.text("course-editor-ir-submit"));
+                ui.checkbox(&mut data.definition.release, "");
+                ui.end_row();
             });
+            ui.separator();
+
+            super::course_form::build_course_constraints_editor(
+                ui,
+                data.definition,
+                text,
+                "select_course_builder",
+            );
+            ui.separator();
+            super::course_form::build_course_trophy_editor(
+                ui,
+                data.definition,
+                text,
+                "select_course_builder",
+            );
             ui.separator();
 
             let mut args = FluentArgs::new();

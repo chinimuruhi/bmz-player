@@ -201,7 +201,9 @@ impl ActiveCourseSession {
             })
             .collect();
 
-        let course_clear = !course_failed && trophy_results.iter().any(|t| t.achieved);
+        // Trophies are optional achievements. As in beatoraja, clearing the
+        // course depends on surviving every stage, not on earning a trophy.
+        let course_clear = !course_failed;
 
         let entry_arranges: Vec<AppliedArrange> =
             self.entry_results.iter().map(|r| r.finished.applied_arrange.clone()).collect();
@@ -521,7 +523,18 @@ mod tests {
         let result = session.into_result();
         assert!(!result.trophy_results[0].achieved);
         assert!(!result.trophy_results[1].achieved);
-        assert!(!result.course_clear);
+        assert!(result.course_clear);
+    }
+
+    #[test]
+    fn course_without_trophies_clears_after_surviving_every_stage() {
+        let mut session = make_session(1, vec![(make_score(100, 20), 100)]);
+        session.definition.trophies.clear();
+
+        let result = session.into_result();
+
+        assert!(result.trophy_results.is_empty());
+        assert!(result.course_clear);
     }
 
     /// Build a session of `entry_count` entries, but only fill `played` of them

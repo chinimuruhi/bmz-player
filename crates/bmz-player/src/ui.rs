@@ -83,6 +83,7 @@ mod auxiliary_update;
 mod auxiliary_window;
 #[path = "ui/course_editor.rs"]
 mod course_editor;
+mod course_form;
 mod profile_panel;
 mod select_course_builder;
 mod settings_panel;

@@ -51,6 +51,8 @@ impl WinitApp {
         &mut self,
         definition: &bmz_core::course::CourseDefinition,
     ) -> Result<i64> {
+        let mut definition = definition.clone();
+        crate::course::normalize_course_definition(&mut definition);
         if definition.entries.is_empty() {
             anyhow::bail!("コースには1曲以上必要です");
         }
@@ -61,7 +63,7 @@ impl WinitApp {
             self.boot.library_db.list_courses_by_source(LOCAL_COURSE_SOURCE)?.len() as i64;
         self.boot.library_db.upsert_course(
             LOCAL_COURSE_SOURCE,
-            definition,
+            &definition,
             position,
             course_editor_unix_now(),
         )

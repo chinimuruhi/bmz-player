@@ -30,15 +30,10 @@ impl WinitApp {
             next_local_course_key(courses.iter().map(|course| course.definition.key.as_str()));
         let text = Localizer::new(self.boot.profile_config.ui.locale());
         let state = SelectCourseBuilderState {
-            definition: bmz_core::course::CourseDefinition {
+            definition: new_select_course_definition(
                 key,
-                title: text.text("select-course-builder-default-name"),
-                kind: bmz_core::course::CourseKind::Course,
-                entries: Vec::new(),
-                constraints: bmz_core::course::CourseConstraints::default(),
-                trophies: Vec::new(),
-                release: true,
-            },
+                text.text("select-course-builder-default-name"),
+            ),
             key_mode: None,
             return_folder_stack: std::mem::take(&mut self.select.folder_stack),
             return_selected_index_stack: std::mem::take(&mut self.select.selected_index_stack),
@@ -244,6 +239,18 @@ fn next_local_course_key<'a>(keys: impl IntoIterator<Item = &'a str>) -> String 
         .expect("course key sequence is finite in practice")
 }
 
+fn new_select_course_definition(key: String, title: String) -> bmz_core::course::CourseDefinition {
+    bmz_core::course::CourseDefinition {
+        key,
+        title,
+        kind: bmz_core::course::CourseKind::Course,
+        entries: Vec::new(),
+        constraints: bmz_core::course::CourseConstraints::default(),
+        trophies: Vec::new(),
+        release: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,5 +291,14 @@ mod tests {
     #[test]
     fn course_builder_uses_first_available_local_key() {
         assert_eq!(next_local_course_key(["local-course-1", "local-course-3"]), "local-course-2");
+    }
+
+    #[test]
+    fn course_builder_defaults_to_no_trophies_and_no_ir_submission() {
+        let definition =
+            new_select_course_definition("local-course-1".to_string(), "Course".to_string());
+
+        assert!(definition.trophies.is_empty());
+        assert!(!definition.release);
     }
 }

@@ -340,8 +340,6 @@ pub(super) struct CourseEditorUiState {
     pub(super) selected_course_id: Option<i64>,
     pub(super) draft: Option<bmz_core::course::CourseDefinition>,
     pub(super) search_query: String,
-    pub(super) import_path: String,
-    pub(super) export_path: String,
     pub(super) status: String,
     pub(super) error: bool,
 }

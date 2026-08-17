@@ -35,13 +35,6 @@ impl WinitApp {
         Some((stored, identity))
     }
 
-    pub(super) fn ir_course_identity(
-        &self,
-        course_id: i64,
-    ) -> Option<crate::ir::course_payload::IrCourseIdentity> {
-        self.course_identity_with_stored(course_id).map(|(_, identity)| identity)
-    }
-
     pub(super) fn course_result_ir_target(
         &self,
     ) -> Option<(String, String, String, String, bmz_gameplay::rule::RuleMode)> {
@@ -116,10 +109,14 @@ impl WinitApp {
         if enabled.is_empty() {
             return;
         }
-        let Some(identity) = self.ir_course_identity(course_id) else {
+        let Some((stored, identity)) = self.course_identity_with_stored(course_id) else {
             tracing::info!(course_id, "course has unresolved charts; skipping IR submission");
             return;
         };
+        if !stored.definition.release {
+            tracing::info!(course_id, "course IR submission is disabled");
+            return;
+        }
         let definition = &identity.definition;
         let ln_policy = course_result.ln_policy.as_str().to_string();
         let payload = crate::ir::course_payload::build_course_submission(

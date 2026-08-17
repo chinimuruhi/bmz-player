@@ -259,7 +259,7 @@ fn stored_course_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredCou
     let source = row.get(1)?;
     let source_constraints_json: String = row.get(10)?;
     let trophies_json: String = row.get(11)?;
-    let constraints = CourseConstraints {
+    let mut constraints = CourseConstraints {
         class: enum_from_name(row.get::<_, String>(5)?)?,
         speed: enum_from_name(row.get::<_, String>(6)?)?,
         judge: enum_from_name(row.get::<_, String>(7)?)?,
@@ -267,14 +267,17 @@ fn stored_course_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredCou
         ln: enum_from_name(row.get::<_, String>(9)?)?,
         source_constraints: serde_json::from_str(&source_constraints_json).unwrap_or_default(),
     };
+    constraints.source_constraints =
+        constraints.canonical_names().into_iter().map(str::to_string).collect();
     let trophies: Vec<CourseTrophy> = serde_json::from_str(&trophies_json).unwrap_or_default();
+    let kind = CourseDefinition::derive_kind_from_constraints(&constraints);
     Ok(StoredCourse {
         id,
         source,
         definition: CourseDefinition {
             key: row.get(2)?,
             title: row.get(3)?,
-            kind: enum_from_name(row.get::<_, String>(4)?)?,
+            kind,
             entries: Vec::new(),
             constraints,
             trophies,
@@ -398,6 +401,18 @@ mod tests {
         assert_eq!(courses[0].definition.constraints.source_constraints[1], "no_speed");
         assert_eq!(courses[0].definition.entries[0].title_hint, "Song A");
         assert_eq!(courses[0].definition.trophies[0].name, "gold");
+    }
+
+    #[test]
+    fn class_constraint_is_the_source_of_truth_for_course_kind() {
+        let mut conn = open_db();
+        let course = course();
+        upsert_course(&mut conn, "course/default.json", &course, 0, 1_700_000_000).unwrap();
+        conn.execute("UPDATE courses SET kind = 'course'", []).unwrap();
+
+        let courses = list_courses(&conn).unwrap();
+
+        assert_eq!(courses[0].definition.kind, CourseKind::Dan);
     }
 
     #[test]
