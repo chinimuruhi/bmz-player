@@ -172,10 +172,11 @@ fn build_course_picker(
 
 fn local_first_courses(
     courses: &[crate::storage::library_db::StoredCourse],
-) -> Vec<&crate::storage::library_db::StoredCourse> {
-    let mut ordered = courses.iter().collect::<Vec<_>>();
-    ordered.sort_by_key(|course| course.source != LOCAL_COURSE_SOURCE);
-    ordered
+) -> impl Iterator<Item = &crate::storage::library_db::StoredCourse> {
+    courses
+        .iter()
+        .filter(|course| course.source == LOCAL_COURSE_SOURCE)
+        .chain(courses.iter().filter(|course| course.source != LOCAL_COURSE_SOURCE))
 }
 
 fn build_identity_editor(
@@ -233,24 +234,31 @@ fn build_entry_editor(
         ui.label(text.text("course-editor-chart-search"));
         ui.text_edit_singleline(search_query);
     });
-    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
-        for chart in &data.charts {
-            ui.horizontal(|ui| {
-                if ui.small_button("+").clicked() {
-                    draft.entries.push(CourseEntry {
-                        title_hint: chart.title.clone(),
-                        md5: Some(chart.md5.clone()),
-                        sha256: Some(chart.sha256.clone()),
-                        chart_id: Some(chart.chart_id),
-                    });
-                }
-                ui.label(format!(
-                    "{} / {}  ☆{}  [{}]",
-                    chart.title, chart.artist, chart.play_level, chart.mode
-                ));
-            });
-        }
-    });
+    let row_height = ui.spacing().interact_size.y;
+    egui::ScrollArea::vertical().max_height(180.0).show_rows(
+        ui,
+        row_height,
+        data.charts.len(),
+        |ui, visible_rows| {
+            for index in visible_rows {
+                let chart = &data.charts[index];
+                ui.horizontal(|ui| {
+                    if ui.small_button("+").clicked() {
+                        draft.entries.push(CourseEntry {
+                            title_hint: chart.title.clone(),
+                            md5: Some(chart.md5.clone()),
+                            sha256: Some(chart.sha256.clone()),
+                            chart_id: Some(chart.chart_id),
+                        });
+                    }
+                    ui.label(format!(
+                        "{} / {}  ☆{}  [{}]",
+                        chart.title, chart.artist, chart.play_level, chart.mode
+                    ));
+                });
+            }
+        },
+    );
 }
 
 fn new_definition(courses: &[crate::storage::library_db::StoredCourse]) -> CourseDefinition {

@@ -2,6 +2,47 @@ use super::*;
 
 const LOCAL_COURSE_SOURCE: &str = "bmz:local";
 
+#[derive(Default)]
+pub(super) struct CourseEditorDataCache {
+    pub(super) data: CourseEditorData,
+    courses_valid: bool,
+    charts_valid: bool,
+    loaded_query: Option<String>,
+    was_visible: bool,
+}
+
+impl CourseEditorDataCache {
+    pub(super) fn reload_requirements(&mut self, visible: bool, query: &str) -> (bool, bool) {
+        if !visible {
+            self.was_visible = false;
+            return (false, false);
+        }
+
+        let opened = !self.was_visible;
+        self.was_visible = true;
+        let reload_courses = opened || !self.courses_valid;
+        let reload_charts =
+            opened || !self.charts_valid || self.loaded_query.as_deref() != Some(query);
+        (reload_courses, reload_charts)
+    }
+
+    pub(super) fn set_courses(&mut self, courses: Vec<crate::storage::library_db::StoredCourse>) {
+        self.data.courses = courses;
+        self.courses_valid = true;
+    }
+
+    pub(super) fn set_charts(&mut self, query: String, charts: Vec<CourseEditorChart>) {
+        self.data.charts = charts;
+        self.loaded_query = Some(query);
+        self.charts_valid = true;
+    }
+
+    pub(super) fn invalidate(&mut self) {
+        self.courses_valid = false;
+        self.charts_valid = false;
+    }
+}
+
 impl WinitApp {
     pub(super) fn apply_course_editor_action(&mut self, action: CourseEditorAction) {
         let result: Result<(String, bool, Option<i64>)> = match action {
@@ -127,4 +168,37 @@ fn course_editor_unix_now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn course_editor_cache_reloads_only_when_needed() {
+        let mut cache = CourseEditorDataCache::default();
+
+        assert_eq!(cache.reload_requirements(false, ""), (false, false));
+        assert_eq!(cache.reload_requirements(true, ""), (true, true));
+        cache.set_courses(Vec::new());
+        cache.set_charts(String::new(), Vec::new());
+        assert_eq!(cache.reload_requirements(true, ""), (false, false));
+        assert_eq!(cache.reload_requirements(true, "blue"), (false, true));
+        cache.set_charts("blue".to_string(), Vec::new());
+        assert_eq!(cache.reload_requirements(true, "blue"), (false, false));
+
+        cache.invalidate();
+        assert_eq!(cache.reload_requirements(true, "blue"), (true, true));
+    }
+
+    #[test]
+    fn course_editor_cache_reloads_after_reopening() {
+        let mut cache = CourseEditorDataCache::default();
+        assert_eq!(cache.reload_requirements(true, ""), (true, true));
+        cache.set_courses(Vec::new());
+        cache.set_charts(String::new(), Vec::new());
+
+        assert_eq!(cache.reload_requirements(false, ""), (false, false));
+        assert_eq!(cache.reload_requirements(true, ""), (true, true));
+    }
 }

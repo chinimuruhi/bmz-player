@@ -2,6 +2,9 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn reload_select_items(&mut self) {
+        // Song scans and table/course updates all converge here. Keep the editor
+        // cache until an actual library refresh instead of querying it per frame.
+        self.course_editor_cache.invalidate();
         if self.select.score_refresh.take_dirty() {
             self.invalidate_select_folder_summaries();
         }

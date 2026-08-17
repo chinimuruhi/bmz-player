@@ -553,7 +553,22 @@ impl LibraryDatabase {
     /// `query` as a case-insensitive substring. Equivalent to beatoraja
     /// `SQLiteSongDatabaseAccessor.getSongDatasByText`.
     pub fn search_charts(&self, query: &str) -> Result<Vec<ChartListItem>> {
+        self.search_charts_with_limit(query, None)
+    }
+
+    /// Searches chart metadata while limiting the rows materialized by SQLite.
+    /// UI callers should use this instead of collecting every match and truncating it.
+    pub fn search_charts_limited(&self, query: &str, limit: u32) -> Result<Vec<ChartListItem>> {
+        self.search_charts_with_limit(query, Some(limit))
+    }
+
+    fn search_charts_with_limit(
+        &self,
+        query: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<ChartListItem>> {
         let pattern = format!("%{}%", escape_like(query));
+        let limit_clause = if limit.is_some() { " LIMIT ?2" } else { "" };
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {CHART_LIST_ITEM_COLUMNS}
             FROM charts
@@ -563,10 +578,16 @@ impl LibraryDatabase {
                OR subartist LIKE ?1 ESCAPE '\\'
                OR genre LIKE ?1 ESCAPE '\\'
             GROUP BY sha256
-            ORDER BY title COLLATE NOCASE, artist COLLATE NOCASE, play_level COLLATE NOCASE"
+            ORDER BY title COLLATE NOCASE, artist COLLATE NOCASE, play_level COLLATE NOCASE
+            {limit_clause}"
         ))?;
-        let rows = stmt.query_map(params![pattern], chart_list_item_from_row)?;
-        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        if let Some(limit) = limit {
+            let rows = stmt.query_map(params![pattern, limit], chart_list_item_from_row)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        } else {
+            let rows = stmt.query_map(params![pattern], chart_list_item_from_row)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        }
     }
 
     pub fn primary_chart_file_path(&self, chart_id: i64) -> Result<Option<String>> {

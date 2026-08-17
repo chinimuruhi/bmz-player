@@ -122,6 +122,7 @@ impl WinitApp {
         // Select IR is consumed by the select skin snapshot. Keep its debounce,
         // request, and completion handling moving while the hidden menu uses an idle frame.
         self.update_egui_select_ir(scene_kind);
+        self.update_egui_course_editor_data(scene_kind);
         if self.run_idle_egui_frame_if_available(&window, scene_kind, scene) {
             return;
         }
@@ -131,7 +132,7 @@ impl WinitApp {
         // コース graph は egui を Option から取り出した後、clone せず参照で渡す。
         let course_result = self.result.finished_course.as_ref();
         let course_preview = self.egui_course_preview(scene_kind);
-        let course_editor = self.egui_course_editor_data();
+        let course_editor = &self.course_editor_cache.data;
         let select_course_builder_key_mode =
             self.select.course_builder.as_ref().and_then(|builder| builder.key_mode);
         let practice_media_ready = self.practice_media_ready();
@@ -168,7 +169,7 @@ impl WinitApp {
                 skin_catalog: &self.skin.skin_catalog,
                 course_result,
                 course_preview: course_preview.as_ref(),
-                course_editor: &course_editor,
+                course_editor,
                 select_course_builder: self.select.course_builder.as_mut().map(|builder| {
                     SelectCourseBuilderData {
                         definition: &mut builder.definition,
@@ -386,36 +387,46 @@ impl WinitApp {
         }
     }
 
-    fn egui_course_editor_data(&self) -> CourseEditorData {
-        let Some(egui) = self.ui.egui.as_ref().filter(|egui| egui.course_editor_visible()) else {
-            return CourseEditorData::default();
-        };
-        let courses = self
-            .boot
-            .library_db
-            .list_courses()
+    fn update_egui_course_editor_data(&mut self, scene_kind: AppSceneKind) {
+        let query = self
+            .ui
+            .egui
+            .as_ref()
+            .filter(|egui| scene_kind == AppSceneKind::Select && egui.course_editor_visible())
+            .map(|egui| egui.course_editor_search_query().trim().to_string());
+        let visible = query.is_some();
+        let query = query.unwrap_or_default();
+        let (reload_courses, reload_charts) =
+            self.course_editor_cache.reload_requirements(visible, &query);
+
+        if reload_courses {
+            let courses = self
+                .boot
+                .library_db
+                .list_courses()
+                .unwrap_or_else(|error| {
+                    tracing::error!(%error, "failed to load courses for editor");
+                    Vec::new()
+                })
+                .into_iter()
+                .filter(|course| {
+                    course.definition.constraints.gauge
+                        != bmz_core::course::CourseGaugeConstraint::Keys24
+                })
+                .collect();
+            self.course_editor_cache.set_courses(courses);
+        }
+
+        if reload_charts {
+            let charts = if query.is_empty() {
+                self.boot.library_db.list_charts(200, 0)
+            } else {
+                self.boot.library_db.search_charts_limited(&query, 200)
+            }
             .unwrap_or_else(|error| {
-                tracing::error!(%error, "failed to load courses for editor");
+                tracing::error!(%error, query, "failed to search charts for course editor");
                 Vec::new()
             })
-            .into_iter()
-            .filter(|course| {
-                course.definition.constraints.gauge
-                    != bmz_core::course::CourseGaugeConstraint::Keys24
-            })
-            .collect();
-        let query = egui.course_editor_search_query().trim();
-        let mut charts = if query.is_empty() {
-            self.boot.library_db.list_charts(200, 0)
-        } else {
-            self.boot.library_db.search_charts(query)
-        }
-        .unwrap_or_else(|error| {
-            tracing::error!(%error, query, "failed to search charts for course editor");
-            Vec::new()
-        });
-        charts.truncate(200);
-        let charts = charts
             .into_iter()
             .filter(|chart| !chart.mode.contains("24") && !chart.mode.contains("48"))
             .map(|chart| CourseEditorChart {
@@ -428,7 +439,8 @@ impl WinitApp {
                 sha256: crate::storage::common::hash_to_hex(&chart.sha256),
             })
             .collect();
-        CourseEditorData { courses, charts }
+            self.course_editor_cache.set_charts(query, charts);
+        }
     }
 
     fn update_egui_select_ir(&mut self, scene_kind: AppSceneKind) {

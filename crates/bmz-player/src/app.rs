@@ -586,6 +586,7 @@ struct WinitApp {
     skin: SkinRuntimeState,
     audio: AppAudioRuntimeState,
     ui: UiRuntimeState,
+    course_editor_cache: course_editor::CourseEditorDataCache,
 }
 
 #[path = "app/audio_helpers.rs"]

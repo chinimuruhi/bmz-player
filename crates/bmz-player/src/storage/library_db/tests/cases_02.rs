@@ -180,6 +180,36 @@ fn search_charts_treats_like_wildcards_as_literal() {
 }
 
 #[test]
+fn search_charts_limited_stops_at_the_requested_row_count() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut db = LibraryDatabase::from_connection(conn);
+
+    for (path, title) in [
+        ("/songs/c.bms", "Match Charlie"),
+        ("/songs/a.bms", "Match Alpha"),
+        ("/songs/b.bms", "Match Bravo"),
+    ] {
+        let chart = chart(title);
+        db.upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: Path::new(path),
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &chart,
+        })
+        .unwrap();
+    }
+
+    let hits = db.search_charts_limited("match", 2).unwrap();
+    let titles = hits.iter().map(|chart| chart.title.as_str()).collect::<Vec<_>>();
+
+    assert_eq!(titles, ["Match Alpha", "Match Bravo"]);
+}
+
+#[test]
 fn primary_chart_file_path_returns_linked_file() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();
