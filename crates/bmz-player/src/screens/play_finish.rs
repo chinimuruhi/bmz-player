@@ -153,6 +153,7 @@ pub struct FinishSessionResultRequest<'a> {
 #[derive(Debug, Clone)]
 struct FinishSessionSnapshot {
     chart: Arc<PlayableChart>,
+    skin_attempt: bmz_render::snapshot::SkinAttemptState,
     result: PlayResult,
     primary_key_mode: KeyMode,
     replay_events: Vec<ReplayEvent>,
@@ -168,9 +169,66 @@ struct FinishSessionSnapshot {
 }
 
 impl FinishSessionSnapshot {
-    fn from_session(session: &GameSession) -> Self {
+    fn from_session(
+        session: &GameSession,
+        source_ln_profile: ChartLnProfile,
+        applied_arrange: &AppliedArrange,
+    ) -> Self {
+        let source_key_mode = if applied_arrange.seven_to_six {
+            KeyMode::K7
+        } else if matches!(
+            applied_arrange.double_option,
+            crate::select_options::DoubleOption::Battle
+                | crate::select_options::DoubleOption::BattleAutoScratch
+        ) {
+            match session.chart.metadata.key_mode {
+                KeyMode::K10 => KeyMode::K5,
+                KeyMode::K14 => KeyMode::K7,
+                mode => mode,
+            }
+        } else {
+            session.primary_key_mode
+        };
+        let session_mode_index = if session.battle_opponent.is_some() {
+            3
+        } else if session.opponent_score.is_some() {
+            2
+        } else if session.autoplay.is_some() {
+            1
+        } else {
+            0
+        };
         Self {
             chart: Arc::clone(&session.chart),
+            skin_attempt: bmz_render::snapshot::SkinAttemptState {
+                source_key_mode: Some(source_key_mode),
+                effective_key_mode: Some(session.chart.metadata.key_mode),
+                seven_to_six: applied_arrange.seven_to_six,
+                source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
+                    source_ln_profile,
+                )),
+                session_mode_index: Some(session_mode_index),
+                double_option_index: Some(crate::skin_extension::double_option_index(
+                    applied_arrange.double_option,
+                )),
+                hsfix_index: usize::try_from(session.hsfix_index).ok(),
+                gauge_auto_shift_index: Some(crate::skin_extension::gauge_auto_shift_index(
+                    session.gauge.auto_shift_mode,
+                )),
+                bottom_shiftable_gauge_index: Some(
+                    crate::skin_extension::bottom_shiftable_gauge_index(
+                        session.gauge.bottom_shiftable_gauge,
+                    ),
+                ),
+                judge_algorithm_index: Some(crate::skin_extension::judge_algorithm_index(
+                    session.judge.algorithm,
+                )),
+                ln_mode_index: Some(crate::skin_extension::long_note_mode_index(
+                    session.chart.metadata.long_note_mode,
+                )),
+                has_bga: Some(session.chart.metadata.has_bga),
+                has_random_sequence: Some(session.chart.metadata.has_bms_random),
+            },
             result: play_result_from_session(session),
             primary_key_mode: session.primary_key_mode,
             replay_events: session.replay_recorder.events.clone(),
@@ -233,7 +291,7 @@ fn finish_session_result_when(
         finish_mode,
     } = request;
     ensure_storable_session(session, readiness)?;
-    let snapshot = FinishSessionSnapshot::from_session(session);
+    let snapshot = FinishSessionSnapshot::from_session(session, source_ln_profile, applied_arrange);
     finish_session_snapshot_result(
         score_db,
         network_db,
@@ -336,6 +394,7 @@ fn finish_session_snapshot_result(
         )?
     };
     let mut summary = ResultSummary::from_play_result(&result, &stored, &snapshot.chart);
+    summary.skin_attempt = snapshot.skin_attempt;
     summary.key_mode = snapshot.primary_key_mode;
     summary.clear_type = summary_clear_type;
     summary.arrange = applied_arrange.arrange.as_str().to_string();
@@ -744,7 +803,11 @@ pub fn spawn_settled_session_result(
         profile_paths: request.profile_paths.clone(),
         replay_config: request.replay_config.clone(),
         ir_config: request.ir_config.clone(),
-        snapshot: FinishSessionSnapshot::from_session(request.session),
+        snapshot: FinishSessionSnapshot::from_session(
+            request.session,
+            request.source_ln_profile,
+            request.applied_arrange,
+        ),
         played_at: request.played_at,
         applied_arrange: request.applied_arrange.clone(),
         source_ln_profile: request.source_ln_profile,

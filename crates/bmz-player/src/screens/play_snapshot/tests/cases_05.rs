@@ -36,6 +36,7 @@ fn prepared_chart_populates_play_skin_data_without_marking_media_ready() {
     assert_eq!(snapshot.min_bpm, 120.0);
     assert_eq!(snapshot.max_bpm, 120.0);
     assert!(snapshot.has_bga);
+    assert_eq!(snapshot.has_long_notes, Some(false));
     assert!(snapshot.has_bpm_stop);
     assert!(!snapshot.judge_graph_density.is_empty());
     assert!(!snapshot.bpm_graph_segments.is_empty());
@@ -254,6 +255,7 @@ fn build_render_snapshot_emits_visible_long_note() {
 
     // render_now=0: start 500ms→0.25, end 1500ms→0.75 (lookahead 2s)
     let upcoming = build_render_snapshot(&session, TimeUs(0), &[], None);
+    assert_eq!(upcoming.has_long_notes, Some(true));
     assert_eq!(upcoming.visible_long_notes.len(), 1);
     assert_eq!(upcoming.visible_long_notes[0].lane, Lane::Key1);
     assert_eq!(upcoming.visible_long_notes[0].head_y, 0.25);

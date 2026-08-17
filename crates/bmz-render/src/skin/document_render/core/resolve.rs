@@ -288,7 +288,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                 uv,
                 frame,
                 destination.center,
-                if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                skin_blend_mode(destination.blend),
                 Some(source.source_size),
                 destination.filter != 0,
             )]))
@@ -308,7 +308,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             }
 
             let rect = normalize_skin_frame_rect(frame, self.w, self.h);
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let destination_tint = Color::rgba(1.0, 1.0, 1.0, frame.a as f32 / 255.0);
             let stretch =
                 if destination.stretch < 0 { state.bga_stretch } else { destination.stretch };
@@ -340,11 +340,12 @@ macro_rules! skin_document_render_core_resolve_methods {
 
             if state.bga_poor.is_none() {
                 for bga in [state.bga_layer, state.bga_layer2].into_iter().flatten() {
-                    let layer_blend = if matches!(blend, BlendMode::Add) || bga.is_video {
-                        blend
-                    } else {
-                        BlendMode::LayerMask
-                    };
+                    let layer_blend =
+                        if matches!(blend, BlendMode::Add | BlendMode::Multiply) || bga.is_video {
+                            blend
+                        } else {
+                            BlendMode::LayerMask
+                        };
                     items.push(bga_image_item(
                         bga,
                         stretch,
@@ -414,7 +415,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                 uv,
                 frame,
                 destination.center,
-                if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                skin_blend_mode(destination.blend),
                 Some(source.source_size),
                 destination.filter != 0,
             )]))
@@ -490,7 +491,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                     uv,
                     frame,
                     destination.center,
-                    if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                    skin_blend_mode(destination.blend),
                     Some(source.source_size),
                     destination.filter != 0,
                 )]);

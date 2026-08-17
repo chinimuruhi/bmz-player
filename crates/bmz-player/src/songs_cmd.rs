@@ -6,7 +6,7 @@ use crate::cli::SongsCommand;
 use crate::config::app_config::PathEntry;
 use crate::config::load::load_app_config;
 use crate::config::save::save_app_config;
-use crate::paths::{normalize_library_path, resolve_app_paths};
+use crate::paths::{AppPaths, normalize_library_path, resolve_app_paths};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::migration::migrate_library_db;
 use crate::storage::scan::{
@@ -14,14 +14,21 @@ use crate::storage::scan::{
 };
 
 pub fn run_songs_command(cmd: SongsCommand) -> Result<()> {
+    let app_paths = resolve_app_paths()?;
+    run_songs_command_with_paths(cmd, &app_paths)
+}
+
+pub fn run_songs_command_with_paths(cmd: SongsCommand, app_paths: &AppPaths) -> Result<()> {
     match cmd {
-        SongsCommand::Add { path, recursive, enabled } => add_song_root(&path, recursive, enabled),
-        SongsCommand::List => list_song_roots(),
+        SongsCommand::Add { path, recursive, enabled } => {
+            add_song_root(app_paths, &path, recursive, enabled)
+        }
+        SongsCommand::List => list_song_roots(app_paths),
         SongsCommand::Load { target, use_everything } => {
-            load_songs(target.as_deref(), false, use_everything)
+            load_songs(app_paths, target.as_deref(), false, use_everything)
         }
         SongsCommand::Reload { target, use_everything } => {
-            load_songs(target.as_deref(), true, use_everything)
+            load_songs(app_paths, target.as_deref(), true, use_everything)
         }
     }
 }
@@ -120,8 +127,7 @@ fn root_folder_name(path: &str) -> &str {
     Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path)
 }
 
-fn add_song_root(path: &str, recursive: bool, enabled: bool) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn add_song_root(app_paths: &AppPaths, path: &str, recursive: bool, enabled: bool) -> Result<()> {
     app_paths.ensure_dirs()?;
 
     let mut app_config = if app_paths.config_toml.exists() {
@@ -140,9 +146,7 @@ fn add_song_root(path: &str, recursive: bool, enabled: bool) -> Result<()> {
     Ok(())
 }
 
-fn list_song_roots() -> Result<()> {
-    let app_paths = resolve_app_paths()?;
-
+fn list_song_roots(app_paths: &AppPaths) -> Result<()> {
     let app_config = if app_paths.config_toml.exists() {
         load_app_config(&app_paths.config_toml)?
     } else {
@@ -162,8 +166,12 @@ fn list_song_roots() -> Result<()> {
     Ok(())
 }
 
-fn load_songs(target: Option<&str>, force: bool, use_everything: Option<bool>) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn load_songs(
+    app_paths: &AppPaths,
+    target: Option<&str>,
+    force: bool,
+    use_everything: Option<bool>,
+) -> Result<()> {
     app_paths.ensure_dirs()?;
 
     let app_config = if app_paths.config_toml.exists() {

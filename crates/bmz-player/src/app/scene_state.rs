@@ -92,6 +92,23 @@ impl WinitApp {
                     .flatten();
                 let result_failed = result_failed_for_skin_ops(summary.clear_type, raw_clear_type);
                 let score_save_enabled = self.current_result_score_save_enabled();
+                let frozen_score_policy = self
+                    .result
+                    .finished_course
+                    .as_ref()
+                    .map(|course| (course.rule_mode, course.ln_policy))
+                    .or_else(|| {
+                        self.result
+                            .finished_play
+                            .as_ref()
+                            .map(|play| (play.rule_mode, play.ln_policy))
+                    });
+                let rule_mode = frozen_score_policy
+                    .map(|(rule_mode, _)| rule_mode)
+                    .unwrap_or(self.boot.profile_config.play.rule_mode);
+                let ln_score_policy_index = frozen_score_policy.map(|(_, ln_score_policy)| {
+                    crate::skin_extension::ln_score_policy_index(ln_score_policy)
+                });
                 let result_ir_scope_binding = self
                     .renderer
                     .result_skin_document()
@@ -102,6 +119,7 @@ impl WinitApp {
                     target_name: summary.target_name.clone(),
                     current_fps: 0,
                     skin_input: Default::default(),
+                    skin_attempt: summary.skin_attempt,
                     skin_offsets: skin_offset_values_from_config(
                         match self.current_result_skin_slot() {
                             ResultSkinSlot::Normal => &self.boot.profile_config.skin.result_offsets,
@@ -141,6 +159,8 @@ impl WinitApp {
                     key_mode: summary.key_mode,
                     has_long_notes: summary.has_long_notes,
                     ln_mode_index: result_long_note_mode_index(summary.long_note_mode),
+                    rule_mode_index: crate::skin_extension::rule_mode_index(rule_mode),
+                    ln_score_policy_index,
                     result_gauge_graph_type: self.result.result_gauge_graph_type,
                     result_panel: self.result.result_panel,
                     favorite_chart: self.result.result_favorite_chart,

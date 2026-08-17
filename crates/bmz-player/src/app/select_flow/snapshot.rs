@@ -90,6 +90,78 @@ impl WinitApp {
         let note_display_duration_ms = mode_config
             .as_ref()
             .map(|config| config.target_green_number.max(1).min(i32::MAX as u32) as i32);
+        let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
+        let ln_score_policy = match selected {
+            Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| {
+                crate::ln_policy::score_ln_policy(ln_policy_setting, chart.ln_profile)
+            }),
+            Some(SelectItem::Course(row)) => Some(row.ln_policy),
+            _ => None,
+        };
+        let source_ln_profile = match selected {
+            Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| chart.ln_profile),
+            _ => None,
+        };
+        let source_key_mode = selected_play_mode;
+        let seven_to_six =
+            source_key_mode == Some(KeyMode::K7) && self.boot.profile_config.play.seven_to_six;
+        let skin_attempt = bmz_render::snapshot::SkinAttemptState {
+            source_key_mode,
+            effective_key_mode: source_key_mode.map(|mode| {
+                crate::skin_extension::effective_key_mode(
+                    mode,
+                    self.select.double_option,
+                    self.select.session_mode,
+                    seven_to_six,
+                )
+            }),
+            seven_to_six,
+            source_ln_profile_bits: source_ln_profile
+                .map(crate::skin_extension::source_ln_profile_bits),
+            session_mode_index: Some(crate::skin_extension::session_mode_index(
+                self.select.session_mode,
+                self.select.ir_battle.active,
+            )),
+            double_option_index: Some(crate::skin_extension::double_option_index(
+                self.select.double_option,
+            )),
+            hsfix_index: mode_config.as_ref().map(|config| {
+                crate::skin_extension::hsfix_index(hs_fix_option_from_profile(config.hs_fix))
+            }),
+            gauge_auto_shift_index: Some(bmz_render::skin::select_gauge_auto_shift_index(
+                gauge_auto_shift_as_str(self.select.gauge_auto_shift_option),
+            )),
+            bottom_shiftable_gauge_index: Some(
+                bmz_render::skin::select_bottom_shiftable_gauge_index(
+                    bottom_shiftable_gauge_as_str(self.select.bottom_shiftable_gauge_option),
+                ),
+            ),
+            judge_algorithm_index: Some(crate::skin_extension::judge_algorithm_index(
+                crate::screens::play_session::judge_algorithm_from_config(
+                    self.boot.profile_config.judge.judge_algorithm,
+                ),
+            )),
+            ln_mode_index: ln_score_policy.map(|policy| {
+                source_ln_profile.map_or_else(
+                    || {
+                        crate::skin_extension::long_note_mode_index(
+                            crate::skin_extension::ln_score_policy_mode(policy),
+                        )
+                    },
+                    |profile| crate::skin_extension::effective_ln_mode_index(profile, policy),
+                )
+            }),
+            has_bga: match selected {
+                Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| chart.has_bga),
+                _ => None,
+            },
+            has_random_sequence: match selected {
+                Some(SelectItem::Chart(row)) => {
+                    row.chart.as_ref().map(|chart| chart.has_bms_random)
+                }
+                _ => None,
+            },
+        };
         let battle_choices = self.select_battle_choices();
         let displayed_index = if self.select.ir_battle.active {
             self.select.ir_battle.cursor
@@ -126,6 +198,7 @@ impl WinitApp {
             current_fps: 0,
             operating_time_ms: 0,
             skin_input: Default::default(),
+            skin_attempt,
             skin_offsets: skin_offset_values_from_config(
                 &self.boot.profile_config.skin.select_offsets,
             ),
@@ -217,6 +290,14 @@ impl WinitApp {
                 .ln_mode_policy
                 .display_label()
                 .to_string(),
+            rule_mode_index: crate::skin_extension::rule_mode_index(
+                self.boot.profile_config.play.rule_mode,
+            ),
+            ln_policy_setting_index: crate::skin_extension::ln_policy_setting_index(
+                ln_policy_setting,
+            ),
+            ln_score_policy_index: ln_score_policy
+                .map(crate::skin_extension::ln_score_policy_index),
             judge_algorithm: self
                 .boot
                 .profile_config

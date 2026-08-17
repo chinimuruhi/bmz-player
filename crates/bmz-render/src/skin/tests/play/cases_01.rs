@@ -243,6 +243,57 @@ fn play_key_mode_ops_use_play_key_mode() {
 }
 
 #[test]
+fn play_attempt_refs_use_frozen_source_and_effective_state() {
+    let source_ln_bits = SKIN_SOURCE_LN_UNDEFINED_BIT | SKIN_SOURCE_LN_DEFINED_CN_BIT;
+    let state = SkinDrawState {
+        play_screen: true,
+        chart_has_long_notes: Some(true),
+        min_bpm: 150.0,
+        max_bpm: 150.0,
+        skin_attempt: SkinAttemptState {
+            source_key_mode: Some(KeyMode::K7),
+            effective_key_mode: Some(KeyMode::K6),
+            seven_to_six: true,
+            source_ln_profile_bits: Some(source_ln_bits),
+            session_mode_index: Some(3),
+            double_option_index: Some(1),
+            hsfix_index: Some(4),
+            gauge_auto_shift_index: Some(2),
+            bottom_shiftable_gauge_index: Some(1),
+            judge_algorithm_index: Some(2),
+            ln_mode_index: Some(2),
+            has_bga: Some(false),
+            has_random_sequence: Some(true),
+        },
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_KEY_MODE, &state), Some(6));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SOURCE_KEY_MODE, &state), Some(7));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SOURCE_LN_PROFILE, &state), Some(5));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SELECT_SESSION_MODE, &state), Some(3));
+    assert_eq!(skin_state_number(54, &state), Some(1));
+    assert_eq!(skin_state_number(55, &state), Some(4));
+    assert_eq!(skin_state_number(78, &state), Some(2));
+    assert_eq!(skin_state_number(308, &state), Some(2));
+    assert_eq!(skin_state_number(340, &state), Some(2));
+    assert_eq!(skin_state_number(341, &state), Some(1));
+    assert_eq!(skin_image_index_number(308, &state), Some(2));
+    assert_eq!(skin_state_event_index(308, &state), 2);
+
+    assert!(test_skin_op(SKIN_OPTION_BMZ_KEY_MODE_BASE + 2, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE + 3, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SEVEN_TO_SIX, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SOURCE_LN_UNDEFINED, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_CN, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SOURCE_LN_MIXED, &[], &state));
+    assert!(test_skin_op(SKIN_OPTION_BMZ_SOURCE_LN_PROFILE_AVAILABLE, &[], &state));
+    assert!(test_skin_op(170, &[], &state));
+    assert!(test_skin_op(176, &[], &state));
+    assert!(test_skin_op(179, &[], &state));
+}
+
+#[test]
 fn play_rank_ops_reflect_current_ex_score() {
     let aa_state = SkinDrawState {
         ex_score: 1556,

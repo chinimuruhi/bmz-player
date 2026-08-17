@@ -18,7 +18,7 @@ macro_rules! skin_document_render_graph_judge_methods {
             };
             let rect = normalize_skin_frame_rect(frame, self.w, self.h);
             let frame_alpha = frame.a as f32 / 255.0;
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let width = graph.width.max(1);
             let line_px = graph.line_width.clamp(1, width);
             let buckets = (width / line_px).max(1) as usize;
@@ -220,7 +220,7 @@ macro_rules! skin_document_render_graph_judge_methods {
             }
             let rect = normalize_skin_frame_rect(frame, self.w, self.h);
             let frame_alpha = frame.a as f32 / 255.0;
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let max_density = density.iter().copied().max().unwrap_or(1).max(1) as f32;
             let count = density.len().max(1) as f32;
             let pixel_w = 1.0 / self.w.max(1) as f32;

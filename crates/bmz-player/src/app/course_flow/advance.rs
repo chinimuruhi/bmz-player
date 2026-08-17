@@ -35,12 +35,14 @@ impl WinitApp {
         });
 
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
             self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
+            skin_attempt,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         tracing::info!(

@@ -12,16 +12,20 @@ use crate::storage::migration::{migrate_library_db, migrate_score_db};
 use crate::storage::score_db::ScoreDatabase;
 
 pub fn run_course_command(cmd: CourseCommand) -> Result<()> {
+    let app_paths = resolve_app_paths()?;
+    run_course_command_with_paths(cmd, &app_paths)
+}
+
+pub fn run_course_command_with_paths(cmd: CourseCommand, app_paths: &AppPaths) -> Result<()> {
     match cmd {
-        CourseCommand::Import { path } => import_courses(Path::new(&path)),
-        CourseCommand::List => list_courses(),
-        CourseCommand::History { course_id, limit } => course_history(course_id, limit),
-        CourseCommand::Attempt { score_id } => course_attempt(score_id),
+        CourseCommand::Import { path } => import_courses(app_paths, Path::new(&path)),
+        CourseCommand::List => list_courses(app_paths),
+        CourseCommand::History { course_id, limit } => course_history(app_paths, course_id, limit),
+        CourseCommand::Attempt { score_id } => course_attempt(app_paths, score_id),
     }
 }
 
-fn import_courses(path: &Path) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn import_courses(app_paths: &AppPaths, path: &Path) -> Result<()> {
     app_paths.ensure_dirs()?;
     migrate_library_db(&app_paths.library_db)?;
     let mut library_db = LibraryDatabase::open(&app_paths.library_db)?;
@@ -63,8 +67,7 @@ fn import_courses(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn list_courses() -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn list_courses(app_paths: &AppPaths) -> Result<()> {
     migrate_library_db(&app_paths.library_db)?;
     let library_db = LibraryDatabase::open(&app_paths.library_db)?;
     let courses = library_db.list_courses()?;
@@ -90,11 +93,10 @@ fn list_courses() -> Result<()> {
     Ok(())
 }
 
-fn course_history(course_id: i64, limit: u32) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn course_history(app_paths: &AppPaths, course_id: i64, limit: u32) -> Result<()> {
     migrate_library_db(&app_paths.library_db)?;
     let library_db = LibraryDatabase::open(&app_paths.library_db)?;
-    let score_db = open_active_score_db(&app_paths)?;
+    let score_db = open_active_score_db(app_paths)?;
 
     let course = library_db
         .course_by_id(course_id)?
@@ -147,9 +149,8 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
     Ok(())
 }
 
-fn course_attempt(score_id: i64) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
-    let score_db = open_active_score_db(&app_paths)?;
+fn course_attempt(app_paths: &AppPaths, score_id: i64) -> Result<()> {
+    let score_db = open_active_score_db(app_paths)?;
 
     let entry = score_db
         .course_score_entry_by_id(score_id)?

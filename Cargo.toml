@@ -26,6 +26,7 @@ authors = ["hyrorre"]
 anyhow = "1.0"
 thiserror = "1.0"
 tracing = "0.1"
+tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 serde = { version = "1.0", features = ["derive"] }

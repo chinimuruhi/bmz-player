@@ -397,6 +397,25 @@ fn skin_draw_options_match_judge_fast_slow_regions() {
     assert!(!test_skin_op(1242, &[], &perfect_auto));
     assert!(test_skin_op(241, &[], &perfect_threshold));
     assert!(!test_skin_op(1242, &[], &perfect_threshold));
+
+    for (judge_index, op) in (241..=246).enumerate() {
+        let state = SkinDrawState {
+            judge_index: [Some(judge_index), None, None],
+            ..SkinDrawState::default()
+        };
+        assert!(test_skin_op(op, &[], &state), "1P op {op}");
+        assert!(!test_skin_op(261 + judge_index as i32, &[], &state), "2P op");
+    }
+
+    for (region, base_op) in [(1, 261), (2, 361)] {
+        for judge_index in 0..=5 {
+            let mut judge_indices = [None; MAX_JUDGE_REGIONS];
+            judge_indices[region] = Some(judge_index);
+            let state = SkinDrawState { judge_index: judge_indices, ..SkinDrawState::default() };
+            let op = base_op + judge_index as i32;
+            assert!(test_skin_op(op, &[], &state), "region {region}, op {op}");
+        }
+    }
 }
 
 #[test]

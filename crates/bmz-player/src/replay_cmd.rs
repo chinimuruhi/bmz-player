@@ -4,7 +4,7 @@ use bmz_core::input::InputDeviceKind;
 use crate::cli::ReplayCommand;
 use crate::config::app_config::AppConfig;
 use crate::config::load::load_app_config;
-use crate::paths::{resolve_app_paths, resolve_profile_paths};
+use crate::paths::{AppPaths, resolve_app_paths, resolve_profile_paths};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::migration::{migrate_library_db, migrate_score_db};
 use crate::storage::replay_import::write_replay_import_details;
@@ -12,15 +12,24 @@ use crate::storage::replay_import::{ImportBeatorajaReplaysRequest, import_beator
 use crate::storage::score_db::ScoreDatabase;
 
 pub fn run_replay_command(command: ReplayCommand) -> Result<()> {
+    let app_paths = resolve_app_paths()?;
+    run_replay_command_with_paths(command, &app_paths)
+}
+
+pub fn run_replay_command_with_paths(command: ReplayCommand, app_paths: &AppPaths) -> Result<()> {
     match command {
         ReplayCommand::Import { path, overwrite, controller } => {
-            import_replays(&path, overwrite, controller)
+            import_replays(app_paths, &path, overwrite, controller)
         }
     }
 }
 
-fn import_replays(path: &str, overwrite: bool, controller: bool) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn import_replays(
+    app_paths: &AppPaths,
+    path: &str,
+    overwrite: bool,
+    controller: bool,
+) -> Result<()> {
     app_paths.ensure_dirs()?;
     let app_config = if app_paths.config_toml.exists() {
         load_app_config(&app_paths.config_toml)
@@ -28,7 +37,7 @@ fn import_replays(path: &str, overwrite: bool, controller: bool) -> Result<()> {
     } else {
         AppConfig::default()
     };
-    let profile_paths = resolve_profile_paths(&app_paths, &app_config.active_profile)?;
+    let profile_paths = resolve_profile_paths(app_paths, &app_config.active_profile)?;
     profile_paths.ensure_dirs()?;
     migrate_library_db(&app_paths.library_db)?;
     migrate_score_db(&profile_paths.score_db)?;

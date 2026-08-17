@@ -97,8 +97,11 @@ fn print_ranking(
     }
 }
 
-pub(super) async fn sync(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+pub(super) async fn sync(
+    app_paths: &AppPaths,
+    profile_paths: &ProfilePaths,
+    profile: &ProfileConfig,
+) -> Result<()> {
     crate::storage::migration::migrate_score_db(&profile_paths.score_db)?;
     crate::storage::migration::migrate_network_db(&profile_paths.network_db)?;
     let mut network_db = NetworkDatabase::open(&profile_paths.network_db)?;
@@ -119,13 +122,13 @@ pub(super) async fn sync(profile_paths: &ProfilePaths, profile: &ProfileConfig) 
 }
 
 pub(super) async fn attest_submitted_scores(
+    app_paths: &AppPaths,
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     provider: Option<&str>,
     sync_after_enqueue: bool,
     all: bool,
 ) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
     crate::storage::migration::migrate_score_db(&profile_paths.score_db)?;
     crate::storage::migration::migrate_network_db(&profile_paths.network_db)?;
 

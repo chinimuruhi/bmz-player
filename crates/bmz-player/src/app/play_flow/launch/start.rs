@@ -14,12 +14,14 @@ impl WinitApp {
         self.normalize_seven_to_six_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
             self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
+            skin_attempt,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.ensure_skin_ready(SkinKind::Play);
@@ -49,12 +51,14 @@ impl WinitApp {
         self.normalize_seven_to_six_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
             self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
+            skin_attempt,
         );
         self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
         self.ensure_skin_ready(SkinKind::Play);
@@ -189,6 +193,11 @@ impl WinitApp {
         mut snapshot: RenderSnapshot,
     ) {
         self.normalize_seven_to_six_options(chart_id, &mut options);
+        if let Some(score_key) = self.play_skin_score_key_for_chart_id(chart_id, &options) {
+            snapshot.rule_mode_index = crate::skin_extension::rule_mode_index(score_key.rule_mode);
+            snapshot.ln_score_policy_index =
+                Some(crate::skin_extension::ln_score_policy_index(score_key.ln_policy));
+        }
         // active sessionのinstall前からref 150とFIRST_PLAYを正しいScoreKeyで
         // 評価できるよう、選曲行の集約値を今回のプレイ条件の値で置き換える。
         let previous_best_ex_score = self.play_skin_previous_best_ex_score(chart_id, &options);
@@ -226,6 +235,12 @@ impl WinitApp {
         snapshot.backbmp_background = self.play.play_backbmp_loaded;
         let prepared_chart = self.play_preload_prepared_chart(chart_id);
         if let Some(prepared) = &prepared_chart {
+            snapshot.rule_mode_index =
+                crate::skin_extension::rule_mode_index(prepared.score_key.rule_mode);
+            snapshot.ln_score_policy_index =
+                Some(crate::skin_extension::ln_score_policy_index(prepared.score_key.ln_policy));
+        }
+        if let Some(prepared) = &prepared_chart {
             let battle_presentation = uses_battle_presentation(
                 self.key_mode_for_chart(chart_id),
                 prepared.chart.metadata.key_mode,
@@ -237,6 +252,7 @@ impl WinitApp {
                 &prepared.render_snapshot_cache,
                 battle_presentation,
             );
+            snapshot.skin_attempt.merge_known(prepared.skin_attempt);
         }
         // preload 完了で install_active_play がフル snapshot に置き換えるまでの間、
         // 初期ゲージや緑数字が空表示にならないようセッション開始時相当の値を埋める。
@@ -270,6 +286,7 @@ impl WinitApp {
                 &prepared.render_snapshot_cache,
                 battle_presentation,
             );
+            snapshot.skin_attempt.merge_known(prepared.skin_attempt);
         }
         // 譜面変換はWAVロードより先に完了する。preload workerが先行公開した
         // 実配置を使い、Play入場直後のロード画面からRANDOM refを表示する。

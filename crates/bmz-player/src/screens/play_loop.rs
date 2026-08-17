@@ -388,6 +388,7 @@ pub fn advance_running_play_session_until_result(
                 finish_mode: FinishResultMode::Normal,
             },
         )?;
+        finished.summary.skin_attempt = running.skin_attempt;
         finished.summary.graph =
             std::sync::Arc::new(running.result_graph.snapshot_for_session(&running.session));
         running.finished = Some(finished.clone());
@@ -411,6 +412,10 @@ fn apply_running_play_mode_to_snapshot(
     snapshot: &mut RenderSnapshot,
     running: &RunningPlaySession,
 ) {
+    snapshot.skin_attempt = running.skin_attempt;
+    snapshot.rule_mode_index = crate::skin_extension::rule_mode_index(running.score_key.rule_mode);
+    snapshot.ln_score_policy_index =
+        Some(crate::skin_extension::ln_score_policy_index(running.score_key.ln_policy));
     snapshot.practice_mode = running.practice_mode;
     snapshot.score_save_enabled = !snapshot.autoplay
         && !snapshot.replay_playback

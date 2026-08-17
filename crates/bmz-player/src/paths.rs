@@ -126,11 +126,18 @@ impl AppPaths {
     }
 
     pub fn ensure_dirs(&self) -> Result<()> {
+        self.ensure_required_dirs()
+    }
+
+    /// アプリ動作に必須のディレクトリだけを作成する。
+    ///
+    /// logs は永続loggerのbest-effort初期化で別途作成する。ログ保存先が
+    /// read-onlyでも、設定・DB・cacheが利用可能ならアプリ本体は起動できる。
+    pub fn ensure_required_dirs(&self) -> Result<()> {
         std::fs::create_dir_all(&self.data_dir)?;
         std::fs::create_dir_all(self.data_dir.join("skins"))?;
         std::fs::create_dir_all(&self.profiles_dir)?;
         std::fs::create_dir_all(&self.cache_dir)?;
-        std::fs::create_dir_all(&self.logs_dir)?;
         Ok(())
     }
 

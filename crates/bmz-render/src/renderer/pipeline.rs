@@ -190,11 +190,14 @@ pub(super) fn create_image_pipeline(
 ) -> wgpu::RenderPipeline {
     let shader_source = match blend_mode {
         BlendMode::LayerMask => IMAGE_SHADER_LAYER,
-        BlendMode::Normal | BlendMode::Add | BlendMode::Premultiplied => IMAGE_SHADER,
+        BlendMode::Normal | BlendMode::Add | BlendMode::Multiply | BlendMode::Premultiplied => {
+            IMAGE_SHADER
+        }
     };
     let label = match blend_mode {
         BlendMode::Normal => "bmz-render image pipeline",
         BlendMode::Add => "bmz-render additive image pipeline",
+        BlendMode::Multiply => "bmz-render multiply image pipeline",
         BlendMode::Premultiplied => "bmz-render premultiplied image pipeline",
         BlendMode::LayerMask => "bmz-render layer-mask image pipeline",
     };
@@ -301,6 +304,18 @@ pub(super) fn create_image_quad_pipeline(
 pub(super) fn image_blend_state(blend_mode: BlendMode) -> wgpu::BlendState {
     match blend_mode {
         BlendMode::Normal | BlendMode::LayerMask => wgpu::BlendState::ALPHA_BLENDING,
+        BlendMode::Multiply => wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::Zero,
+                dst_factor: wgpu::BlendFactor::Src,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::Zero,
+                dst_factor: wgpu::BlendFactor::Src,
+                operation: wgpu::BlendOperation::Add,
+            },
+        },
         BlendMode::Premultiplied => wgpu::BlendState {
             color: wgpu::BlendComponent {
                 src_factor: wgpu::BlendFactor::One,

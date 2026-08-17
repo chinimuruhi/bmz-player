@@ -1,5 +1,14 @@
 use super::*;
 
+/// beatoraja `SkinObjectRenderer.setBlend` と同じ destination blend 対応。
+pub(super) fn skin_blend_mode(blend: i32) -> BlendMode {
+    match blend {
+        2 => BlendMode::Add,
+        4 => BlendMode::Multiply,
+        _ => BlendMode::Normal,
+    }
+}
+
 pub(super) fn multiply_bga_tints(destination: Color, bga: SkinBgaFrame) -> Color {
     Color::rgba(
         destination.r * bga.tint_r,
@@ -59,7 +68,7 @@ pub(super) fn special_image_render_item(
             base_b * frame.b as f32 / 255.0,
             frame.a as f32 / 255.0,
         ),
-        blend: if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+        blend: skin_blend_mode(destination.blend),
     })
 }
 

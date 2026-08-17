@@ -89,7 +89,7 @@ pub(super) fn skin_panel_render_items(
         return Vec::new();
     }
 
-    let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+    let blend = skin_blend_mode(destination.blend);
     let tint = |value: &str| {
         let color = skin_hex_color(value)?;
         Some(Color::rgba(

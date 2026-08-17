@@ -120,7 +120,7 @@ fn select_key_bindings_builds_correct_hints() {
     assert!(keys.key_hint().contains("/S/D/F:BACK"), "back keys in hint: {}", keys.key_hint());
     assert!(keys.key_hint().contains(" Q"), "start key in hint: {}", keys.key_hint());
     assert!(keys.option_hint().contains("F1 MENU"), "menu in hint: {}", keys.option_hint());
-    assert!(keys.option_hint().contains("F5 RELOAD"), "reload in hint: {}", keys.option_hint());
+    assert!(keys.option_hint().contains("F5:RELOAD"), "reload in hint: {}", keys.option_hint());
     assert!(
         keys.option_hint().contains("Q+K1/K2:1P ARR"),
         "1P arrange in hint: {}",

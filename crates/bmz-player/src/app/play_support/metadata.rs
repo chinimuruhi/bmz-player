@@ -56,6 +56,7 @@ pub(in crate::app) fn apply_chart_metadata_to_snapshot(
     snapshot.min_bpm = chart.min_bpm as f32;
     snapshot.max_bpm = chart.max_bpm as f32;
     snapshot.now_bpm = chart.initial_bpm as f32;
+    snapshot.has_long_notes = Some(chart.has_long_notes);
     // PACEMAKER の MyBest 表示。projected (ghost 進行値) は進捗 0 なので 0。
     snapshot.best_ex_score = best_ex_score;
     snapshot.projected_best_ex_score = best_ex_score.map(|_| 0);

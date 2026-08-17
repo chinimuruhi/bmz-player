@@ -197,6 +197,28 @@ pub fn preload_play_session_for_chart_with_callbacks(
         None
     };
     let chart_parse_elapsed = chart_parse_started_at.elapsed();
+    let skin_attempt = bmz_render::snapshot::SkinAttemptState {
+        source_key_mode: Some(imported.source_key_mode),
+        effective_key_mode: Some(imported.chart.metadata.key_mode),
+        seven_to_six: imported.applied_arrange.seven_to_six,
+        source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
+            imported.source_ln_profile,
+        )),
+        session_mode_index: Some(crate::skin_extension::session_mode_index(
+            options.session_mode,
+            options.battle_opponent.is_some(),
+        )),
+        double_option_index: Some(crate::skin_extension::double_option_index(
+            imported.applied_arrange.double_option,
+        )),
+        hsfix_index: Some(crate::skin_extension::hsfix_index(options.hs_fix)),
+        ln_mode_index: Some(crate::skin_extension::long_note_mode_index(
+            imported.chart.metadata.long_note_mode,
+        )),
+        has_bga: Some(imported.chart.metadata.has_bga),
+        has_random_sequence: Some(imported.chart.metadata.has_bms_random),
+        ..Default::default()
+    };
     let mut primary_chart = imported.chart;
     if options.session_mode.is_battle()
         && let Some(opponent) = opponent_chart.as_deref()
@@ -209,6 +231,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
             &chart,
         ),
         chart,
+        skin_attempt,
         source_ln_profile: imported.source_ln_profile,
         chart_length_ms,
         applied_arrange: imported.applied_arrange,
@@ -263,6 +286,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
 
     Ok(PreloadedPlaySession {
         chart: prepared_chart.chart,
+        skin_attempt: prepared_chart.skin_attempt,
         source_ln_profile: prepared_chart.source_ln_profile,
         chart_length_ms: prepared_chart.chart_length_ms,
         audio,
@@ -291,6 +315,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
 ) -> PreloadedPlaySession {
     let PreparedPlayChart {
         chart,
+        skin_attempt,
         source_ln_profile,
         chart_length_ms,
         render_snapshot_cache,
@@ -315,6 +340,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
     );
     PreloadedPlaySession {
         chart,
+        skin_attempt,
         source_ln_profile,
         chart_length_ms,
         audio,
@@ -559,8 +585,23 @@ pub fn build_practice_prepared_from_preloaded(
     apply_practice_start_gauge(&mut session.gauge, property.start_gauge);
     let render_snapshot_cache =
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&session.chart);
+    let mut skin_attempt = preloaded.skin_attempt;
+    skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
+    skin_attempt.double_option_index =
+        Some(crate::skin_extension::double_option_index(applied_arrange.double_option));
+    skin_attempt.hsfix_index = usize::try_from(session.hsfix_index).ok();
+    skin_attempt.gauge_auto_shift_index =
+        Some(crate::skin_extension::gauge_auto_shift_index(session.gauge.auto_shift_mode));
+    skin_attempt.bottom_shiftable_gauge_index = Some(
+        crate::skin_extension::bottom_shiftable_gauge_index(session.gauge.bottom_shiftable_gauge),
+    );
+    skin_attempt.judge_algorithm_index =
+        Some(crate::skin_extension::judge_algorithm_index(session.judge.algorithm));
+    skin_attempt.ln_mode_index =
+        Some(crate::skin_extension::long_note_mode_index(session.chart.metadata.long_note_mode));
     PreparedPlaySession {
         session,
+        skin_attempt,
         source_ln_profile: preloaded.source_ln_profile,
         chart_length_ms: preloaded.chart_length_ms,
         audio: preloaded.audio,
@@ -600,8 +641,21 @@ pub fn build_prepared_play_session_from_preloaded(
         build_game_session_with_input_backend(preloaded.chart, profile, options, input_backend);
     let mut session = session;
     session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
+    let mut skin_attempt = preloaded.skin_attempt;
+    skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
+    skin_attempt.hsfix_index = usize::try_from(session.hsfix_index).ok();
+    skin_attempt.gauge_auto_shift_index =
+        Some(crate::skin_extension::gauge_auto_shift_index(session.gauge.auto_shift_mode));
+    skin_attempt.bottom_shiftable_gauge_index = Some(
+        crate::skin_extension::bottom_shiftable_gauge_index(session.gauge.bottom_shiftable_gauge),
+    );
+    skin_attempt.judge_algorithm_index =
+        Some(crate::skin_extension::judge_algorithm_index(session.judge.algorithm));
+    skin_attempt.ln_mode_index =
+        Some(crate::skin_extension::long_note_mode_index(session.chart.metadata.long_note_mode));
     PreparedPlaySession {
         session,
+        skin_attempt,
         source_ln_profile: preloaded.source_ln_profile,
         chart_length_ms: preloaded.chart_length_ms,
         audio: preloaded.audio,

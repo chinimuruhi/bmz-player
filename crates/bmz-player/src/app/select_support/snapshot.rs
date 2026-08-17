@@ -237,8 +237,12 @@ fn select_chart_snapshot(
         favorite_chart: row.favorite_chart,
         favorite_song: row.favorite_song,
         has_document: row.has_document,
+        has_bga: chart.is_some_and(|chart| chart.has_bga),
         has_long_notes: chart.is_some_and(|chart| chart.has_long_notes),
         has_mines: chart.is_some_and(|chart| chart.has_mines),
+        has_random: chart.is_some_and(|chart| chart.has_bms_random),
+        source_ln_profile_bits: chart
+            .map(|chart| crate::skin_extension::source_ln_profile_bits(chart.ln_profile)),
         chart_normal_notes: analysis
             .map(|analysis| analysis.normal_notes)
             .unwrap_or_else(|| chart.map(|chart| chart.total_notes).unwrap_or(0)),

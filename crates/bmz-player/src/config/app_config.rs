@@ -21,6 +21,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub select: MusicSelectConfig,
     pub input: GlobalInputConfig,
+    #[serde(default)]
     pub logging: LoggingConfig,
     #[serde(default)]
     pub tables: DifficultyTablesConfig,
@@ -382,8 +383,16 @@ pub enum InputBackendKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
+    #[serde(default)]
     pub level: LogLevel,
+    #[serde(default = "default_true")]
     pub file_logging: bool,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self { level: LogLevel::Info, file_logging: true }
+    }
 }
 
 pub const DEFAULT_DIFFICULTY_TABLE_SOURCE_URLS: &[&str] = &[
@@ -544,11 +553,12 @@ fn should_skip_discord_application_id(value: &str) -> bool {
     value.is_empty() || value == DEFAULT_DISCORD_APPLICATION_ID
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Trace,
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
@@ -603,7 +613,7 @@ impl Default for AppConfig {
                 gamepad_slot_gilrs_ids: default_gamepad_slot_gilrs_ids(),
                 gamepad_slot_runtime_device_ids: [None, None],
             },
-            logging: LoggingConfig { level: LogLevel::Info, file_logging: true },
+            logging: LoggingConfig::default(),
             tables: DifficultyTablesConfig::default(),
             downloads: ChartDownloadsConfig::default(),
             updates: UpdatesConfig::default(),

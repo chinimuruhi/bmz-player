@@ -8,7 +8,7 @@ use crate::chart_graph::BpmGraphSegment;
 use crate::skin::SkinImageSize;
 use crate::skin_offset::SkinOffsetValues;
 use crate::snapshot::{
-    DisplayJudgeCounts, FastSlowJudgeCounts, OverlaySnapshot, RenderSnapshot,
+    DisplayJudgeCounts, FastSlowJudgeCounts, OverlaySnapshot, RenderSnapshot, SkinAttemptState,
     SkinLogicalInputSnapshot,
 };
 
@@ -95,6 +95,7 @@ mod tests {
             target_name: String::new(),
             current_fps: 0,
             skin_input: SkinLogicalInputSnapshot::default(),
+            skin_attempt: SkinAttemptState::default(),
             skin_offsets: SkinOffsetValues::default(),
             hispeed_auto_adjust: false,
             assist_flags: [false; 7],
@@ -127,6 +128,8 @@ mod tests {
             key_mode: KeyMode::default(),
             has_long_notes: false,
             ln_mode_index: 0,
+            rule_mode_index: 0,
+            ln_score_policy_index: Some(0),
             result_gauge_graph_type: 2,
             result_panel: 0,
             favorite_chart: false,
@@ -181,6 +184,7 @@ mod tests {
             target_name: String::new(),
             current_fps: 0,
             skin_input: SkinLogicalInputSnapshot::default(),
+            skin_attempt: SkinAttemptState::default(),
             skin_offsets: SkinOffsetValues::default(),
             hispeed_auto_adjust: false,
             assist_flags: [false; 7],
@@ -213,6 +217,8 @@ mod tests {
             key_mode: KeyMode::default(),
             has_long_notes: false,
             ln_mode_index: 0,
+            rule_mode_index: 0,
+            ln_score_policy_index: Some(0),
             result_gauge_graph_type: 2,
             result_panel: 0,
             favorite_chart: false,

@@ -253,6 +253,7 @@ impl AppliedArrange {
 
 pub struct PreparedPlaySession {
     pub session: GameSession,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     pub chart_length_ms: u64,
     pub audio: AudioEngine,
@@ -275,6 +276,7 @@ pub struct PreparedPlaySession {
 #[derive(Debug, Clone)]
 pub struct PreparedPlayChart {
     pub chart: Arc<PlayableChart>,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     pub chart_length_ms: u64,
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
@@ -287,6 +289,7 @@ pub struct PreparedPlayChart {
 
 pub struct PreloadedPlaySession {
     pub chart: Arc<PlayableChart>,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     pub chart_length_ms: u64,
     pub audio: AudioEngine,
@@ -304,6 +307,7 @@ impl PreloadedPlaySession {
     pub fn prepared_chart(&self) -> PreparedPlayChart {
         PreparedPlayChart {
             chart: Arc::clone(&self.chart),
+            skin_attempt: self.skin_attempt,
             source_ln_profile: self.source_ln_profile,
             chart_length_ms: self.chart_length_ms,
             render_snapshot_cache: self.render_snapshot_cache.clone(),
@@ -381,6 +385,7 @@ mod seven_to_six;
 
 pub(crate) use arrange_pipeline::second_player_lane_mask;
 pub use arrange_pipeline::{apply_arrange, apply_arrange_pair, generate_arrange_seed};
+pub(crate) use build::judge_algorithm_from_config;
 pub use build::{
     apply_placeholder_session_visuals, build_game_session, build_game_session_with_input_backend,
 };

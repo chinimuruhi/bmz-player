@@ -87,6 +87,7 @@ impl WinitApp {
                     },
                 ) {
                     Ok(mut finished) => {
+                        finished.summary.skin_attempt = started.running.skin_attempt;
                         finished.summary.graph = Arc::new(
                             started
                                 .running

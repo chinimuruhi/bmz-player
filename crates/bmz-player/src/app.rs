@@ -92,6 +92,7 @@ use crate::ir::table::{
 };
 use crate::ln_policy::LnPolicySetting;
 use crate::logging::LogBuffer;
+use crate::paths::AppPaths;
 use crate::practice_ui::PracticePanelContext;
 use crate::random_trainer::RandomTrainerState;
 use crate::screens::course_session::{ActiveCourseSession, CourseEntryResult, CourseResultSummary};
@@ -343,8 +344,9 @@ use result_support::*;
 use result_timing_support::*;
 use rival_sync::*;
 use scene_input::{
-    DecideAction, ResultAction, SelectAction, SelectMove, decide_action as scene_decide_action,
-    result_action as scene_result_action, select_action as scene_select_action,
+    DecideAction, ResultAction, SelectAction, SelectMove, configurable_select_shortcut_action,
+    decide_action as scene_decide_action, result_action as scene_result_action,
+    select_action as scene_select_action,
 };
 use select_assets::{
     PreparedSelectPreview, SelectAssetRuntime, SelectMetaImageSlot, SelectPreviewFade,
@@ -398,7 +400,16 @@ pub async fn run_with_options_and_log_buffer(
     options: AppOptions,
     log_buffer: LogBuffer,
 ) -> Result<()> {
-    let boot = bootstrap::bootstrap()?;
+    let app_paths = crate::paths::resolve_app_paths()?;
+    run_with_options_log_buffer_and_paths(options, log_buffer, app_paths).await
+}
+
+pub async fn run_with_options_log_buffer_and_paths(
+    options: AppOptions,
+    log_buffer: LogBuffer,
+    app_paths: AppPaths,
+) -> Result<()> {
+    let boot = bootstrap::bootstrap_with_paths(app_paths)?;
 
     // Raw Input へ実行中に切り替えられるよう、Windows message hook は起動時から
     // 常設する。デバイス usage の登録は RawInputBackend の attach 時まで行わない。

@@ -49,7 +49,10 @@ mod tests {
             scratch_mode: crate::config::profile_config::ScratchInputMode::Normal,
             select_input_mode: SelectInputModeConfig::Key7Key14,
             start_key: None,
-            ui: UiInputConfig { bindings: default_ui_bindings() },
+            ui: UiInputConfig {
+                version: crate::config::profile_config::UI_INPUT_BINDING_VERSION,
+                bindings: default_ui_bindings(),
+            },
             play,
             legacy_bindings: Vec::new(),
             legacy_analog_scratch_sensitivity: None,

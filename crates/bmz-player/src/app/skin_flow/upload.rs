@@ -203,6 +203,7 @@ impl WinitApp {
             &self.boot.profile_config.display_name,
         );
         if let Some(summary) = summary {
+            apply_skin_attempt_lua_load_state(&mut runtime_state, summary.skin_attempt);
             apply_result_summary_lua_load_state(
                 &mut runtime_state,
                 summary,
@@ -211,13 +212,15 @@ impl WinitApp {
                 &self.play.play_table_text_fallback,
             );
         }
-        runtime_state.event_index_values.insert(
-            54,
-            i32::try_from(bmz_render::skin::select_double_option_index(
-                self.result_double_option_for_slot(slot).as_str(),
-            ))
-            .unwrap_or_default(),
-        );
+        if summary.is_none() {
+            runtime_state.event_index_values.insert(
+                54,
+                i32::try_from(bmz_render::skin::select_double_option_index(
+                    self.result_double_option_for_slot(slot).as_str(),
+                ))
+                .unwrap_or_default(),
+            );
+        }
         if let Some(stage) = self.current_course_stage_marker() {
             apply_course_mode_lua_options(&mut runtime_state, Some(stage));
         }

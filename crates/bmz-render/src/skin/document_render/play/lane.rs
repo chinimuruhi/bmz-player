@@ -74,7 +74,7 @@ macro_rules! skin_document_render_play_lane_methods {
                     uv,
                     frame,
                     destination.center,
-                    if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                    skin_blend_mode(destination.blend),
                     Some(source.source_size),
                     destination.filter != 0,
                 );

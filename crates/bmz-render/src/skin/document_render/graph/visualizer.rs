@@ -12,7 +12,7 @@ macro_rules! skin_document_render_graph_visualizer_methods {
             }
             let rect = normalize_skin_frame_rect(frame, self.w, self.h);
             let frame_alpha = frame.a as f32 / 255.0;
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let window = visualizer.window_length.clamp(1, 100) as usize;
             let width = visualizer.width.max(1) as f32;
             let line_width = visualizer.line_width.clamp(1, 4) as f32;
@@ -180,7 +180,7 @@ macro_rules! skin_document_render_graph_visualizer_methods {
             }
             let rect = normalize_skin_frame_rect(frame, self.w, self.h);
             let frame_alpha = frame.a as f32 / 255.0;
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let width = visualizer.width.max(1) as f32;
             let center_ms = visualizer.judge_width_millis.max(1) as f32;
             let line_w =

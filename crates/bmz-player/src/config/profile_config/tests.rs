@@ -601,6 +601,52 @@ fn default_gamepad_ui_bindings_use_thumb_buttons_without_dpad_enter_back() {
             && matches!(entry.control.as_str(), "DPadLeft" | "DPadRight")
             && matches!(entry.action, Some(InputActionConfig::E2 | InputActionConfig::SelectEnter))
     }));
+    assert!(!bindings.iter().any(|entry| {
+        matches!(
+            entry.action,
+            Some(InputActionConfig::SelectEnter | InputActionConfig::SelectOptionBga)
+        )
+    }));
+    for (control, action) in [
+        ("F3", InputActionConfig::SelectOpenFolder),
+        ("F5", InputActionConfig::SelectReload),
+        ("F10", InputActionConfig::SelectAutoplayFolder),
+        ("F11", InputActionConfig::SelectOpenIr),
+        ("F12", InputActionConfig::Screenshot),
+        ("7", InputActionConfig::SelectRivalCycle),
+        ("Numpad7", InputActionConfig::SelectRivalCycle),
+        ("Numpad9", InputActionConfig::SelectOpenDocuments),
+    ] {
+        assert!(bindings.iter().any(|entry| {
+            entry.device == "keyboard" && entry.control == control && entry.action == Some(action)
+        }));
+    }
+}
+
+#[test]
+fn input_normalization_migrates_shortcuts_once_and_preserves_later_clears() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 0;
+    input.ui.bindings.retain(|entry| {
+        !entry.action.is_some_and(|action| CONFIGURABLE_SHORTCUT_ACTIONS.contains(&action))
+    });
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    assert_eq!(input.ui.version, UI_INPUT_BINDING_VERSION);
+    for &action in CONFIGURABLE_SHORTCUT_ACTIONS {
+        assert!(input.ui.bindings.iter().any(|entry| entry.action == Some(action)));
+    }
+
+    input.ui.bindings.retain(|entry| entry.action != Some(InputActionConfig::Screenshot));
+    crate::config::play_input::normalize_profile_input(&mut input);
+    assert!(
+        !input
+            .ui
+            .bindings
+            .iter()
+            .any(|entry| { entry.action == Some(InputActionConfig::Screenshot) })
+    );
 }
 
 #[test]

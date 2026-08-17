@@ -254,10 +254,10 @@ impl WinitApp {
         }
         if let Some(path) = song_scan_path_from_context(&self.select.folder_stack, selected) {
             let roots = vec![PathEntry { path, enabled: true, recursive: true }];
-            self.spawn_song_scan(roots, true, "F5 song reload".to_string());
+            self.spawn_song_scan(roots, true, "select song reload".to_string());
             return;
         }
-        tracing::debug!("F5 reload: no applicable target in select context");
+        tracing::debug!("select reload: no applicable target in current context");
     }
 
     pub(super) fn spawn_song_scan_request(&mut self, request: SongScanRequest) {

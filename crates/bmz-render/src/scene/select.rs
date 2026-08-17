@@ -11,6 +11,7 @@ pub struct SelectSnapshot {
     /// beatoraja の NUMBER_OPERATING_TIME_HOUR/MINUTE/SECOND (27..29) に使う。
     pub operating_time_ms: i32,
     pub skin_input: SkinLogicalInputSnapshot,
+    pub skin_attempt: SkinAttemptState,
     /// 現在の選曲スキンスロットに設定された destination offset。
     pub skin_offsets: SkinOffsetValues,
     pub selection_time: TimeUs,
@@ -63,6 +64,12 @@ pub struct SelectSnapshot {
     pub random_mix_options: [u32; 7],
     pub select_sort: String,
     pub select_ln_mode: String,
+    /// BMZ extension: current profile scoring rule mode index.
+    pub rule_mode_index: usize,
+    /// BMZ extension: current profile LN setting index before normalization.
+    pub ln_policy_setting_index: usize,
+    /// BMZ extension: selected chart/course score-key LN policy index.
+    pub ln_score_policy_index: Option<usize>,
     pub judge_algorithm: String,
     pub bga: String,
     /// Select detail option panelで表示する判定表示オフセット(ms)。
@@ -163,6 +170,7 @@ impl Default for SelectSnapshot {
             current_fps: 0,
             operating_time_ms: 0,
             skin_input: SkinLogicalInputSnapshot::default(),
+            skin_attempt: SkinAttemptState::default(),
             skin_offsets: SkinOffsetValues::default(),
             selection_time: TimeUs::default(),
             option_panel_time: TimeUs::default(),
@@ -199,6 +207,9 @@ impl Default for SelectSnapshot {
             random_mix_options: [0, 0, 0, 10, 0, 0, 5],
             select_sort: String::new(),
             select_ln_mode: String::new(),
+            rule_mode_index: 0,
+            ln_policy_setting_index: 0,
+            ln_score_policy_index: None,
             judge_algorithm: String::new(),
             bga: String::new(),
             judge_timing_offset_ms: 0,
@@ -276,9 +287,12 @@ pub struct SelectRowSnapshot {
     pub favorite_song: bool,
     /// Same-folder `.txt` presence for OPTION_NO_TEXT / OPTION_TEXT (174/175).
     pub has_document: bool,
+    pub has_bga: bool,
     pub has_long_notes: bool,
     pub has_mines: bool,
     pub has_random: bool,
+    /// BMZ source LN profile bit mask. None for non-chart rows.
+    pub source_ln_profile_bits: Option<u8>,
     /// beatoraja SongInformation-derived chart details for selected song rows.
     pub chart_normal_notes: u32,
     pub chart_long_notes: u32,
@@ -350,9 +364,11 @@ impl Default for SelectRowSnapshot {
             favorite_chart: false,
             favorite_song: false,
             has_document: false,
+            has_bga: false,
             has_long_notes: false,
             has_mines: false,
             has_random: false,
+            source_ln_profile_bits: None,
             chart_normal_notes: 0,
             chart_long_notes: 0,
             chart_scratch_notes: 0,

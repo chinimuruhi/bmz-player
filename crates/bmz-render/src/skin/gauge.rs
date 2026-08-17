@@ -27,7 +27,7 @@ pub(super) fn skin_gauge_frame_color(frame: ResolvedSkinFrame) -> Color {
 }
 
 pub(super) fn skin_gauge_destination_blend(destination: &SkinDestinationDef) -> BlendMode {
-    if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal }
+    skin_blend_mode(destination.blend)
 }
 
 pub(super) fn skin_gauge_animation_index(gauge_def: &SkinGaugeDef, state: &SkinDrawState) -> i32 {

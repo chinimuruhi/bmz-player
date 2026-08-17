@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn select_long_note_options_follow_the_selected_chart() {
+    let document: SkinDocument = serde_json::from_str(r#"{ "type": 5 }"#).unwrap();
+    let mut snapshot = SelectSnapshot {
+        rows: vec![SelectRowSnapshot {
+            index: 0,
+            kind: SelectRowKind::Song,
+            in_library: true,
+            has_long_notes: true,
+            ..SelectRowSnapshot::default()
+        }],
+        ..SelectSnapshot::default()
+    };
+
+    let (with_ln, _) = document.select_draw_state(&snapshot, None);
+    assert_eq!(with_ln.chart_has_long_notes, Some(true));
+    assert!(!test_skin_op(172, &[], &with_ln));
+    assert!(test_skin_op(173, &[], &with_ln));
+
+    snapshot.rows[0].has_long_notes = false;
+    let (without_ln, _) = document.select_draw_state(&snapshot, None);
+    assert_eq!(without_ln.chart_has_long_notes, Some(false));
+    assert!(test_skin_op(172, &[], &without_ln));
+    assert!(!test_skin_op(173, &[], &without_ln));
+
+    snapshot.rows[0].kind = SelectRowKind::Folder;
+    snapshot.rows[0].is_folder = true;
+    let (folder, _) = document.select_draw_state(&snapshot, None);
+    assert_eq!(folder.chart_has_long_notes, None);
+    assert!(!test_skin_op(172, &[], &folder));
+    assert!(!test_skin_op(173, &[], &folder));
+}
+
+#[test]
 fn select_document_options_follow_selected_song_text_presence() {
     let no_document = SkinDrawState {
         select_screen: true,
@@ -520,4 +553,53 @@ fn select_settings_screen_hides_bpm_numbers() {
     };
     assert_eq!(skin_state_number(90, &state), None);
     assert_eq!(skin_state_number(91, &state), None);
+}
+
+#[test]
+fn select_song_boolean_options_use_selected_chart_metadata() {
+    let fixed_bga_chart = SkinDrawState {
+        select_screen: true,
+        select_row_kind: SelectRowKind::Song,
+        select_in_library: true,
+        chart_has_long_notes: Some(false),
+        min_bpm: 150.0,
+        max_bpm: 150.0,
+        skin_attempt: SkinAttemptState {
+            has_bga: Some(true),
+            has_random_sequence: Some(false),
+            ..Default::default()
+        },
+        ..SkinDrawState::default()
+    };
+    assert!(!test_skin_op(170, &[], &fixed_bga_chart));
+    assert!(test_skin_op(171, &[], &fixed_bga_chart));
+    assert!(test_skin_op(176, &[], &fixed_bga_chart));
+    assert!(!test_skin_op(177, &[], &fixed_bga_chart));
+    assert!(test_skin_op(178, &[], &fixed_bga_chart));
+    assert!(!test_skin_op(179, &[], &fixed_bga_chart));
+
+    let variable_random_chart = SkinDrawState {
+        min_bpm: 120.0,
+        max_bpm: 180.0,
+        skin_attempt: SkinAttemptState {
+            has_bga: Some(false),
+            has_random_sequence: Some(true),
+            ..Default::default()
+        },
+        ..fixed_bga_chart
+    };
+    assert!(test_skin_op(170, &[], &variable_random_chart));
+    assert!(!test_skin_op(171, &[], &variable_random_chart));
+    assert!(!test_skin_op(176, &[], &variable_random_chart));
+    assert!(test_skin_op(177, &[], &variable_random_chart));
+    assert!(!test_skin_op(178, &[], &variable_random_chart));
+    assert!(test_skin_op(179, &[], &variable_random_chart));
+
+    let no_chart = SkinDrawState { select_screen: true, ..Default::default() };
+    for op in 170..=179 {
+        if matches!(op, 172..=175) {
+            continue;
+        }
+        assert!(!test_skin_op(op, &[], &no_chart), "option {op}");
+    }
 }

@@ -218,6 +218,11 @@ macro_rules! skin_document_render_select_interaction_methods {
             state.select_course_constraints = row.course_constraints;
             state.select_is_folder = row.is_folder;
             state.select_in_library = row.in_library;
+            state.chart_has_long_notes = (!state.in_settings
+                && row.kind == SelectRowKind::Song
+                && !row.is_folder
+                && row.in_library)
+                .then_some(row.has_long_notes);
             state.select_total_notes = row.total_notes;
             state.select_chart_normal_notes = row.chart_normal_notes;
             state.select_chart_long_notes = row.chart_long_notes;

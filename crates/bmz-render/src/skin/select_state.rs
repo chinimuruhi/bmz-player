@@ -300,6 +300,9 @@ pub(super) fn select_key_mode_option_matches(op: i32, state: &SkinDrawState) -> 
 }
 
 pub(super) fn effective_skin_key_mode(state: &SkinDrawState) -> Option<KeyMode> {
+    if let Some(key_mode) = state.skin_attempt.effective_key_mode {
+        return Some(key_mode);
+    }
     if !state.select_screen || state.result_failed.is_some() {
         return Some(state.key_mode);
     }

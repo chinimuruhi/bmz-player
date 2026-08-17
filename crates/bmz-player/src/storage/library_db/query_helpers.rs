@@ -33,7 +33,7 @@ pub(super) fn charts_by_hash_column(
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter().copied()), |row| {
-            Ok((row.get::<_, String>(34)?, chart_list_item_from_row(row)?))
+            Ok((row.get::<_, String>(36)?, chart_list_item_from_row(row)?))
         })?;
         for row in rows {
             let (hash, chart) = row?;
@@ -77,7 +77,9 @@ pub(super) const CHART_LIST_ITEM_COLUMNS: &str = "
     undefined_ln_pairs,
     defined_ln_pairs,
     defined_cn_pairs,
-    defined_hcn_pairs";
+    defined_hcn_pairs,
+    has_bga,
+    has_bms_random";
 
 pub(super) const CHART_LIST_ITEM_COLUMNS_C: &str = "
     c.id,
@@ -113,7 +115,9 @@ pub(super) const CHART_LIST_ITEM_COLUMNS_C: &str = "
     c.undefined_ln_pairs,
     c.defined_ln_pairs,
     c.defined_cn_pairs,
-    c.defined_hcn_pairs";
+    c.defined_hcn_pairs,
+    c.has_bga,
+    c.has_bms_random";
 
 pub(super) fn chart_list_item_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChartListItem> {
     let md5_hex: String = row.get(1)?;
@@ -160,6 +164,8 @@ pub(super) fn chart_list_item_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Res
             defined_cn_pairs: row.get(32)?,
             defined_hcn_pairs: row.get(33)?,
         },
+        has_bga: row.get(34)?,
+        has_bms_random: row.get(35)?,
     })
 }
 

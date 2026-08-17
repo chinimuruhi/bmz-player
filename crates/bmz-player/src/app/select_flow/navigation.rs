@@ -153,7 +153,7 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn handle_select_f3_action(&mut self) {
+    pub(super) fn handle_select_open_folder_action(&mut self) {
         let e1_held = self.input.select_e_action_holds.contains(&InputActionConfig::E1);
         let e2_held = self.input.select_e_action_holds.contains(&InputActionConfig::E2);
         let ctrl_held = self.input.pressed_controls.iter().any(|control| {

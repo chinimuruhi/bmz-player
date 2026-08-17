@@ -32,7 +32,7 @@ pub fn select_double_option_index(double_option: &str) -> usize {
     }
 }
 
-pub(super) fn select_hs_fix_index(hs_fix: &str) -> usize {
+pub fn select_hs_fix_index(hs_fix: &str) -> usize {
     match hs_fix {
         "START BPM" => 1,
         "MAX BPM" => 2,
@@ -201,7 +201,7 @@ pub(super) fn select_gauge_index(gauge: &str) -> usize {
     }
 }
 
-pub(super) fn select_gauge_auto_shift_index(mode: &str) -> usize {
+pub fn select_gauge_auto_shift_index(mode: &str) -> usize {
     match mode {
         "CONTINUE" => 1,
         "HARD TO GROOVE" => 2,
@@ -211,7 +211,7 @@ pub(super) fn select_gauge_auto_shift_index(mode: &str) -> usize {
     }
 }
 
-pub(super) fn select_bottom_shiftable_gauge_index(mode: &str) -> usize {
+pub fn select_bottom_shiftable_gauge_index(mode: &str) -> usize {
     match mode {
         "EASY" => 1,
         "NORMAL" => 2,
@@ -286,7 +286,7 @@ pub(super) fn select_sort_index(sort: &str) -> usize {
     }
 }
 
-pub(super) fn select_ln_mode_index(mode: &str) -> usize {
+pub fn select_ln_mode_index(mode: &str) -> usize {
     match mode {
         "CN" | "AUTO(CN)" | "FORCE(CN)" => 1,
         "HCN" | "AUTO(HCN)" | "FORCE(HCN)" => 2,
@@ -294,7 +294,7 @@ pub(super) fn select_ln_mode_index(mode: &str) -> usize {
     }
 }
 
-pub(super) fn select_judge_algorithm_index(algorithm: &str) -> usize {
+pub fn select_judge_algorithm_index(algorithm: &str) -> usize {
     match algorithm {
         "Duration" | "DURATION" => 1,
         "Lowest" | "LOWEST" => 2,
