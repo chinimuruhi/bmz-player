@@ -1,3 +1,4 @@
+pub mod beatoraja_replay;
 pub mod collection_db;
 pub mod common;
 pub mod course_db;
