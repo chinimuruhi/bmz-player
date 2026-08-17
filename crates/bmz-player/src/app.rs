@@ -167,7 +167,7 @@ use crate::storage::migration::{migrate_library_db, migrate_network_db, migrate_
 use crate::storage::replay::load_replay_for_chart_policy_and_double_option;
 use crate::storage::replay_import::{
     ImportBeatorajaReplaysRequest, ReplayImportProgress, ReplayImportReport,
-    import_beatoraja_replays_with_progress,
+    import_beatoraja_replays_with_progress, write_replay_import_details,
 };
 use crate::storage::scan::{ScanProgress, ScanReport};
 use crate::storage::score_db::{DailyPlayerStats, PlayerStats, ScoreDatabase, ScoreKey};

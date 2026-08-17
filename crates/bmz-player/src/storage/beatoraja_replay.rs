@@ -71,6 +71,13 @@ struct LegacyKeyInput {
     time: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum BeatorajaReplayDocumentData {
+    Single(BeatorajaReplayData),
+    Course(Vec<BeatorajaReplayData>),
+}
+
 impl LegacyKeyInput {
     fn time_us(&self) -> Result<i64> {
         if self.presstime != 0 {
@@ -95,6 +102,12 @@ pub struct BeatorajaReplay {
     key_inputs: Vec<DecodedKeyInput>,
 }
 
+#[derive(Debug, Clone)]
+pub enum BeatorajaReplayDocument {
+    Single(Box<BeatorajaReplay>),
+    Course(Vec<BeatorajaReplay>),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DecodedKeyInput {
     time_us: i64,
@@ -103,25 +116,51 @@ struct DecodedKeyInput {
 }
 
 pub fn load_beatoraja_replay(path: &Path) -> Result<BeatorajaReplay> {
-    Ok(load_beatoraja_replay_with_fingerprint(path)?.0)
+    let (document, _) = load_beatoraja_replay_document_with_fingerprint(path)?;
+    match document {
+        BeatorajaReplayDocument::Single(replay) => Ok(*replay),
+        BeatorajaReplayDocument::Course(replays) => {
+            bail!("beatoraja course replay contains {} stages", replays.len())
+        }
+    }
 }
 
-pub(crate) fn load_beatoraja_replay_with_fingerprint(
+pub(crate) fn load_beatoraja_replay_document_with_fingerprint(
     path: &Path,
-) -> Result<(BeatorajaReplay, String)> {
+) -> Result<(BeatorajaReplayDocument, String)> {
     let bytes = std::fs::read(path)
         .with_context(|| format!("failed to open beatoraja replay: {}", path.display()))?;
     let fingerprint = super::common::hash_to_hex(&Sha256::digest(&bytes));
-    let replay = decode_beatoraja_replay(bytes.as_slice())
+    let replay = decode_beatoraja_replay_document(bytes.as_slice())
         .with_context(|| format!("failed to decode beatoraja replay: {}", path.display()))?;
     Ok((replay, fingerprint))
 }
 
 pub fn decode_beatoraja_replay(reader: impl Read) -> Result<BeatorajaReplay> {
+    match decode_beatoraja_replay_document(reader)? {
+        BeatorajaReplayDocument::Single(replay) => Ok(*replay),
+        BeatorajaReplayDocument::Course(replays) => {
+            bail!("beatoraja course replay contains {} stages", replays.len())
+        }
+    }
+}
+
+pub fn decode_beatoraja_replay_document(reader: impl Read) -> Result<BeatorajaReplayDocument> {
     let outer = read_gzip_limited(reader, MAX_OUTER_JSON_BYTES, "beatoraja replay JSON")?;
-    let data: BeatorajaReplayData =
+    let document: BeatorajaReplayDocumentData =
         serde_json::from_slice(&outer).context("invalid beatoraja replay JSON")?;
 
+    match document {
+        BeatorajaReplayDocumentData::Single(data) => {
+            Ok(BeatorajaReplayDocument::Single(Box::new(decode_replay_data(data)?)))
+        }
+        BeatorajaReplayDocumentData::Course(stages) => Ok(BeatorajaReplayDocument::Course(
+            stages.into_iter().map(decode_replay_data).collect::<Result<Vec<_>>>()?,
+        )),
+    }
+}
+
+fn decode_replay_data(data: BeatorajaReplayData) -> Result<BeatorajaReplay> {
     if data.sha256.len() != 64 || !data.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         bail!("beatoraja replay has an invalid SHA256");
     }
@@ -136,9 +175,6 @@ pub fn decode_beatoraja_replay(reader: impl Read) -> Result<BeatorajaReplay> {
         Some(encoded) if !encoded.is_empty() => decode_packed_key_input(encoded)?,
         _ => decode_legacy_key_input(&data.keylog)?,
     };
-    if key_inputs.is_empty() {
-        bail!("beatoraja replay contains no key input");
-    }
     validate_key_input_order(&key_inputs)?;
 
     Ok(BeatorajaReplay { data, key_inputs })
@@ -157,6 +193,10 @@ impl BeatorajaReplay {
 
     pub const fn played_at(&self) -> i64 {
         self.data.date
+    }
+
+    pub fn has_key_input(&self) -> bool {
+        !self.key_inputs.is_empty()
     }
 
     pub fn to_replay_file(&self, conversion: BeatorajaReplayConversion) -> Result<ReplayFile> {
@@ -183,6 +223,7 @@ impl BeatorajaReplay {
             .key_inputs
             .iter()
             .map(|input| replay_event(*input, event_key_mode, conversion.device_kind))
+            .filter_map(Result::transpose)
             .collect::<Result<Vec<_>>>()?;
         let lane_shuffle_pattern = replay_lane_shuffle_pattern(
             event_key_mode,
@@ -245,9 +286,6 @@ fn decode_packed_key_input(encoded: &str) -> Result<Vec<DecodedKeyInput>> {
             bail!("beatoraja keyinput contains keycode zero");
         }
         let time_us = i64::from_le_bytes(record[1..].try_into().expect("eight-byte timestamp"));
-        if time_us < 0 {
-            bail!("beatoraja keyinput contains a negative timestamp");
-        }
         inputs.push(DecodedKeyInput {
             time_us,
             keycode: usize::from(signed_keycode.unsigned_abs() - 1),
@@ -265,7 +303,7 @@ fn decode_legacy_key_input(inputs: &[LegacyKeyInput]) -> Result<Vec<DecodedKeyIn
         .iter()
         .map(|input| {
             let time_us = input.time_us()?;
-            if time_us < 0 || input.keycode < 0 {
+            if input.keycode < 0 {
                 bail!("beatoraja legacy keylog contains an invalid event");
             }
             Ok(DecodedKeyInput {
@@ -286,7 +324,10 @@ fn validate_key_input_order(inputs: &[DecodedKeyInput]) -> Result<()> {
 }
 
 fn ensure_supported_key_mode(key_mode: KeyMode) -> Result<()> {
-    if !matches!(key_mode, KeyMode::K5 | KeyMode::K7 | KeyMode::K9 | KeyMode::K10 | KeyMode::K14) {
+    if !matches!(
+        key_mode,
+        KeyMode::K5 | KeyMode::K6 | KeyMode::K7 | KeyMode::K9 | KeyMode::K10 | KeyMode::K14
+    ) {
         bail!("beatoraja replay key mode {} is not supported", key_mode.as_str());
     }
     Ok(())
@@ -360,28 +401,38 @@ fn replay_event(
     input: DecodedKeyInput,
     key_mode: KeyMode,
     device_kind: InputDeviceKind,
-) -> Result<ReplayEvent> {
-    let (lane, scratch_direction) = beatoraja_key_lane(key_mode, input.keycode)
-        .with_context(|| format!("unsupported beatoraja keycode {}", input.keycode))?;
-    Ok(ReplayEvent {
+) -> Result<Option<ReplayEvent>> {
+    let Some((lane, scratch_direction)) = beatoraja_key_lane(key_mode, input.keycode)
+        .with_context(|| format!("unsupported beatoraja keycode {}", input.keycode))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(ReplayEvent {
         lane,
         kind: if input.pressed { InputKind::Press } else { InputKind::Release },
         time: TimeUs(input.time_us),
         device_kind,
         scratch_direction,
-    })
+    }))
 }
 
 fn beatoraja_key_lane(
     key_mode: KeyMode,
     keycode: usize,
-) -> Result<(Lane, Option<ScratchDirection>)> {
+) -> Result<Option<(Lane, Option<ScratchDirection>)>> {
     let mapped = match key_mode {
         KeyMode::K5 => match keycode {
             0..=4 => (key_lane(1 + keycode)?, None),
             5 => (Lane::Scratch, Some(ScratchDirection::Up)),
             6 => (Lane::Scratch, Some(ScratchDirection::Down)),
             _ => bail!("keycode outside 5K input range"),
+        },
+        KeyMode::K6 => match keycode {
+            0..=2 => (key_lane(1 + keycode)?, None),
+            4..=6 => (key_lane(keycode)?, None),
+            // U_E 6K omits the center 7K key and both scratch directions.
+            3 | 7 | 8 => return Ok(None),
+            _ => bail!("keycode outside 6K input range"),
         },
         KeyMode::K7 => match keycode {
             0..=6 => (key_lane(1 + keycode)?, None),
@@ -413,7 +464,7 @@ fn beatoraja_key_lane(
         },
         _ => bail!("unsupported beatoraja key mode"),
     };
-    Ok(mapped)
+    Ok(Some(mapped))
 }
 
 fn key_lane(number: usize) -> Result<Lane> {
@@ -431,11 +482,16 @@ fn replay_lane_shuffle_pattern(
     rows: Option<&[Option<Vec<i64>>]>,
 ) -> Result<Option<Vec<u8>>> {
     let players = if matches!(key_mode, KeyMode::K10 | KeyMode::K14) { 2 } else { 1 };
-    let side_lanes = beatoraja_side_lane_count(key_mode)?;
     let arrangements = [arrange, arrange_2p];
     if arrangements[..players].iter().any(|option| !is_lane_static(*option)) {
         return Ok(None);
     }
+    if arrangements[..players].iter().all(|option| *option == ArrangeOption::Normal)
+        && rows.is_none_or(|rows| rows.iter().take(players).all(Option::is_none))
+    {
+        return Ok(None);
+    }
+    let side_lanes = beatoraja_side_lane_count(key_mode)?;
 
     let mut pattern: Vec<u8> = (0..LANE_COUNT as u8).collect();
     let mut copied_recorded_pattern = false;
@@ -635,6 +691,41 @@ mod tests {
 
         assert_eq!(converted.events[0].time, TimeUs(12_000));
         assert_eq!(converted.events[1].time, TimeUs(13_500));
+    }
+
+    #[test]
+    fn leading_negative_timestamps_are_preserved() {
+        let mut value = base_json();
+        value["keyinput"] = json!(packed_keyinput(&[(1, -50_000), (-1, -10_000), (1, 1_000)]));
+        let converted = decode_json(value).to_replay_file(conversion(KeyMode::K7)).unwrap();
+
+        assert_eq!(converted.events[0].time, TimeUs(-50_000));
+        assert_eq!(converted.events[1].time, TimeUs(-10_000));
+        assert_eq!(converted.events[2].time, TimeUs(1_000));
+    }
+
+    #[test]
+    fn empty_keyinput_is_a_valid_empty_replay() {
+        let mut value = base_json();
+        value["keyinput"] = json!(packed_keyinput(&[]));
+        let replay = decode_json(value);
+
+        assert!(!replay.has_key_input());
+        assert!(replay.to_replay_file(conversion(KeyMode::K7)).unwrap().events.is_empty());
+    }
+
+    #[test]
+    fn six_key_replay_maps_ue_lanes_and_ignores_inactive_inputs() {
+        let mut value = base_json();
+        value["keyinput"] = json!(packed_keyinput(
+            &(1_i8..=9).enumerate().map(|(i, key)| (key, i as i64 * 1_000)).collect::<Vec<_>>()
+        ));
+        let converted = decode_json(value).to_replay_file(conversion(KeyMode::K6)).unwrap();
+
+        assert_eq!(
+            converted.events.iter().map(|event| event.lane).collect::<Vec<_>>(),
+            vec![Lane::Key1, Lane::Key2, Lane::Key3, Lane::Key4, Lane::Key5, Lane::Key6,]
+        );
     }
 
     #[test]

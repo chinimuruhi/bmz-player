@@ -101,6 +101,7 @@ impl WinitApp {
         let library_db_path = self.boot.app_paths.library_db.clone();
         let score_db_path = self.boot.profile_paths.score_db.clone();
         let profile_paths = self.boot.profile_paths.clone();
+        let logs_dir = self.boot.app_paths.logs_dir.clone();
         let (tx, rx) = mpsc::channel();
         let done = Arc::new(AtomicU32::new(0));
         let total = Arc::new(AtomicU32::new(0));
@@ -116,7 +117,7 @@ impl WinitApp {
                     migrate_score_db(&score_db_path)?;
                     let library_db = LibraryDatabase::open(&library_db_path)?;
                     let mut score_db = ScoreDatabase::open(&score_db_path)?;
-                    import_beatoraja_replays_with_progress(
+                    let mut report = import_beatoraja_replays_with_progress(
                         &library_db,
                         &mut score_db,
                         &profile_paths,
@@ -132,7 +133,16 @@ impl WinitApp {
                             );
                         },
                         || worker_cancel.load(Ordering::Relaxed),
-                    )
+                    )?;
+                    if !report.issues.is_empty() {
+                        match write_replay_import_details(&logs_dir, &request.source, &report) {
+                            Ok(path) => report.details_path = Some(path),
+                            Err(error) => {
+                                tracing::warn!(%error, "failed to write replay import details")
+                            }
+                        }
+                    }
+                    Ok(report)
                 })();
                 let _ = tx.send(result);
             })
@@ -187,6 +197,10 @@ impl WinitApp {
                     let status = match &report.threshold_warning {
                         Some(warning) => format!("{summary}\nwarning: {warning}"),
                         None => summary,
+                    };
+                    let status = match &report.details_path {
+                        Some(path) => format!("{status}\ndetails: {}", path.display()),
+                        None => status,
                     };
                     egui.set_replay_import_status(status, false);
                 }

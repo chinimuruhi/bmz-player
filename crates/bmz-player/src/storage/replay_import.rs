@@ -1,17 +1,20 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use bmz_core::input::InputDeviceKind;
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
+use serde::Serialize;
 
 use crate::config::profile_config::ReplaySlotRule;
 use crate::ln_policy::{LnPolicySetting, score_ln_policy};
 use crate::paths::ProfilePaths;
 
 use super::beatoraja_replay::{
-    BeatorajaReplay, BeatorajaReplayConversion, load_beatoraja_replay_with_fingerprint,
+    BeatorajaReplay, BeatorajaReplayConversion, BeatorajaReplayDocument,
+    load_beatoraja_replay_document_with_fingerprint,
 };
 use super::library_db::{ChartListItem, LibraryDatabase};
 use super::replay::{replay_slot_file_name, save_replay_for_import};
@@ -37,21 +40,24 @@ impl ImportBeatorajaReplaysRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ReplayImportIssueKind {
     MissingChart,
     ProtectedSlot,
+    EmptyInput,
+    CourseReplay,
     Unsupported,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReplayImportIssue {
     pub path: PathBuf,
     pub kind: ReplayImportIssueKind,
     pub message: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ReplayImportReport {
     pub scanned: usize,
     pub imported: usize,
@@ -59,24 +65,32 @@ pub struct ReplayImportReport {
     pub unchanged: usize,
     pub missing_chart: usize,
     pub protected_slot: usize,
+    pub empty_input: usize,
+    pub course_replay: usize,
     pub unsupported: usize,
     pub cancelled: bool,
+    pub elapsed_ms: u128,
     pub issues: Vec<ReplayImportIssue>,
     pub threshold_warning: Option<String>,
+    #[serde(skip_serializing)]
+    pub details_path: Option<PathBuf>,
 }
 
 impl ReplayImportReport {
     pub fn summary(&self) -> String {
         format!(
-            "scanned={}, imported={}, replaced={}, unchanged={}, missing_chart={}, protected_slot={}, unsupported={}, cancelled={}",
+            "scanned={}, imported={}, replaced={}, unchanged={}, missing_chart={}, protected_slot={}, empty_input={}, course_replay={}, unsupported={}, cancelled={}, elapsed_ms={}",
             self.scanned,
             self.imported,
             self.replaced,
             self.unchanged,
             self.missing_chart,
             self.protected_slot,
+            self.empty_input,
+            self.course_replay,
             self.unsupported,
-            self.cancelled
+            self.cancelled,
+            self.elapsed_ms
         )
     }
 }
@@ -92,6 +106,8 @@ enum ImportOneOutcome {
     Unchanged { fingerprint_backfill: Option<ReplaySlotRecord> },
     MissingChart(String),
     ProtectedSlot(String),
+    EmptyInput(String),
+    CourseReplay(String),
 }
 
 pub fn import_beatoraja_replays(
@@ -118,6 +134,7 @@ pub fn import_beatoraja_replays_with_progress(
     mut on_progress: impl FnMut(ReplayImportProgress),
     is_cancelled: impl Fn() -> bool,
 ) -> Result<ReplayImportReport> {
+    let started = Instant::now();
     let (replay_paths, player_root) = discover_replay_paths(&request.source)?;
     let (h_random_threshold_ms, threshold_warning) =
         load_h_random_threshold_ms(player_root.as_deref());
@@ -162,6 +179,22 @@ pub fn import_beatoraja_replays_with_progress(
                     message,
                 });
             }
+            Ok(ImportOneOutcome::EmptyInput(message)) => {
+                report.empty_input += 1;
+                report.issues.push(ReplayImportIssue {
+                    path,
+                    kind: ReplayImportIssueKind::EmptyInput,
+                    message,
+                });
+            }
+            Ok(ImportOneOutcome::CourseReplay(message)) => {
+                report.course_replay += 1;
+                report.issues.push(ReplayImportIssue {
+                    path,
+                    kind: ReplayImportIssueKind::CourseReplay,
+                    message,
+                });
+            }
             Err(error) => {
                 report.unsupported += 1;
                 report.issues.push(ReplayImportIssue {
@@ -180,7 +213,32 @@ pub fn import_beatoraja_replays_with_progress(
     if !pending_records.is_empty() {
         score_db.upsert_replay_slots(&pending_records)?;
     }
+    report.elapsed_ms = started.elapsed().as_millis();
     Ok(report)
+}
+
+#[derive(Serialize)]
+struct ReplayImportDetails<'a> {
+    generated_at_unix_ms: u128,
+    source: &'a Path,
+    report: &'a ReplayImportReport,
+}
+
+pub fn write_replay_import_details(
+    logs_dir: &Path,
+    source: &Path,
+    report: &ReplayImportReport,
+) -> Result<PathBuf> {
+    fs::create_dir_all(logs_dir)?;
+    let generated_at_unix_ms =
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+    let path = logs_dir.join(format!(
+        "beatoraja-replay-import-{generated_at_unix_ms}-{}.json",
+        std::process::id()
+    ));
+    let details = ReplayImportDetails { generated_at_unix_ms, source, report };
+    fs::write(&path, serde_json::to_vec_pretty(&details)?)?;
+    Ok(path)
 }
 
 fn import_one(
@@ -191,7 +249,22 @@ fn import_one(
     source_path: &Path,
     h_random_threshold_ms: u32,
 ) -> Result<ImportOneOutcome> {
-    let (replay, source_fingerprint) = load_beatoraja_replay_with_fingerprint(source_path)?;
+    let (document, source_fingerprint) =
+        load_beatoraja_replay_document_with_fingerprint(source_path)?;
+    let replay = match document {
+        BeatorajaReplayDocument::Single(replay) => *replay,
+        BeatorajaReplayDocument::Course(stages) => {
+            return Ok(ImportOneOutcome::CourseReplay(format!(
+                "beatoraja course replay contains {} stages",
+                stages.len()
+            )));
+        }
+    };
+    if !replay.has_key_input() {
+        return Ok(ImportOneOutcome::EmptyInput(
+            "beatoraja replay contains no key input".to_string(),
+        ));
+    }
     let chart_sha256 = replay.chart_sha256()?;
     let charts = library_db.list_charts_by_sha256(chart_sha256)?;
     let Some(chart) = charts.first() else {
@@ -425,13 +498,13 @@ mod tests {
         encoder.finish().unwrap()
     }
 
-    fn replay_bytes() -> Vec<u8> {
+    fn replay_value() -> serde_json::Value {
         let mut packed = Vec::new();
         packed.push(1);
         packed.extend_from_slice(&10_000_i64.to_le_bytes());
         packed.push((-1_i8) as u8);
         packed.extend_from_slice(&20_000_i64.to_le_bytes());
-        let value = json!({
+        json!({
             "sha256": "0202020202020202020202020202020202020202020202020202020202020202",
             "mode": 1,
             "keyinput": URL_SAFE.encode(gzip(&packed)),
@@ -443,8 +516,11 @@ mod tests {
             "randomoption2": 0,
             "randomoption2seed": 84,
             "doubleoption": 0
-        });
-        gzip(value.to_string().as_bytes())
+        })
+    }
+
+    fn replay_bytes() -> Vec<u8> {
+        gzip(replay_value().to_string().as_bytes())
     }
 
     fn chart() -> PlayableChart {
@@ -661,6 +737,43 @@ mod tests {
                 ReplayImportProgress { done: 1, total: 2 },
             ]
         );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn classifies_course_and_empty_replays_separately() {
+        let root = temp_root("classify");
+        let player = root.join("player");
+        let replay_dir = player.join("replay");
+        fs::create_dir_all(&replay_dir).unwrap();
+        let course = json!([replay_value(), replay_value()]);
+        fs::write(replay_dir.join("course_07.brd"), gzip(course.to_string().as_bytes())).unwrap();
+        let mut empty = replay_value();
+        empty["keyinput"] = json!(URL_SAFE.encode(gzip(&[])));
+        fs::write(
+            replay_dir.join(format!("{}.brd", "02".repeat(32))),
+            gzip(empty.to_string().as_bytes()),
+        )
+        .unwrap();
+        let (library_db, mut score_db) = databases();
+        let paths = profile_paths(&root);
+
+        let report = import_beatoraja_replays(
+            &library_db,
+            &mut score_db,
+            &paths,
+            &ImportBeatorajaReplaysRequest::new(&player),
+        )
+        .unwrap();
+
+        assert_eq!(report.course_replay, 1);
+        assert_eq!(report.empty_input, 1);
+        assert_eq!(report.unsupported, 0);
+        let details = write_replay_import_details(&root.join("logs"), &player, &report).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&fs::read(details).unwrap()).unwrap();
+        assert_eq!(json["report"]["course_replay"], 1);
+        assert_eq!(json["report"]["empty_input"], 1);
 
         fs::remove_dir_all(root).unwrap();
     }

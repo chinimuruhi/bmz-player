@@ -7,6 +7,7 @@ use crate::config::load::load_app_config;
 use crate::paths::{resolve_app_paths, resolve_profile_paths};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::migration::{migrate_library_db, migrate_score_db};
+use crate::storage::replay_import::write_replay_import_details;
 use crate::storage::replay_import::{ImportBeatorajaReplaysRequest, import_beatoraja_replays};
 use crate::storage::score_db::ScoreDatabase;
 
@@ -37,7 +38,12 @@ fn import_replays(path: &str, overwrite: bool, controller: bool) -> Result<()> {
     request.overwrite_protected_slots = overwrite;
     request.device_kind =
         if controller { InputDeviceKind::Controller } else { InputDeviceKind::Keyboard };
-    let report = import_beatoraja_replays(&library_db, &mut score_db, &profile_paths, &request)?;
+    let mut report =
+        import_beatoraja_replays(&library_db, &mut score_db, &profile_paths, &request)?;
+    if !report.issues.is_empty() {
+        let details = write_replay_import_details(&app_paths.logs_dir, &request.source, &report)?;
+        report.details_path = Some(details);
+    }
 
     println!("{}", report.summary());
     if let Some(warning) = &report.threshold_warning {
@@ -45,6 +51,9 @@ fn import_replays(path: &str, overwrite: bool, controller: bool) -> Result<()> {
     }
     for issue in &report.issues {
         println!("{}: {}", issue.path.display(), issue.message);
+    }
+    if let Some(path) = &report.details_path {
+        println!("details: {}", path.display());
     }
     Ok(())
 }
