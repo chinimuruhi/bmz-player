@@ -158,11 +158,13 @@ fn folder_enrichment_keeps_hash_metadata_for_duplicate_hashes() {
             rule: crate::config::profile_config::ReplaySlotRule::Always,
             replay_path: "replay/duplicate.toml".to_string(),
             played_at: 1_700_000_030,
-            ex_score: 2,
-            bp: 0,
-            cb: 0,
-            max_combo: 1,
-            clear_rank: ClearType::Normal as u8,
+            ex_score: Some(2),
+            bp: Some(0),
+            cb: Some(0),
+            max_combo: Some(1),
+            clear_rank: Some(ClearType::Normal as u8),
+            source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+            source_path: String::new(),
         })
         .unwrap();
 
@@ -306,11 +308,13 @@ fn load_select_items_in_folder_attaches_replay_slots_from_replay_slots_table() {
                 rule: crate::config::profile_config::ReplaySlotRule::Always,
                 replay_path: format!("replay/{slot}.toml"),
                 played_at: 1_700_000_030 + slot as i64,
-                ex_score: 10 * slot as u32,
-                bp: 0,
-                cb: 0,
-                max_combo: 10,
-                clear_rank: ClearType::Normal as u8,
+                ex_score: Some(10 * slot as u32),
+                bp: Some(0),
+                cb: Some(0),
+                max_combo: Some(10),
+                clear_rank: Some(ClearType::Normal as u8),
+                source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+                source_path: String::new(),
             })
             .unwrap();
     }

@@ -469,11 +469,15 @@ pub struct ReplaySlotRecord {
     pub rule: ReplaySlotRule,
     pub replay_path: String,
     pub played_at: i64,
-    pub ex_score: u32,
-    pub bp: u32,
-    pub cb: u32,
-    pub max_combo: u32,
-    pub clear_rank: u8,
+    /// Imported replay files do not contain result metrics. `None` prevents a
+    /// fabricated zero from affecting the configured replacement rule.
+    pub ex_score: Option<u32>,
+    pub bp: Option<u32>,
+    pub cb: Option<u32>,
+    pub max_combo: Option<u32>,
+    pub clear_rank: Option<u8>,
+    pub source_kind: ScoreSourceKind,
+    pub source_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -11,6 +11,7 @@ pub mod network_db;
 pub mod play_result;
 pub mod profile;
 pub mod replay;
+pub mod replay_import;
 pub mod scan;
 pub mod score_db;
 pub mod score_import;

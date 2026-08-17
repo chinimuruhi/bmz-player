@@ -425,7 +425,7 @@ impl WinitApp {
             chart_id,
             &path,
             format!("REPLAY {}", slot + 1),
-            record.ex_score,
+            record.ex_score.unwrap_or(0),
             None,
         );
     }

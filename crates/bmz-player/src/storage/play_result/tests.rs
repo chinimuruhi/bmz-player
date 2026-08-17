@@ -565,11 +565,13 @@ fn slot_rule_score_update_only_when_strictly_better() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 100,
-        bp: 10,
-        cb: 10,
-        max_combo: 50,
-        clear_rank: ClearType::Normal as u8,
+        ex_score: Some(100),
+        bp: Some(10),
+        cb: Some(10),
+        max_combo: Some(50),
+        clear_rank: Some(ClearType::Normal as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -586,6 +588,33 @@ fn slot_rule_score_update_only_when_strictly_better() {
         ReplaySlotRule::ScoreUpdate,
         Some(&prev),
         &CandidateMetrics { ex_score: 50, bp: 0, cb: 0, max_combo: 100, clear_rank: 6 }
+    ));
+}
+
+#[test]
+fn comparison_rule_replaces_imported_slot_with_unknown_metrics() {
+    let prev = ReplaySlotRecord {
+        chart_sha256: [0; 32],
+        slot: 0,
+        rule: ReplaySlotRule::ScoreUpdate,
+        replay_path: String::new(),
+        ln_policy: LnScorePolicy::ForceLn,
+        double_option: DoubleOptionScoreBucket::Off,
+        rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
+        played_at: 0,
+        ex_score: None,
+        bp: None,
+        cb: None,
+        max_combo: None,
+        clear_rank: None,
+        source_kind: crate::storage::score_db::ScoreSourceKind::Beatoraja,
+        source_path: "source.brd".to_string(),
+    };
+
+    assert!(evaluate_slot_update(
+        ReplaySlotRule::ScoreUpdate,
+        Some(&prev),
+        &CandidateMetrics { ex_score: 1, bp: 1, cb: 1, max_combo: 1, clear_rank: 1 }
     ));
 }
 
@@ -625,11 +654,13 @@ fn slot_rule_bp_update_only_when_strictly_smaller() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 100,
-        bp: 10,
-        cb: 10,
-        max_combo: 50,
-        clear_rank: ClearType::Normal as u8,
+        ex_score: Some(100),
+        bp: Some(10),
+        cb: Some(10),
+        max_combo: Some(50),
+        clear_rank: Some(ClearType::Normal as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -655,11 +686,13 @@ fn slot_rule_clear_update_only_when_higher_rank() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 100,
-        bp: 10,
-        cb: 10,
-        max_combo: 50,
-        clear_rank: ClearType::Normal as u8,
+        ex_score: Some(100),
+        bp: Some(10),
+        cb: Some(10),
+        max_combo: Some(50),
+        clear_rank: Some(ClearType::Normal as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -697,11 +730,13 @@ fn slot_rule_always_overwrites_unconditionally() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 10_000,
-        bp: 0,
-        cb: 0,
-        max_combo: 9_999,
-        clear_rank: ClearType::Perfect as u8,
+        ex_score: Some(10_000),
+        bp: Some(0),
+        cb: Some(0),
+        max_combo: Some(9_999),
+        clear_rank: Some(ClearType::Perfect as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
     };
 
     assert!(evaluate_slot_update(

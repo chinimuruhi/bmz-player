@@ -1128,4 +1128,42 @@ pub const SCORE_MIGRATIONS: &[Migration] = &[
             "DROP TABLE course_replay_slots_old;",
         ],
     },
+    Migration {
+        version: 28,
+        // A beatoraja `.brd` contains playback data but no result summary.
+        // Keep those metrics nullable and retain provenance so imported slots
+        // never masquerade as a zero-score local play.
+        statements: &[
+            "ALTER TABLE replay_slots RENAME TO replay_slots_old;",
+            "CREATE TABLE replay_slots (
+                chart_sha256 TEXT NOT NULL,
+                ln_policy TEXT NOT NULL,
+                double_option TEXT NOT NULL DEFAULT 'Off',
+                rule_mode TEXT NOT NULL DEFAULT 'Beatoraja',
+                slot INTEGER NOT NULL CHECK (slot BETWEEN 0 AND 3),
+                rule TEXT NOT NULL,
+                replay_path TEXT NOT NULL,
+                played_at INTEGER NOT NULL,
+                ex_score INTEGER,
+                bp INTEGER,
+                cb INTEGER,
+                max_combo INTEGER,
+                clear_rank INTEGER,
+                source_kind TEXT NOT NULL DEFAULT 'Local',
+                source_path TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY(chart_sha256, ln_policy, double_option, rule_mode, slot)
+            );",
+            "INSERT INTO replay_slots (
+                chart_sha256, ln_policy, double_option, rule_mode, slot, rule,
+                replay_path, played_at, ex_score, bp, cb, max_combo, clear_rank,
+                source_kind, source_path
+            )
+            SELECT
+                chart_sha256, ln_policy, double_option, rule_mode, slot, rule,
+                replay_path, played_at, ex_score, bp, cb, max_combo, clear_rank,
+                'Local', ''
+            FROM replay_slots_old;",
+            "DROP TABLE replay_slots_old;",
+        ],
+    },
 ];

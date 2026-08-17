@@ -236,11 +236,13 @@ pub fn store_play_result(
                 rule,
                 replay_path: rel_path.clone(),
                 played_at: request.played_at,
-                ex_score: candidate.ex_score,
-                bp: candidate.bp,
-                cb: candidate.cb,
-                max_combo: candidate.max_combo,
-                clear_rank: candidate.clear_rank,
+                ex_score: Some(candidate.ex_score),
+                bp: Some(candidate.bp),
+                cb: Some(candidate.cb),
+                max_combo: Some(candidate.max_combo),
+                clear_rank: Some(candidate.clear_rank),
+                source_kind: super::score_db::ScoreSourceKind::Local,
+                source_path: String::new(),
             })?;
             slot_paths[slot_index] = Some(rel_path);
         }
@@ -289,11 +291,13 @@ pub fn save_existing_replay_to_slot(
         rule: ReplaySlotRule::Always,
         replay_path: rel_path.clone(),
         played_at: stored.played_at,
-        ex_score: candidate.ex_score,
-        bp: candidate.bp,
-        cb: candidate.cb,
-        max_combo: candidate.max_combo,
-        clear_rank: candidate.clear_rank,
+        ex_score: Some(candidate.ex_score),
+        bp: Some(candidate.bp),
+        cb: Some(candidate.cb),
+        max_combo: Some(candidate.max_combo),
+        clear_rank: Some(candidate.clear_rank),
+        source_kind: super::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
     })?;
     Ok(Some(rel_path))
 }
@@ -324,7 +328,7 @@ fn evaluate_slot_update(
     prev: Option<&ReplaySlotRecord>,
     next: &CandidateMetrics,
 ) -> bool {
-    let prev_metrics = prev.map(|p| (p.ex_score, p.bp, p.max_combo, p.clear_rank));
+    let prev_metrics = prev.and_then(|p| Some((p.ex_score?, p.bp?, p.max_combo?, p.clear_rank?)));
     slot_rule_passes(rule, prev_metrics, next)
 }
 
