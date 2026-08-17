@@ -184,12 +184,7 @@ impl WinitApp {
         let failed = course.entry_results.last().is_some_and(|entry| {
             entry.finished.result.clear_type == bmz_core::clear::ClearType::Failed
         });
-        let has_next_chart = course
-            .definition
-            .entries
-            .get(course.current_index)
-            .and_then(|entry| entry.chart_id)
-            .is_some();
+        let has_next_chart = course.next_stage_start().is_some();
         course_intermediate_exit_action_for_state(failed, has_next_chart)
     }
 
@@ -260,9 +255,12 @@ impl WinitApp {
         course.entry_results.push(CourseEntryResult { chart_id, finished });
         course.current_index += 1;
 
-        let next_chart_id =
-            course.definition.entries.get(course.current_index).and_then(|e| e.chart_id);
-        let has_next_entry = course.definition.entries.get(course.current_index).is_some();
+        let next_chart_id = course.next_stage_start().map(|(_, chart_id, _)| chart_id);
+        let stage_limit = course
+            .replay_stage_limit
+            .unwrap_or(course.definition.entries.len())
+            .min(course.definition.entries.len());
+        let has_next_entry = course.current_index < stage_limit;
 
         if should_show_course_stage_result(failed, has_next_entry, next_chart_id.is_some()) {
             // 次の曲をすぐ始めず、まず直前の曲の単曲リザルト (中間リザルト) を出す。

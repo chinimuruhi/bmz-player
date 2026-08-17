@@ -316,14 +316,19 @@ pub(super) fn build_select_course_row(
     let achieved_trophy_names = score_identity
         .map(|identity| {
             score_db
-                .achieved_trophy_names_for_course(&identity.course_hash, ln_policy, rule_mode)
+                .achieved_trophy_names_for_definition(
+                    &identity.course_hash,
+                    ln_policy,
+                    rule_mode,
+                    &stored.definition.trophies,
+                )
                 .unwrap_or_else(|error| {
                     tracing::warn!(
                         %error,
                         course_id = stored.id,
                         course_hash = %identity.course_hash,
                         rule_mode = rule_mode.as_str(),
-                        "failed to load achieved_trophy_names_for_course"
+                        "failed to evaluate achieved course trophies"
                     );
                     Vec::new()
                 })

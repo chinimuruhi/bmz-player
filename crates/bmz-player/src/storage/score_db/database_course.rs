@@ -44,6 +44,13 @@ impl ScoreDatabase {
         super::super::course_score_db::list_course_replays(&self.conn, course_score_id)
     }
 
+    pub fn course_replay_attempt_is_complete(&self, course_score_id: i64) -> Result<bool> {
+        super::super::course_score_db::course_replay_attempt_is_complete(
+            &self.conn,
+            course_score_id,
+        )
+    }
+
     pub fn latest_course_score_id(
         &self,
         course_hash: &str,
@@ -71,6 +78,20 @@ impl ScoreDatabase {
             course_hash,
             ln_policy,
             rule_mode,
+            limit,
+            offset,
+        )
+    }
+
+    pub fn list_recent_course_scores_all_contexts(
+        &self,
+        course_hash: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<CourseScoreEntry>> {
+        super::super::course_score_db::list_recent_course_scores_all_contexts(
+            &self.conn,
+            course_hash,
             limit,
             offset,
         )
@@ -131,17 +152,19 @@ impl ScoreDatabase {
         )
     }
 
-    pub fn achieved_trophy_names_for_course(
+    pub fn achieved_trophy_names_for_definition(
         &self,
         course_hash: &str,
         ln_policy: LnScorePolicy,
         rule_mode: RuleMode,
+        trophies: &[bmz_core::course::CourseTrophy],
     ) -> Result<Vec<String>> {
-        super::super::course_score_db::achieved_trophy_names_for_course(
+        super::super::course_score_db::achieved_trophy_names_for_definition(
             &self.conn,
             course_hash,
             ln_policy,
             rule_mode,
+            trophies,
         )
     }
 

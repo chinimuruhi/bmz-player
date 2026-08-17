@@ -162,8 +162,14 @@ fn insert_course_score_round_trips_score_children_and_trophies() {
     assert_eq!(replays[0].replay_path, "replay/course.toml");
 
     assert_eq!(
-        achieved_trophy_names_for_course(&conn, "course-a", LN_POLICY, RuleMode::Beatoraja)
-            .unwrap(),
+        achieved_trophy_names_for_definition(
+            &conn,
+            "course-a",
+            LN_POLICY,
+            RuleMode::Beatoraja,
+            &[CourseTrophy { name: "gold".to_string(), max_miss_rate: 2.0, min_score_rate: 50.0 }],
+        )
+        .unwrap(),
         vec!["gold".to_string()]
     );
     let entry = course_score_entry_by_id(&conn, score_id).unwrap().unwrap();
@@ -294,21 +300,27 @@ fn course_scores_are_separate_per_ln_policy() {
         Some(ClearType::Hard)
     );
     assert_eq!(
-        achieved_trophy_names_for_course(
+        achieved_trophy_names_for_definition(
             &conn,
             "course-a",
             LnScorePolicy::ForceLn,
             RuleMode::Beatoraja,
+            &[CourseTrophy { name: "gold".to_string(), max_miss_rate: 2.0, min_score_rate: 40.0 }],
         )
         .unwrap(),
         vec!["gold".to_string()]
     );
     assert_eq!(
-        achieved_trophy_names_for_course(
+        achieved_trophy_names_for_definition(
             &conn,
             "course-a",
             LnScorePolicy::ForceCn,
             RuleMode::Beatoraja,
+            &[CourseTrophy {
+                name: "silver".to_string(),
+                max_miss_rate: 2.0,
+                min_score_rate: 90.0,
+            }],
         )
         .unwrap(),
         vec!["silver".to_string()]
@@ -330,6 +342,112 @@ fn course_scores_are_separate_per_ln_policy() {
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].course_score_id, force_cn_id);
     assert_eq!(history[0].ln_policy, LnScorePolicy::ForceCn);
+}
+
+#[test]
+fn achieved_trophies_are_recalculated_from_current_definition() {
+    let mut conn = open_conn();
+    insert_course_score(&mut conn, &sample_score("course-a", 500, "Normal", 10)).unwrap();
+
+    let strict =
+        [CourseTrophy { name: "gold".to_string(), max_miss_rate: 2.0, min_score_rate: 60.0 }];
+    assert!(
+        achieved_trophy_names_for_definition(
+            &conn,
+            "course-a",
+            LN_POLICY,
+            RuleMode::Beatoraja,
+            &strict,
+        )
+        .unwrap()
+        .is_empty()
+    );
+
+    let renamed = [
+        CourseTrophy { name: "bronze".to_string(), max_miss_rate: 2.0, min_score_rate: 50.0 },
+        CourseTrophy { name: "bronze".to_string(), max_miss_rate: 100.0, min_score_rate: 0.0 },
+    ];
+    assert_eq!(
+        achieved_trophy_names_for_definition(
+            &conn,
+            "course-a",
+            LN_POLICY,
+            RuleMode::Beatoraja,
+            &renamed,
+        )
+        .unwrap(),
+        vec!["bronze".to_string()]
+    );
+    assert!(
+        achieved_trophy_names_for_definition(
+            &conn,
+            "course-a",
+            LN_POLICY,
+            RuleMode::Beatoraja,
+            &[],
+        )
+        .unwrap()
+        .is_empty()
+    );
+}
+
+#[test]
+fn all_context_course_history_includes_ln_and_rule_variants() {
+    let mut conn = open_conn();
+    let force_ln_id =
+        insert_course_score(&mut conn, &sample_score("course-a", 400, "Hard", 10)).unwrap();
+    let mut force_cn_dx = sample_score("course-a", 900, "Normal", 20);
+    force_cn_dx.ln_policy = LnScorePolicy::ForceCn;
+    force_cn_dx.rule_mode = RuleMode::Dx;
+    let force_cn_dx_id = insert_course_score(&mut conn, &force_cn_dx).unwrap();
+    insert_course_score(&mut conn, &sample_score("course-b", 700, "Normal", 30)).unwrap();
+
+    let history = list_recent_course_scores_all_contexts(&conn, "course-a", 10, 0).unwrap();
+    assert_eq!(
+        history.iter().map(|entry| entry.course_score_id).collect::<Vec<_>>(),
+        vec![force_cn_dx_id, force_ln_id]
+    );
+    assert_eq!(history[0].ln_policy, LnScorePolicy::ForceCn);
+    assert_eq!(history[0].rule_mode, RuleMode::Dx);
+    assert_eq!(history[1].ln_policy, LnScorePolicy::ForceLn);
+    assert_eq!(history[1].rule_mode, RuleMode::Beatoraja);
+}
+
+#[test]
+fn replay_slots_require_complete_matching_course_replays() {
+    let mut conn = open_conn();
+    let complete_id =
+        insert_course_score(&mut conn, &sample_score("complete", 500, "Normal", 10)).unwrap();
+    assert!(course_replay_attempt_is_complete(&conn, complete_id).unwrap());
+
+    let mut missing = sample_score("missing", 500, "Normal", 20);
+    missing.replays.clear();
+    let missing_id = insert_course_score(&mut conn, &missing).unwrap();
+    assert!(!course_replay_attempt_is_complete(&conn, missing_id).unwrap());
+    assert!(
+        upsert_course_replay_slot(&mut conn, &sample_slot("missing", 0, missing_id, 500)).is_err()
+    );
+
+    let mut mismatched = sample_score("mismatched", 500, "Normal", 30);
+    mismatched.replays[0].chart_sha256 = [2; 32];
+    let mismatched_id = insert_course_score(&mut conn, &mismatched).unwrap();
+    assert!(!course_replay_attempt_is_complete(&conn, mismatched_id).unwrap());
+
+    conn.execute(
+        "INSERT INTO course_replay_slots (
+            course_hash, ln_policy, rule_mode, slot, rule, course_score_id,
+            played_at, ex_score, bp, max_combo, clear_rank
+         ) VALUES ('missing', 'ForceLn', 'Beatoraja', 0, 'Always', ?1, 20, 500, 7, 123, ?2)",
+        params![missing_id, ClearType::Normal as u8],
+    )
+    .unwrap();
+    assert!(
+        course_replay_slot(&conn, "missing", LN_POLICY, RuleMode::Beatoraja, 0).unwrap().is_none()
+    );
+    assert_eq!(
+        course_replay_slot_presence(&conn, "missing", LN_POLICY, RuleMode::Beatoraja).unwrap(),
+        [false; 4]
+    );
 }
 
 #[test]

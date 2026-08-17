@@ -152,6 +152,7 @@ impl WinitApp {
             current_index: 0,
             entry_results: Vec::new(),
             entry_start_options,
+            replay_stage_limit: None,
             auto_advance_intermediate_results,
         });
         self.begin_course_decide_for_chart(first_chart_id, options, &course_title, first_chart);
@@ -230,6 +231,43 @@ impl WinitApp {
             }
         };
 
+        let Some(identity) =
+            crate::ir::course_payload::course_identity_from_stored(&self.boot.library_db, &stored)
+        else {
+            tracing::warn!(course_id, course_score_id, "course identity unavailable for replay");
+            return;
+        };
+        if identity.course_hash != score_entry.course_hash {
+            tracing::warn!(
+                course_id,
+                course_score_id,
+                expected_course_hash = %identity.course_hash,
+                stored_course_hash = %score_entry.course_hash,
+                "course score does not belong to the current course definition"
+            );
+            return;
+        }
+        match self.boot.score_db.course_replay_attempt_is_complete(course_score_id) {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(
+                    course_id,
+                    course_score_id,
+                    "course replay rows are incomplete or inconsistent"
+                );
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    course_id,
+                    course_score_id,
+                    "failed to validate course replay rows"
+                );
+                return;
+            }
+        }
+
         let entries = match self.boot.score_db.list_course_replays(course_score_id) {
             Ok(rows) => rows,
             Err(error) => {
@@ -271,9 +309,25 @@ impl WinitApp {
         };
 
         let mut definition = stored.definition;
-        let first_chart_id = definition.entries.iter().find_map(|e| e.chart_id);
+        let replay_layout_matches = queued.len() <= definition.entries.len()
+            && queued.iter().enumerate().all(|(index, replay)| {
+                replay.position == index as i64
+                    && definition.entries.get(index).and_then(|entry| entry.chart_id)
+                        == Some(replay.chart_id)
+            });
+        if !replay_layout_matches {
+            tracing::warn!(
+                course_id,
+                course_score_id,
+                replays = queued.len(),
+                entries = definition.entries.len(),
+                "course replay positions do not match the current course entries"
+            );
+            return;
+        }
+        let first_chart_id = queued.first().map(|replay| replay.chart_id);
         let Some(first_chart_id) = first_chart_id else {
-            tracing::warn!(course_id, "no resolved chart in course");
+            tracing::warn!(course_id, course_score_id, "no replayable chart in course");
             return;
         };
         tracing::info!(
@@ -284,7 +338,7 @@ impl WinitApp {
             "starting course replay"
         );
         let mut entry_start_options = Vec::with_capacity(definition.entries.len());
-        for (index, entry) in definition.entries.iter().enumerate() {
+        for index in 0..definition.entries.len() {
             let mut options = self.play_start_options();
             options.seven_to_six = false;
             options.score_save_disabled = false;
@@ -292,10 +346,14 @@ impl WinitApp {
             options.autoplay = false;
             apply_course_constraints(&mut options, &definition.constraints);
             if let Some(replay) = queued.get(index)
-                && entry.chart_id == Some(replay.chart_id)
                 && let Err(error) = apply_queued_replay(&mut options, replay)
             {
-                tracing::warn!(%error, course_id, index, "unsupported course replay arrangement");
+                tracing::warn!(
+                    %error,
+                    course_id,
+                    index,
+                    "unsupported course replay arrangement"
+                );
                 return;
             }
             entry_start_options.push(options);
@@ -334,6 +392,7 @@ impl WinitApp {
             current_index: 0,
             entry_results: Vec::new(),
             entry_start_options,
+            replay_stage_limit: Some(queued.len()),
             auto_advance_intermediate_results,
         });
         self.begin_course_decide_for_chart(first_chart_id, options, &course_title, first_chart);

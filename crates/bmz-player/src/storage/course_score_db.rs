@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bmz_core::clear::ClearType;
+use bmz_core::course::CourseTrophy;
 use bmz_gameplay::rule::RuleMode;
 use bmz_render::snapshot::{DisplayJudgeCounts, FastSlowJudgeCounts};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -315,27 +316,47 @@ pub(super) fn list_course_score_charts(
     rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-pub(super) fn achieved_trophy_names_for_course(
+pub(super) fn achieved_trophy_names_for_definition(
     conn: &Connection,
     course_hash: &str,
     ln_policy: LnScorePolicy,
     rule_mode: RuleMode,
+    trophies: &[CourseTrophy],
 ) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT cta.trophy_name
-         FROM course_trophy_achievements cta
-         JOIN course_scores cs ON cs.id = cta.course_score_id
-         WHERE cta.course_hash = ?1
-           AND cs.ln_policy = ?2
-           AND cs.rule_mode = ?3
-           AND cs.arrange IN ('Normal', 'Mirror', 'Random')
-         ORDER BY cta.trophy_name",
+        "SELECT ex_score, max_ex_score, bp
+         FROM course_scores
+         WHERE course_hash = ?1
+           AND ln_policy = ?2
+           AND rule_mode = ?3
+           AND course_clear = 1
+           AND arrange IN ('Normal', 'Mirror', 'Random')",
     )?;
-    let rows = stmt
+    let attempts = stmt
         .query_map(params![course_hash, ln_policy.as_str(), rule_mode.as_str()], |row| {
-            row.get::<_, String>(0)
-        })?;
-    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+            Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?, row.get::<_, u32>(2)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let mut achieved = Vec::new();
+    for trophy in trophies {
+        if trophy.name.is_empty() || achieved.contains(&trophy.name) {
+            continue;
+        }
+        let matches = attempts.iter().any(|&(ex_score, max_ex_score, bp)| {
+            let total_notes = max_ex_score / 2;
+            if total_notes == 0 {
+                return false;
+            }
+            let miss_rate = bp as f32 / total_notes as f32 * 100.0;
+            let score_rate = ex_score as f32 / max_ex_score as f32 * 100.0;
+            miss_rate <= trophy.max_miss_rate && score_rate >= trophy.min_score_rate
+        });
+        if matches {
+            achieved.push(trophy.name.clone());
+        }
+    }
+    Ok(achieved)
 }
 
 pub(super) fn best_course_score_for_trophy(
@@ -460,6 +481,34 @@ pub(super) fn list_recent_course_scores(
         )?
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
+    hydrate_course_score_entries(conn, rows)
+}
+
+pub(super) fn list_recent_course_scores_all_contexts(
+    conn: &Connection,
+    course_hash: &str,
+    limit: u32,
+    offset: u32,
+) -> Result<Vec<CourseScoreEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, course_hash, ln_policy, rule_mode, source, course_key, title, kind, constraints_json,
+                chart_sha256s_json, ex_score, max_ex_score, clear_type, gauge_type,
+                gauge_value, max_combo, bp, course_failed, course_clear, played_at
+         FROM course_scores
+         WHERE course_hash = ?1
+         ORDER BY played_at DESC, id DESC
+         LIMIT ?2 OFFSET ?3",
+    )?;
+    let rows = stmt
+        .query_map(params![course_hash, limit, offset], course_score_entry_base_from_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    hydrate_course_score_entries(conn, rows)
+}
+
+fn hydrate_course_score_entries(
+    conn: &Connection,
+    rows: Vec<CourseScoreEntry>,
+) -> Result<Vec<CourseScoreEntry>> {
     let mut trophy_stmt = conn.prepare(
         "SELECT trophy_name
          FROM course_trophy_achievements
@@ -547,12 +596,59 @@ pub(super) fn list_course_replays(
     rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+pub(super) fn course_replay_attempt_is_complete(
+    conn: &Connection,
+    course_score_id: i64,
+) -> Result<bool> {
+    let complete = conn.query_row(
+        "SELECT
+            EXISTS (
+                SELECT 1 FROM course_score_charts
+                WHERE course_score_id = ?1
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM course_score_charts c
+                WHERE c.course_score_id = ?1
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM course_replays r
+                      WHERE r.course_score_id = c.course_score_id
+                        AND r.position = c.position
+                        AND r.chart_sha256 = c.chart_sha256
+                        AND r.replay_path <> ''
+                  )
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM course_replays r
+                WHERE r.course_score_id = ?1
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM course_score_charts c
+                      WHERE c.course_score_id = r.course_score_id
+                        AND c.position = r.position
+                        AND c.chart_sha256 = r.chart_sha256
+                  )
+            )",
+        params![course_score_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    Ok(complete)
+}
+
 pub(super) fn upsert_course_replay_slot(
     conn: &mut Connection,
     record: &CourseReplaySlotRecord,
 ) -> Result<()> {
     if record.slot > 3 {
         anyhow::bail!("course replay slot must be in 0..=3 (got {})", record.slot);
+    }
+    if !course_replay_attempt_is_complete(conn, record.course_score_id)? {
+        anyhow::bail!(
+            "course replay slot requires a complete replay attempt (course_score_id={})",
+            record.course_score_id
+        );
     }
     conn.execute(
         "INSERT INTO course_replay_slots (
@@ -591,16 +687,22 @@ pub(super) fn course_replay_slot(
     rule_mode: RuleMode,
     slot: u8,
 ) -> Result<Option<CourseReplaySlotRecord>> {
-    conn.query_row(
-        "SELECT course_hash, ln_policy, rule_mode, slot, rule, course_score_id, played_at,
+    let record = conn
+        .query_row(
+            "SELECT course_hash, ln_policy, rule_mode, slot, rule, course_score_id, played_at,
                 ex_score, bp, max_combo, clear_rank
          FROM course_replay_slots
          WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3 AND slot = ?4",
-        params![course_hash, ln_policy.as_str(), rule_mode.as_str(), slot],
-        course_replay_slot_from_row,
-    )
-    .optional()
-    .map_err(Into::into)
+            params![course_hash, ln_policy.as_str(), rule_mode.as_str(), slot],
+            course_replay_slot_from_row,
+        )
+        .optional()?;
+    match record {
+        Some(record) if course_replay_attempt_is_complete(conn, record.course_score_id)? => {
+            Ok(Some(record))
+        }
+        Some(_) | None => Ok(None),
+    }
 }
 
 pub(super) fn course_replay_slots_for_course(
@@ -624,7 +726,7 @@ pub(super) fn course_replay_slots_for_course(
     let mut out: [Option<CourseReplaySlotRecord>; 4] = [None, None, None, None];
     for record in rows {
         let idx = record.slot as usize;
-        if idx < out.len() {
+        if idx < out.len() && course_replay_attempt_is_complete(conn, record.course_score_id)? {
             out[idx] = Some(record);
         }
     }
@@ -637,22 +739,8 @@ pub(super) fn course_replay_slot_presence(
     ln_policy: LnScorePolicy,
     rule_mode: RuleMode,
 ) -> Result<[bool; 4]> {
-    let mut stmt = conn.prepare(
-        "SELECT slot FROM course_replay_slots
-         WHERE course_hash = ?1 AND ln_policy = ?2 AND rule_mode = ?3",
-    )?;
-    let mut out = [false; 4];
-    let rows = stmt
-        .query_map(params![course_hash, ln_policy.as_str(), rule_mode.as_str()], |row| {
-            row.get::<_, u8>(0)
-        })?;
-    for row in rows {
-        let slot = row? as usize;
-        if slot < out.len() {
-            out[slot] = true;
-        }
-    }
-    Ok(out)
+    Ok(course_replay_slots_for_course(conn, course_hash, ln_policy, rule_mode)?
+        .map(|slot| slot.is_some()))
 }
 
 fn course_replay_slot_from_row(

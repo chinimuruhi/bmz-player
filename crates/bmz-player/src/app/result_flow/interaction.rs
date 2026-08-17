@@ -275,24 +275,42 @@ impl WinitApp {
             tracing::warn!(course_id, slot, "course identity unavailable for replay slot save");
             return false;
         };
-        let Some(course) = self.result.finished_course.as_mut() else {
-            return false;
-        };
-        let Some(course_score_id) = course.course_score_id else {
+        let Some(course_score_id) =
+            self.result.finished_course.as_ref().and_then(|course| course.course_score_id)
+        else {
             tracing::info!(slot, "course replay slot unavailable without persisted course score");
             return false;
         };
         if slot > 3 {
             return false;
         }
-        let max_combo = course.course_max_combo;
-        let clear_rank = if course.course_clear {
-            bmz_core::clear::ClearType::Normal as u8
-        } else if course.course_failed {
-            bmz_core::clear::ClearType::Failed as u8
-        } else {
-            bmz_core::clear::ClearType::NoPlay as u8
+        match self.boot.score_db.course_replay_attempt_is_complete(course_score_id) {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(
+                    course_id,
+                    course_score_id,
+                    slot,
+                    "course replay slot unavailable because the saved replay is incomplete"
+                );
+                return false;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    course_id,
+                    course_score_id,
+                    slot,
+                    "failed to validate course replay before slot save"
+                );
+                return false;
+            }
+        }
+        let Some(course) = self.result.finished_course.as_mut() else {
+            return false;
         };
+        let max_combo = course.course_max_combo;
+        let clear_rank = course.final_clear_type as u8;
         let played_at = course.course_played_at.unwrap_or(0);
         let rule_mode = course.rule_mode;
         let record = crate::storage::score_db::CourseReplaySlotRecord {
