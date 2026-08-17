@@ -10,12 +10,15 @@ use crate::config::profile_config::ReplaySlotRule;
 use crate::ln_policy::{LnPolicySetting, score_ln_policy};
 use crate::paths::ProfilePaths;
 
-use super::beatoraja_replay::{BeatorajaReplay, BeatorajaReplayConversion, load_beatoraja_replay};
+use super::beatoraja_replay::{
+    BeatorajaReplay, BeatorajaReplayConversion, load_beatoraja_replay_with_fingerprint,
+};
 use super::library_db::{ChartListItem, LibraryDatabase};
-use super::replay::{replay_slot_file_name, save_replay};
+use super::replay::{replay_slot_file_name, save_replay_for_import};
 use super::score_db::{ReplaySlotRecord, ScoreDatabase, ScoreKey, ScoreSourceKind};
 
 const DEFAULT_BEATORAJA_H_RANDOM_THRESHOLD_MS: u32 = 125;
+const REPLAY_IMPORT_DB_BATCH_SIZE: usize = 256;
 
 #[derive(Debug, Clone)]
 pub struct ImportBeatorajaReplaysRequest {
@@ -53,6 +56,7 @@ pub struct ReplayImportReport {
     pub scanned: usize,
     pub imported: usize,
     pub replaced: usize,
+    pub unchanged: usize,
     pub missing_chart: usize,
     pub protected_slot: usize,
     pub unsupported: usize,
@@ -64,10 +68,11 @@ pub struct ReplayImportReport {
 impl ReplayImportReport {
     pub fn summary(&self) -> String {
         format!(
-            "scanned={}, imported={}, replaced={}, missing_chart={}, protected_slot={}, unsupported={}, cancelled={}",
+            "scanned={}, imported={}, replaced={}, unchanged={}, missing_chart={}, protected_slot={}, unsupported={}, cancelled={}",
             self.scanned,
             self.imported,
             self.replaced,
+            self.unchanged,
             self.missing_chart,
             self.protected_slot,
             self.unsupported,
@@ -83,7 +88,8 @@ pub struct ReplayImportProgress {
 }
 
 enum ImportOneOutcome {
-    Imported { replaced: bool },
+    Imported { replaced: bool, record: ReplaySlotRecord },
+    Unchanged { fingerprint_backfill: Option<ReplaySlotRecord> },
     MissingChart(String),
     ProtectedSlot(String),
 }
@@ -120,6 +126,7 @@ pub fn import_beatoraja_replays_with_progress(
     let total = replay_paths.len();
     on_progress(ReplayImportProgress { done: 0, total });
     let mut report = ReplayImportReport { threshold_warning, ..Default::default() };
+    let mut pending_records = Vec::with_capacity(REPLAY_IMPORT_DB_BATCH_SIZE);
     for path in replay_paths {
         if is_cancelled() {
             report.cancelled = true;
@@ -128,9 +135,16 @@ pub fn import_beatoraja_replays_with_progress(
         report.scanned += 1;
         match import_one(library_db, score_db, profile_paths, request, &path, h_random_threshold_ms)
         {
-            Ok(ImportOneOutcome::Imported { replaced }) => {
+            Ok(ImportOneOutcome::Imported { replaced, record }) => {
                 report.imported += 1;
                 report.replaced += usize::from(replaced);
+                pending_records.push(record);
+            }
+            Ok(ImportOneOutcome::Unchanged { fingerprint_backfill }) => {
+                report.unchanged += 1;
+                if let Some(record) = fingerprint_backfill {
+                    pending_records.push(record);
+                }
             }
             Ok(ImportOneOutcome::MissingChart(message)) => {
                 report.missing_chart += 1;
@@ -157,7 +171,14 @@ pub fn import_beatoraja_replays_with_progress(
                 });
             }
         }
+        if pending_records.len() >= REPLAY_IMPORT_DB_BATCH_SIZE {
+            score_db.upsert_replay_slots(&pending_records)?;
+            pending_records.clear();
+        }
         on_progress(ReplayImportProgress { done: report.scanned, total });
+    }
+    if !pending_records.is_empty() {
+        score_db.upsert_replay_slots(&pending_records)?;
     }
     Ok(report)
 }
@@ -170,7 +191,7 @@ fn import_one(
     source_path: &Path,
     h_random_threshold_ms: u32,
 ) -> Result<ImportOneOutcome> {
-    let replay = load_beatoraja_replay(source_path)?;
+    let (replay, source_fingerprint) = load_beatoraja_replay_with_fingerprint(source_path)?;
     let chart_sha256 = replay.chart_sha256()?;
     let charts = library_db.list_charts_by_sha256(chart_sha256)?;
     let Some(chart) = charts.first() else {
@@ -219,9 +240,29 @@ fn import_one(
         slot,
     );
     let destination = profile_paths.replay_dir.join(&file_name);
-    save_replay(&destination, &converted)?;
     let replay_path = format!("replay/{file_name}");
-    score_db.upsert_replay_slot(&ReplaySlotRecord {
+    let source_path_text = source_path.to_string_lossy().into_owned();
+    if let Some(previous) = previous.as_ref()
+        && previous.source_kind == ScoreSourceKind::Beatoraja
+        && profile_paths.root_dir.join(&previous.replay_path).is_file()
+    {
+        let fingerprint_matches = !previous.source_fingerprint.is_empty()
+            && previous.source_fingerprint == source_fingerprint;
+        let legacy_record_matches = previous.source_fingerprint.is_empty()
+            && previous.source_path == source_path_text
+            && previous.played_at == converted.played_at;
+        if fingerprint_matches || legacy_record_matches {
+            let fingerprint_backfill = legacy_record_matches.then(|| {
+                let mut record = previous.clone();
+                record.source_fingerprint = source_fingerprint.clone();
+                record
+            });
+            return Ok(ImportOneOutcome::Unchanged { fingerprint_backfill });
+        }
+    }
+
+    save_replay_for_import(&destination, &converted)?;
+    let record = ReplaySlotRecord {
         chart_sha256,
         ln_policy,
         double_option: converted.double_option_bucket(),
@@ -236,9 +277,10 @@ fn import_one(
         max_combo: None,
         clear_rank: None,
         source_kind: ScoreSourceKind::Beatoraja,
-        source_path: source_path.to_string_lossy().into_owned(),
-    })?;
-    Ok(ImportOneOutcome::Imported { replaced: previous.is_some() })
+        source_path: source_path_text,
+        source_fingerprint,
+    };
+    Ok(ImportOneOutcome::Imported { replaced: previous.is_some(), record })
 }
 
 fn ensure_consistent_chart_rows(charts: &[ChartListItem]) -> Result<()> {
@@ -501,8 +543,32 @@ mod tests {
         assert_eq!(slot.source_kind, ScoreSourceKind::Beatoraja);
         assert_eq!(slot.ex_score, None);
         assert_eq!(slot.source_path, source.to_string_lossy());
+        assert!(!slot.source_fingerprint.is_empty());
         let converted = load_replay(&paths.root_dir.join(slot.replay_path)).unwrap();
         assert_eq!(converted.h_random_threshold_ms, Some(150));
+
+        let repeated = import_beatoraja_replays(
+            &library_db,
+            &mut score_db,
+            &paths,
+            &ImportBeatorajaReplaysRequest::new(&player),
+        )
+        .unwrap();
+        assert_eq!(repeated.imported, 0);
+        assert_eq!(repeated.unchanged, 1);
+
+        let mut legacy_slot = score_db.replay_slot(key, 0).unwrap().unwrap();
+        legacy_slot.source_fingerprint.clear();
+        score_db.upsert_replay_slot(&legacy_slot).unwrap();
+        let backfilled = import_beatoraja_replays(
+            &library_db,
+            &mut score_db,
+            &paths,
+            &ImportBeatorajaReplaysRequest::new(&player),
+        )
+        .unwrap();
+        assert_eq!(backfilled.unchanged, 1);
+        assert!(!score_db.replay_slot(key, 0).unwrap().unwrap().source_fingerprint.is_empty());
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -534,6 +600,7 @@ mod tests {
                 clear_rank: Some(5),
                 source_kind: ScoreSourceKind::Local,
                 source_path: String::new(),
+                source_fingerprint: String::new(),
             })
             .unwrap();
 

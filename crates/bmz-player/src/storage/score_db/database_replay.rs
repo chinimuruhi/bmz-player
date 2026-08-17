@@ -53,7 +53,7 @@ impl ScoreDatabase {
     pub fn replay_slot(&self, key: ScoreKey, slot: u8) -> Result<Option<ReplaySlotRecord>> {
         self.conn
             .query_row(
-                "SELECT chart_sha256, ln_policy, double_option, rule_mode, slot, rule, replay_path, played_at, ex_score, bp, cb, max_combo, clear_rank, source_kind, source_path
+                "SELECT chart_sha256, ln_policy, double_option, rule_mode, slot, rule, replay_path, played_at, ex_score, bp, cb, max_combo, clear_rank, source_kind, source_path, source_fingerprint
                  FROM replay_slots
                  WHERE chart_sha256 = ?1 AND ln_policy = ?2 AND double_option = ?3
                    AND rule_mode = ?4 AND slot = ?5",
@@ -72,7 +72,7 @@ impl ScoreDatabase {
 
     pub fn replay_slots_for_chart(&self, key: ScoreKey) -> Result<[Option<ReplaySlotRecord>; 4]> {
         let mut stmt = self.conn.prepare(
-            "SELECT chart_sha256, ln_policy, double_option, rule_mode, slot, rule, replay_path, played_at, ex_score, bp, cb, max_combo, clear_rank, source_kind, source_path
+            "SELECT chart_sha256, ln_policy, double_option, rule_mode, slot, rule, replay_path, played_at, ex_score, bp, cb, max_combo, clear_rank, source_kind, source_path, source_fingerprint
              FROM replay_slots
              WHERE chart_sha256 = ?1 AND ln_policy = ?2 AND double_option = ?3
                AND rule_mode = ?4",
@@ -99,14 +99,28 @@ impl ScoreDatabase {
     }
 
     pub fn upsert_replay_slot(&mut self, record: &ReplaySlotRecord) -> Result<()> {
-        if record.slot > 3 {
-            bail!("replay slot must be in 0..=3 (got {})", record.slot);
+        upsert_replay_slot_on(&self.conn, record)
+    }
+
+    pub fn upsert_replay_slots(&mut self, records: &[ReplaySlotRecord]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for record in records {
+            upsert_replay_slot_on(&tx, record)?;
         }
-        self.conn.execute(
+        tx.commit()?;
+        Ok(())
+    }
+}
+
+fn upsert_replay_slot_on(conn: &Connection, record: &ReplaySlotRecord) -> Result<()> {
+    if record.slot > 3 {
+        bail!("replay slot must be in 0..=3 (got {})", record.slot);
+    }
+    conn.execute(
             "INSERT INTO replay_slots (
                 chart_sha256, ln_policy, double_option, rule_mode, slot, rule, replay_path, played_at,
-                ex_score, bp, cb, max_combo, clear_rank, source_kind, source_path
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                ex_score, bp, cb, max_combo, clear_rank, source_kind, source_path, source_fingerprint
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             ON CONFLICT(chart_sha256, ln_policy, double_option, rule_mode, slot) DO UPDATE SET
                 rule = excluded.rule,
                 replay_path = excluded.replay_path,
@@ -117,7 +131,8 @@ impl ScoreDatabase {
                 max_combo = excluded.max_combo,
                 clear_rank = excluded.clear_rank,
                 source_kind = excluded.source_kind,
-                source_path = excluded.source_path",
+                source_path = excluded.source_path,
+                source_fingerprint = excluded.source_fingerprint",
             params![
                 hash_to_hex(&record.chart_sha256),
                 record.ln_policy.as_str(),
@@ -134,8 +149,8 @@ impl ScoreDatabase {
                 record.clear_rank,
                 record.source_kind.as_str(),
                 record.source_path,
+                record.source_fingerprint,
             ],
         )?;
-        Ok(())
-    }
+    Ok(())
 }

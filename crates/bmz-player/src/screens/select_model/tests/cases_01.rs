@@ -165,6 +165,7 @@ fn folder_enrichment_keeps_hash_metadata_for_duplicate_hashes() {
             clear_rank: Some(ClearType::Normal as u8),
             source_kind: crate::storage::score_db::ScoreSourceKind::Local,
             source_path: String::new(),
+            source_fingerprint: String::new(),
         })
         .unwrap();
 
@@ -315,6 +316,7 @@ fn load_select_items_in_folder_attaches_replay_slots_from_replay_slots_table() {
                 clear_rank: Some(ClearType::Normal as u8),
                 source_kind: crate::storage::score_db::ScoreSourceKind::Local,
                 source_path: String::new(),
+                source_fingerprint: String::new(),
             })
             .unwrap();
     }

@@ -1166,4 +1166,11 @@ pub const SCORE_MIGRATIONS: &[Migration] = &[
             "DROP TABLE replay_slots_old;",
         ],
     },
+    Migration {
+        version: 29,
+        // Bulk replay import uses the compressed source hash to skip files
+        // that were already converted into the same replay slot.
+        statements: &["ALTER TABLE replay_slots
+                ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT '';"],
+    },
 ];

@@ -243,6 +243,7 @@ pub fn store_play_result(
                 clear_rank: Some(candidate.clear_rank),
                 source_kind: super::score_db::ScoreSourceKind::Local,
                 source_path: String::new(),
+                source_fingerprint: String::new(),
             })?;
             slot_paths[slot_index] = Some(rel_path);
         }
@@ -298,6 +299,7 @@ pub fn save_existing_replay_to_slot(
         clear_rank: Some(candidate.clear_rank),
         source_kind: super::score_db::ScoreSourceKind::Local,
         source_path: String::new(),
+        source_fingerprint: String::new(),
     })?;
     Ok(Some(rel_path))
 }

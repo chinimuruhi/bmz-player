@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io::{Read, Take};
 use std::path::Path;
 
@@ -12,6 +11,7 @@ use bmz_core::replay::ReplayEvent;
 use bmz_core::time::TimeUs;
 use flate2::read::GzDecoder;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use crate::ln_policy::LnScorePolicy;
 use crate::screens::play_session::SRandomScheme;
@@ -103,10 +103,18 @@ struct DecodedKeyInput {
 }
 
 pub fn load_beatoraja_replay(path: &Path) -> Result<BeatorajaReplay> {
-    let file = File::open(path)
+    Ok(load_beatoraja_replay_with_fingerprint(path)?.0)
+}
+
+pub(crate) fn load_beatoraja_replay_with_fingerprint(
+    path: &Path,
+) -> Result<(BeatorajaReplay, String)> {
+    let bytes = std::fs::read(path)
         .with_context(|| format!("failed to open beatoraja replay: {}", path.display()))?;
-    decode_beatoraja_replay(file)
-        .with_context(|| format!("failed to decode beatoraja replay: {}", path.display()))
+    let fingerprint = super::common::hash_to_hex(&Sha256::digest(&bytes));
+    let replay = decode_beatoraja_replay(bytes.as_slice())
+        .with_context(|| format!("failed to decode beatoraja replay: {}", path.display()))?;
+    Ok((replay, fingerprint))
 }
 
 pub fn decode_beatoraja_replay(reader: impl Read) -> Result<BeatorajaReplay> {

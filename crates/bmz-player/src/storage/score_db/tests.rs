@@ -96,6 +96,7 @@ fn sample_slot(slot: u8, ex_score: u32) -> ReplaySlotRecord {
         clear_rank: Some(ClearType::Normal as u8),
         source_kind: ScoreSourceKind::Local,
         source_path: String::new(),
+        source_fingerprint: String::new(),
     }
 }
 

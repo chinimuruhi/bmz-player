@@ -478,6 +478,7 @@ pub struct ReplaySlotRecord {
     pub clear_rank: Option<u8>,
     pub source_kind: ScoreSourceKind,
     pub source_path: String,
+    pub source_fingerprint: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -572,6 +572,7 @@ fn slot_rule_score_update_only_when_strictly_better() {
         clear_rank: Some(ClearType::Normal as u8),
         source_kind: crate::storage::score_db::ScoreSourceKind::Local,
         source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -609,6 +610,7 @@ fn comparison_rule_replaces_imported_slot_with_unknown_metrics() {
         clear_rank: None,
         source_kind: crate::storage::score_db::ScoreSourceKind::Beatoraja,
         source_path: "source.brd".to_string(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -661,6 +663,7 @@ fn slot_rule_bp_update_only_when_strictly_smaller() {
         clear_rank: Some(ClearType::Normal as u8),
         source_kind: crate::storage::score_db::ScoreSourceKind::Local,
         source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -693,6 +696,7 @@ fn slot_rule_clear_update_only_when_higher_rank() {
         clear_rank: Some(ClearType::Normal as u8),
         source_kind: crate::storage::score_db::ScoreSourceKind::Local,
         source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -737,6 +741,7 @@ fn slot_rule_always_overwrites_unconditionally() {
         clear_rank: Some(ClearType::Perfect as u8),
         source_kind: crate::storage::score_db::ScoreSourceKind::Local,
         source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(

@@ -258,6 +258,21 @@ pub fn save_replay(path: &Path, replay: &ReplayFile) -> Result<()> {
 /// 保存直後にファイルを読み直して hash を取るのを避けるため、
 /// serialize したテキストから直接計算する。
 pub fn save_replay_with_hash(path: &Path, replay: &ReplayFile) -> Result<String> {
+    save_replay_with_durability(path, replay, true)
+}
+
+/// Bulk imports remain recoverable from their source files, so they keep the
+/// atomic temp-file rename but avoid forcing every individual replay to disk.
+pub(crate) fn save_replay_for_import(path: &Path, replay: &ReplayFile) -> Result<()> {
+    save_replay_with_durability(path, replay, false)?;
+    Ok(())
+}
+
+fn save_replay_with_durability(
+    path: &Path,
+    replay: &ReplayFile,
+    sync_file: bool,
+) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     let text = toml::to_string_pretty(replay)?;
@@ -271,7 +286,9 @@ pub fn save_replay_with_hash(path: &Path, replay: &ReplayFile) -> Result<String>
     {
         let mut file = std::fs::File::create(&tmp_path)?;
         file.write_all(text.as_bytes())?;
-        file.sync_all()?;
+        if sync_file {
+            file.sync_all()?;
+        }
     }
     std::fs::rename(tmp_path, path)?;
     Ok(hash)
