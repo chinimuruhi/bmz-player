@@ -598,7 +598,6 @@ fn lua_runtime_draw_errors_and_invalid_values_are_log_once_false() {
     for (name, source) in [
         ("bmz-skin-runtime-error", "local draw = function() error('expected test error') end"),
         ("bmz-skin-runtime-invalid-return", "local draw = function() return 'not boolean' end"),
-        ("bmz-skin-runtime-nil-return", "local draw = function() return nil end"),
         (
             "bmz-skin-runtime-missing-main-state-api",
             "local draw = function() return main_state.missing_api() end",
@@ -611,6 +610,20 @@ fn lua_runtime_draw_errors_and_invalid_values_are_log_once_false() {
         assert!(!runtime.evaluate_draw(0, &state));
         assert_eq!(runtime.failure_log_count(), 1);
     }
+}
+
+#[test]
+fn lua_runtime_draw_nil_is_false_without_a_failure() {
+    let mut loaded = load_runtime_draw_fixture(
+        "bmz-skin-runtime-nil-return",
+        "local draw = function() return nil end",
+    );
+    let runtime = loaded.lua_runtime.as_mut().expect("runtime fallback");
+    let state = TestLuaMainState::default();
+
+    assert!(!runtime.evaluate_draw(0, &state));
+    assert!(!runtime.evaluate_draw(0, &state));
+    assert_eq!(runtime.failure_log_count(), 0);
 }
 
 #[test]

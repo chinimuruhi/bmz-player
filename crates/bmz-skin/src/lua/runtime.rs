@@ -116,6 +116,10 @@ impl LuaSkinRuntime {
         }));
         match result {
             Ok(Ok(LuaRuntimeEvaluatedValue::Boolean(value))) => value,
+            // LuaJ's `toboolean()` treats nil as false. This also lets a skin
+            // keep a load-time-unavailable draw callback on the runtime path
+            // without producing diagnostics for rows where it stays absent.
+            Ok(Ok(LuaRuntimeEvaluatedValue::Nil)) => false,
             Ok(Ok(value)) => {
                 self.log_callback_failure_once(
                     callback_id,
