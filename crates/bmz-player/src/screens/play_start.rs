@@ -55,6 +55,56 @@ pub enum BattleTargetPlayback {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BattleTargetArrangement {
+    pub(crate) arrange: ArrangeOption,
+    pub(crate) arrange_2p: ArrangeOption,
+    pub(crate) double_option: DoubleOption,
+    pub(crate) arrange_seed: Option<i64>,
+    pub(crate) arrange_seed_2p: Option<i64>,
+    pub(crate) packed_seed: Option<i64>,
+    pub(crate) arrange_pattern: Option<Vec<u8>>,
+    pub(crate) legacy_arrange_seed: bool,
+    pub(crate) s_random_scheme: SRandomScheme,
+    pub(crate) s_random_scheme_2p: Option<SRandomScheme>,
+    pub(crate) h_random_threshold_ms: Option<u32>,
+}
+
+impl BattleTargetPlayback {
+    pub(crate) fn arrangement(&self) -> BattleTargetArrangement {
+        match self {
+            Self::Replay(replay) => BattleTargetArrangement {
+                arrange: replay.arrange_option(),
+                arrange_2p: replay.arrange_2p_option(),
+                double_option: replay.double_option(),
+                arrange_seed: replay.arrange_seed,
+                arrange_seed_2p: replay.arrange_seed_2p,
+                packed_seed: None,
+                arrange_pattern: replay.lane_shuffle_pattern.clone(),
+                legacy_arrange_seed: replay.uses_legacy_seed_scheme(),
+                s_random_scheme: replay.effective_s_random_scheme().unwrap_or_default(),
+                s_random_scheme_2p: replay.effective_s_random_scheme_2p().ok(),
+                h_random_threshold_ms: replay.h_random_threshold_ms,
+            },
+            Self::Seed { arrange, arrange_2p, double_option, packed_seed } => {
+                BattleTargetArrangement {
+                    arrange: *arrange,
+                    arrange_2p: *arrange_2p,
+                    double_option: *double_option,
+                    arrange_seed: None,
+                    arrange_seed_2p: None,
+                    packed_seed: *packed_seed,
+                    arrange_pattern: None,
+                    legacy_arrange_seed: false,
+                    s_random_scheme: SRandomScheme::default(),
+                    s_random_scheme_2p: None,
+                    h_random_threshold_ms: None,
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PlayStartOptions {
     pub session_mode: SessionMode,
@@ -153,63 +203,28 @@ pub fn play_session_options_from_start(
         .map(|gauge| gauge_auto_shift_from_config(gauge, start_options.gauge_auto_shift))
         .unwrap_or_default();
     let battle_opponent = start_options.battle_target.as_ref().map(|target| {
-        let (
-            replay_player,
-            arrange,
-            arrange_2p,
-            double_option,
-            arrange_seed,
-            arrange_seed_2p,
-            bms_random_choices,
-            arrange_pattern,
-            s_random_scheme,
-            s_random_scheme_2p,
-            h_random_threshold_ms,
-            packed_seed,
-        ) = match &target.playback {
+        let arrangement = target.playback.arrangement();
+        let (replay_player, bms_random_choices) = match &target.playback {
             BattleTargetPlayback::Replay(replay) => (
                 Some(ReplayPlayer { events: replay.events.clone(), next_index: 0 }),
-                replay.arrange_option(),
-                replay.arrange_2p_option(),
-                replay.double_option(),
-                replay.arrange_seed,
-                replay.arrange_seed_2p,
                 replay.bms_random_choices.clone(),
-                replay.lane_shuffle_pattern.clone(),
-                replay.effective_s_random_scheme().unwrap_or_default(),
-                replay.effective_s_random_scheme_2p().ok(),
-                replay.h_random_threshold_ms,
-                None,
             ),
-            BattleTargetPlayback::Seed { arrange, arrange_2p, double_option, packed_seed } => (
-                None,
-                *arrange,
-                *arrange_2p,
-                *double_option,
-                None,
-                None,
-                None,
-                None,
-                SRandomScheme::default(),
-                None,
-                None,
-                *packed_seed,
-            ),
+            BattleTargetPlayback::Seed { .. } => (None, None),
         };
         BattleOpponentOptions {
             replay_player,
             gauge: target.gauge,
-            arrange,
-            arrange_2p,
-            double_option,
-            arrange_seed,
-            arrange_seed_2p,
-            packed_seed,
+            arrange: arrangement.arrange,
+            arrange_2p: arrangement.arrange_2p,
+            double_option: arrangement.double_option,
+            arrange_seed: arrangement.arrange_seed,
+            arrange_seed_2p: arrangement.arrange_seed_2p,
+            packed_seed: arrangement.packed_seed,
             bms_random_choices,
-            arrange_pattern,
-            s_random_scheme,
-            s_random_scheme_2p,
-            h_random_threshold_ms,
+            arrange_pattern: arrangement.arrange_pattern,
+            s_random_scheme: arrangement.s_random_scheme,
+            s_random_scheme_2p: arrangement.s_random_scheme_2p,
+            h_random_threshold_ms: arrangement.h_random_threshold_ms,
         }
     });
 
@@ -611,6 +626,32 @@ mod tests {
         assert!(options.score_save_disabled);
         // Unlike a replay, no playback player is attached: the chart is played.
         assert!(options.replay_player.is_none());
+    }
+
+    #[test]
+    fn battle_target_arrangement_reads_replay_randomization() {
+        let replay = ReplayFile::new(
+            [1; 32],
+            1,
+            Some(42),
+            ArrangeOption::SRandom,
+            Some(42),
+            Some(vec![2, 0, 1]),
+            Vec::new(),
+        )
+        .with_randomization(Some(24), Vec::new())
+        .with_seed_scheme(crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3)
+        .with_s_random_schemes(SRandomScheme::Legacy40MsV1, Some(SRandomScheme::Lm120HzV1));
+
+        let arrangement = BattleTargetPlayback::Replay(Box::new(replay)).arrangement();
+
+        assert_eq!(arrangement.arrange, ArrangeOption::SRandom);
+        assert_eq!(arrangement.arrange_seed, Some(42));
+        assert_eq!(arrangement.arrange_seed_2p, Some(24));
+        assert_eq!(arrangement.arrange_pattern, Some(vec![2, 0, 1]));
+        assert!(arrangement.legacy_arrange_seed);
+        assert_eq!(arrangement.s_random_scheme, SRandomScheme::Legacy40MsV1);
+        assert_eq!(arrangement.s_random_scheme_2p, Some(SRandomScheme::Lm120HzV1));
     }
 
     #[test]

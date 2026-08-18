@@ -3,22 +3,14 @@ use super::*;
 impl WinitApp {
     pub(super) fn begin_decide_for_chart(&mut self, chart_id: i64, mut options: PlayStartOptions) {
         self.normalize_seven_to_six_options(chart_id, &mut options);
-        self.apply_active_rival_play_overrides(chart_id, &mut options);
+        self.apply_rival_play_overrides(chart_id, &mut options);
         let snapshot = self.decide_snapshot_for_chart(chart_id);
         self.begin_decide_for_chart_with_snapshot(chart_id, options, snapshot, None, None);
     }
 
-    pub(super) fn apply_active_rival_play_overrides(
-        &self,
-        chart_id: i64,
-        options: &mut PlayStartOptions,
-    ) {
-        if options.session_mode != SessionMode::Normal
-            || options.autoplay
-            || options.practice_mode
-            || options.seven_to_six
+    pub(super) fn apply_rival_play_overrides(&self, chart_id: i64, options: &mut PlayStartOptions) {
+        if options.practice_mode
             || options.replay_player.is_some()
-            || options.battle_target.is_some()
             || self.play.active_course.is_some()
         {
             return;
@@ -32,6 +24,22 @@ impl WinitApp {
         else {
             return;
         };
+        let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
+        use crate::config::profile_config::ChartReplicationModeConfig;
+        let replication = self.boot.profile_config.rival.chart_replication_mode;
+
+        // KEY4 G-BATTLE target is an explicit per-play choice and must win over
+        // the persistent rival selected with KEY7.
+        if let Some(arrangement) =
+            options.battle_target.as_ref().map(|target| target.playback.arrangement())
+        {
+            apply_battle_target_replication(options, &arrangement, replication, key_mode);
+            return;
+        }
+
+        if options.session_mode != SessionMode::Normal || options.autoplay || options.seven_to_six {
+            return;
+        }
         let policy = crate::ln_policy::score_ln_policy(
             self.boot.profile_config.play.ln_mode_policy,
             chart.ln_profile,
@@ -47,12 +55,9 @@ impl WinitApp {
                 Some(ResolvedTarget { name: name.to_string(), ex_score: score.ex_score });
         }
 
-        use crate::config::profile_config::ChartReplicationModeConfig;
-        let replication = self.boot.profile_config.rival.chart_replication_mode;
         if replication == ChartReplicationModeConfig::None {
             return;
         }
-        let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
         let (arrange, arrange_2p, double_option) = rival_arrange_options(&score);
         options.arrange = arrange;
         options.arrange_2p = arrange_2p;
@@ -647,6 +652,71 @@ pub(in crate::app) fn rival_arrange_options(
     )
 }
 
+fn apply_battle_target_replication(
+    options: &mut PlayStartOptions,
+    arrangement: &crate::screens::play_start::BattleTargetArrangement,
+    replication: crate::config::profile_config::ChartReplicationModeConfig,
+    key_mode: KeyMode,
+) {
+    use crate::config::profile_config::ChartReplicationModeConfig;
+
+    if replication == ChartReplicationModeConfig::None {
+        return;
+    }
+
+    options.arrange = arrangement.arrange;
+    options.arrange_2p = arrangement.arrange_2p;
+    options.double_option = arrangement.double_option.normalize_for_key_mode(key_mode);
+    options.arrange_pattern = None;
+    options.random_trainer_seed = None;
+
+    if replication != ChartReplicationModeConfig::RivalChart {
+        return;
+    }
+
+    let mut copied_chart = false;
+    if let Some(seed) = arrangement.arrange_seed {
+        options.arrange_seed = Some(seed);
+        options.arrange_seed_2p = arrangement.arrange_seed_2p;
+        copied_chart = true;
+    } else if let Some(packed_seed) = arrangement.packed_seed {
+        let unpacked = u64::try_from(packed_seed).ok().and_then(|packed| {
+            crate::random_option_seed::RandomOptionSeeds::unpack(
+                packed,
+                matches!(key_mode, KeyMode::K10 | KeyMode::K14),
+            )
+        });
+        if let Some(seeds) = unpacked {
+            options.arrange_seed = Some(i64::from(seeds.p1.value()));
+            options.arrange_seed_2p = seeds.p2.map(|seed| i64::from(seed.value()));
+            copied_chart = true;
+        } else {
+            tracing::warn!(packed_seed, ?key_mode, "ignoring invalid battle target play seed");
+        }
+    }
+
+    if arrangement.arrange_pattern.is_some() {
+        copied_chart = true;
+    }
+    if copied_chart {
+        options.arrange_pattern = arrangement.arrange_pattern.clone();
+        options.legacy_arrange_seed = arrangement.legacy_arrange_seed;
+        options.s_random_scheme = arrangement.s_random_scheme;
+        options.s_random_scheme_2p = arrangement.s_random_scheme_2p;
+        options.h_random_threshold_ms = arrangement.h_random_threshold_ms;
+    } else if arrange_uses_seed(arrangement.arrange) || arrange_uses_seed(arrangement.arrange_2p) {
+        tracing::warn!(
+            arrange = arrangement.arrange.as_str(),
+            arrange_2p = arrangement.arrange_2p.as_str(),
+            "battle target has no usable arrangement seed; keeping the local seed"
+        );
+    }
+}
+
+const fn arrange_uses_seed(arrange: ArrangeOption) -> bool {
+    !matches!(arrange, ArrangeOption::Normal | ArrangeOption::Mirror)
+}
+
 pub(in crate::app) fn arrange_option_from_rian(value: &str) -> ArrangeOption {
     match value.trim().to_ascii_lowercase().as_str() {
         "mirror" => ArrangeOption::Mirror,
@@ -689,6 +759,9 @@ pub(in crate::app) fn double_option_from_rian(value: &str) -> DoubleOption {
 #[cfg(test)]
 mod rival_replication_tests {
     use super::*;
+    use crate::config::profile_config::ChartReplicationModeConfig;
+    use crate::screens::play_session::SRandomScheme;
+    use crate::screens::play_start::BattleTargetArrangement;
     use crate::storage::network_db::IrRivalScoreRecord;
 
     fn rival_score(play_option: i32, arrange_1p: &str) -> IrRivalScoreRecord {
@@ -727,6 +800,193 @@ mod rival_replication_tests {
             rival_arrange_options(&score),
             (ArrangeOption::Mirror, ArrangeOption::Random, DoubleOption::Flip)
         );
+    }
+
+    fn battle_arrangement() -> BattleTargetArrangement {
+        BattleTargetArrangement {
+            arrange: ArrangeOption::Random,
+            arrange_2p: ArrangeOption::Mirror,
+            double_option: DoubleOption::Flip,
+            arrange_seed: None,
+            arrange_seed_2p: None,
+            packed_seed: None,
+            arrange_pattern: None,
+            legacy_arrange_seed: false,
+            s_random_scheme: SRandomScheme::Lm120HzV1,
+            s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
+        }
+    }
+
+    #[test]
+    fn battle_rival_option_copies_options_but_keeps_local_seeds() {
+        let mut options = PlayStartOptions {
+            arrange: ArrangeOption::SRandom,
+            arrange_2p: ArrangeOption::RRandom,
+            double_option: DoubleOption::Off,
+            arrange_seed: Some(101),
+            arrange_seed_2p: Some(202),
+            random_trainer_seed: Some(303),
+            s_random_scheme: SRandomScheme::Legacy40MsV1,
+            arrange_pattern: Some(vec![1, 0, 2]),
+            ..PlayStartOptions::default()
+        };
+        let mut arrangement = battle_arrangement();
+        arrangement.packed_seed = Some(0x654321_123456);
+
+        apply_battle_target_replication(
+            &mut options,
+            &arrangement,
+            ChartReplicationModeConfig::RivalOption,
+            KeyMode::K14,
+        );
+
+        assert_eq!(options.arrange, ArrangeOption::Random);
+        assert_eq!(options.arrange_2p, ArrangeOption::Mirror);
+        assert_eq!(options.double_option, DoubleOption::Flip);
+        assert_eq!(options.arrange_seed, Some(101));
+        assert_eq!(options.arrange_seed_2p, Some(202));
+        assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
+        assert_eq!(options.arrange_pattern, None);
+        assert_eq!(options.random_trainer_seed, None);
+    }
+
+    #[test]
+    fn battle_rival_chart_unpacks_single_play_seed() {
+        let mut options = PlayStartOptions {
+            arrange_seed: Some(9),
+            arrange_seed_2p: Some(8),
+            ..PlayStartOptions::default()
+        };
+        let mut arrangement = battle_arrangement();
+        arrangement.arrange_2p = ArrangeOption::Normal;
+        arrangement.double_option = DoubleOption::Off;
+        arrangement.packed_seed = Some(0x123456);
+
+        apply_battle_target_replication(
+            &mut options,
+            &arrangement,
+            ChartReplicationModeConfig::RivalChart,
+            KeyMode::K7,
+        );
+
+        assert_eq!(options.arrange, ArrangeOption::Random);
+        assert_eq!(options.arrange_seed, Some(0x123456));
+        assert_eq!(options.arrange_seed_2p, None);
+        assert!(!options.legacy_arrange_seed);
+    }
+
+    #[test]
+    fn battle_rival_chart_unpacks_double_play_seed() {
+        let mut options = PlayStartOptions::default();
+        let mut arrangement = battle_arrangement();
+        arrangement.packed_seed = Some(0x654321_123456);
+
+        apply_battle_target_replication(
+            &mut options,
+            &arrangement,
+            ChartReplicationModeConfig::RivalChart,
+            KeyMode::K14,
+        );
+
+        assert_eq!(options.arrange_seed, Some(0x123456));
+        assert_eq!(options.arrange_seed_2p, Some(0x654321));
+        assert_eq!(options.double_option, DoubleOption::Flip);
+    }
+
+    #[test]
+    fn battle_rival_chart_copies_replay_arrangement_metadata() {
+        let mut options = PlayStartOptions {
+            arrange_seed: Some(9),
+            s_random_scheme: SRandomScheme::Lm120HzV1,
+            ..PlayStartOptions::default()
+        };
+        let mut arrangement = battle_arrangement();
+        arrangement.arrange = ArrangeOption::SRandom;
+        arrangement.arrange_2p = ArrangeOption::Normal;
+        arrangement.double_option = DoubleOption::Off;
+        arrangement.arrange_seed = Some(42);
+        arrangement.arrange_seed_2p = None;
+        arrangement.arrange_pattern = Some(vec![2, 0, 1]);
+        arrangement.legacy_arrange_seed = true;
+        arrangement.s_random_scheme = SRandomScheme::Legacy40MsV1;
+        arrangement.h_random_threshold_ms = Some(125);
+
+        apply_battle_target_replication(
+            &mut options,
+            &arrangement,
+            ChartReplicationModeConfig::RivalChart,
+            KeyMode::K7,
+        );
+
+        assert_eq!(options.arrange, ArrangeOption::SRandom);
+        assert_eq!(options.arrange_seed, Some(42));
+        assert_eq!(options.arrange_pattern, Some(vec![2, 0, 1]));
+        assert!(options.legacy_arrange_seed);
+        assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
+        assert_eq!(options.h_random_threshold_ms, Some(125));
+    }
+
+    #[test]
+    fn battle_rival_chart_keeps_local_seed_when_target_seed_is_missing() {
+        let mut options = PlayStartOptions {
+            arrange_seed: Some(77),
+            arrange_seed_2p: Some(88),
+            ..PlayStartOptions::default()
+        };
+        let arrangement = battle_arrangement();
+
+        apply_battle_target_replication(
+            &mut options,
+            &arrangement,
+            ChartReplicationModeConfig::RivalChart,
+            KeyMode::K14,
+        );
+
+        assert_eq!(options.arrange, ArrangeOption::Random);
+        assert_eq!(options.arrange_seed, Some(77));
+        assert_eq!(options.arrange_seed_2p, Some(88));
+    }
+
+    #[test]
+    fn battle_rival_chart_keeps_local_seed_when_target_seed_is_invalid() {
+        let mut options =
+            PlayStartOptions { arrange_seed: Some(77), ..PlayStartOptions::default() };
+        let mut arrangement = battle_arrangement();
+        arrangement.arrange_2p = ArrangeOption::Normal;
+        arrangement.double_option = DoubleOption::Off;
+        arrangement.packed_seed = Some(-1);
+
+        apply_battle_target_replication(
+            &mut options,
+            &arrangement,
+            ChartReplicationModeConfig::RivalChart,
+            KeyMode::K7,
+        );
+
+        assert_eq!(options.arrange, ArrangeOption::Random);
+        assert_eq!(options.arrange_seed, Some(77));
+    }
+
+    #[test]
+    fn battle_replication_none_keeps_local_options() {
+        let mut options = PlayStartOptions {
+            arrange: ArrangeOption::Mirror,
+            arrange_seed: Some(77),
+            arrange_pattern: Some(vec![0, 1]),
+            ..PlayStartOptions::default()
+        };
+
+        apply_battle_target_replication(
+            &mut options,
+            &battle_arrangement(),
+            ChartReplicationModeConfig::None,
+            KeyMode::K7,
+        );
+
+        assert_eq!(options.arrange, ArrangeOption::Mirror);
+        assert_eq!(options.arrange_seed, Some(77));
+        assert_eq!(options.arrange_pattern, Some(vec![0, 1]));
     }
 }
 

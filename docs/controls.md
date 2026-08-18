@@ -117,6 +117,11 @@ favorite 操作は invisible を使わず、登録済みなら解除、未登録
 譜面/LNポリシー不一致の場合は開始せず、選曲画面に理由を表示します。rianIRはghost/replayを
 公開しないため、`play_seed`が得られるスコアについて配置だけを再現します。
 
+G-BATTLE相手を指定したプレイでは、`CHART REPLICATION`の`RIVALCHART`は相手の譜面
+オプションとseedを自分側にも適用し、`RIVALOPTION`は相手の譜面オプションだけを適用して
+自分側のseedを維持します。`NONE`では自分側の配置を変更しません。`7`で選択中のrianIR
+ライバルとG-BATTLE相手が異なる場合は、そのプレイで明示したG-BATTLE相手を優先します。
+
 G-BATTLEは2K / 4K / 5K / 6K / 7K / 8K / 9K / 10K / 14Kで使用できます。
 SESSION MODEが`NORMAL`なら通常スキンを使います。`AUTOPLAY BATTLE`では5K / 7Kだけ
 バトルスキンを使い、それ以外のキーモードは通常スキンを使います。
