@@ -48,10 +48,11 @@ pub(super) fn select_preview_fade_name(fade: SelectPreviewFade) -> &'static str 
 
 pub(super) fn select_preview_key_after_delay(
     key: Option<String>,
+    current_source: Option<&str>,
     elapsed: Duration,
     delay: Duration,
 ) -> Option<String> {
-    if elapsed >= delay { key } else { None }
+    if elapsed >= delay || key.as_deref() == current_source { key } else { None }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

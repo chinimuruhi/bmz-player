@@ -72,6 +72,7 @@ fn select_preview_key_waits_for_beatoraja_start_delay() {
     assert_eq!(
         select_preview_key_after_delay(
             key.clone(),
+            None,
             SELECT_PREVIEW_START_DELAY - Duration::from_millis(1),
             SELECT_PREVIEW_START_DELAY,
         ),
@@ -80,10 +81,36 @@ fn select_preview_key_waits_for_beatoraja_start_delay() {
     assert_eq!(
         select_preview_key_after_delay(
             key.clone(),
+            None,
             SELECT_PREVIEW_START_DELAY,
             SELECT_PREVIEW_START_DELAY,
         ),
         key
+    );
+}
+
+#[test]
+fn select_preview_key_keeps_current_source_during_bar_animation() {
+    let key = Some("folder|preview.ogg".to_string());
+    let elapsed = Duration::ZERO;
+
+    assert_eq!(
+        select_preview_key_after_delay(
+            key.clone(),
+            Some("folder|preview.ogg"),
+            elapsed,
+            SELECT_PREVIEW_START_DELAY,
+        ),
+        key
+    );
+    assert_eq!(
+        select_preview_key_after_delay(
+            Some("folder|next.ogg".to_string()),
+            Some("folder|preview.ogg"),
+            elapsed,
+            SELECT_PREVIEW_START_DELAY,
+        ),
+        None
     );
 }
 

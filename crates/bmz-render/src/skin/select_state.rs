@@ -436,7 +436,7 @@ pub(super) fn select_row_shows_score_decorations(row: &SelectRowSnapshot) -> boo
 }
 
 pub(super) fn select_row_shows_level(row: &SelectRowSnapshot) -> bool {
-    row.kind == SelectRowKind::Song
+    row.kind == SelectRowKind::Song && row.show_level
 }
 
 pub(super) fn select_row_shows_lamp(row: &SelectRowSnapshot) -> bool {

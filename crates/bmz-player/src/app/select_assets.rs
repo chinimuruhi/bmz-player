@@ -175,6 +175,10 @@ impl SelectAssetRuntime {
         self.preview_playing
     }
 
+    pub(super) fn preview_source(&self) -> Option<&str> {
+        self.preview_source.as_deref()
+    }
+
     pub(super) fn preview_fade(&self) -> SelectPreviewFade {
         self.preview_fade
     }

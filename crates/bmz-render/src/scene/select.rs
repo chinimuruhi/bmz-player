@@ -262,6 +262,9 @@ pub struct SelectRowSnapshot {
     pub table_text_primary: String,
     pub table_text_secondary: String,
     pub table_text_fallback: String,
+    /// songlist のレベル装飾を表示するか。G-BATTLEの固定行など、
+    /// Song 行の描画を使いつつレベル欄だけ隠す場合に false。
+    pub show_level: bool,
     /// 現在の曲の #RANK / 判定ランク。0..4 は VERYHARD..VERYEASY、10 以上は直接倍率。
     pub judge_rank: Option<i32>,
     pub total_notes: u32,
@@ -343,6 +346,7 @@ impl Default for SelectRowSnapshot {
             table_text_primary: String::new(),
             table_text_secondary: String::new(),
             table_text_fallback: String::new(),
+            show_level: true,
             judge_rank: None,
             total_notes: 0,
             initial_bpm: 0.0,

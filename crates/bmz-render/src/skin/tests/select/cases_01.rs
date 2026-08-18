@@ -1,6 +1,15 @@
 use super::*;
 
 #[test]
+fn select_song_level_visibility_honors_row_flag() {
+    let mut row = SelectRowSnapshot { kind: SelectRowKind::Song, ..SelectRowSnapshot::default() };
+    assert!(select_row_shows_level(&row));
+
+    row.show_level = false;
+    assert!(!select_row_shows_level(&row));
+}
+
+#[test]
 fn select_long_note_options_follow_the_selected_chart() {
     let document: SkinDocument = serde_json::from_str(r#"{ "type": 5 }"#).unwrap();
     let mut snapshot = SelectSnapshot {

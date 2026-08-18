@@ -169,10 +169,24 @@ impl WinitApp {
             self.select.selected_index
         };
         let mut rows = if self.select.ir_battle.active {
+            // G-BATTLEでは人物/スコア表示だけを差し替え、譜面そのものの
+            // BPM・長さ・ノート数・解析値などは元の選択行から引き継ぐ。
+            let source_row = select_snapshot_rows_with_rival(
+                &self.select.select_items,
+                self.select.selected_index,
+                1,
+                &self.boot.profile_config,
+                self.select.key_config_edit.as_ref(),
+                &chart_distributions,
+                Some(&self.select.select_ir),
+            )
+            .into_iter()
+            .next();
             crate::app::select_ir_battle::select_ir_battle_snapshot_rows(
                 &battle_choices,
                 self.select.ir_battle.cursor,
                 25,
+                source_row.as_ref(),
             )
         } else {
             select_snapshot_rows_with_rival(
