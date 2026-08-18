@@ -15,8 +15,8 @@ use bmz_gameplay::rule::RuleMode;
 use crate::config::profile_config::IrConfig;
 use crate::ir::bmz_official::{BmzOfficialIrClient, IrCourseRankingRequest, IrRankingRequest};
 use crate::ir::sync::{
-    IR_SYNC_BATCH_LIMIT, IrSyncReport, IrSyncThrottle, ensure_fresh_credentials,
-    sync_pending_ir_jobs,
+    IR_SYNC_BATCH_LIMIT, IrSyncJobFilter, IrSyncReport, IrSyncThrottle, ensure_fresh_credentials,
+    sync_pending_ir_jobs, sync_pending_ir_jobs_filtered,
 };
 use crate::ir::types::{IrCourseRankingResult, IrRankingResult, IrRankingScope};
 use crate::ln_policy::LnScorePolicy;

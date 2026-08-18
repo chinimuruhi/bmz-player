@@ -114,28 +114,69 @@ pub(super) fn spawn_result_ir_task_for_target(
         query.supports_scope(IrRankingScope::SelfAndRivals) && state_prefetch_rivals(&ir_config);
     tokio::spawn(async move {
         let now = now_unix_seconds();
-        let outcome = async {
+        let primary_outcome = async {
             crate::storage::migration::migrate_network_db(&network_db_path)?;
             let mut network_db =
                 crate::storage::network_db::NetworkDatabase::open(&network_db_path)?;
-            sync_pending_ir_jobs(
+            let (kind, local_score_id) = submit_query.target.submission_job();
+            sync_pending_ir_jobs_filtered(
                 &mut network_db,
                 &score_db_path,
                 &submit_query.profile_root,
                 &logs_dir,
                 &ir_config,
+                IrSyncJobFilter {
+                    provider_key: &submit_query.provider,
+                    account_id: &submit_query.account_id,
+                    kind,
+                    local_score_id: Some(local_score_id),
+                },
                 now,
-                IR_SYNC_BATCH_LIMIT,
+                1,
                 false,
-                IrSyncThrottle::rate_limited(),
+                IrSyncThrottle::none(),
             )
             .await
         }
         .await;
         let mut included_global_ranking = None;
-        match outcome {
+        match primary_outcome {
             Ok(report) => {
+                let primary_processed = report.submitted.saturating_add(report.failed);
                 included_global_ranking = included_global_ranking_for_query(&submit_query, &report);
+                // 通常のランキングAPIには更新前順位が無い。今回の primary provider の
+                // 送信応答を取得できた時点で先に Result へ渡し、残りの provider や
+                // backlog の同期完了を待たせない。
+                if let Some(ranking) = included_global_ranking.clone() {
+                    let _ = submit_sender.send(ResultIrEvent::Ranking {
+                        scope: IrRankingScope::Global,
+                        result: Ok(ranking),
+                    });
+                }
+
+                // primary provider の今回分を優先した後、従来どおり残りの pending
+                // job も送る。primary の送信応答は上で確保済みなので、バッチ順や
+                // 上限によって通常ランキング取得へ誤ってフォールバックしない。
+                let remaining_outcome = async {
+                    let mut network_db =
+                        crate::storage::network_db::NetworkDatabase::open(&network_db_path)?;
+                    sync_pending_ir_jobs(
+                        &mut network_db,
+                        &score_db_path,
+                        &submit_query.profile_root,
+                        &logs_dir,
+                        &ir_config,
+                        now_unix_seconds(),
+                        IR_SYNC_BATCH_LIMIT.saturating_sub(primary_processed),
+                        false,
+                        IrSyncThrottle::rate_limited(),
+                    )
+                    .await
+                }
+                .await;
+                if let Err(error) = remaining_outcome {
+                    tracing::warn!(%error, "failed to sync remaining IR jobs from Result");
+                }
                 // 別の同期 task がこの job を先に claim していても、送信完了まで
                 // 待ってから ranking を取得する。これで古いサーバ側 ranking を
                 // Result に固定しない。
@@ -151,12 +192,6 @@ pub(super) fn spawn_result_ir_task_for_target(
             }
         }
         let included_global_loaded = included_global_ranking.is_some();
-        if let Some(ranking) = included_global_ranking {
-            let _ = submit_sender.send(ResultIrEvent::Ranking {
-                scope: IrRankingScope::Global,
-                result: Ok(ranking),
-            });
-        }
         // 送信完了後に prefetch する。best 更新前のランキングを返さないため。
         if prefetch_global && !included_global_loaded {
             fetch_ranking_and_send(&submit_query, IrRankingScope::Global, &submit_sender).await;

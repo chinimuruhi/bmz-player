@@ -408,6 +408,54 @@ fn claiming_ir_jobs_for_kind_keeps_other_jobs_pending() {
 }
 
 #[test]
+fn claiming_ir_job_for_local_score_targets_only_current_attempt() {
+    let mut db = open_network_db();
+    let previous = enqueue_test_job(&mut db, 1, 100);
+    let current = enqueue_test_job(&mut db, 2, 100);
+    let other_provider = db
+        .enqueue_ir_score_job(&NewIrScoreJob {
+            provider: "rian-ir".to_string(),
+            account_id: "account-2".to_string(),
+            kind: IrJobKind::Score,
+            local_score_id: 2,
+            chart_sha256: [2; 32],
+            ln_policy: LnScorePolicy::ForceLn,
+            payload_json: "{}".to_string(),
+            now: 100,
+        })
+        .unwrap();
+
+    let claimed = db
+        .claim_pending_ir_score_job_for_local_score(
+            "bmz-official",
+            "account-1",
+            IrJobKind::Score,
+            2,
+            100,
+            false,
+        )
+        .unwrap();
+
+    assert_eq!(claimed.iter().map(|job| job.id).collect::<Vec<_>>(), vec![current]);
+    let statuses = db
+        .conn()
+        .prepare("SELECT id, status FROM ir_score_jobs ORDER BY id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(
+        statuses,
+        vec![
+            (previous, "pending".to_string()),
+            (current, "sending".to_string()),
+            (other_provider, "pending".to_string()),
+        ]
+    );
+}
+
+#[test]
 fn existing_ir_job_is_detected_before_backfill_reenqueue() {
     let mut db = open_network_db();
     enqueue_test_job(&mut db, 42, 100);

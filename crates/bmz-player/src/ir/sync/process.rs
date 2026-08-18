@@ -14,15 +14,29 @@ pub(super) async fn sync_pending_ir_jobs_with_filter(
 ) -> Result<IrSyncReport> {
     let mut report = IrSyncReport::default();
     let jobs = match filter {
-        Some(IrSyncJobFilter { provider_key, account_id, kind }) => network_db
-            .claim_pending_ir_score_jobs_for_kind(
+        Some(IrSyncJobFilter {
+            provider_key,
+            account_id,
+            kind,
+            local_score_id: Some(local_score_id),
+        }) => network_db.claim_pending_ir_score_job_for_local_score(
+            provider_key,
+            account_id,
+            kind,
+            local_score_id,
+            now,
+            ignore_retry_backoff,
+        )?,
+        Some(IrSyncJobFilter { provider_key, account_id, kind, local_score_id: None }) => {
+            network_db.claim_pending_ir_score_jobs_for_kind(
                 provider_key,
                 account_id,
                 kind,
                 now,
                 limit,
                 ignore_retry_backoff,
-            )?,
+            )?
+        }
         None => network_db.claim_pending_ir_score_jobs(now, limit, ignore_retry_backoff)?,
     };
     let job_count = jobs.len();

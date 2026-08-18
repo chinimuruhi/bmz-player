@@ -69,6 +69,8 @@ pub struct IrSyncJobFilter<'a> {
     pub provider_key: &'a str,
     pub account_id: &'a str,
     pub kind: IrJobKind,
+    /// `Some` の場合は、その Result attempt の job だけを同期する。
+    pub local_score_id: Option<i64>,
 }
 
 impl IrSyncThrottle {

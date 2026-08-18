@@ -330,6 +330,66 @@ impl NetworkDatabase {
         Ok(jobs)
     }
 
+    /// Result で表示中の attempt に対応する primary provider の job だけを claim する。
+    ///
+    /// 通常のバッチ順に依存すると、古い pending job が上限を埋めた場合や別 task と
+    /// claim が競合した場合に、今回の送信レスポンス内ランキングを Result が受け取れない。
+    pub fn claim_pending_ir_score_job_for_local_score(
+        &mut self,
+        provider: &str,
+        account_id: &str,
+        kind: IrJobKind,
+        local_score_id: i64,
+        now: i64,
+        ignore_retry_backoff: bool,
+    ) -> Result<Vec<IrScoreJobRecord>> {
+        const SENDING_STALE_AFTER_SECONDS: i64 = 300;
+        let retry_filter = if ignore_retry_backoff {
+            "status IN ('pending', 'failed')"
+        } else {
+            "status IN ('pending', 'failed') AND next_attempt_at <= ?1"
+        };
+        let sql = format!(
+            "SELECT id, provider, account_id, local_score_id, chart_sha256, ln_policy,
+                payload_json, status, attempt_count, next_attempt_at, last_error,
+                created_at, updated_at, kind
+             FROM ir_score_jobs
+             WHERE provider = ?3
+               AND account_id = ?4
+               AND kind = ?5
+               AND local_score_id = ?6
+               AND (({retry_filter})
+                    OR (status = 'sending' AND updated_at <= ?1 - ?2))
+             LIMIT 1"
+        );
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let jobs = {
+            let mut stmt = tx.prepare(&sql)?;
+            stmt.query_map(
+                params![
+                    now,
+                    SENDING_STALE_AFTER_SECONDS,
+                    provider,
+                    account_id,
+                    kind.as_str(),
+                    local_score_id,
+                ],
+                ir_score_job_from_row,
+            )?
+            .collect::<std::result::Result<Vec<_>, _>>()?
+        };
+        for job in &jobs {
+            tx.execute(
+                "UPDATE ir_score_jobs
+                 SET status = 'sending', updated_at = ?2
+                 WHERE id = ?1",
+                params![job.id, now],
+            )?;
+        }
+        tx.commit()?;
+        Ok(jobs)
+    }
+
     pub fn has_ir_score_job(
         &self,
         provider: &str,
