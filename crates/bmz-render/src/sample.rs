@@ -203,6 +203,7 @@ pub fn sample_result_scene() -> AppSceneSnapshot {
         hispeed_auto_adjust: false,
         clear_type: bmz_core::clear::ClearType::Normal,
         result_failed: false,
+        autoplay: false,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
         double_option: "OFF".to_string(),

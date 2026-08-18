@@ -131,6 +131,7 @@ impl WinitApp {
                     hispeed_auto_adjust: self.boot.profile_config.lane.hispeed_auto_adjust,
                     clear_type: summary.clear_type,
                     result_failed,
+                    autoplay: self.current_result_autoplay(),
                     arrange: summary.arrange.as_str().to_string(),
                     arrange_2p: summary.arrange_2p.as_str().to_string(),
                     double_option: self

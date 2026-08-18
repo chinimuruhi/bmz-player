@@ -302,8 +302,15 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
     summary.arrange = "RANDOM".to_string();
     summary.arrange_2p = "MIRROR".to_string();
     summary.target_name = "RANK AAA".to_string();
-    let mut runtime_state =
-        lua_runtime_state_for_result(false, None, true, KeyMode::K7, number_values, "Player");
+    let mut runtime_state = lua_runtime_state_for_result(
+        false,
+        None,
+        true,
+        false,
+        KeyMode::K7,
+        number_values,
+        "Player",
+    );
     apply_result_summary_lua_load_state(&mut runtime_state, &summary, "Table", "★12", "Table ★12");
     assert_eq!(runtime_state.text_values.get(&1).map(String::as_str), Some("RANK AAA"));
     assert_eq!(runtime_state.text_values.get(&3).map(String::as_str), Some("RANK AAA"));

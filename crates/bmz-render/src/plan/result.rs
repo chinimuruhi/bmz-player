@@ -247,6 +247,7 @@ pub(super) fn build_result_skin_draw_state(
         target_clear_index: snapshot.target_clear_type.map(|c| c as i64),
         select_clear_index: snapshot.clear_type as i64,
         result_failed: Some(snapshot.result_failed),
+        autoplay: snapshot.autoplay,
         play_level: skin_level_number(&snapshot.play_level),
         table_song: !snapshot.table_text_primary.is_empty(),
         difficulty: skin_difficulty_code(&snapshot.difficulty_name),

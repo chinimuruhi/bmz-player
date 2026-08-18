@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn result_skin_state_exposes_autoplay_options() {
+    let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
+        panic!("sample result scene");
+    };
+
+    let normal = build_result_skin_draw_state(&snapshot, 0);
+    assert!(!normal.autoplay);
+    assert!(crate::skin::test_skin_ops(&[32], &[], &normal));
+    assert!(!crate::skin::test_skin_ops(&[33], &[], &normal));
+
+    snapshot.autoplay = true;
+    let autoplay = build_result_skin_draw_state(&snapshot, 0);
+    assert!(autoplay.autoplay);
+    assert!(!crate::skin::test_skin_ops(&[32], &[], &autoplay));
+    assert!(crate::skin::test_skin_ops(&[33], &[], &autoplay));
+}
+
+#[test]
 fn result_skin_state_keeps_clear_failed_flag_separate_from_clear_type() {
     let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
         panic!("sample result scene");
@@ -190,6 +208,7 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
         assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
+        autoplay: false,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
         double_option: "OFF".to_string(),
@@ -348,6 +367,7 @@ fn result_plan_renders_timing_distribution_from_result_graph_data() {
         assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
+        autoplay: false,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
         double_option: "OFF".to_string(),

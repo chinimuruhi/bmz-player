@@ -198,6 +198,7 @@ impl WinitApp {
             table_song,
             ir_name,
             self.result_score_save_enabled_for_slot(slot),
+            self.current_result_autoplay(),
             key_mode,
             number_values,
             &self.boot.profile_config.display_name,
@@ -248,6 +249,10 @@ impl WinitApp {
 
     pub(super) fn current_result_score_save_enabled(&self) -> bool {
         self.result_score_save_enabled_for_slot(self.current_result_skin_slot())
+    }
+
+    pub(super) fn current_result_autoplay(&self) -> bool {
+        self.result.finished_play.as_ref().is_some_and(|finished| finished.result.autoplay)
     }
 
     pub(super) fn result_score_save_enabled_for_slot(&self, slot: ResultSkinSlot) -> bool {

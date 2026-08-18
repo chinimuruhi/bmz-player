@@ -169,10 +169,11 @@ fn first_play_result_lua_values_match_beatoraja_missing_score_sentinels() {
 }
 
 #[test]
-fn result_lua_runtime_state_exposes_ir_connection_options() {
+fn result_lua_runtime_state_exposes_scene_options() {
     let online = lua_runtime_state_for_result(
         false,
         Some("BMZ IR"),
+        true,
         true,
         KeyMode::K7,
         BTreeMap::new(),
@@ -182,16 +183,27 @@ fn result_lua_runtime_state_exposes_ir_connection_options() {
     assert_eq!(online.option_values.get(&51), Some(&true));
     assert_eq!(online.option_values.get(&60), Some(&false));
     assert_eq!(online.option_values.get(&61), Some(&true));
+    assert_eq!(online.option_values.get(&32), Some(&false));
+    assert_eq!(online.option_values.get(&33), Some(&true));
     assert_eq!(online.option_values.get(&160), Some(&true));
     assert_eq!(online.option_values.get(&161), Some(&false));
     assert_eq!(online.text_values.get(&1020).map(String::as_str), Some("BMZ IR"));
 
-    let offline =
-        lua_runtime_state_for_result(false, None, false, KeyMode::K5, BTreeMap::new(), "Player");
+    let offline = lua_runtime_state_for_result(
+        false,
+        None,
+        false,
+        false,
+        KeyMode::K5,
+        BTreeMap::new(),
+        "Player",
+    );
     assert_eq!(offline.option_values.get(&50), Some(&true));
     assert_eq!(offline.option_values.get(&51), Some(&false));
     assert_eq!(offline.option_values.get(&60), Some(&true));
     assert_eq!(offline.option_values.get(&61), Some(&false));
+    assert_eq!(offline.option_values.get(&32), Some(&true));
+    assert_eq!(offline.option_values.get(&33), Some(&false));
     assert_eq!(offline.option_values.get(&160), Some(&false));
     assert_eq!(offline.option_values.get(&161), Some(&true));
     assert_eq!(offline.text_values.get(&1020).map(String::as_str), Some(""));

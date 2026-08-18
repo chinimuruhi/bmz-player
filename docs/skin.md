@@ -262,6 +262,13 @@ Play開始時に現在のScoreKey（SHA256、LN方針、DP区分、rule mode）�
 存在しなければtrueになる。Resultでも保存前の状態を維持する。JSON skinは`op: [1986]`、
 Lua skinは`main_state.option(1986)`で参照でき、`op: [-1986]`は既プレイ時に有効になる。
 
+### Result Autoplay Options
+
+beatorajaの `OPTION_AUTOPLAYOFF` (`32`) / `OPTION_AUTOPLAYON` (`33`) はプレイ画面でのみ
+評価されるが、BMZではAUTO PLAYでもリザルト画面を表示するため、Result skinにも拡張して
+公開する。AUTO PLAYのResultでは33がtrue、32がfalseになり、通常プレイでは逆になる。
+JSON skinは`op: [33]`、Lua skinは`main_state.option(33)`でAUTO PLAY専用表示を定義できる。
+
 ### Select Rival and Chart Replication
 
 beatoraja互換の選曲イベントを次のように扱う。

@@ -172,6 +172,8 @@ pub struct ResultSnapshot {
     /// コース曲間リザルトでは clear lamp 表示用の `clear_type` を NoPlay に丸める一方、
     /// 背景や CLEAR/FAILED 演出は実プレイ結果に合わせるため分けて持つ。
     pub result_failed: bool,
+    /// BMZ extension: result skin でも OPTION_AUTOPLAYON/OFF (33/32) を公開する。
+    pub autoplay: bool,
     pub arrange: String,
     pub arrange_2p: String,
     pub double_option: String,

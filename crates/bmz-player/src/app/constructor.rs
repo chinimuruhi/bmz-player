@@ -148,6 +148,7 @@ impl WinitApp {
                     false,
                     None,
                     false,
+                    false,
                     KeyMode::default(),
                     BTreeMap::new(),
                     &boot.profile_config.display_name,

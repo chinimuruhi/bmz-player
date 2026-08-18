@@ -454,6 +454,7 @@ pub(super) fn lua_runtime_state_for_result(
     table_song: bool,
     ir_name: Option<&str>,
     score_save_enabled: bool,
+    autoplay: bool,
     key_mode: KeyMode,
     mut number_values: BTreeMap<i32, i32>,
     player_name: &str,
@@ -465,6 +466,8 @@ pub(super) fn lua_runtime_state_for_result(
     option_values.insert(51, ir_online);
     option_values.insert(60, !score_save_enabled);
     option_values.insert(61, score_save_enabled);
+    option_values.insert(32, !autoplay);
+    option_values.insert(33, autoplay);
     for option in 160..=164 {
         option_values.insert(option, result_key_mode_option_matches(option, key_mode));
     }
