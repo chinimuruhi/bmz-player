@@ -46,9 +46,8 @@ pub(in crate::skin) fn result_grade_diff_number(state: &SkinDrawState) -> Option
 }
 
 pub(crate) fn result_grade_diff_label(state: &SkinDrawState) -> Option<String> {
-    // The fallback result view chooses NEAREST as its own presentation policy.
-    // ref=154 itself is always the beatoraja-compatible NEXT primitive.
-    nearest_grade_diff(state).map(|diff| diff.label())
+    let facts = score_grade_facts(state)?;
+    Some(format!("{}{:+}", facts.next_label(), facts.next_diff))
 }
 
 pub(in crate::skin) fn grade_diff_score_available(state: &SkinDrawState) -> bool {
@@ -88,10 +87,11 @@ impl ScoreGradeFacts {
         let current_index = borders.iter().rposition(|&border| border <= score)?;
         let next_index = borders.iter().position(|&border| border > score).unwrap_or(8);
         let current_diff = score - borders[current_index];
-        let next_diff = borders[next_index] - score;
-        let nearest_tie = current_index != next_index && current_diff == next_diff;
-        let nearest_index = if current_diff <= next_diff { current_index } else { next_index };
-        let nearest_diff = if nearest_index == current_index { current_diff } else { -next_diff };
+        let next_distance = borders[next_index] - score;
+        let next_diff = -next_distance;
+        let nearest_tie = current_index != next_index && current_diff == next_distance;
+        let nearest_index = if current_diff <= next_distance { current_index } else { next_index };
+        let nearest_diff = if nearest_index == current_index { current_diff } else { next_diff };
 
         Some(Self {
             current_index,
@@ -220,12 +220,6 @@ pub(in crate::skin) fn wmii_next_rank_stage_with_max_minus(
 pub(in crate::skin) struct NearestGradeDiff {
     pub(in crate::skin) grade: &'static str,
     pub(in crate::skin) value: i64,
-}
-
-impl NearestGradeDiff {
-    fn label(self) -> String {
-        format!("{}{:+}", self.grade, self.value)
-    }
 }
 
 pub(in crate::skin) fn nearest_grade_diff(state: &SkinDrawState) -> Option<NearestGradeDiff> {

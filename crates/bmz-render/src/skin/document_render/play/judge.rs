@@ -179,9 +179,8 @@ macro_rules! skin_document_render_play_judge_methods {
                     .value
                     .iter()
                     .find(|value| value.id == number_destination.id)
-                    .is_some_and(|value| {
-                        ref_id_is_signed(value.ref_id) || value_layout_is_signed(value)
-                    }) {
+                    .is_some_and(value_layout_is_signed)
+                {
                     SignedNumberRender::Signed(SignedNumberRowOrder::PositiveFirst)
                 } else {
                     SignedNumberRender::Unsigned
@@ -221,7 +220,7 @@ macro_rules! skin_document_render_play_judge_methods {
             };
             let max_digits = value.digit.max(0) as usize;
             let padding = number_padding(value);
-            let digits = if ref_id_is_signed(value.ref_id) || value_layout_is_signed(value) {
+            let digits = if value_layout_is_signed(value) {
                 display_signed_number_digits(
                     number,
                     max_digits,

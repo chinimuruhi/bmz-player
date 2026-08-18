@@ -437,12 +437,12 @@ fn score_grade_refs_use_exact_official_borders() {
         ..SkinDrawState::default()
     };
 
-    assert_eq!(skin_state_number(154, &state), Some(5));
+    assert_eq!(skin_state_number(154, &state), Some(-5));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &state), Some(1));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &state), Some(2));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST, &state), Some(2));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT_DIFF, &state), Some(17));
-    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT_DIFF, &state), Some(5));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT_DIFF, &state), Some(-5));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF, &state), Some(-5));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST_ABS, &state), Some(5));
     assert!(!test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_CURRENT, &[], &state));
@@ -481,16 +481,26 @@ fn score_grade_refs_use_exact_official_borders() {
 #[test]
 fn score_grade_boundaries_skip_one_ninth_and_advance_when_exact() {
     let below_e = SkinDrawState { ex_score: 2, total_notes: 9, ..SkinDrawState::default() };
-    assert_eq!(skin_state_number(154, &below_e), Some(2));
+    assert_eq!(skin_state_number(154, &below_e), Some(-2));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &below_e), Some(1));
 
     let exact_d = SkinDrawState { ex_score: 68, total_notes: 102, ..SkinDrawState::default() };
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &exact_d), Some(2));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &exact_d), Some(3));
-    assert_eq!(skin_state_number(154, &exact_d), Some(23));
+    assert_eq!(skin_state_number(154, &exact_d), Some(-23));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF, &exact_d), Some(0));
     assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_CURRENT, &[], &exact_d));
     assert!(test_skin_op(SKIN_OPTION_BMZ_SCORE_GRADE_NEAREST_EXACT, &[], &exact_d));
+}
+
+#[test]
+fn score_grade_next_diff_keeps_the_observed_max_minus_value() {
+    let state = SkinDrawState { ex_score: 2996, total_notes: 1670, ..Default::default() };
+
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_CURRENT, &state), Some(7));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT, &state), Some(8));
+    assert_eq!(skin_state_number(154, &state), Some(-344));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_SCORE_GRADE_NEXT_DIFF, &state), Some(-344));
 }
 
 #[test]

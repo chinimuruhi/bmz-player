@@ -10,7 +10,30 @@ pub(in crate::skin) fn destination_ops_match(
     enabled_options: &[i32],
     state: &SkinDrawState,
 ) -> bool {
+    if is_grade_diff_rank_destination(destination, state) {
+        return destination
+            .op
+            .iter()
+            .all(|&op| test_grade_diff_rank_op(destination, op, enabled_options, state));
+    }
     test_skin_ops(&destination.op, enabled_options, state)
+}
+
+fn test_grade_diff_rank_op(
+    destination: &SkinDestinationDef,
+    op: i32,
+    enabled_options: &[i32],
+    state: &SkinDrawState,
+) -> bool {
+    if op < 0 {
+        return op.checked_neg().is_some_and(|positive| {
+            !test_grade_diff_rank_op(destination, positive, enabled_options, state)
+        });
+    }
+    match op {
+        300..=307 => grade_diff_rank_destination_matches(destination, op, state),
+        _ => test_skin_op(op, enabled_options, state),
+    }
 }
 
 pub(in crate::skin) fn test_skin_op(

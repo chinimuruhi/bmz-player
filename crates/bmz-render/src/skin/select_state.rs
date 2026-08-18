@@ -521,3 +521,53 @@ pub(super) fn result_rank_op_matches(op: i32, state: &SkinDrawState) -> bool {
         _ => false,
     }
 }
+
+pub(super) fn is_grade_diff_rank_destination(
+    destination: &SkinDestinationDef,
+    state: &SkinDrawState,
+) -> bool {
+    (state.result_failed.is_some() || state.select_screen)
+        && grade_diff_rank_destination_grade(&destination.id).is_some()
+        && destination.op.iter().any(|op| op.unsigned_abs() >= 300 && op.unsigned_abs() <= 307)
+}
+
+pub(super) fn grade_diff_rank_destination_matches(
+    destination: &SkinDestinationDef,
+    op: i32,
+    state: &SkinDrawState,
+) -> bool {
+    let Some(facts) = score_grade_facts(state) else {
+        return false;
+    };
+    let grade = facts.next_label();
+    grade_diff_rank_destination_grade(&destination.id) == Some(grade)
+        && grade_diff_rank_op(grade).is_some_and(|rank_op| op == rank_op)
+}
+
+fn grade_diff_rank_op(grade: &str) -> Option<i32> {
+    match grade {
+        "MAX" => Some(300),
+        "AAA" => Some(301),
+        "AA" => Some(302),
+        "A" => Some(303),
+        "B" => Some(304),
+        "C" => Some(305),
+        "D" => Some(306),
+        "E" => Some(307),
+        _ => None,
+    }
+}
+
+fn grade_diff_rank_destination_grade(id: &str) -> Option<&'static str> {
+    match id {
+        "RANK_s_MAX" => Some("MAX"),
+        "RANK_s_AAA" => Some("AAA"),
+        "RANK_s_AA" => Some("AA"),
+        "RANK_s_A" => Some("A"),
+        "RANK_s_B" => Some("B"),
+        "RANK_s_C" => Some("C"),
+        "RANK_s_D" => Some("D"),
+        "RANK_s_E" => Some("E"),
+        _ => None,
+    }
+}

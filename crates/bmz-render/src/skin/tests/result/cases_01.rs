@@ -141,7 +141,7 @@ fn result_key_mode_ops_use_result_key_mode() {
 }
 
 #[test]
-fn result_diff_destinations_follow_ops_without_object_id_override() {
+fn grade_diff_destinations_use_the_fixed_next_rank_in_select_and_result() {
     fn destination(id: &str, op: i32) -> SkinDestinationDef {
         SkinDestinationDef {
             id: id.to_string(),
@@ -197,11 +197,24 @@ fn result_diff_destinations_follow_ops_without_object_id_override() {
     assert!(destination_ops_match(&destination("RANK_s_MAX", 300), &[], &state));
     assert!(destination_ops_match(&destination("any_other_id", 300), &[], &state));
     assert!(!destination_ops_match(&destination("RANK_s_AAA", 301), &[], &state));
-    assert_eq!(skin_value_number_for_destination(&grade_diff_value(), &state), Some(100));
+    assert_eq!(skin_value_number_for_destination(&grade_diff_value(), &state), Some(-100));
+
+    let select = SkinDrawState {
+        select_screen: true,
+        select_row_kind: SelectRowKind::Song,
+        select_in_library: true,
+        select_ex_score: Some(1900),
+        select_total_notes: 1000,
+        select_play_count: 1,
+        ..SkinDrawState::default()
+    };
+    assert!(destination_ops_match(&destination("RANK_s_MAX", 300), &[], &select));
+    assert!(!destination_ops_match(&destination("RANK_s_AAA", 301), &[], &select));
+    assert!(destination_ops_match(&destination("any_other_id", 301), &[], &select));
 }
 
 #[test]
-fn next_result_diff_number_renders_positive_without_destination_override() {
+fn next_result_diff_number_uses_the_negative_mimage_row() {
     let document: SkinDocument = serde_json::from_str(
         r#"
             {
@@ -259,7 +272,7 @@ fn next_result_diff_number_renders_positive_without_destination_override() {
         _ => None,
     });
 
-    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.0));
+    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.5));
 }
 
 #[test]

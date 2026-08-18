@@ -763,4 +763,23 @@ fn display_signed_number_digits_uses_sign_cell_and_row_offset() {
     let select_normal = SkinDrawState { select_screen: true, ..Default::default() };
     assert!(value_ref_is_signed_for_state(12, &select_detail));
     assert!(!value_ref_is_signed_for_state(12, &select_normal));
+
+    // mz-select は `MAX-` 等を別textで描き、11セル数値は絶対値だけを使う。
+    let unsigned_next_diff = SkinValueDef {
+        id: "default_playerdata_diff_count".to_string(),
+        divx: 11,
+        divy: 1,
+        digit: 4,
+        ref_id: 154,
+        ..SkinValueDef::default()
+    };
+    assert_eq!(number_padding(&unsigned_next_diff), NumberPadding::Blank);
+    assert_eq!(
+        signed_number_render_for_value(&unsigned_next_diff, &select_normal),
+        SignedNumberRender::Unsigned
+    );
+    assert_eq!(
+        display_number_digits(-344, 4, number_padding(&unsigned_next_diff)),
+        vec![10, 3, 4, 4]
+    );
 }

@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn luxe_flat_nearest_rank_uses_runtime_result_score() {
+fn luxe_flat_nearest_rank_stays_skin_owned_while_the_fallback_uses_next() {
     let state = SkinDrawState {
         ex_score: 2246,
         total_notes: 1261,
@@ -12,7 +12,7 @@ fn luxe_flat_nearest_rank_uses_runtime_result_score() {
         SkinValueDef { value_expr: "bmz:nearest_rank_diff_abs".to_string(), ..Default::default() };
 
     assert_eq!(skin_value_number(&value, &state), Some(4));
-    assert_eq!(result_grade_diff_label(&state), Some("AAA+4".to_string()));
+    assert_eq!(result_grade_diff_label(&state), Some("MAX-276".to_string()));
     assert!(eval_skin_draw_condition("nearest_rank(AAA,plus)", &state));
     assert!(!eval_skin_draw_condition("nearest_rank(MAX,minus)", &state));
 }
