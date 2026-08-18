@@ -203,55 +203,28 @@ pub(super) fn list_course_entries(
     Ok(entries)
 }
 
-/// Links unresolved course entries to a chart that has just been imported.
+/// Resolves course entries related to a chart that has just been imported.
 ///
-/// This follows the same SHA-256-first, MD5-fallback rule as
-/// `resolve_entry_chart_id`.  Existing links are intentionally preserved.
-pub(super) fn backfill_unresolved_course_entries_for_chart(
+/// Existing links remain stable while their file is available.  If the linked
+/// file was moved or removed, the newest existing file with the same SHA-256
+/// (or MD5 fallback) replaces it.
+pub(super) fn refresh_course_entries_for_chart(
     conn: &Connection,
     sha256: &str,
     md5: &str,
 ) -> Result<usize> {
-    let sha256_matches = conn
-        .prepare_cached(
-            "UPDATE course_entries
-             SET chart_id = (
-                 SELECT id
-                 FROM charts
-                 WHERE charts.sha256 = ?1
-                 ORDER BY id
-                 LIMIT 1
-             )
-             WHERE chart_id IS NULL
-               AND sha256 = ?1",
-        )?
-        .execute(params![sha256])?;
+    let entries = course_entries_for_link_repair(
+        conn,
+        "WHERE course_entries.sha256 = ?1 OR course_entries.md5 = ?2",
+        params![sha256, md5],
+    )?;
+    repair_course_entry_rows(conn, entries)
+}
 
-    let md5_matches = conn
-        .prepare_cached(
-            "UPDATE course_entries
-             SET chart_id = COALESCE(
-                 (
-                     SELECT id
-                     FROM charts
-                     WHERE charts.sha256 = course_entries.sha256
-                     ORDER BY id
-                     LIMIT 1
-                 ),
-                 (
-                     SELECT id
-                     FROM charts
-                     WHERE charts.md5 = ?1
-                     ORDER BY id
-                     LIMIT 1
-                 )
-             )
-             WHERE chart_id IS NULL
-               AND md5 = ?1",
-        )?
-        .execute(params![md5])?;
-
-    Ok(sha256_matches + md5_matches)
+/// Repairs stale course links already stored in an existing library database.
+pub(super) fn repair_course_entry_chart_links(conn: &Connection) -> Result<usize> {
+    let entries = course_entries_for_link_repair(conn, "", [])?;
+    repair_course_entry_rows(conn, entries)
 }
 
 fn stored_course_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredCourse> {
@@ -287,31 +260,137 @@ fn stored_course_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredCou
 }
 
 fn resolve_entry_chart_id(conn: &Connection, entry: &CourseEntry) -> Result<Option<i64>> {
-    if let Some(chart_id) = entry.chart_id {
+    if let Some(chart_id) = entry.chart_id
+        && chart_id_has_existing_file(conn, chart_id)?
+    {
         return Ok(Some(chart_id));
     }
     if let Some(sha256) = &entry.sha256 {
-        let chart_id = conn
-            .query_row(
-                "SELECT id FROM charts WHERE sha256 = ?1 ORDER BY id LIMIT 1",
-                params![sha256],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if chart_id.is_some() {
-            return Ok(chart_id);
+        let candidates = chart_candidates_by_hash(conn, "sha256", sha256)?;
+        if let Some(chart_id) = candidates.existing {
+            return Ok(Some(chart_id));
+        }
+        if candidates.latest.is_some() {
+            return Ok(entry.chart_id.or(candidates.latest));
         }
     }
     if let Some(md5) = &entry.md5 {
-        return Ok(conn
-            .query_row(
-                "SELECT id FROM charts WHERE md5 = ?1 ORDER BY id LIMIT 1",
-                params![md5],
-                |row| row.get(0),
-            )
-            .optional()?);
+        let candidates = chart_candidates_by_hash(conn, "md5", md5)?;
+        if let Some(chart_id) = candidates.existing {
+            return Ok(Some(chart_id));
+        }
+        if candidates.latest.is_some() {
+            return Ok(entry.chart_id.or(candidates.latest));
+        }
     }
-    Ok(None)
+    Ok(entry.chart_id)
+}
+
+#[derive(Debug)]
+struct CourseEntryLinkRow {
+    course_id: i64,
+    position: i64,
+    entry: CourseEntry,
+}
+
+fn course_entries_for_link_repair<P>(
+    conn: &Connection,
+    filter: &str,
+    params: P,
+) -> Result<Vec<CourseEntryLinkRow>>
+where
+    P: rusqlite::Params,
+{
+    let sql = format!(
+        "SELECT course_id, position, md5, sha256, title_hint, chart_id
+         FROM course_entries
+         {filter}"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params, |row| {
+        let md5: String = row.get(2)?;
+        let sha256: String = row.get(3)?;
+        Ok(CourseEntryLinkRow {
+            course_id: row.get(0)?,
+            position: row.get(1)?,
+            entry: CourseEntry {
+                md5: non_empty(md5),
+                sha256: non_empty(sha256),
+                title_hint: row.get(4)?,
+                chart_id: row.get(5)?,
+            },
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+fn repair_course_entry_rows(conn: &Connection, entries: Vec<CourseEntryLinkRow>) -> Result<usize> {
+    let mut repaired = 0;
+    let mut update = conn.prepare_cached(
+        "UPDATE course_entries
+         SET chart_id = ?1
+         WHERE course_id = ?2 AND position = ?3",
+    )?;
+    for row in entries {
+        let chart_id = resolve_entry_chart_id(conn, &row.entry)?;
+        if chart_id == row.entry.chart_id {
+            continue;
+        }
+        repaired += update.execute(params![chart_id, row.course_id, row.position])?;
+    }
+    Ok(repaired)
+}
+
+#[derive(Debug, Default)]
+struct ChartHashCandidates {
+    existing: Option<i64>,
+    latest: Option<i64>,
+}
+
+fn chart_candidates_by_hash(
+    conn: &Connection,
+    column: &'static str,
+    hash: &str,
+) -> Result<ChartHashCandidates> {
+    debug_assert!(matches!(column, "sha256" | "md5"));
+    if hash.is_empty() {
+        return Ok(ChartHashCandidates::default());
+    }
+    let sql = format!(
+        "SELECT charts.id, chart_files.path
+         FROM charts
+         LEFT JOIN chart_file_links ON chart_file_links.chart_id = charts.id
+         LEFT JOIN chart_files ON chart_files.id = chart_file_links.chart_file_id
+         WHERE charts.{column} = ?1
+         ORDER BY charts.id DESC, chart_files.path COLLATE NOCASE"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(params![hash])?;
+    let mut candidates = ChartHashCandidates::default();
+    while let Some(row) = rows.next()? {
+        let chart_id: i64 = row.get(0)?;
+        let path: Option<String> = row.get(1)?;
+        candidates.latest.get_or_insert(chart_id);
+        if candidates.existing.is_none()
+            && path.as_deref().is_some_and(|path| std::path::Path::new(path).is_file())
+        {
+            candidates.existing = Some(chart_id);
+        }
+    }
+    Ok(candidates)
+}
+
+fn chart_id_has_existing_file(conn: &Connection, chart_id: i64) -> Result<bool> {
+    let mut stmt = conn.prepare(
+        "SELECT chart_files.path
+         FROM chart_file_links
+         JOIN chart_files ON chart_files.id = chart_file_links.chart_file_id
+         WHERE chart_file_links.chart_id = ?1",
+    )?;
+    let paths = stmt
+        .query_map(params![chart_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(paths.iter().any(|path| std::path::Path::new(path).is_file()))
 }
 
 fn non_empty(value: String) -> Option<String> {

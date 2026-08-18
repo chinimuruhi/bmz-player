@@ -14,6 +14,7 @@ pub fn migrate_library_db(path: &Path) -> Result<()> {
     let mut conn = Connection::open(path)?;
     configure_connection(&conn)?;
     run_migrations(&mut conn, LIBRARY_MIGRATIONS)?;
+    super::course_db::repair_course_entry_chart_links(&conn)?;
     backfill_unknown_chart_document_flags(&mut conn)
 }
 

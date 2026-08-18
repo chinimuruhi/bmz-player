@@ -219,7 +219,7 @@ fn successful_reimport_restores_course_link_after_import_failure() {
 }
 
 #[test]
-fn course_backfill_uses_oldest_duplicate_chart_id() {
+fn course_backfill_uses_latest_duplicate_chart_id() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();
     run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
@@ -245,7 +245,61 @@ fn course_backfill_uses_oldest_duplicate_chart_id() {
         db.upsert_chart_import(&record_for_chart("/songs/second.bms", &chart)).unwrap();
 
     assert!(duplicate_chart_id > oldest_chart_id);
-    assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(oldest_chart_id));
+    assert_eq!(
+        db.list_course_entries(course_id).unwrap()[0].entry.chart_id,
+        Some(duplicate_chart_id)
+    );
+}
+
+#[test]
+fn moved_chart_import_repairs_existing_course_path() {
+    let stamp =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let root =
+        std::env::temp_dir().join(format!("bmz-course-moved-chart-{}-{stamp}", std::process::id()));
+    let old_path = root.join("before/song.bms");
+    let new_path = root.join("after/song.bms");
+    std::fs::create_dir_all(old_path.parent().unwrap()).unwrap();
+    std::fs::write(&old_path, b"#TITLE Moved Course Song\n#BPM 120\n").unwrap();
+
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut db = LibraryDatabase { conn };
+    let chart = chart("moved course song");
+    let old_path_text = old_path.to_string_lossy().into_owned();
+    let old_chart_id = db.upsert_chart_import(&record_for_chart(&old_path_text, &chart)).unwrap();
+    let course = course_with_entries(vec![CourseEntry {
+        title_hint: "Moved course song".to_string(),
+        md5: Some(hash_to_hex(&chart.identity.file_md5)),
+        sha256: Some(hash_to_hex(&chart.identity.file_sha256)),
+        chart_id: None,
+    }]);
+    let course_id = db.upsert_course("table:test", &course, 0, 1).unwrap();
+    assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(old_chart_id));
+
+    std::fs::create_dir_all(new_path.parent().unwrap()).unwrap();
+    std::fs::rename(&old_path, &new_path).unwrap();
+    let new_path_text = new_path.to_string_lossy().into_owned();
+    let new_chart_id = db.upsert_chart_import(&record_for_chart(&new_path_text, &chart)).unwrap();
+
+    assert_ne!(new_chart_id, old_chart_id);
+    assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(new_chart_id));
+    assert_eq!(
+        db.primary_chart_file_path(new_chart_id).unwrap(),
+        Some(library_path_key(&new_path))
+    );
+
+    db.conn()
+        .execute(
+            "UPDATE course_entries SET chart_id = ?1 WHERE course_id = ?2",
+            params![old_chart_id, course_id],
+        )
+        .unwrap();
+    crate::storage::course_db::repair_course_entry_chart_links(db.conn()).unwrap();
+    assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(new_chart_id));
+
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

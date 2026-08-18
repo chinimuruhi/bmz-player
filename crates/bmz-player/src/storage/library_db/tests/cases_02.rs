@@ -452,7 +452,7 @@ fn library_migration_merges_windows_separator_variant_paths() {
         title_hint: "BMSON course entry".to_string(),
         md5: Some(hash_to_hex(&old.identity.file_md5)),
         sha256: Some(hash_to_hex(&old.identity.file_sha256)),
-        chart_id: None,
+        chart_id: Some(old_id),
     }]);
     let course_id = db.upsert_course("table:test", &course, 0, 1).unwrap();
     assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(old_id));
