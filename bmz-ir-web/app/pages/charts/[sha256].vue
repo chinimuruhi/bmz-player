@@ -2,6 +2,7 @@
 import type {
   IrRanking,
   IrRankingEntry,
+  IrRankingScope,
   IrRuleMode,
   IrScoreHistoryResult,
   LnScorePolicy,
@@ -51,6 +52,7 @@ interface ChartDetail {
 
 const route = useRoute()
 const localePath = useLocalePath()
+const { user } = useUserSession()
 const { t } = useI18n()
 const { formatDateTime } = useLocaleFormat()
 const { translateApiError } = useApiError()
@@ -79,6 +81,7 @@ const canLoadChart = computed(() => sha256.value.length === 64)
 
 type LnPolicyFilter = 'ALL' | LnScorePolicy
 type RuleModeFilter = 'ALL' | IrRuleMode
+type RankingScopeFilter = Extract<IrRankingScope, 'global' | 'self_and_rivals'>
 
 const lnPolicy = ref<LnPolicyFilter>('ALL')
 const lnPolicies: LnPolicyFilter[] = [
@@ -92,6 +95,11 @@ const lnPolicies: LnPolicyFilter[] = [
 ]
 const ruleMode = ref<RuleModeFilter>('ALL')
 const ruleModes: RuleModeFilter[] = ['ALL', 'Beatoraja', 'Lr2Oraja', 'Dx']
+const rankingScope = ref<RankingScopeFilter>('global')
+const rankingScopes = computed(() => [
+  { label: t('ranking.global'), value: 'global' as const },
+  ...(user.value ? [{ label: t('ranking.selfAndRivals'), value: 'self_and_rivals' as const }] : []),
+])
 
 const { data: detail, error: detailError } = await useFetch<ChartDetail>(
   () => `/api/v1/charts/${sha256.value}`,
@@ -103,9 +111,9 @@ const {
   error: rankingError,
 } = await useFetch<IrRanking>(() => `/api/v1/charts/${sha256.value}/ranking`, {
   immediate: canLoadChart.value,
-  watch: [sha256, lnPolicy, ruleMode],
+  watch: [sha256, lnPolicy, ruleMode, rankingScope],
   query: computed(() => ({
-    scope: 'global',
+    scope: rankingScope.value,
     ...(lnPolicy.value === 'ALL' ? {} : { ln_policy: lnPolicy.value }),
     ...(ruleMode.value === 'ALL' ? {} : { rule_mode: ruleMode.value }),
   })),
@@ -156,6 +164,10 @@ watch([lnPolicy, ruleMode, sha256], () => {
   } else {
     historyPage.value = 1
   }
+})
+
+watch(user, (currentUser) => {
+  if (!currentUser) rankingScope.value = 'global'
 })
 
 watch(historyPage, () => {
@@ -258,6 +270,10 @@ useSeoMeta({ title: () => detail.value?.chart.title ?? t('chart.title') })
         </div>
 
         <div class="mb-4 flex flex-wrap items-center gap-3">
+          <template v-if="user">
+            {{ t('ranking.scope') }}
+            <USelect v-model="rankingScope" :items="rankingScopes" class="w-48" />
+          </template>
           LN <USelect v-model="lnPolicy" :items="lnPolicies" class="w-40" /> RULE
           <USelect v-model="ruleMode" :items="ruleModes" class="w-40" />
         </div>

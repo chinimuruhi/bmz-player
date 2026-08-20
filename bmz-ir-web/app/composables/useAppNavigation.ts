@@ -36,6 +36,7 @@ export function useAppNavigation() {
             defaultOpen: true,
             children: [
               { label: t('nav.daily'), to: localePath('/daily'), icon: 'i-lucide-calendar-days' },
+              { label: t('nav.rivals'), to: localePath('/rivals'), icon: 'i-lucide-users-round' },
               { label: t('nav.profile'), to: localePath('/profile'), icon: 'i-lucide-user-pen' },
               { label: t('nav.settings'), to: localePath('/settings'), icon: 'i-lucide-settings' },
               {

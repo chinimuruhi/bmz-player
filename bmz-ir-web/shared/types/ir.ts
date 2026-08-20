@@ -420,3 +420,66 @@ export interface IrDailyBestSnapshot {
   ex_score_notes: number | null
   min_bp: number | null
 }
+
+export interface IrRivalProfile {
+  id: string
+  display_name: string
+  bio: string | null
+}
+
+export interface IrRivalEntry {
+  player_id: string
+  relation_type: 'rival'
+  created_at: string
+  profile: IrRivalProfile | null
+}
+
+export interface IrRivalsResponse {
+  rivals: IrRivalEntry[]
+  reverse_rivals: IrRivalEntry[]
+}
+
+export type IrRivalComparisonOutcome = 'win' | 'loss' | 'draw'
+
+export interface IrRivalComparison {
+  players: {
+    self: { id: string; display_name: string }
+    rival: { id: string; display_name: string }
+  }
+  summary: {
+    ex_score: { wins: number; losses: number; draws: number }
+    min_bp: { wins: number; losses: number; draws: number }
+  }
+  comparisons: {
+    chart: {
+      sha256: string
+      md5: string | null
+      title: string
+      subtitle: string | null
+      artist: string | null
+      mode: string
+      level: number | null
+      difficulty: string | null
+    }
+    difficulty_labels: IrDailyDifficultyLabel[]
+    rule: {
+      ln_policy: LnScorePolicy
+      double_option: IrDoubleOption
+      rule_mode: IrRuleMode
+      scoring: string
+    }
+    self: { score_id: string; ex_score: number; min_bp: number }
+    rival: { score_id: string; ex_score: number; min_bp: number }
+    difference: { ex_score: number; min_bp: number }
+    outcome: {
+      ex_score: IrRivalComparisonOutcome
+      min_bp: IrRivalComparisonOutcome
+    }
+  }[]
+  pagination: {
+    limit: number
+    offset: number
+    total: number
+    has_more: boolean
+  }
+}

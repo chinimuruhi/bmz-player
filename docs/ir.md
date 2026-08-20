@@ -29,6 +29,8 @@ GET    /api/v1/charts/{sha256}                 # 詳細 + play_count/clear_count
 GET    /api/v1/charts/{sha256}/ranking         # scope/ln_policy/rule_mode/limit/offset
 GET    /api/v1/rivals
 POST   /api/v1/rivals                          # { target_player_id, action: add|remove }
+DELETE /api/v1/rivals/{player_id}
+GET    /api/v1/rivals/{player_id}/comparison   # BMZ score identity 単位の EX/BP 比較
 GET    /api/v1/players/{id}                    # プロフィール + best scores
 GET    /api/v1/daily                           # player/date/mode=all の日次成果
 POST   /api/v1/admin/difficulty-tables/sync    # 管理者による難易度表の即時同期
@@ -49,7 +51,7 @@ GET    /api/v1/courses/{course_hash}/ranking   # global のみ
 ```
 
 未実装: `PUT /api/v1/charts/{sha256}` (chart upsert は score submit 内で実施)、
-`DELETE /api/v1/rivals/{player_id}` (POST の action=remove で代替)、難易度表の公開管理 API。
+難易度表の公開管理 API。
 
 日次成果は `/daily?player=<id>&date=YYYY-MM-DD&mode=all` で公開し、`player` 省略時は
 ログイン中の本人を対象にする。成果日の切り替わりは profile の
@@ -130,6 +132,9 @@ SHA-256 fallback でラベルを付与する。
 - ターゲット: `TARGET: RIVAL` (TargetOption::Rival) が選曲時の IR ライバル
   ベスト EX をプレイ中ゴースト / リザルト差分に使う。
 - ライバル: `ir rivals` 実行時に `profile.rival.entries` (source=Ir) へ同期。
+- Web: ユーザーページからライバルを登録・解除し、`/rivals` で逆ライバル一覧と
+  `chart_sha256 + ln_policy + double_option + rule_mode + scoring` 単位の EX/BP 比較を表示。
+  譜面ランキングは全体と「自分＋ライバル」を切り替えられる。
 - リプレイ: 送信 payload に hash 申告 → 送信成功後に自動アップロード + 検証。
   `bmz ir replay <SCORE_ID>` でダウンロードし
   `bmz --boot-replay-file <PATH>` で再生。
@@ -1749,6 +1754,7 @@ team_member
 GET    /api/v1/rivals
 POST   /api/v1/rivals
 DELETE /api/v1/rivals/{player_id}
+GET    /api/v1/rivals/{player_id}/comparison
 ```
 
 Response:
@@ -1757,13 +1763,23 @@ Response:
 {
   "rivals": [
     {
-      "id": "pl_01H...",
-      "display_name": "RivalPlayer",
-      "relationship": "rival"
+      "player_id": "pl_01H...",
+      "relation_type": "rival",
+      "created_at": "2026-08-21T00:00:00.000Z",
+      "profile": {
+        "id": "pl_01H...",
+        "display_name": "RivalPlayer",
+        "bio": null
+      }
     }
-  ]
+  ],
+  "reverse_rivals": []
 }
 ```
+
+比較 API は、BMZ の best score identity
+`chart_sha256 + ln_policy + double_option + rule_mode + scoring` が一致する共通譜面だけを対象に、
+EX SCORE と MIN BP の勝敗・差分を返す。
 
 ---
 
