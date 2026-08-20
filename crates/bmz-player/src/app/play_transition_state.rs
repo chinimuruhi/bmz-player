@@ -135,8 +135,7 @@ impl PendingPlayLaneState {
                 HsFixOption::MaxBpm => snapshot.max_bpm,
                 HsFixOption::MainBpm => snapshot.main_bpm,
                 HsFixOption::MinBpm => snapshot.min_bpm,
-            }
-            .max(1.0),
+            },
             hispeed_auto_adjust,
         }
     }
@@ -159,7 +158,7 @@ impl PendingPlayLaneState {
             clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
                 self.target_green_number.max(1) as f32,
                 visible,
-                now_bpm.max(1.0) as f64,
+                now_bpm as f64,
                 1.0,
             ));
     }
@@ -175,8 +174,7 @@ impl PendingPlayLaneState {
             HsFixOption::MaxBpm => snapshot.max_bpm,
             HsFixOption::MainBpm => snapshot.main_bpm,
             HsFixOption::MinBpm => snapshot.min_bpm,
-        }
-        .max(1.0);
+        };
     }
 
     pub(super) fn current_green_number(self, now_bpm: f32) -> u32 {

@@ -370,6 +370,7 @@ fn floating_hispeed_formula_uses_green_number_and_lane_cover() {
     assert_eq!(hispeed_for_green_number_values(300.0, 1.0, 120.0, 1.0), 4.0);
     assert_eq!(hispeed_for_green_number_values(300.0, 0.5, 120.0, 1.0), 2.0);
     assert_eq!(hispeed_for_green_number_values(300.0, 1.0, 240.0, 1.0), 2.0);
+    assert_eq!(hispeed_for_green_number_values(300.0, 1.0, 0.96, 1.0), 500.0);
     assert_eq!(hispeed_for_green_number_values(300.0, 1.0, 120.0, 2.0), 2.0);
     assert!(
         (hispeed_for_green_number_values(295.0, 0.93, 120.0, 1.0) - 3.783_051).abs() < 0.000_01

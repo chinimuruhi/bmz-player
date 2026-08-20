@@ -156,7 +156,7 @@ pub fn apply_placeholder_session_visuals(
         .round()
         .clamp(0.0, i32::MAX as f32) as i32;
 
-    let initial_bpm = snapshot.now_bpm.max(1.0);
+    let initial_bpm = snapshot.now_bpm;
     let max_bpm = snapshot.max_bpm.max(initial_bpm);
     snapshot.adjusted_cover_progress = bmz_render::chart_graph::compute_adjusted_cover_progress(
         snapshot.hidden_enabled,
@@ -662,7 +662,6 @@ pub(super) fn hsfix_base_bpm_for_chart(
             .fold(chart.metadata.initial_bpm, f64::max),
         HsFixOption::MainBpm => main_bpm_for_chart(chart, timing_map),
     }
-    .max(1.0)
 }
 
 pub(super) fn main_bpm_for_chart(
@@ -672,7 +671,7 @@ pub(super) fn main_bpm_for_chart(
     let mut counted = std::collections::HashSet::new();
     let mut counts: Vec<(f64, u32)> = Vec::new();
     for note in chart.lane_notes.iter().flatten() {
-        if note.kind == NoteKind::Mine {
+        if matches!(note.kind, NoteKind::Invisible | NoteKind::Mine) {
             continue;
         }
         counted.insert(note.id);
@@ -721,7 +720,7 @@ pub(super) fn placeholder_hispeed_for_mode(
     clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
         target_green_number as f32,
         visible_max,
-        now_bpm.max(1.0) as f64,
+        now_bpm as f64,
         1.0,
     ))
 }

@@ -29,6 +29,35 @@ fn floating_hispeed_recalculation_uses_hsfix_base_before_chart_start() {
 }
 
 #[test]
+fn floating_hispeed_recalculation_preserves_sub_one_hsfix_base() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.target_green_number = 999;
+    profile.lane.sudden = 950;
+    profile.lane.hispeed_auto_adjust = false;
+    let mut chart = app_test_chart();
+    chart.metadata.initial_bpm = 189.0;
+    chart.timing_events.push(bmz_chart::model::TimingEvent {
+        tick: bmz_core::time::ChartTick(48),
+        time: TimeUs(1_000_000),
+        kind: bmz_chart::model::TimingEventKind::BpmChange { bpm: 0.96 },
+    });
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(chart),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions {
+            hs_fix: HsFixOption::MinBpm,
+            ..Default::default()
+        },
+    );
+
+    reset_floating_hispeed_if_enabled(&mut session, false);
+
+    assert_eq!(session.hsfix_base_bpm, 0.96);
+    assert_eq!(floating_hispeed_target_bpm(&session, TimeUs(0)), 0.96);
+    assert!((session.hispeed - 7.507_51).abs() < 0.000_1, "hispeed={}", session.hispeed);
+}
+
+#[test]
 fn floating_hispeed_recalculation_uses_current_bpm_after_chart_start() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.lane.hispeed_mode = HispeedModeConfig::Floating;

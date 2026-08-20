@@ -209,6 +209,18 @@ fn pending_hispeed_changes_use_displayed_mode_without_mutating_profile() {
 }
 
 #[test]
+fn pending_lane_state_preserves_sub_one_hsfix_bpm() {
+    let mut snapshot =
+        RenderSnapshot { hispeed_mode_index: 1, min_bpm: 0.96, ..Default::default() };
+    let mut lane = PendingPlayLaneState::from_snapshot(&snapshot, 300, HsFixOption::MinBpm, false);
+    assert_eq!(lane.hsfix_base_bpm, 0.96);
+
+    snapshot.min_bpm = 0.5;
+    lane.sync_chart_bpm(&snapshot, HsFixOption::MinBpm);
+    assert_eq!(lane.hsfix_base_bpm, 0.5);
+}
+
+#[test]
 fn pending_green_number_change_switches_displayed_state_to_floating() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut lane = PendingPlayLaneState {

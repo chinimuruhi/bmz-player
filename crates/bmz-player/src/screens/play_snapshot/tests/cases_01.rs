@@ -282,6 +282,10 @@ fn bga_texture_ids_do_not_overlap_beatoraja_skin_ranges() {
 fn display_duration_uses_current_bpm_and_absolute_lane_range() {
     assert_eq!(display_duration_ms_for_bpm_hispeed(120.0, 1.0, 0.0, 0.0, 1.0).round() as i32, 2000);
     assert_eq!(display_duration_ms_for_bpm_hispeed(240.0, 1.0, 0.0, 0.0, 1.0).round() as i32, 1000);
+    assert_eq!(
+        display_duration_ms_for_bpm_hispeed(0.96, 1.0, 0.0, 0.0, 1.0).round() as i32,
+        250_000
+    );
     assert_eq!(display_duration_ms_for_bpm_hispeed(88.0, 2.75, 0.0, 0.0, 1.0).round() as i32, 992);
     assert_eq!(display_duration_ms_for_bpm_hispeed(88.0, 2.75, 0.59, 0.0, 1.0).round() as i32, 407);
     assert_eq!(

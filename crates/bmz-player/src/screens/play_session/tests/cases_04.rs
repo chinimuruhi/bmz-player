@@ -272,6 +272,47 @@ fn main_bpm_uses_bpm_with_most_notes() {
 }
 
 #[test]
+fn main_bpm_ignores_invisible_notes() {
+    let mut bpm_chart = chart();
+    bpm_chart.timing_events.push(bmz_chart::model::TimingEvent {
+        tick: bmz_core::time::ChartTick(48),
+        time: TimeUs(1_000_000),
+        kind: TimingEventKind::BpmChange { bpm: 180.0 },
+    });
+    bpm_chart.lane_notes[Lane::Key1.index()].push(note(1, Lane::Key1, 0));
+    bpm_chart.lane_notes[Lane::Key2.index()].push(note(2, Lane::Key2, 1_100_000));
+    bpm_chart.lane_notes[Lane::Key3.index()].push(note(3, Lane::Key3, 1_200_000));
+    for (id, lane) in [(4, Lane::Key4), (5, Lane::Key5), (6, Lane::Key6), (7, Lane::Key7)] {
+        let mut invisible = note(id, lane, 0);
+        invisible.kind = NoteKind::Invisible;
+        bpm_chart.lane_notes[lane.index()].push(invisible);
+    }
+    let timing_map = bmz_chart::timing::TimingMap::from_chart_timing_events(
+        bpm_chart.metadata.initial_bpm,
+        &bpm_chart.timing_events,
+    );
+
+    assert_eq!(hsfix_base_bpm_for_chart(&bpm_chart, &timing_map, HsFixOption::MainBpm), 180.0);
+}
+
+#[test]
+fn min_bpm_preserves_positive_values_below_one() {
+    let mut bpm_chart = chart();
+    bpm_chart.metadata.initial_bpm = 189.0;
+    bpm_chart.timing_events.push(bmz_chart::model::TimingEvent {
+        tick: bmz_core::time::ChartTick(48),
+        time: TimeUs(1_000_000),
+        kind: TimingEventKind::BpmChange { bpm: 0.96 },
+    });
+    let timing_map = bmz_chart::timing::TimingMap::from_chart_timing_events(
+        bpm_chart.metadata.initial_bpm,
+        &bpm_chart.timing_events,
+    );
+
+    assert_eq!(hsfix_base_bpm_for_chart(&bpm_chart, &timing_map, HsFixOption::MinBpm), 0.96);
+}
+
+#[test]
 fn build_game_session_accepts_custom_input_backend() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut backend = BufferedInputBackend::default();

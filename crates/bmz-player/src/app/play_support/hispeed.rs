@@ -99,12 +99,8 @@ pub(in crate::app) fn hispeed_for_green_number_at_bpm(
         &session.timing_map,
         now,
     );
-    let hispeed = hispeed_for_green_number_values(
-        target_green,
-        visible_max,
-        target_bpm.max(1.0),
-        scroll_multiplier,
-    );
+    let hispeed =
+        hispeed_for_green_number_values(target_green, visible_max, target_bpm, scroll_multiplier);
     clamp_hispeed(hispeed)
 }
 
@@ -113,9 +109,9 @@ pub(in crate::app) fn floating_hispeed_target_bpm(
     now: TimeUs,
 ) -> f64 {
     if session.audio_clock.running && now.0 >= 0 {
-        session.timing_map.bpm_at_time(now).max(1.0)
+        session.timing_map.bpm_at_time(now)
     } else {
-        session.hsfix_base_bpm.max(1.0)
+        session.hsfix_base_bpm
     }
 }
 

@@ -51,8 +51,9 @@ pub(crate) fn display_duration_ms_for_bpm_hispeed(
     if scroll_multiplier <= 0.0 {
         return 0.0;
     }
+    let now_bpm = positive_bpm_or_default(f64::from(now_bpm)) as f32;
     BEATORAJA_DURATION_BPM_FACTOR_MS
-        / now_bpm.max(1.0)
+        / now_bpm
         / hispeed.max(crate::config::play::HISPEED_MIN)
         / scroll_multiplier
         * visible_max
@@ -64,8 +65,13 @@ pub(crate) fn hispeed_for_green_number_values(
     now_bpm: f64,
     scroll_multiplier: f32,
 ) -> f32 {
+    let now_bpm = positive_bpm_or_default(now_bpm) as f32;
     BEATORAJA_DURATION_BPM_FACTOR_MS * visible_max.clamp(0.0, 1.0) * 0.6
-        / (target_green.max(1.0) * now_bpm.max(1.0) as f32 * scroll_multiplier.max(0.01))
+        / (target_green.max(1.0) * now_bpm * scroll_multiplier.max(0.01))
+}
+
+fn positive_bpm_or_default(bpm: f64) -> f64 {
+    if bpm.is_finite() && bpm > 0.0 { bpm } else { 1.0 }
 }
 
 pub(super) fn current_keybound_bga_frame(
