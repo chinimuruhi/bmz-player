@@ -90,7 +90,6 @@ pub(super) struct SelectRuntimeState {
 
 pub(super) struct SelectCourseBuilderState {
     pub(super) definition: bmz_core::course::CourseDefinition,
-    pub(super) key_mode: Option<KeyMode>,
     pub(super) return_folder_stack: Vec<String>,
     pub(super) return_selected_index_stack: Vec<usize>,
     pub(super) return_selected_index: usize,

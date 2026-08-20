@@ -45,36 +45,24 @@ impl CourseEditorDataCache {
 
 impl WinitApp {
     pub(super) fn apply_course_editor_action(&mut self, action: CourseEditorAction) {
-        let result: Result<(String, bool, Option<i64>)> = match action {
+        let result: Result<(String, bool)> = match action {
             CourseEditorAction::Save(definition) => self
                 .save_local_course(&definition)
-                .map(|id| (format!("コースを保存しました (ID {id})"), true, None)),
-            CourseEditorAction::SaveAndTest(definition) => {
-                self.save_local_course(&definition).map(|id| {
-                    (
-                        format!("コースを保存してテストプレイを開始しました (ID {id})"),
-                        true,
-                        Some(id),
-                    )
-                })
-            }
+                .map(|id| (format!("コースを保存しました (ID {id})"), true)),
             CourseEditorAction::Delete(course_id) => {
-                self.delete_local_course(course_id).map(|message| (message, true, None))
+                self.delete_local_course(course_id).map(|message| (message, true))
             }
             CourseEditorAction::Export { path, definition } => {
-                self.export_local_course(path, &definition).map(|message| (message, false, None))
+                self.export_local_course(path, &definition).map(|message| (message, false))
             }
             CourseEditorAction::Import { path } => {
-                self.import_local_courses(path).map(|message| (message, true, None))
+                self.import_local_courses(path).map(|message| (message, true))
             }
         };
         let (message, error) = match result {
-            Ok((message, refresh_select, test_course_id)) => {
+            Ok((message, refresh_select)) => {
                 if refresh_select {
                     self.reload_select_items();
-                }
-                if let Some(course_id) = test_course_id {
-                    self.start_course(course_id);
                 }
                 (message, false)
             }
@@ -94,12 +82,7 @@ impl WinitApp {
     ) -> Result<i64> {
         let mut definition = definition.clone();
         crate::course::normalize_course_definition(&mut definition);
-        if definition.entries.is_empty() {
-            anyhow::bail!("コースには1曲以上必要です");
-        }
-        if definition.entries.iter().any(|entry| entry.chart_id.is_none()) {
-            anyhow::bail!("未解決の譜面が含まれています");
-        }
+        validate_local_course_definition(&definition)?;
         let position =
             self.boot.library_db.list_courses_by_source(LOCAL_COURSE_SOURCE)?.len() as i64;
         self.boot.library_db.upsert_course(
@@ -163,6 +146,19 @@ impl WinitApp {
     }
 }
 
+fn validate_local_course_definition(definition: &bmz_core::course::CourseDefinition) -> Result<()> {
+    if definition.entries.is_empty() {
+        anyhow::bail!("コースには1曲以上必要です");
+    }
+    if definition.entries.len() > crate::course::LOCAL_COURSE_MAX_ENTRIES {
+        anyhow::bail!("コースは最大{}曲です", crate::course::LOCAL_COURSE_MAX_ENTRIES);
+    }
+    if definition.entries.iter().any(|entry| entry.chart_id.is_none()) {
+        anyhow::bail!("未解決の譜面が含まれています");
+    }
+    Ok(())
+}
+
 fn course_editor_unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -173,6 +169,34 @@ fn course_editor_unix_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn course_definition_with_entries(count: usize) -> bmz_core::course::CourseDefinition {
+        bmz_core::course::CourseDefinition {
+            key: "local-course-1".to_string(),
+            title: "Course".to_string(),
+            kind: bmz_core::course::CourseKind::Course,
+            entries: vec![
+                bmz_core::course::CourseEntry {
+                    title_hint: "Chart".to_string(),
+                    md5: None,
+                    sha256: None,
+                    chart_id: Some(1),
+                };
+                count
+            ],
+            constraints: bmz_core::course::CourseConstraints::default(),
+            trophies: Vec::new(),
+            release: false,
+        }
+    }
+
+    #[test]
+    fn local_course_validation_accepts_ten_entries_and_rejects_eleven() {
+        assert!(validate_local_course_definition(&course_definition_with_entries(10)).is_ok());
+        let error =
+            validate_local_course_definition(&course_definition_with_entries(11)).unwrap_err();
+        assert!(error.to_string().contains("最大10曲"));
+    }
 
     #[test]
     fn course_editor_cache_reloads_only_when_needed() {

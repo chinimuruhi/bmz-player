@@ -3,7 +3,8 @@ use std::path::Path;
 use bmz_core::course::{CourseConstraints, CourseDefinition, CourseEntry, CourseKind};
 
 use super::{
-    CourseEditorAction, CourseEditorData, CourseEditorUiState, Localizer, PANEL_VIEWPORT_MARGIN,
+    CourseEditorAction, CourseEditorData, CourseEditorUiState, FluentArgs, Localizer,
+    PANEL_VIEWPORT_MARGIN,
     course_form::{build_course_constraints_editor, build_course_trophy_editor},
 };
 
@@ -41,11 +42,10 @@ pub(super) fn build_course_editor_panel(
             let Some(draft) = state.draft.as_mut() else {
                 return;
             };
-            let is_new = state.selected_course_id.is_none();
             let mut reset_draft = false;
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                build_identity_editor(ui, draft, is_new, text);
+                build_identity_editor(ui, draft, text);
                 ui.separator();
                 build_course_constraints_editor(ui, draft, text, "course_editor");
                 ui.separator();
@@ -56,12 +56,9 @@ pub(super) fn build_course_editor_panel(
 
                 ui.horizontal_wrapped(|ui| {
                     if ui.button(text.text("course-editor-save")).clicked() {
-                        action =
-                            Some(CourseEditorAction::Save(normalize_definition(draft.clone())));
-                    }
-                    if ui.button(text.text("course-editor-test-play")).clicked() {
-                        action = Some(CourseEditorAction::SaveAndTest(normalize_definition(
+                        action = Some(CourseEditorAction::Save(normalize_definition(
                             draft.clone(),
+                            text.text("select-new-course"),
                         )));
                     }
                     let local_selected = state.selected_course_id.is_some_and(|id| {
@@ -92,7 +89,10 @@ pub(super) fn build_course_editor_panel(
                     {
                         action = Some(CourseEditorAction::Export {
                             path,
-                            definition: normalize_definition(draft.clone()),
+                            definition: normalize_definition(
+                                draft.clone(),
+                                text.text("select-new-course"),
+                            ),
                         });
                     }
                     if ui.button(text.text("course-editor-import")).clicked()
@@ -154,7 +154,7 @@ fn build_course_picker(
             });
         if ui.button(text.text("course-editor-new")).clicked() {
             state.selected_course_id = None;
-            state.draft = Some(new_definition(&data.courses));
+            state.draft = Some(new_definition(&data.courses, text.text("select-new-course")));
             state.status.clear();
         }
     });
@@ -166,7 +166,7 @@ fn build_course_picker(
         state.status.clear();
     }
     if state.draft.is_none() {
-        state.draft = Some(new_definition(&data.courses));
+        state.draft = Some(new_definition(&data.courses, text.text("select-new-course")));
     }
 }
 
@@ -179,18 +179,10 @@ fn local_first_courses(
         .chain(courses.iter().filter(|course| course.source != LOCAL_COURSE_SOURCE))
 }
 
-fn build_identity_editor(
-    ui: &mut egui::Ui,
-    draft: &mut CourseDefinition,
-    key_editable: bool,
-    text: Localizer,
-) {
+fn build_identity_editor(ui: &mut egui::Ui, draft: &mut CourseDefinition, text: Localizer) {
     egui::Grid::new("course_editor_identity").num_columns(2).show(ui, |ui| {
         ui.label(text.text("course-editor-name"));
         ui.text_edit_singleline(&mut draft.title);
-        ui.end_row();
-        ui.label(text.text("course-editor-key"));
-        ui.add_enabled(key_editable, egui::TextEdit::singleline(&mut draft.key));
         ui.end_row();
         ui.label(text.text("course-editor-ir-submit"));
         ui.checkbox(&mut draft.release, "");
@@ -205,7 +197,10 @@ fn build_entry_editor(
     data: &CourseEditorData,
     text: Localizer,
 ) {
-    ui.heading(text.text("course-editor-entries"));
+    let mut args = FluentArgs::new();
+    args.set("count", draft.entries.len() as i64);
+    args.set("max", crate::course::LOCAL_COURSE_MAX_ENTRIES as i64);
+    ui.heading(text.format("course-editor-entries", &args));
     let mut move_entry = None;
     let mut remove_entry = None;
     for (index, entry) in draft.entries.iter().enumerate() {
@@ -243,7 +238,13 @@ fn build_entry_editor(
             for index in visible_rows {
                 let chart = &data.charts[index];
                 ui.horizontal(|ui| {
-                    if ui.small_button("+").clicked() {
+                    if ui
+                        .add_enabled(
+                            draft.entries.len() < crate::course::LOCAL_COURSE_MAX_ENTRIES,
+                            egui::Button::new("+"),
+                        )
+                        .clicked()
+                    {
                         draft.entries.push(CourseEntry {
                             title_hint: chart.title.clone(),
                             md5: Some(chart.md5.clone()),
@@ -261,16 +262,16 @@ fn build_entry_editor(
     );
 }
 
-fn new_definition(courses: &[crate::storage::library_db::StoredCourse]) -> CourseDefinition {
-    let key = (1..)
-        .map(|index| format!("local-course-{index}"))
-        .find(|candidate| {
-            courses.iter().all(|course| course.definition.key.as_str() != candidate.as_str())
-        })
-        .expect("course key sequence is finite in practice");
+fn new_definition(
+    courses: &[crate::storage::library_db::StoredCourse],
+    default_title: String,
+) -> CourseDefinition {
+    let key = crate::course::next_local_course_key(
+        courses.iter().map(|course| course.definition.key.as_str()),
+    );
     CourseDefinition {
         key,
-        title: "New Course".to_string(),
+        title: default_title,
         kind: CourseKind::Course,
         entries: Vec::new(),
         constraints: CourseConstraints::default(),
@@ -279,14 +280,13 @@ fn new_definition(courses: &[crate::storage::library_db::StoredCourse]) -> Cours
     }
 }
 
-fn normalize_definition(mut definition: CourseDefinition) -> CourseDefinition {
+fn normalize_definition(
+    mut definition: CourseDefinition,
+    default_title: String,
+) -> CourseDefinition {
     definition.title = definition.title.trim().to_string();
     if definition.title.is_empty() {
-        definition.title = "No Course Title".to_string();
-    }
-    definition.key = definition.key.trim().to_string();
-    if definition.key.is_empty() {
-        definition.key = definition.title.to_ascii_lowercase().replace(' ', "-");
+        definition.title = default_title;
     }
     crate::course::normalize_course_definition(&mut definition);
     definition
@@ -317,11 +317,32 @@ mod tests {
     }
 
     #[test]
-    fn new_course_defaults_to_no_trophies_and_no_ir_submission() {
-        let definition = new_definition(&[]);
+    fn new_course_uses_localized_title_and_automatic_key() {
+        let definition = new_definition(&[], "新規コース".to_string());
 
+        assert_eq!(definition.key, "local-course-1");
+        assert_eq!(definition.title, "新規コース");
         assert!(definition.trophies.is_empty());
         assert!(!definition.release);
+    }
+
+    #[test]
+    fn empty_course_title_uses_localized_default_without_changing_key() {
+        let definition = normalize_definition(
+            CourseDefinition {
+                key: "local-course-7".to_string(),
+                title: "  ".to_string(),
+                kind: CourseKind::Course,
+                entries: Vec::new(),
+                constraints: CourseConstraints::default(),
+                trophies: Vec::new(),
+                release: false,
+            },
+            "新規コース".to_string(),
+        );
+
+        assert_eq!(definition.key, "local-course-7");
+        assert_eq!(definition.title, "新規コース");
     }
 
     #[test]

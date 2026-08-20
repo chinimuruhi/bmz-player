@@ -1,13 +1,11 @@
 use super::*;
 
 const LOCAL_COURSE_SOURCE: &str = "bmz:local";
-pub(super) const SELECT_COURSE_MAX_ENTRIES: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SelectCourseEntryError {
     Full,
     UnknownMode,
-    ModeMismatch { expected: KeyMode, actual: KeyMode },
 }
 
 impl WinitApp {
@@ -26,15 +24,12 @@ impl WinitApp {
                 return;
             }
         };
-        let key =
-            next_local_course_key(courses.iter().map(|course| course.definition.key.as_str()));
+        let key = crate::course::next_local_course_key(
+            courses.iter().map(|course| course.definition.key.as_str()),
+        );
         let text = Localizer::new(self.boot.profile_config.ui.locale());
         let state = SelectCourseBuilderState {
-            definition: new_select_course_definition(
-                key,
-                text.text("select-course-builder-default-name"),
-            ),
-            key_mode: None,
+            definition: new_select_course_definition(key, text.text("select-new-course")),
             return_folder_stack: std::mem::take(&mut self.select.folder_stack),
             return_selected_index_stack: std::mem::take(&mut self.select.selected_index_stack),
             return_selected_index: self.select.selected_index,
@@ -62,16 +57,13 @@ impl WinitApp {
             .as_ref()
             .map(|builder| builder.definition.entries.len())
             .unwrap_or(0);
-        let expected_mode =
-            self.select.course_builder.as_ref().and_then(|builder| builder.key_mode);
         let candidate_mode = KeyMode::from_str_opt(&chart.mode);
-        match validate_select_course_entry(current_len, expected_mode, candidate_mode) {
-            Ok(mode) => {
+        match validate_select_course_entry(current_len, candidate_mode) {
+            Ok(()) => {
                 let entry_count = {
                     let Some(builder) = self.select.course_builder.as_mut() else {
                         return;
                     };
-                    builder.key_mode = Some(mode);
                     builder.definition.entries.push(bmz_core::course::CourseEntry {
                         title_hint: chart.title.clone(),
                         md5: Some(hash_to_hex(&chart.md5)),
@@ -83,7 +75,7 @@ impl WinitApp {
                 let mut args = FluentArgs::new();
                 args.set("title", chart.title.clone());
                 args.set("count", entry_count as i64);
-                args.set("max", SELECT_COURSE_MAX_ENTRIES as i64);
+                args.set("max", crate::course::LOCAL_COURSE_MAX_ENTRIES as i64);
                 self.show_left_overlay_toast(
                     text.format("toast-select-course-builder-added", &args),
                 );
@@ -101,14 +93,6 @@ impl WinitApp {
             Err(SelectCourseEntryError::UnknownMode) => {
                 self.show_left_overlay_toast(text.text("toast-select-course-builder-mode-unknown"));
             }
-            Err(SelectCourseEntryError::ModeMismatch { expected, actual }) => {
-                let mut args = FluentArgs::new();
-                args.set("expected", expected.as_str());
-                args.set("actual", actual.as_str());
-                self.show_left_overlay_toast(
-                    text.format("toast-select-course-builder-mode-mismatch", &args),
-                );
-            }
         }
     }
 
@@ -120,9 +104,14 @@ impl WinitApp {
                 };
                 if index < builder.definition.entries.len() {
                     builder.definition.entries.remove(index);
-                    if builder.definition.entries.is_empty() {
-                        builder.key_mode = None;
-                    }
+                    self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+                }
+            }
+            SelectCourseBuilderAction::Move { from, to } => {
+                let Some(builder) = self.select.course_builder.as_mut() else {
+                    return;
+                };
+                if move_select_course_entry(&mut builder.definition.entries, from, to) {
                     self.play_system_sound(crate::system_sound::SoundType::OptionChange);
                 }
             }
@@ -137,9 +126,6 @@ impl WinitApp {
             return;
         };
         if builder.definition.entries.pop().is_some() {
-            if builder.definition.entries.is_empty() {
-                builder.key_mode = None;
-            }
             self.play_system_sound(crate::system_sound::SoundType::OptionChange);
         }
     }
@@ -168,7 +154,7 @@ impl WinitApp {
         };
         definition.title = definition.title.trim().to_string();
         if definition.title.is_empty() {
-            definition.title = text.text("select-course-builder-default-name");
+            definition.title = text.text("select-new-course");
         }
         match self.save_local_course(&definition) {
             Ok(course_id) => {
@@ -216,27 +202,25 @@ impl WinitApp {
 
 fn validate_select_course_entry(
     entry_count: usize,
-    expected_mode: Option<KeyMode>,
     candidate_mode: Option<KeyMode>,
-) -> Result<KeyMode, SelectCourseEntryError> {
-    if entry_count >= SELECT_COURSE_MAX_ENTRIES {
+) -> Result<(), SelectCourseEntryError> {
+    if entry_count >= crate::course::LOCAL_COURSE_MAX_ENTRIES {
         return Err(SelectCourseEntryError::Full);
     }
-    let candidate_mode = candidate_mode.ok_or(SelectCourseEntryError::UnknownMode)?;
-    if let Some(expected) = expected_mode
-        && expected != candidate_mode
-    {
-        return Err(SelectCourseEntryError::ModeMismatch { expected, actual: candidate_mode });
-    }
-    Ok(candidate_mode)
+    candidate_mode.ok_or(SelectCourseEntryError::UnknownMode)?;
+    Ok(())
 }
 
-fn next_local_course_key<'a>(keys: impl IntoIterator<Item = &'a str>) -> String {
-    let keys: HashSet<&str> = keys.into_iter().collect();
-    (1..)
-        .map(|index| format!("local-course-{index}"))
-        .find(|candidate| !keys.contains(candidate.as_str()))
-        .expect("course key sequence is finite in practice")
+fn move_select_course_entry(
+    entries: &mut [bmz_core::course::CourseEntry],
+    from: usize,
+    to: usize,
+) -> bool {
+    if from >= entries.len() || to >= entries.len() || from == to {
+        return false;
+    }
+    entries.swap(from, to);
+    true
 }
 
 fn new_select_course_definition(key: String, title: String) -> bmz_core::course::CourseDefinition {
@@ -255,18 +239,37 @@ fn new_select_course_definition(key: String, title: String) -> bmz_core::course:
 mod tests {
     use super::*;
 
-    #[test]
-    fn course_builder_accepts_duplicate_charts_until_lr2_limit() {
-        for entry_count in 0..SELECT_COURSE_MAX_ENTRIES {
-            assert_eq!(
-                validate_select_course_entry(entry_count, Some(KeyMode::K7), Some(KeyMode::K7)),
-                Ok(KeyMode::K7)
-            );
+    fn course_entry(title: &str) -> bmz_core::course::CourseEntry {
+        bmz_core::course::CourseEntry {
+            title_hint: title.to_string(),
+            md5: None,
+            sha256: None,
+            chart_id: Some(1),
         }
+    }
+
+    #[test]
+    fn course_builder_moves_entries_within_bounds() {
+        let mut entries = vec![course_entry("A"), course_entry("B"), course_entry("C")];
+
+        assert!(move_select_course_entry(&mut entries, 1, 0));
+        assert_eq!(
+            entries.iter().map(|entry| entry.title_hint.as_str()).collect::<Vec<_>>(),
+            ["B", "A", "C"]
+        );
+        assert!(!move_select_course_entry(&mut entries, 0, 3));
+    }
+
+    #[test]
+    fn course_builder_accepts_mixed_and_duplicate_charts_until_local_limit() {
+        assert_eq!(crate::course::LOCAL_COURSE_MAX_ENTRIES, 10);
+        for entry_count in 0..crate::course::LOCAL_COURSE_MAX_ENTRIES {
+            assert_eq!(validate_select_course_entry(entry_count, Some(KeyMode::K7)), Ok(()));
+        }
+        assert_eq!(validate_select_course_entry(1, Some(KeyMode::K14)), Ok(()));
         assert_eq!(
             validate_select_course_entry(
-                SELECT_COURSE_MAX_ENTRIES,
-                Some(KeyMode::K7),
+                crate::course::LOCAL_COURSE_MAX_ENTRIES,
                 Some(KeyMode::K7),
             ),
             Err(SelectCourseEntryError::Full)
@@ -274,23 +277,8 @@ mod tests {
     }
 
     #[test]
-    fn course_builder_rejects_mixed_or_unknown_key_modes() {
-        assert_eq!(
-            validate_select_course_entry(1, Some(KeyMode::K7), Some(KeyMode::K14)),
-            Err(SelectCourseEntryError::ModeMismatch {
-                expected: KeyMode::K7,
-                actual: KeyMode::K14,
-            })
-        );
-        assert_eq!(
-            validate_select_course_entry(0, None, None),
-            Err(SelectCourseEntryError::UnknownMode)
-        );
-    }
-
-    #[test]
-    fn course_builder_uses_first_available_local_key() {
-        assert_eq!(next_local_course_key(["local-course-1", "local-course-3"]), "local-course-2");
+    fn course_builder_rejects_unknown_key_modes() {
+        assert_eq!(validate_select_course_entry(0, None), Err(SelectCourseEntryError::UnknownMode));
     }
 
     #[test]

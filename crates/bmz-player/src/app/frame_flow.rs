@@ -133,8 +133,6 @@ impl WinitApp {
         let course_result = self.result.finished_course.as_ref();
         let course_preview = self.egui_course_preview(scene_kind);
         let course_editor = &self.course_editor_cache.data;
-        let select_course_builder_key_mode =
-            self.select.course_builder.as_ref().and_then(|builder| builder.key_mode);
         let practice_media_ready = self.practice_media_ready();
         let mut practice_panel_ctx =
             practice_panel_context(self.play.practice_session.as_mut(), practice_media_ready);
@@ -173,8 +171,7 @@ impl WinitApp {
                 select_course_builder: self.select.course_builder.as_mut().map(|builder| {
                     SelectCourseBuilderData {
                         definition: &mut builder.definition,
-                        key_mode: select_course_builder_key_mode,
-                        max_entries: crate::app::select_course_builder::SELECT_COURSE_MAX_ENTRIES,
+                        max_entries: crate::course::LOCAL_COURSE_MAX_ENTRIES,
                     }
                 }),
                 practice: practice_panel_ctx.as_mut(),

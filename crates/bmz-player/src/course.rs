@@ -9,6 +9,8 @@ enum BeatorajaCourseFile {
     Many(Vec<BeatorajaCourse>),
 }
 
+pub(crate) const LOCAL_COURSE_MAX_ENTRIES: usize = 10;
+
 #[derive(Debug, Deserialize)]
 struct BeatorajaCourse {
     #[serde(default)]
@@ -88,6 +90,14 @@ pub fn parse_beatoraja_course_json(source: &str, json: &str) -> Result<Vec<Cours
         .enumerate()
         .map(|(index, course)| convert_beatoraja_course(source, index, course))
         .collect()
+}
+
+pub(crate) fn next_local_course_key<'a>(keys: impl IntoIterator<Item = &'a str>) -> String {
+    let keys = keys.into_iter().collect::<std::collections::HashSet<_>>();
+    (1..)
+        .map(|index| format!("local-course-{index}"))
+        .find(|candidate| !keys.contains(candidate.as_str()))
+        .expect("course key sequence is finite in practice")
 }
 
 pub fn serialize_beatoraja_course_json(courses: &[CourseDefinition]) -> Result<String> {
@@ -247,6 +257,11 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn local_course_key_uses_first_available_sequence_number() {
+        assert_eq!(next_local_course_key(["local-course-1", "local-course-3"]), "local-course-2");
+    }
 
     #[test]
     fn parses_beatoraja_course_array() {

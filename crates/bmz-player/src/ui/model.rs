@@ -299,13 +299,13 @@ pub struct EguiOutput {
 
 pub struct SelectCourseBuilderData<'a> {
     pub definition: &'a mut bmz_core::course::CourseDefinition,
-    pub key_mode: Option<bmz_core::lane::KeyMode>,
     pub max_entries: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectCourseBuilderAction {
     Remove(usize),
+    Move { from: usize, to: usize },
     Undo,
     Save,
     Cancel,
@@ -331,7 +331,6 @@ pub struct CourseEditorChart {
 #[derive(Debug, Clone)]
 pub enum CourseEditorAction {
     Save(bmz_core::course::CourseDefinition),
-    SaveAndTest(bmz_core::course::CourseDefinition),
     Delete(i64),
     Export { path: PathBuf, definition: bmz_core::course::CourseDefinition },
     Import { path: PathBuf },

@@ -20,9 +20,6 @@ pub(super) fn build_select_course_builder_panel(
                 ui.label(text.text("course-editor-name"));
                 ui.text_edit_singleline(&mut data.definition.title);
                 ui.end_row();
-                ui.label(text.text("select-course-builder-mode"));
-                ui.label(data.key_mode.map(bmz_core::lane::KeyMode::as_str).unwrap_or("-"));
-                ui.end_row();
                 ui.label(text.text("course-editor-ir-submit"));
                 ui.checkbox(&mut data.definition.release, "");
                 ui.end_row();
@@ -56,6 +53,20 @@ pub(super) fn build_select_course_builder_panel(
                         ui.horizontal(|ui| {
                             ui.label(format!("{}.", index + 1));
                             ui.label(&entry.title_hint);
+                            if ui.small_button("↑").clicked() && index > 0 {
+                                action = Some(SelectCourseBuilderAction::Move {
+                                    from: index,
+                                    to: index - 1,
+                                });
+                            }
+                            if ui.small_button("↓").clicked()
+                                && index + 1 < data.definition.entries.len()
+                            {
+                                action = Some(SelectCourseBuilderAction::Move {
+                                    from: index,
+                                    to: index + 1,
+                                });
+                            }
                             if ui.small_button("×").clicked() {
                                 action = Some(SelectCourseBuilderAction::Remove(index));
                             }
