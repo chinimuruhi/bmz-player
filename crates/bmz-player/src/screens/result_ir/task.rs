@@ -385,12 +385,16 @@ pub(crate) async fn fetch_ranking(
     query: &ResultIrQuery,
     scope: IrRankingScope,
 ) -> anyhow::Result<IrRankingResult> {
-    let limit = if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+    let limit = result_ranking_limit(&query.provider);
+    fetch_ranking_with_limit(query, scope, limit).await
+}
+
+pub(super) fn result_ranking_limit(provider: &str) -> u32 {
+    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
         crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT
     } else {
-        20
-    };
-    fetch_ranking_with_limit(query, scope, limit).await
+        crate::ir::types::default_ranking_limit()
+    }
 }
 
 pub(crate) async fn fetch_ranking_with_limit(

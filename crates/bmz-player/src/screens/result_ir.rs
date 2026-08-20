@@ -467,8 +467,14 @@ mod tests {
         IrSubmitState, RankingLoadState, ResultIrEvent, ResultIrRanking, ResultIrRankingEntry,
         ResultIrState, ResultIrTarget, ResultIrTaskQuery, ResultRankingTab,
         course_ranking_to_result_ir_ranking, included_global_ranking_for_query,
-        ranking_to_ir_snapshot, result_ir_ranking_to_skin_snapshot_at,
+        ranking_to_ir_snapshot, result_ir_ranking_to_skin_snapshot_at, result_ranking_limit,
     };
+
+    #[test]
+    fn chart_result_ranking_limits_default_to_one_hundred() {
+        assert_eq!(result_ranking_limit("bmz-official"), 100);
+        assert_eq!(result_ranking_limit(crate::ir::rian_ir::RIAN_IR_PROVIDER), 100);
+    }
 
     #[test]
     fn ranking_snapshot_carries_skin_ranking_rows() {

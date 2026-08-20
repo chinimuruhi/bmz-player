@@ -206,6 +206,15 @@ mod tests {
     }
 
     #[test]
+    fn score_submission_requests_the_default_ranking_limit() {
+        let options = default_score_submit_options();
+
+        assert_eq!(options.ranking_scopes, vec![IrRankingScope::Global]);
+        assert_eq!(options.ranking_limit, crate::ir::types::default_ranking_limit());
+        assert_eq!(options.ranking_limit, 100);
+    }
+
+    #[test]
     fn replay_verification_rejects_non_verified_status() {
         assert!(ensure_replay_verified("rejected").is_err());
         assert!(ensure_replay_verified("verified").is_ok());
