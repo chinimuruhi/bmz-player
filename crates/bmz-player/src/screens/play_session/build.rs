@@ -113,10 +113,11 @@ pub fn apply_placeholder_session_visuals(
         / 1_000) as i32;
     snapshot.judge_timing_auto_adjust = profile.judge.visual_offset_auto_adjust;
     let replay_playback = options.replay_player.is_some();
+    snapshot.practice_mode = options.session_mode.is_practice();
     snapshot.autoplay = !replay_playback
+        && !snapshot.practice_mode
         && (options.session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     snapshot.replay_playback = replay_playback;
-    snapshot.practice_mode = options.practice_mode;
     snapshot.assist_flags = options.assist.flags();
     snapshot.assist_extra_note_depth = options.assist.extra_note_depth;
     snapshot.assist_mine_mode = options.assist.mine_mode as i64;
@@ -255,6 +256,7 @@ pub fn build_game_session_with_input_backend(
     let is_replay = replay_player.is_some();
     let is_full_replay = is_replay && replay_lane_mask.is_none();
     let autoplay_enabled = !is_replay
+        && !session_mode.is_practice()
         && (session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     let autoplay = if autoplay_enabled {
         Some(AutoplayController::default())

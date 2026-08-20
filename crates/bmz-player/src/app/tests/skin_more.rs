@@ -121,14 +121,16 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
     assert_eq!(replay.option_values.get(&84), Some(&true));
 
     let practice = lua_runtime_state_for_play(
-        &PlayStartOptions { practice_mode: true, ..PlayStartOptions::default() },
-        false,
+        &PlayStartOptions { session_mode: SessionMode::Practice, ..PlayStartOptions::default() },
+        true,
         KeyMode::K7,
         Some(1234),
         "Player",
         Default::default(),
     );
     assert_eq!(practice.option_values.get(&60), Some(&true));
+    assert_eq!(practice.option_values.get(&32), Some(&true));
+    assert_eq!(practice.option_values.get(&33), Some(&false));
     assert_eq!(practice.option_values.get(&82), Some(&true));
     assert_eq!(practice.option_values.get(&1080), Some(&true));
     assert_eq!(practice.number_values.get(&150), Some(&0));

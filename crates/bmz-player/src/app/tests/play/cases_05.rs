@@ -4,6 +4,7 @@ use crate::app::scene_state::playback_overlay_suffix;
 #[test]
 fn playback_overlay_suffix_distinguishes_all_modes() {
     assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, false), None);
+    assert_eq!(playback_overlay_suffix(SessionMode::Practice, false, false), Some("practice"));
     assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, false), Some("autoplay"));
     assert_eq!(
         playback_overlay_suffix(SessionMode::AutoplayBattle, true, false),
@@ -33,6 +34,20 @@ fn session_mode_profile_migrates_legacy_autoplay_and_persists_autoplay() {
     assert!(profile.play.auto_play);
     let serialized = toml::to_string(&profile).unwrap();
     assert!(serialized.contains(r#"session_mode = "Autoplay""#));
+}
+
+#[test]
+fn session_mode_profile_persists_practice_without_legacy_autoplay() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut options = select_play_options_from_profile(&profile.play);
+    options.session_mode = SessionMode::Practice;
+
+    apply_current_play_options_to_profile(&mut profile, None, None, options, 2);
+
+    assert_eq!(profile.play.session_mode, Some(SessionMode::Practice));
+    assert!(!profile.play.auto_play);
+    let serialized = toml::to_string(&profile).unwrap();
+    assert!(serialized.contains(r#"session_mode = "Practice""#));
 }
 
 #[test]

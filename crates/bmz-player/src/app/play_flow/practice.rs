@@ -76,6 +76,10 @@ impl WinitApp {
     pub(super) fn start_chart(&mut self, chart_id: i64) {
         self.select.autoplay_folder = None;
         let mut options = self.play_start_options();
+        if options.session_mode.is_practice() {
+            self.enter_practice(chart_id, PracticeCliOverrides::default());
+            return;
+        }
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
@@ -183,8 +187,8 @@ impl WinitApp {
         self.clear_active_course_state();
 
         let preload_options = PlayStartOptions {
+            session_mode: SessionMode::Practice,
             autoplay: false,
-            practice_mode: false,
             arrange: ArrangeOption::Normal,
             ..Default::default()
         };
@@ -311,8 +315,8 @@ impl WinitApp {
         let mut session_options = play_session_options_from_start(
             &app_config,
             PlayStartOptions {
+                session_mode: SessionMode::Practice,
                 autoplay: false,
-                practice_mode: true,
                 playback_rate_percent: property.playback_rate_percent,
                 gauge_auto_shift: GaugeAutoShiftConfig::Off,
                 arrange: property.arrange,
@@ -388,8 +392,8 @@ impl WinitApp {
         }
 
         let mut preload_options = PlayStartOptions {
+            session_mode: SessionMode::Practice,
             autoplay: false,
-            practice_mode: false,
             arrange: ArrangeOption::Normal,
             ..Default::default()
         };

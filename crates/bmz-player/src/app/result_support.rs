@@ -492,9 +492,14 @@ pub(super) fn lua_runtime_state_for_play(
     skin_attempt: bmz_render::snapshot::SkinAttemptState,
 ) -> bmz_skin::LuaLoadRuntimeState {
     let replay_playback = options.replay_player.is_some();
-    let autoplay = !replay_playback && (profile_autoplay || options.autoplay);
-    let score_save_enabled =
-        !autoplay && !replay_playback && !options.practice_mode && !options.score_save_disabled;
+    let practice_mode = options.session_mode.is_practice();
+    let autoplay = !replay_playback
+        && !practice_mode
+        && (options.session_mode.primary_autoplay() || profile_autoplay || options.autoplay);
+    let score_save_enabled = options.session_mode.score_save_enabled()
+        && !autoplay
+        && !replay_playback
+        && !options.score_save_disabled;
     let mut option_values = BTreeMap::from([
         (32, !autoplay),
         (33, autoplay),
@@ -502,13 +507,13 @@ pub(super) fn lua_runtime_state_for_play(
         (61, score_save_enabled),
         (82, !autoplay && !replay_playback),
         (84, replay_playback),
-        (1080, options.practice_mode),
+        (1080, practice_mode),
         (bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY, previous_best_ex_score.is_none()),
     ]);
     // beatorajaのPracticePlayerは保存済みベストを読まず、highscoreを0にする。
     // 初回判定optionは実際の保存履歴から独立して保持する。
     let previous_best_ex_score =
-        if options.practice_mode { 0 } else { previous_best_ex_score.unwrap_or(0) };
+        if practice_mode { 0 } else { previous_best_ex_score.unwrap_or(0) };
     let mut number_values = BTreeMap::from([
         (150, i32::try_from(previous_best_ex_score).unwrap_or(i32::MAX)),
         (170, i32::try_from(previous_best_ex_score).unwrap_or(i32::MAX)),

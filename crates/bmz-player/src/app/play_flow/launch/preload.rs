@@ -9,7 +9,7 @@ impl WinitApp {
     }
 
     pub(super) fn apply_rival_play_overrides(&self, chart_id: i64, options: &mut PlayStartOptions) {
-        if options.practice_mode
+        if options.session_mode.is_practice()
             || options.replay_player.is_some()
             || self.play.active_course.is_some()
         {

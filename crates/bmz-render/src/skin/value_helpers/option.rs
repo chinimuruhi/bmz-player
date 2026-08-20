@@ -256,6 +256,7 @@ pub(super) fn select_session_mode_index(assist: &str) -> usize {
         "AUTOPLAY" => 1,
         "AUTOPLAY BATTLE" => 2,
         "GHOST BATTLE" => 3,
+        "PRACTICE" => 4,
         _ => 0,
     }
 }

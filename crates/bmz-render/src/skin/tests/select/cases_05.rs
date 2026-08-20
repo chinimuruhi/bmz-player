@@ -142,8 +142,13 @@ fn select_hs_fix_index_maps_beatoraja_order() {
 
 #[test]
 fn select_session_mode_keeps_legacy_assist_binary_and_exposes_exact_bmz_index() {
-    let cases =
-        [("NORMAL", 0, 0), ("AUTOPLAY", 1, 1), ("AUTOPLAY BATTLE", 1, 2), ("GHOST BATTLE", 0, 3)];
+    let cases = [
+        ("NORMAL", 0, 0),
+        ("AUTOPLAY", 1, 1),
+        ("AUTOPLAY BATTLE", 1, 2),
+        ("GHOST BATTLE", 0, 3),
+        ("PRACTICE", 0, 4),
+    ];
 
     for (mode, assist_index, session_mode_index) in cases {
         assert_eq!(select_assist_index(mode), assist_index);

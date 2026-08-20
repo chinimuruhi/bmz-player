@@ -100,10 +100,10 @@ pub struct PlaySessionOptions {
     /// Per-key presentation settings use the source chart mode. This differs
     /// from `chart.metadata.key_mode` after BATTLE expands 5K/7K to 10K/14K.
     pub play_config_key_mode: Option<KeyMode>,
+    /// The authoritative launch mode. Practice-specific runtime state is
+    /// derived from this value instead of being configured independently.
     pub session_mode: SessionMode,
     pub autoplay: bool,
-    /// Practice section play: no score / replay persistence (like autoplay).
-    pub practice_mode: bool,
     /// Convert a source 7K chart into BMZ's scratch-less 6K mode before
     /// applying the normal arrange option.
     pub seven_to_six: bool,
@@ -326,7 +326,6 @@ impl Default for PlaySessionOptions {
             play_config_key_mode: None,
             session_mode: SessionMode::Normal,
             autoplay: false,
-            practice_mode: false,
             seven_to_six: false,
             score_save_disabled: false,
             playback_rate_percent: 100,

@@ -377,6 +377,7 @@ impl WinitApp {
                     let mode = pending.options.session_mode;
                     let replay_playback = pending.options.replay_player.is_some();
                     let autoplay = !replay_playback
+                        && !mode.is_practice()
                         && (mode.primary_autoplay()
                             || pending.options.autoplay
                             || self.boot.profile_config.play.auto_play);
@@ -527,6 +528,7 @@ pub(super) const fn playback_overlay_suffix(
     match mode {
         SessionMode::Normal if autoplay => Some("autoplay"),
         SessionMode::Normal => None,
+        SessionMode::Practice => Some("practice"),
         SessionMode::Autoplay => Some("autoplay"),
         SessionMode::AutoplayBattle => Some("auto battle"),
     }

@@ -163,7 +163,6 @@ pub fn preload_play_session_for_chart_with_callbacks(
         let mut opponent_options = options.clone();
         opponent_options.session_mode = SessionMode::Normal;
         opponent_options.autoplay = false;
-        opponent_options.practice_mode = false;
         opponent_options.seven_to_six = false;
         opponent_options.score_save_disabled = true;
         opponent_options.assist = AssistOptionConfig::default();
@@ -559,7 +558,7 @@ pub fn build_practice_prepared_from_preloaded(
     );
     applied_arrange.double_option = double_option;
     applied_arrange.seven_to_six = preloaded.applied_arrange.seven_to_six;
-    options.practice_mode = true;
+    options.session_mode = SessionMode::Practice;
     options.assist_runtime = preloaded.assist_runtime;
     options.autoplay = false;
     options.replay_player = None;
@@ -575,7 +574,7 @@ pub fn build_practice_prepared_from_preloaded(
     options.double_option = double_option;
     options.playback_rate_percent = property.playback_rate_percent;
     let target = TargetOption::None.as_string();
-    let practice_mode = options.practice_mode;
+    let practice_mode = options.session_mode.is_practice();
     options.score_save_disabled |= preloaded.score_save_disabled;
     let score_save_disabled = options.score_save_disabled;
     let playback_rate_percent = options.playback_rate_percent;
@@ -586,6 +585,8 @@ pub fn build_practice_prepared_from_preloaded(
     let render_snapshot_cache =
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&session.chart);
     let mut skin_attempt = preloaded.skin_attempt;
+    skin_attempt.session_mode_index =
+        Some(crate::skin_extension::session_mode_index(SessionMode::Practice, false));
     skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
     skin_attempt.double_option_index =
         Some(crate::skin_extension::double_option_index(applied_arrange.double_option));
@@ -633,7 +634,7 @@ pub fn build_prepared_play_session_from_preloaded(
         .as_ref()
         .map(|target| target.name.clone())
         .unwrap_or_else(|| options.target.as_string());
-    let practice_mode = options.practice_mode;
+    let practice_mode = options.session_mode.is_practice();
     let score_save_disabled = options.score_save_disabled;
     let playback_rate_percent = options.playback_rate_percent;
     options.opponent_chart = preloaded.opponent_chart;

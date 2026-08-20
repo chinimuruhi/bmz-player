@@ -109,8 +109,6 @@ impl BattleTargetPlayback {
 pub struct PlayStartOptions {
     pub session_mode: SessionMode,
     pub autoplay: bool,
-    /// Practice mode: section play without result DB update.
-    pub practice_mode: bool,
     pub seven_to_six: bool,
     pub score_save_disabled: bool,
     pub playback_rate_percent: u16,
@@ -232,7 +230,6 @@ pub fn play_session_options_from_start(
         play_config_key_mode: None,
         session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
-        practice_mode: start_options.practice_mode,
         seven_to_six: start_options.seven_to_six,
         score_save_disabled: start_options.score_save_disabled,
         playback_rate_percent: bmz_audio::clock::clamp_playback_rate_percent(

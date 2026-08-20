@@ -133,7 +133,6 @@ impl WinitApp {
         let options = PlayStartOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
-            practice_mode: false,
             seven_to_six: false,
             score_save_disabled: false,
             playback_rate_percent: 100,
@@ -253,7 +252,6 @@ impl WinitApp {
         let options = PlayStartOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
-            practice_mode: false,
             seven_to_six: false,
             score_save_disabled: false,
             playback_rate_percent: 100,

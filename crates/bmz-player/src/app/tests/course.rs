@@ -574,6 +574,12 @@ fn course_normalizes_battle_session_modes() {
     assert_eq!(autoplay_battle.session_mode, SessionMode::Autoplay);
     assert!(autoplay_battle.autoplay);
     assert!(autoplay_battle.replay_player.is_none());
+
+    let mut practice =
+        PlayStartOptions { session_mode: SessionMode::Practice, ..PlayStartOptions::default() };
+    normalize_session_mode_for_course(&mut practice);
+    assert_eq!(practice.session_mode, SessionMode::Normal);
+    assert!(!practice.autoplay);
 }
 
 #[test]

@@ -86,7 +86,7 @@ pub const SKIN_OPTION_BMZ_IR_SCOPE_RIVAL_SUPPORTED: i32 = 1968;
 /// BMZ extension: number of players in the displayed IR scope.
 pub const SKIN_REF_BMZ_IR_SCOPE_TOTAL: i32 = 1969;
 /// BMZ extension: select session mode (`0=NORMAL`, `1=AUTOPLAY`,
-/// `2=AUTO BATTLE`, `3=BATTLE`).
+/// `2=AUTO BATTLE`, `3=BATTLE`, `4=PRACTICE`).
 pub const SKIN_REF_BMZ_SELECT_SESSION_MODE: i32 = 1970;
 /// Deprecated BMZ extension: the removed grade difference display setting.
 ///

@@ -324,7 +324,10 @@ fn placeholder_session_visuals_expose_score_save_and_play_modes() {
             false,
         ),
         (
-            PlaySessionOptions { practice_mode: true, ..PlaySessionOptions::default() },
+            PlaySessionOptions {
+                session_mode: SessionMode::Practice,
+                ..PlaySessionOptions::default()
+            },
             false,
             false,
             true,
@@ -364,6 +367,23 @@ fn placeholder_session_visuals_expose_score_save_and_play_modes() {
     );
     assert!(!battle_snapshot.replay_playback);
     assert!(battle_snapshot.score_save_enabled);
+}
+
+#[test]
+fn practice_session_disables_legacy_profile_autoplay() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.auto_play = true;
+    let options =
+        PlaySessionOptions { session_mode: SessionMode::Practice, ..PlaySessionOptions::default() };
+    let mut snapshot = bmz_render::snapshot::RenderSnapshot::default();
+
+    apply_placeholder_session_visuals(&mut snapshot, &profile, KeyMode::K7, &options);
+    let session = build_game_session(Arc::new(chart()), &profile, options);
+
+    assert!(snapshot.practice_mode);
+    assert!(!snapshot.autoplay);
+    assert!(!snapshot.score_save_enabled);
+    assert!(session.autoplay.is_none());
 }
 
 #[test]

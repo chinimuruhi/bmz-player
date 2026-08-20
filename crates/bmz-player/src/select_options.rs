@@ -272,6 +272,7 @@ pub enum SessionMode {
     #[default]
     #[serde(alias = "GhostBattle")]
     Normal,
+    Practice,
     Autoplay,
     AutoplayBattle,
 }
@@ -545,9 +546,13 @@ mod tests {
 
     #[test]
     fn session_mode_cycles_in_select_order() {
-        assert_eq!(SessionMode::Normal.cycle(), SessionMode::Autoplay);
+        assert_eq!(SessionMode::Normal.cycle(), SessionMode::Practice);
+        assert_eq!(SessionMode::Practice.cycle(), SessionMode::Autoplay);
         assert_eq!(SessionMode::Autoplay.cycle(), SessionMode::AutoplayBattle);
         assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::Normal);
+        assert!(SessionMode::Practice.is_practice());
+        assert!(!SessionMode::Practice.primary_autoplay());
+        assert!(!SessionMode::Practice.score_save_enabled());
         assert!(SessionMode::AutoplayBattle.primary_autoplay());
         assert!(!SessionMode::AutoplayBattle.score_save_enabled());
     }
@@ -565,11 +570,13 @@ mod tests {
 }
 
 impl SessionMode {
-    pub const VALUES: [Self; 3] = [Self::Normal, Self::Autoplay, Self::AutoplayBattle];
+    pub const VALUES: [Self; 4] =
+        [Self::Normal, Self::Practice, Self::Autoplay, Self::AutoplayBattle];
 
     pub fn cycle(self) -> Self {
         match self {
-            Self::Normal => Self::Autoplay,
+            Self::Normal => Self::Practice,
+            Self::Practice => Self::Autoplay,
             Self::Autoplay => Self::AutoplayBattle,
             Self::AutoplayBattle => Self::Normal,
         }
@@ -578,9 +585,14 @@ impl SessionMode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Normal => "NORMAL",
+            Self::Practice => "PRACTICE",
             Self::Autoplay => "AUTOPLAY",
             Self::AutoplayBattle => "AUTOPLAY BATTLE",
         }
+    }
+
+    pub const fn is_practice(self) -> bool {
+        matches!(self, Self::Practice)
     }
 
     pub const fn primary_autoplay(self) -> bool {

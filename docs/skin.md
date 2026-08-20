@@ -127,9 +127,9 @@ beatoraja 互換の assist `ref` / `event_index` `73` は従来どおり 2 値�
 `NORMAL` は `0`、`AUTOPLAY` / `AUTOPLAY BATTLE` は `1` とし、
 既存 skin の 2 行 option panel を崩さない。
 
-BMZ 対応 skin で4種類を区別する場合は、BMZ 拡張 ref `1970` を使う。
+BMZ 対応 skin で5種類を区別する場合は、BMZ 拡張 ref `1970` を使う。
 `number(1970)` / `event_index(1970)` は `0=NORMAL`, `1=AUTOPLAY`,
-`2=AUTO BATTLE`, `3=BATTLE` を返す。BMZ デフォルトスキンの play mode panel も
+`2=AUTO BATTLE`, `3=BATTLE`, `4=PRACTICE` を返す。BMZ デフォルトスキンの play mode panel も
 この ref を使用する。Selectではこれから開始するモード、Decide / Play / Resultでは
 試行開始時に固定したモードを返す。G-BATTLEは`SessionMode::Normal`とは独立しているが、
 skin上では`3=BATTLE`として公開する。

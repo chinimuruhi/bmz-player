@@ -162,14 +162,14 @@ SESSION MODEが`NORMAL`なら通常スキンを使います。`AUTOPLAY BATTLE`�
 | KEY4 | 戻る / 閉じる（120ms長押しでG-BATTLE相手選択） | GAUGE 前 | LEGACY NOTE 切替 | GREEN NUMBER -1 |
 | KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | MARK NOTE 切替 | VISUAL OFFSET -1 ms |
 | KEY6 | 戻る / 閉じる | DP OPTION 次 | BPM GUIDE 切替 | GREEN NUMBER +1 |
-| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → AUTOPLAY → AUTOPLAY BATTLE） | NO MINE 切替 | VISUAL OFFSET +1 ms |
+| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → PRACTICE → AUTOPLAY → AUTOPLAY BATTLE） | NO MINE 切替 | VISUAL OFFSET +1 ms |
 | 2P KEY1 | 決定 / 開く / 曲開始 | 2P RANDOM 次 | - | BGA 切替 |
 | 2P KEY2 | 戻る / 閉じる | 2P RANDOM 前 | - | GAUGE AUTO SHIFT 切替 |
 | 2P KEY3 | 決定 / 開く / 曲開始 | GAUGE 次 | - | JUDGE AUTO ADJUST 切替 |
 | 2P KEY4 | 戻る / 閉じる | GAUGE 前 | - | GREEN NUMBER -1 |
 | 2P KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | - | VISUAL OFFSET -1 ms |
 | 2P KEY6 | 戻る / 閉じる | DP OPTION 次 | - | GREEN NUMBER +1 |
-| 2P KEY7 | 決定 / 開く / 曲開始 | AUTOPLAY 切替 | - | VISUAL OFFSET +1 ms |
+| 2P KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次 | - | VISUAL OFFSET +1 ms |
 | Scratch Up | カーソル上 | TARGET 前 | - | - |
 | Scratch Down | カーソル下 | TARGET 次 | - | - |
 | Up / Down | カーソル移動 | TARGET 前 / 次 | - | - |
@@ -184,7 +184,7 @@ SESSION MODEが`NORMAL`なら通常スキンを使います。`AUTOPLAY BATTLE`�
 | KEY4 | カーソル下（120ms長押しでG-BATTLE相手選択） | GAUGE 前 | LEGACY NOTE 切替 | GREEN NUMBER -1 |
 | KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | MARK NOTE 切替 | VISUAL OFFSET -1 ms |
 | KEY6 | カーソル上 | DP OPTION 次 | BPM GUIDE 切替 | GREEN NUMBER +1 |
-| KEY7 | 決定 / 開く / 曲開始 | AUTOPLAY 切替 | NO MINE 切替 | VISUAL OFFSET +1 ms |
+| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次 | NO MINE 切替 | VISUAL OFFSET +1 ms |
 | KEY8 | - | TARGET 前 | - | - |
 | KEY9 | - | TARGET 次 | - | - |
 | Up / Down | カーソル移動 | TARGET 前 / 次 | - | - |
@@ -202,7 +202,8 @@ SESSION MODEが`NORMAL`なら通常スキンを使います。`AUTOPLAY BATTLE`�
 
 ### プラクティス設定
 
-選曲スキンのPRACTICE操作、または譜面PATHと`--practice`を指定した起動で開きます。
+選曲画面で SESSION MODE を PRACTICE にして曲を決定するか、選曲スキンのPRACTICE操作、
+または譜面PATHと`--practice`を指定した起動で開きます。コースではPRACTICEはNORMALとして扱います。
 開始・終了位置、ゲージ種別/カテゴリ/初期値、判定ランク、TOTAL、50–200%の再生速度、
 グラフ種別、1P/2P配置、DP FLIPを設定できます。設定値は譜面SHA-256単位で保存され、
 区間プレイ後は直前の判定グラフを表示して設定画面へ戻ります。
