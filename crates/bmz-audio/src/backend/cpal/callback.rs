@@ -140,6 +140,73 @@ where
         .map_err(CpalBackendError::BuildStream)
 }
 
+/// Transport-neutral owner for the real-time mixer state used by native output backends.
+///
+/// CPAL normally owns this state inside its data callback. WASAPI exclusive mode has to service
+/// endpoint buffers itself, so it moves the same state onto its dedicated worker thread.
+pub(crate) struct NativeOutputRenderer {
+    channel_offset: usize,
+    output_commands: SharedOutputCommands,
+    retired_sources: RetiredOutputSources,
+    current_frame: Arc<AtomicU64>,
+    diagnostics: Arc<CpalOutputDiagnosticsCounters>,
+    buffers: OutputRenderBuffers,
+}
+
+impl NativeOutputRenderer {
+    pub(super) fn new(
+        channel_offset: usize,
+        output_commands: SharedOutputCommands,
+        retired_sources: RetiredOutputSources,
+        current_frame: Arc<AtomicU64>,
+        diagnostics: Arc<CpalOutputDiagnosticsCounters>,
+    ) -> Self {
+        Self {
+            channel_offset,
+            output_commands,
+            retired_sources,
+            current_frame,
+            diagnostics,
+            buffers: OutputRenderBuffers {
+                mix: vec![0.0; OUTPUT_SCRATCH_INITIAL_FRAMES * 2],
+                source_scratch: vec![0.0; OUTPUT_SCRATCH_INITIAL_FRAMES * 2],
+                render_sources: Vec::with_capacity(OUTPUT_SOURCE_INITIAL_CAPACITY),
+                source_command_scratch: Vec::with_capacity(OUTPUT_COMMAND_QUEUE_CAPACITY),
+            },
+        }
+    }
+
+    pub(crate) fn render<T: OutputSample>(&mut self, data: &mut [T], channels: usize) {
+        let callback_start = Instant::now();
+        self.diagnostics.callback_count.fetch_add(1, Ordering::Relaxed);
+        if channels == 0 {
+            data.fill(T::from_f32(0.0));
+            self.diagnostics.observe_callback_duration(callback_start);
+            return;
+        }
+
+        let frames = data.len() / channels;
+        let start_frame = self.current_frame.load(Ordering::Relaxed);
+        render_output(
+            data,
+            OutputRenderLayout { channels, channel_offset: self.channel_offset, start_frame },
+            OutputRenderSources {
+                output_commands: &self.output_commands,
+                retired_sources: &self.retired_sources,
+            },
+            &mut self.buffers,
+            &self.diagnostics,
+        );
+        self.diagnostics.rendered_frames.fetch_add(frames as u64, Ordering::Relaxed);
+        self.current_frame.store(start_frame.saturating_add(frames as u64), Ordering::Relaxed);
+        self.diagnostics.observe_callback_duration(callback_start);
+    }
+
+    pub(crate) fn record_stream_error(&self) {
+        self.diagnostics.stream_error_count.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
 pub(super) fn device_name(device: &::cpal::Device) -> String {
     device
         .description()
@@ -490,7 +557,7 @@ impl AtomicMaxU64 for AtomicU32 {
     }
 }
 
-pub(super) trait OutputSample: Copy {
+pub(crate) trait OutputSample: Copy {
     fn from_f32(value: f32) -> Self;
 }
 

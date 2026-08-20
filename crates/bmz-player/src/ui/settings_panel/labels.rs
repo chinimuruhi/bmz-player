@@ -29,6 +29,7 @@ pub(in crate::ui) fn audio_output_mode_label(mode: &AudioOutputMode, text: Local
         AudioOutputMode::SharedLowLatency => {
             tr!(text, "settings-audio-output-mode-low-latency")
         }
+        AudioOutputMode::Exclusive => tr!(text, "settings-audio-output-mode-exclusive"),
     }
 }
 

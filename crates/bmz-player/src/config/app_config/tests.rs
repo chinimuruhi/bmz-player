@@ -161,15 +161,36 @@ fn app_config_round_trips_low_latency_shared_audio_mode() {
 }
 
 #[test]
-fn legacy_exclusive_flag_does_not_enable_low_latency_shared_mode() {
+fn app_config_round_trips_exclusive_audio_mode() {
+    let mut config = AppConfig::default();
+    config.audio.output_mode = AudioOutputMode::Exclusive;
+
+    let toml = toml::to_string(&config).unwrap();
+    let loaded: AppConfig = toml::from_str(&toml).unwrap();
+
+    assert_eq!(loaded.audio.output_mode, AudioOutputMode::Exclusive);
+}
+
+#[test]
+fn legacy_exclusive_flag_migrates_to_exclusive_output_mode() {
     let toml = toml::to_string(&AppConfig::default())
         .unwrap()
-        .replace("output_mode = \"Shared\"\n", "")
-        .replace("exclusive_mode = false", "exclusive_mode = true");
+        .replace("output_mode = \"Shared\"\n", "exclusive_mode = true\n");
 
     let config: AppConfig = toml::from_str(&toml).unwrap();
 
-    assert!(config.audio.exclusive_mode);
+    assert_eq!(config.audio.output_mode, AudioOutputMode::Exclusive);
+    assert!(!toml::to_string(&config).unwrap().contains("exclusive_mode"));
+}
+
+#[test]
+fn explicit_output_mode_takes_priority_over_legacy_exclusive_flag() {
+    let toml = toml::to_string(&AppConfig::default())
+        .unwrap()
+        .replace("output_mode = \"Shared\"", "output_mode = \"Shared\"\nexclusive_mode = true");
+
+    let config: AppConfig = toml::from_str(&toml).unwrap();
+
     assert_eq!(config.audio.output_mode, AudioOutputMode::Shared);
 }
 

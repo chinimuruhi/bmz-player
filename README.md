@@ -137,7 +137,7 @@ cargo run
 - [ ] rec mode (譜面動画作成モード)
 - [ ] practice mode
 - [ ] Arena Mode
-- [ ] WASAPI exclusive
+- [x] WASAPI exclusive
 - [ ] ギミック系BMSへの対応
 - [ ] non stop mode
 

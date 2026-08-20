@@ -83,9 +83,10 @@ pub struct ScanConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "AudioConfigWire")]
 pub struct AudioConfig {
     pub backend: AudioBackend,
-    /// OS の通常共有出力、または Windows 10 以降の IAudioClient3 低遅延共有出力。
+    /// OS の通常共有出力、Windows の IAudioClient3 低遅延共有出力、または WASAPI 排他出力。
     #[serde(default)]
     pub output_mode: AudioOutputMode,
     pub output_device: String,
@@ -96,15 +97,50 @@ pub struct AudioConfig {
     pub sample_rate_mode: AudioSampleRateMode,
     pub buffer_size_mode: AudioBufferSizeMode,
     pub buffer_size: u32,
-    /// 将来の WASAPI 排他モード用に旧設定を保持する。低遅延共有モードとは独立。
-    #[serde(default)]
-    pub exclusive_mode: bool,
     pub asio_driver: String,
     /// 出力するステレオチャンネルペア(0 始まり)。0 = 1-2ch, 1 = 3-4ch, 2 = 5-6ch …。
     /// Babyface など多チャンネル出力デバイスで出力先ペアを選ぶ。デバイスの
     /// チャンネル数を超える指定はストリーム生成時にクランプされる。
     #[serde(default)]
     pub output_channel_pair: u32,
+}
+
+/// `exclusive_mode` は output mode 導入前の設定との読み込み互換にだけ使用する。
+#[derive(Deserialize)]
+struct AudioConfigWire {
+    backend: AudioBackend,
+    #[serde(default)]
+    output_mode: Option<AudioOutputMode>,
+    output_device: String,
+    sample_rate: u32,
+    #[serde(default)]
+    sample_rate_mode: AudioSampleRateMode,
+    buffer_size_mode: AudioBufferSizeMode,
+    buffer_size: u32,
+    #[serde(default)]
+    exclusive_mode: bool,
+    asio_driver: String,
+    #[serde(default)]
+    output_channel_pair: u32,
+}
+
+impl From<AudioConfigWire> for AudioConfig {
+    fn from(value: AudioConfigWire) -> Self {
+        let output_mode = value.output_mode.unwrap_or({
+            if value.exclusive_mode { AudioOutputMode::Exclusive } else { AudioOutputMode::Shared }
+        });
+        Self {
+            backend: value.backend,
+            output_mode,
+            output_device: value.output_device,
+            sample_rate: value.sample_rate,
+            sample_rate_mode: value.sample_rate_mode,
+            buffer_size_mode: value.buffer_size_mode,
+            buffer_size: value.buffer_size,
+            asio_driver: value.asio_driver,
+            output_channel_pair: value.output_channel_pair,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -125,6 +161,7 @@ pub enum AudioOutputMode {
     #[default]
     Shared,
     SharedLowLatency,
+    Exclusive,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -585,7 +622,6 @@ impl Default for AppConfig {
                 sample_rate_mode: AudioSampleRateMode::Auto,
                 buffer_size_mode: AudioBufferSizeMode::Fixed,
                 buffer_size: 256,
-                exclusive_mode: false,
                 asio_driver: String::new(),
                 output_channel_pair: 0,
             },

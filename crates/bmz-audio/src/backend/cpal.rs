@@ -10,12 +10,12 @@ use bmz_core::time::TimeUs;
 use thiserror::Error;
 
 #[cfg(windows)]
-use crate::backend::wasapi::WasapiSharedPeriodGuard;
+use crate::backend::wasapi::{WasapiExclusiveOutput, WasapiSharedPeriodGuard};
 use crate::clock::AudioClock;
 use crate::command::{AudioEngineHandle, CommandedAudioEngine};
 use crate::engine::AudioEngine;
 
-mod callback;
+pub(crate) mod callback;
 mod device;
 mod source;
 
@@ -67,6 +67,9 @@ pub struct CpalOutputConfig {
     /// Windows の WASAPI 共有モードで `IAudioClient3` の低遅延エンジン周期を要求する。
     /// 非対応 OS / ホスト / デバイスでは通常の CPAL 共有モードへフォールバックする。
     pub low_latency_shared: bool,
+    /// Windows の WASAPI endpoint を event-driven 排他モードで開く。
+    /// 排他取得に失敗した場合は共有モードへ暗黙にフォールバックしない。
+    pub exclusive: bool,
     /// ステレオを書き込む先頭チャンネル(0 始まりのインターリーブ位置)。
     /// 0 = 1-2ch, 2 = 3-4ch, 4 = 5-6ch …。デバイスのチャンネル数を超える場合は
     /// ストリーム生成時に有効な範囲へクランプされる。
@@ -136,7 +139,7 @@ pub struct CpalSharedOutput {
 }
 
 struct CpalSharedOutputInner {
-    stream: ::cpal::Stream,
+    stream: CpalOutputStream,
     // Audible CPAL stream must be dropped before releasing the shared engine-period request.
     #[cfg(windows)]
     _low_latency_guard: Option<WasapiSharedPeriodGuard>,
@@ -147,6 +150,12 @@ struct CpalSharedOutputInner {
     retired_sources: RetiredOutputSources,
     diagnostics: Arc<CpalOutputDiagnosticsCounters>,
     next_source_id: AtomicU64,
+}
+
+enum CpalOutputStream {
+    Cpal(::cpal::Stream),
+    #[cfg(windows)]
+    WasapiExclusive(WasapiExclusiveOutput),
 }
 
 pub struct CpalOutputSource {
@@ -209,6 +218,12 @@ pub enum CpalBackendError {
 
     #[error("failed to play output stream")]
     PlayStream(::cpal::Error),
+
+    #[error("WASAPI exclusive output requires the WASAPI host")]
+    ExclusiveRequiresWasapi,
+
+    #[error("failed to open WASAPI exclusive output: {0}")]
+    WasapiExclusive(String),
 }
 
 #[cfg(test)]
@@ -227,6 +242,30 @@ mod tests {
         .unwrap();
 
         assert!(output.low_latency_shared_period_frames().is_some());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires an available Windows output device with exclusive-mode permission"]
+    fn opens_and_starts_default_wasapi_exclusive_stream() {
+        let output = CpalBackend::open_shared(CpalOutputConfig {
+            host: Some(CpalHostId::Wasapi),
+            exclusive: true,
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert!(output.exclusive_buffer_frames().is_some());
+        output.play().unwrap();
+
+        for _ in 0..50 {
+            if output.take_diagnostics().callback_count > 0 {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        panic!("WASAPI exclusive stream did not start rendering");
     }
 
     #[test]
