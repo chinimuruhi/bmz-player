@@ -78,6 +78,57 @@ fn play_plan_passes_runtime_stagefile_to_skin_document() {
 }
 
 #[test]
+fn play_plan_does_not_inject_backbmp_without_skin_destination() {
+    let snapshot = RenderSnapshot { backbmp_background: true, ..Default::default() };
+    let fallback_plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot.clone()));
+
+    let document: SkinDocument = serde_json::from_str(r#"{ "type": 0 }"#).unwrap();
+    let skin = SkinContext::from_manifest_and_document(SkinManifest::default(), document, []);
+    let document_plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(snapshot),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+
+    for plan in [&fallback_plan, &document_plan] {
+        assert!(!plan.commands.iter().any(|command| matches!(
+            command,
+            DrawCommand::Image { texture, .. } if *texture == PLAY_BACKBMP_TEXTURE
+        )));
+    }
+}
+
+#[test]
+fn play_plan_passes_runtime_backbmp_to_skin_document() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 0,
+                "w": 100,
+                "h": 100,
+                "destination": [
+                    { "id": "-101", "op": [195], "dst": [{ "x": 0, "y": 0, "w": 40, "h": 20 }] }
+                ]
+            }
+            "#,
+    )
+    .unwrap();
+    let skin = SkinContext::from_manifest_and_document(SkinManifest::default(), document, []);
+    let snapshot = RenderSnapshot { backbmp_background: true, ..Default::default() };
+
+    let plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(snapshot),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+
+    assert!(plan.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Image { texture, .. } if *texture == PLAY_BACKBMP_TEXTURE
+    )));
+}
+
+#[test]
 fn result_plan_passes_runtime_stagefile_to_skin_document() {
     let document: SkinDocument = serde_json::from_str(
         r#"

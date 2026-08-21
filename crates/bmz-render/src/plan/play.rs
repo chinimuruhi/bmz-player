@@ -25,9 +25,6 @@ pub(super) fn plan_play(
     let skin_manifest = skin.manifest();
     let has_document = skin.document().is_some();
     let mut commands = Vec::with_capacity(play_command_capacity(snapshot, has_document));
-    if snapshot.backbmp_background {
-        push_fullscreen_image(&mut commands, PLAY_BACKBMP_TEXTURE);
-    }
     if !has_document {
         push_fallback_bga_background(&mut commands, snapshot);
     }
