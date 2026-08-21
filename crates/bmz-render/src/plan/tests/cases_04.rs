@@ -129,6 +129,28 @@ fn play_plan_passes_runtime_backbmp_to_skin_document() {
 }
 
 #[test]
+fn play_plan_does_not_inject_bms_text() {
+    let snapshot =
+        RenderSnapshot { chart_text: "BMS #TEXT MESSAGE".to_string(), ..Default::default() };
+    let fallback_plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot.clone()));
+
+    let document: SkinDocument = serde_json::from_str(r#"{ "type": 0 }"#).unwrap();
+    let skin = SkinContext::from_manifest_and_document(SkinManifest::default(), document, []);
+    let document_plan = DrawPlan::from_scene_with_skin(
+        &AppSceneSnapshot::Play(snapshot),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+
+    for plan in [&fallback_plan, &document_plan] {
+        assert!(!plan.commands.iter().any(|command| matches!(
+            command,
+            DrawCommand::Text { text, .. } if text == "BMS #TEXT MESSAGE"
+        )));
+    }
+}
+
+#[test]
 fn result_plan_passes_runtime_stagefile_to_skin_document() {
     let document: SkinDocument = serde_json::from_str(
         r#"

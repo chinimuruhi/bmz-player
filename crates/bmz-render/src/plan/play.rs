@@ -85,7 +85,6 @@ pub(super) fn plan_play(
         push_start_overlay(&text, &mut commands, snapshot);
         push_default_failed_overlay(&text, &mut commands, snapshot);
     }
-    push_chart_text(&text, &mut commands, snapshot);
     if !skin.has_timer_destination(2) {
         push_default_play_fadeout_overlay(&mut commands, snapshot);
     }
@@ -108,23 +107,4 @@ pub(super) fn play_command_capacity(snapshot: &RenderSnapshot, has_document: boo
         .saturating_add(visible_note_count)
         .saturating_add(visible_mine_count)
         .saturating_add(long_note_command_count)
-}
-
-pub(super) fn push_chart_text(
-    text: &TextRenderer,
-    commands: &mut Vec<DrawCommand>,
-    snapshot: &RenderSnapshot,
-) {
-    if snapshot.chart_text.is_empty() {
-        return;
-    }
-    commands.push(DrawCommand::Rect {
-        rect: Rect { x: 0.18, y: 0.04, width: 0.64, height: 0.06 },
-        color: Color::rgba(0.0, 0.0, 0.0, 0.55),
-    });
-    text.push_text(
-        commands,
-        &snapshot.chart_text,
-        BitmapTextStyle { x: 0.2, y: 0.055, cell: 0.006, color: Color::rgb(0.95, 0.95, 0.9) },
-    );
 }
