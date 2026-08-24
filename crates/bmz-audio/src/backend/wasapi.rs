@@ -9,9 +9,10 @@ use std::mem::size_of;
 use std::slice;
 use std::sync::{Mutex, mpsc};
 use std::thread::{self, JoinHandle};
+use std::time::Instant;
 
 use thiserror::Error;
-use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_FAILED, WAIT_OBJECT_0};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::Media::Audio::{
     AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED, AUDCLNT_SHAREMODE_EXCLUSIVE,
     AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_NOPERSIST, IAudioClient, IAudioClient3,
@@ -34,6 +35,9 @@ use windows::Win32::System::Threading::{
 use windows::core::PCWSTR;
 
 use crate::backend::cpal::callback::{NativeOutputRenderer, OutputSample};
+
+const EXCLUSIVE_RECOVERY_INITIAL_DELAY_MS: u32 = 100;
+const EXCLUSIVE_RECOVERY_MAX_DELAY_MS: u32 = 5_000;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WasapiSharedPeriodInfo {
@@ -739,49 +743,40 @@ impl ExclusiveWorkerStream {
         ))
     }
 
-    fn run(
-        &mut self,
-        start_event: HANDLE,
-        stop_event: HANDLE,
-        renderer: &mut NativeOutputRenderer,
-        start_result_sender: mpsc::SyncSender<Result<(), String>>,
-    ) -> Result<(), String> {
+    fn wait_for_start(start_event: HANDLE, stop_event: HANDLE) -> Result<bool, String> {
         let wait = unsafe { WaitForMultipleObjects(&[stop_event, start_event], false, INFINITE) };
         if wait == WAIT_OBJECT_0 {
-            let _ = start_result_sender
-                .send(Err("WASAPI exclusive output stopped before it was started".to_string()));
-            return Ok(());
+            return Ok(false);
         }
         if wait == WAIT_FAILED {
-            let error =
-                format!("WaitForMultipleObjects(start): {}", windows::core::Error::from_thread());
-            let _ = start_result_sender.send(Err(error.clone()));
-            return Err(error);
+            return Err(format!(
+                "WaitForMultipleObjects(start): {}",
+                windows::core::Error::from_thread()
+            ));
         }
         if wait.0 != WAIT_OBJECT_0.0 + 1 {
-            let error =
-                format!("WaitForMultipleObjects(start) returned unexpected value {}", wait.0);
-            let _ = start_result_sender.send(Err(error.clone()));
-            return Err(error);
+            return Err(format!(
+                "WaitForMultipleObjects(start) returned unexpected value {}",
+                wait.0
+            ));
         }
+        Ok(true)
+    }
 
-        let _mmcss = MmcssRegistration::pro_audio();
-        let start_result: Result<(), String> = (|| {
-            self.fill_next_buffer(renderer)?;
-            unsafe {
-                self.client.Start().map_err(|error| format!("IAudioClient::Start: {error}"))?;
-            }
-            Ok(())
-        })();
-        if let Err(error) = start_result {
-            let _ = start_result_sender.send(Err(error.clone()));
-            return Err(error);
+    fn start(&mut self, renderer: &mut NativeOutputRenderer) -> Result<(), String> {
+        self.fill_next_buffer(renderer)?;
+        unsafe {
+            self.client.Start().map_err(|error| format!("IAudioClient::Start: {error}"))?;
         }
         self.started = true;
-        if start_result_sender.send(Ok(())).is_err() {
-            return Ok(());
-        }
+        Ok(())
+    }
 
+    fn render_until_stopped(
+        &self,
+        stop_event: HANDLE,
+        renderer: &mut NativeOutputRenderer,
+    ) -> Result<(), String> {
         loop {
             let wait = unsafe {
                 WaitForMultipleObjects(&[stop_event, self.audio_event.handle()], false, INFINITE)
@@ -898,7 +893,7 @@ fn exclusive_worker_main(
         }
     };
     let _apartment = apartment;
-    let (mut stream, info) = match ExclusiveWorkerStream::open(
+    let (mut stream, initial_info) = match ExclusiveWorkerStream::open(
         &endpoint_id,
         requested_sample_rate,
         requested_buffer_frames,
@@ -909,13 +904,129 @@ fn exclusive_worker_main(
             return;
         }
     };
-    if startup_sender.send(Ok(info)).is_err() {
+    if startup_sender.send(Ok(initial_info)).is_err() {
         return;
     }
-    if let Err(error) = stream.run(start_event, stop_event, &mut renderer, start_result_sender) {
-        renderer.record_stream_error();
-        tracing::warn!(%error, "WASAPI exclusive stream stopped unexpectedly");
+
+    let should_start = match ExclusiveWorkerStream::wait_for_start(start_event, stop_event) {
+        Ok(should_start) => should_start,
+        Err(error) => {
+            let _ = start_result_sender.send(Err(error));
+            return;
+        }
+    };
+    if !should_start {
+        let _ = start_result_sender
+            .send(Err("WASAPI exclusive output stopped before it was started".to_string()));
+        return;
     }
+
+    let _mmcss = MmcssRegistration::pro_audio();
+    if let Err(error) = stream.start(&mut renderer) {
+        let _ = start_result_sender.send(Err(error));
+        return;
+    }
+    if start_result_sender.send(Ok(())).is_err() {
+        return;
+    }
+
+    loop {
+        let error = match stream.render_until_stopped(stop_event, &mut renderer) {
+            Ok(()) => return,
+            Err(error) => error,
+        };
+        renderer.record_stream_error();
+        tracing::warn!(%error, "WASAPI exclusive stream stopped unexpectedly; reopening endpoint");
+        drop(stream);
+
+        let outage_started_at = Instant::now();
+        let mut last_catch_up_at = outage_started_at;
+        let mut retry_delay_ms = EXCLUSIVE_RECOVERY_INITIAL_DELAY_MS;
+        loop {
+            match wait_for_exclusive_recovery(stop_event, retry_delay_ms) {
+                Ok(false) => return,
+                Ok(true) => {}
+                Err(error) => {
+                    renderer.record_stream_error();
+                    tracing::warn!(%error, "failed while waiting to reopen WASAPI exclusive output");
+                    return;
+                }
+            }
+
+            match ExclusiveWorkerStream::open(
+                &endpoint_id,
+                Some(initial_info.sample_rate),
+                requested_buffer_frames,
+            ) {
+                Ok((mut recovered, recovered_info))
+                    if recovered_info.sample_rate == initial_info.sample_rate =>
+                {
+                    let catch_up_at = Instant::now();
+                    let catch_up_frames = renderer.catch_up_after_stream_outage(
+                        catch_up_at.duration_since(last_catch_up_at),
+                        initial_info.sample_rate,
+                    );
+                    last_catch_up_at = catch_up_at;
+                    match recovered.start(&mut renderer) {
+                        Ok(()) => {
+                            tracing::info!(
+                                outage_ms = outage_started_at.elapsed().as_millis(),
+                                catch_up_frames,
+                                "reopened WASAPI exclusive output",
+                            );
+                            stream = recovered;
+                            break;
+                        }
+                        Err(error) => {
+                            renderer.record_stream_error();
+                            tracing::warn!(
+                                %error,
+                                "failed to restart reopened WASAPI exclusive output",
+                            );
+                        }
+                    }
+                }
+                Ok((_recovered, recovered_info)) => {
+                    renderer.record_stream_error();
+                    tracing::warn!(
+                        expected_sample_rate = initial_info.sample_rate,
+                        recovered_sample_rate = recovered_info.sample_rate,
+                        "reopened WASAPI endpoint changed sample rate; retrying",
+                    );
+                }
+                Err(error) => {
+                    renderer.record_stream_error();
+                    tracing::warn!(
+                        %error,
+                        retry_delay_ms,
+                        "failed to reopen WASAPI exclusive output",
+                    );
+                }
+            }
+            retry_delay_ms = next_exclusive_recovery_delay_ms(retry_delay_ms);
+        }
+    }
+}
+
+fn wait_for_exclusive_recovery(stop_event: HANDLE, timeout_ms: u32) -> Result<bool, String> {
+    let wait = unsafe { WaitForMultipleObjects(&[stop_event], false, timeout_ms) };
+    if wait == WAIT_OBJECT_0 {
+        return Ok(false);
+    }
+    if wait == WAIT_TIMEOUT {
+        return Ok(true);
+    }
+    if wait == WAIT_FAILED {
+        return Err(format!(
+            "WaitForMultipleObjects(recovery): {}",
+            windows::core::Error::from_thread()
+        ));
+    }
+    Err(format!("WaitForMultipleObjects(recovery) returned unexpected value {}", wait.0))
+}
+
+fn next_exclusive_recovery_delay_ms(current: u32) -> u32 {
+    current.saturating_mul(2).min(EXCLUSIVE_RECOVERY_MAX_DELAY_MS)
 }
 
 fn endpoint_from_id(endpoint_id: &str) -> Result<IMMDevice, String> {
@@ -1221,6 +1332,13 @@ mod tests {
         assert_eq!(frames_to_period_100ns(48, 48_000).unwrap(), 10_000);
         assert_eq!(frames_to_period_100ns(64, 44_100).unwrap(), 14_512);
         assert!(frames_to_period_100ns(0, 48_000).is_err());
+    }
+
+    #[test]
+    fn exclusive_recovery_delay_uses_bounded_exponential_backoff() {
+        assert_eq!(next_exclusive_recovery_delay_ms(100), 200);
+        assert_eq!(next_exclusive_recovery_delay_ms(3_200), 5_000);
+        assert_eq!(next_exclusive_recovery_delay_ms(5_000), 5_000);
     }
 
     #[test]

@@ -207,6 +207,20 @@ impl NativeOutputRenderer {
     pub(crate) fn record_stream_error(&self) {
         self.diagnostics.stream_error_count.fetch_add(1, Ordering::Relaxed);
     }
+
+    /// Advance the mixer timeline across a native-stream outage without rendering the missed
+    /// interval. Gameplay keeps using its monotonic clock while the endpoint is unavailable, so
+    /// resuming from the old frame would permanently delay every subsequently scheduled sound.
+    pub(crate) fn catch_up_after_stream_outage(&self, outage: Duration, sample_rate: u32) -> u64 {
+        let frames = duration_to_frames(outage, sample_rate);
+        if frames == 0 {
+            return 0;
+        }
+        self.current_frame.fetch_add(frames, Ordering::Relaxed);
+        self.diagnostics.timeline_catch_up_count.fetch_add(1, Ordering::Relaxed);
+        self.diagnostics.timeline_catch_up_frames.fetch_add(frames, Ordering::Relaxed);
+        frames
+    }
 }
 
 pub(super) fn device_name(device: &::cpal::Device) -> String {
