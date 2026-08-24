@@ -92,43 +92,10 @@ export function buildRivalComparison(
     const rivalScore = rivalByKey.get(scoreKey(selfScore))
     if (!rivalScore) continue
 
-    const exScoreDifference = selfScore.exScore - rivalScore.exScore
-    const minBpDifference = selfScore.minBp - rivalScore.minBp
-    const exScoreOutcome = higherWins(exScoreDifference)
-    const minBpOutcome = lowerWins(minBpDifference)
-    incrementSummary(summary.ex_score, exScoreOutcome)
-    incrementSummary(summary.min_bp, minBpOutcome)
-
-    rows.push({
-      chart: {
-        sha256: selfScore.chartSha256,
-        md5: selfScore.chartMd5,
-        title: selfScore.chartTitle,
-        subtitle: selfScore.chartSubtitle,
-        artist: selfScore.chartArtist,
-        mode: selfScore.chartMode,
-        level: selfScore.chartLevel,
-        difficulty: selfScore.chartDifficulty,
-      },
-      rule: {
-        ln_policy: selfScore.lnPolicy,
-        double_option: selfScore.doubleOption,
-        rule_mode: selfScore.ruleMode,
-        scoring: selfScore.scoring,
-      },
-      self: {
-        score_id: selfScore.scoreId,
-        ex_score: selfScore.exScore,
-        min_bp: selfScore.minBp,
-      },
-      rival: {
-        score_id: rivalScore.scoreId,
-        ex_score: rivalScore.exScore,
-        min_bp: rivalScore.minBp,
-      },
-      difference: { ex_score: exScoreDifference, min_bp: minBpDifference },
-      outcome: { ex_score: exScoreOutcome, min_bp: minBpOutcome },
-    })
+    const row = buildRivalComparisonRow(selfScore, rivalScore)
+    incrementSummary(summary.ex_score, row.outcome.ex_score)
+    incrementSummary(summary.min_bp, row.outcome.min_bp)
+    rows.push(row)
   }
 
   rows.sort(
@@ -138,6 +105,47 @@ export function buildRivalComparison(
       comparisonKey(left).localeCompare(comparisonKey(right)),
   )
   return { summary, rows }
+}
+
+export function buildRivalComparisonRow(
+  selfScore: RivalComparisonScoreRow,
+  rivalScore: RivalComparisonScoreRow,
+): RivalComparisonRow {
+  const exScoreDifference = selfScore.exScore - rivalScore.exScore
+  const minBpDifference = selfScore.minBp - rivalScore.minBp
+  return {
+    chart: {
+      sha256: selfScore.chartSha256,
+      md5: selfScore.chartMd5,
+      title: selfScore.chartTitle,
+      subtitle: selfScore.chartSubtitle,
+      artist: selfScore.chartArtist,
+      mode: selfScore.chartMode,
+      level: selfScore.chartLevel,
+      difficulty: selfScore.chartDifficulty,
+    },
+    rule: {
+      ln_policy: selfScore.lnPolicy,
+      double_option: selfScore.doubleOption,
+      rule_mode: selfScore.ruleMode,
+      scoring: selfScore.scoring,
+    },
+    self: {
+      score_id: selfScore.scoreId,
+      ex_score: selfScore.exScore,
+      min_bp: selfScore.minBp,
+    },
+    rival: {
+      score_id: rivalScore.scoreId,
+      ex_score: rivalScore.exScore,
+      min_bp: rivalScore.minBp,
+    },
+    difference: { ex_score: exScoreDifference, min_bp: minBpDifference },
+    outcome: {
+      ex_score: higherWins(exScoreDifference),
+      min_bp: lowerWins(minBpDifference),
+    },
+  }
 }
 
 function scoreKey(score: RivalComparisonScoreRow): string {
