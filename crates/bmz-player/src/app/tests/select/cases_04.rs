@@ -257,6 +257,38 @@ fn select_snapshot_rows_preserves_settings_action_kinds() {
 }
 
 #[test]
+fn difficulty_table_level_display_can_use_chart_original_level() {
+    let mut row = select_chart_row(12);
+    row.chart.as_mut().unwrap().play_level = "9".to_string();
+    row.table_text = DifficultyTableText::from_parts("Test Table".to_string(), "★", "12");
+    row.table_level = row.table_text.table_level.clone();
+    let rows = vec![SelectItem::Chart(row)];
+
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    let table_level = select_snapshot_rows_in_difficulty_table_level(&rows, 0, 1, &profile);
+    assert_eq!(table_level[0].play_level, "9");
+    assert_eq!(table_level[0].table_level, "★12");
+    assert_eq!(table_level[0].table_text_secondary, "★12");
+
+    profile.select.difficulty_table_level_display =
+        crate::config::profile_config::DifficultyTableLevelDisplay::Chart;
+    let chart_level = select_snapshot_rows_in_difficulty_table_level(&rows, 0, 1, &profile);
+    assert_eq!(chart_level[0].play_level, "9");
+    assert!(chart_level[0].table_level.is_empty());
+    assert_eq!(chart_level[0].table_text_secondary, "★12");
+
+    let outside_table = select_snapshot_rows(&rows, 0, 1, &profile, None, &HashMap::new());
+    assert_eq!(outside_table[0].table_level, "★12");
+
+    let mut missing = rows[0].clone();
+    if let SelectItem::Chart(row) = &mut missing {
+        row.chart = None;
+    }
+    let missing = select_snapshot_rows_in_difficulty_table_level(&[missing], 0, 1, &profile);
+    assert_eq!(missing[0].table_level, "★12");
+}
+
+#[test]
 fn select_snapshot_rows_uses_policy_scored_note_count() {
     let mut row = select_chart_row(0);
     let chart = row.chart.as_mut().unwrap();

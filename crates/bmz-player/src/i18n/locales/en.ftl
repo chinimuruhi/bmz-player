@@ -380,6 +380,11 @@ profile-display-step-range = HS adjustment step range: 0.05..=1.00
 profile-display-lift-enabled = Enable LIFT
 profile-display-auto-adjust-hispeed = Adjust HS to the current BPM when lane cover changes
 profile-display-green-number = Target green number
+profile-select-title = Song Select
+profile-select-difficulty-table-level-display = Level shown in difficulty table folders
+profile-select-difficulty-table-level-display-help = Selects the level shown inside a difficulty table's level folder.
+profile-select-level-table = Difficulty table level
+profile-select-level-chart = Chart's original level
 profile-input-title = Input
 profile-input-analog-sensitivity = Analog sensitivity
 profile-input-analog-scratch = Analog scratch

@@ -61,6 +61,7 @@ pub(in crate::app) fn select_visible_item_indices(
 
 struct SelectSnapshotRowContext<'a> {
     profile: &'a ProfileConfig,
+    in_difficulty_table_level: bool,
     key_config_edit: Option<&'a KeyConfigEditSession>,
     chart_distributions: &'a HashMap<i64, Vec<ChartDistributionSecond>>,
     select_ir: Option<&'a crate::screens::select_ir::SelectIrRanking>,
@@ -80,8 +81,28 @@ pub(in crate::app) fn select_snapshot_rows(
         selected_index,
         visible_limit,
         profile,
+        false,
         key_config_edit,
         chart_distributions,
+        None,
+    )
+}
+
+#[cfg(test)]
+pub(in crate::app) fn select_snapshot_rows_in_difficulty_table_level(
+    items: &[SelectItem],
+    selected_index: usize,
+    visible_limit: usize,
+    profile: &ProfileConfig,
+) -> Vec<SelectRowSnapshot> {
+    select_snapshot_rows_with_rival(
+        items,
+        selected_index,
+        visible_limit,
+        profile,
+        true,
+        None,
+        &HashMap::new(),
         None,
     )
 }
@@ -91,12 +112,18 @@ pub(in crate::app) fn select_snapshot_rows_with_rival(
     selected_index: usize,
     visible_limit: usize,
     profile: &ProfileConfig,
+    in_difficulty_table_level: bool,
     key_config_edit: Option<&KeyConfigEditSession>,
     chart_distributions: &HashMap<i64, Vec<ChartDistributionSecond>>,
     select_ir: Option<&crate::screens::select_ir::SelectIrRanking>,
 ) -> Vec<SelectRowSnapshot> {
-    let context =
-        SelectSnapshotRowContext { profile, key_config_edit, chart_distributions, select_ir };
+    let context = SelectSnapshotRowContext {
+        profile,
+        in_difficulty_table_level,
+        key_config_edit,
+        chart_distributions,
+        select_ir,
+    };
     select_visible_item_indices(items.len(), selected_index, visible_limit)
         .into_iter()
         .map(|index| select_snapshot_row(index, &items[index], &context))
@@ -203,6 +230,15 @@ fn select_chart_snapshot(
         })
         .map(|score| i64::from(score.clear_type).clamp(0, ClearType::Max as i64) as usize)
         .unwrap_or(0);
+    let table_level = if context.in_difficulty_table_level
+        && context.profile.select.difficulty_table_level_display
+            == crate::config::profile_config::DifficultyTableLevelDisplay::Chart
+        && chart.is_some_and(|chart| !chart.play_level.trim().is_empty())
+    {
+        String::new()
+    } else {
+        row.table_level.clone()
+    };
 
     SelectRowSnapshot {
         index: index as u32,
@@ -212,7 +248,7 @@ fn select_chart_snapshot(
         genre: chart.map(|chart| chart.genre.clone()).unwrap_or_default(),
         difficulty_name: chart.map(|chart| chart.difficulty_name.clone()).unwrap_or_default(),
         play_level: chart.map(|chart| chart.play_level.clone()).unwrap_or_default(),
-        table_level: row.table_level.clone(),
+        table_level,
         table_text_primary: row.table_text.table_name.clone(),
         table_text_secondary: row.table_text.table_level.clone(),
         table_text_fallback: row.table_text.table_full.clone(),

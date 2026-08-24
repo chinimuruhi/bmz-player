@@ -377,6 +377,11 @@ profile-display-step-range = HS 调整步长范围：0.05..=1.00
 profile-display-lift-enabled = 启用 LIFT
 profile-display-auto-adjust-hispeed = 轨道遮罩变化时按当前 BPM 自动调整 HS
 profile-display-green-number = 目标绿数字
+profile-select-title = 选曲
+profile-select-difficulty-table-level-display = 难度表文件夹等级显示
+profile-select-difficulty-table-level-display-help = 选择在难度表等级文件夹内显示的等级。
+profile-select-level-table = 难度表等级
+profile-select-level-chart = 谱面原始等级
 profile-input-title = 输入
 profile-input-analog-sensitivity = 模拟输入灵敏度
 profile-input-analog-scratch = 模拟转盘

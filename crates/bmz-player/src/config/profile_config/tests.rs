@@ -209,6 +209,7 @@ fn select_state_uses_defaults_for_old_profiles() {
     assert_eq!(select.mode_filter, "ALL");
     assert_eq!(select.difficulty_filter, "ALL");
     assert_eq!(select.sort, "TITLE");
+    assert_eq!(select.difficulty_table_level_display, DifficultyTableLevelDisplay::Table);
     assert!(!select.random_select);
     assert_eq!(select.random_mix, RandomMixConfig::default());
 }
@@ -219,6 +220,7 @@ fn select_state_roundtrips_through_toml() {
         mode_filter: "7K".to_string(),
         difficulty_filter: "HYPER".to_string(),
         sort: "LEVEL".to_string(),
+        difficulty_table_level_display: DifficultyTableLevelDisplay::Chart,
         random_select: true,
         random_mix: RandomMixConfig {
             target_level: 12,
@@ -237,6 +239,7 @@ fn select_state_roundtrips_through_toml() {
     assert_eq!(parsed.mode_filter, "7K");
     assert_eq!(parsed.difficulty_filter, "HYPER");
     assert_eq!(parsed.sort, "LEVEL");
+    assert_eq!(parsed.difficulty_table_level_display, DifficultyTableLevelDisplay::Chart);
     assert!(parsed.random_select);
     assert_eq!(parsed.random_mix.target_level, 12);
     assert_eq!(parsed.random_mix.stages, 4);

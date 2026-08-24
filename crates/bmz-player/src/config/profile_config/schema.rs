@@ -54,10 +54,22 @@ pub struct SelectStateConfig {
     pub difficulty_filter: String,
     #[serde(default = "default_select_sort")]
     pub sort: String,
+    /// 難易度表のレベルフォルダ内で、表のレベルと譜面本来のレベルの
+    /// どちらを選曲表示へ使うか。
+    #[serde(default)]
+    pub difficulty_table_level_display: DifficultyTableLevelDisplay,
     #[serde(default)]
     pub random_select: bool,
     #[serde(default)]
     pub random_mix: RandomMixConfig,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DifficultyTableLevelDisplay {
+    #[default]
+    Table,
+    Chart,
 }
 
 /// LR2-style RANDOM MIX generation constraints.
@@ -121,6 +133,7 @@ impl Default for SelectStateConfig {
             mode_filter: default_select_mode_filter(),
             difficulty_filter: default_select_difficulty_filter(),
             sort: default_select_sort(),
+            difficulty_table_level_display: DifficultyTableLevelDisplay::default(),
             random_select: false,
             random_mix: RandomMixConfig::default(),
         }

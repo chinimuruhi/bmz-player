@@ -377,6 +377,11 @@ profile-display-step-range = HS 변경 단위 범위: 0.05..=1.00
 profile-display-lift-enabled = LIFT 사용
 profile-display-auto-adjust-hispeed = 레인 커버 변경 시 현재 BPM에 맞춰 HS 자동 조정
 profile-display-green-number = 목표 그린 넘버
+profile-select-title = 곡 선택
+profile-select-difficulty-table-level-display = 난이도표 폴더 레벨 표시
+profile-select-difficulty-table-level-display-help = 난이도표의 레벨 폴더 안에 표시할 레벨을 선택합니다.
+profile-select-level-table = 난이도표 레벨
+profile-select-level-chart = 채보 원래 레벨
 profile-input-title = 입력
 profile-input-analog-sensitivity = 아날로그 감도
 profile-input-analog-scratch = 아날로그 스크래치

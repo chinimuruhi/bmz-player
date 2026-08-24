@@ -168,6 +168,10 @@ impl WinitApp {
         } else {
             self.select.selected_index
         };
+        let in_difficulty_table_level =
+            self.select.folder_stack.last().is_some_and(|path| {
+                matches!(parse_table_path(path), Some(TablePath::Level { .. }))
+            });
         let mut rows = if self.select.ir_battle.active {
             // G-BATTLEでは人物/スコア表示だけを差し替え、譜面そのものの
             // BPM・長さ・ノート数・解析値などは元の選択行から引き継ぐ。
@@ -176,6 +180,7 @@ impl WinitApp {
                 self.select.selected_index,
                 1,
                 &self.boot.profile_config,
+                in_difficulty_table_level,
                 self.select.key_config_edit.as_ref(),
                 &chart_distributions,
                 Some(&self.select.select_ir),
@@ -194,6 +199,7 @@ impl WinitApp {
                 self.select.selected_index,
                 25,
                 &self.boot.profile_config,
+                in_difficulty_table_level,
                 self.select.key_config_edit.as_ref(),
                 &chart_distributions,
                 Some(&self.select.select_ir),

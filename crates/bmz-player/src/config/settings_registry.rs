@@ -1,11 +1,11 @@
 use super::play::{TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN, clamp_hispeed};
 use super::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
-    DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX, HISPEED_STEP_MIN,
-    HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, JudgeAlgorithmConfig, LaneConfig,
-    LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX, RandomOptionConfig, ReplaySlotRule,
-    SelectInputModeConfig, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
-    normalize_hispeed_step,
+    DifficultyTableLevelDisplay, DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig,
+    HISPEED_STEP_MAX, HISPEED_STEP_MIN, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig,
+    JudgeAlgorithmConfig, LaneConfig, LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX,
+    RandomOptionConfig, ReplaySlotRule, SelectInputModeConfig, TargetOptionConfig,
+    default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
 };
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
@@ -69,6 +69,7 @@ pub enum SettingsEntryId {
     Hispeed8Key6,
     Hispeed8Key7,
     Hispeed8Key8,
+    DifficultyTableLevelDisplay,
     SelectRandomSelect,
     RandomMixTargetLevel,
     RandomMixMaxLevel,
@@ -147,6 +148,7 @@ impl SettingsEntryId {
     ];
 
     pub const SELECT_ENTRIES: &'static [Self] = &[
+        Self::DifficultyTableLevelDisplay,
         Self::SelectRandomSelect,
         Self::RandomMixTargetLevel,
         Self::RandomMixMaxLevel,
@@ -232,6 +234,7 @@ impl SettingsEntryId {
             Self::Hispeed8Key6 => "KEY 6 HS DIRECTION",
             Self::Hispeed8Key7 => "KEY 7 HS DIRECTION",
             Self::Hispeed8Key8 => "KEY 8 HS DIRECTION",
+            Self::DifficultyTableLevelDisplay => "TABLE LEVEL DISPLAY",
             Self::SelectRandomSelect => "RANDOM SELECT",
             Self::RandomMixTargetLevel => "MIX TARGET LEVEL",
             Self::RandomMixMaxLevel => "MIX MAX LEVEL",
@@ -499,6 +502,29 @@ mod tests {
         assert_eq!(profile.select.random_mix.max_bpm, 990);
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::RandomMixStages, -5,));
         assert_eq!(format_settings_value(&profile, SettingsEntryId::RandomMixStages), "RANDOM");
+    }
+
+    #[test]
+    fn difficulty_table_level_display_cycles_between_table_and_chart() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::DifficultyTableLevelDisplay),
+            "TABLE LEVEL"
+        );
+
+        assert!(adjust_settings_value(
+            &mut profile,
+            SettingsEntryId::DifficultyTableLevelDisplay,
+            1,
+        ));
+        assert_eq!(
+            profile.select.difficulty_table_level_display,
+            DifficultyTableLevelDisplay::Chart
+        );
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::DifficultyTableLevelDisplay),
+            "CHART LEVEL"
+        );
     }
 
     #[test]

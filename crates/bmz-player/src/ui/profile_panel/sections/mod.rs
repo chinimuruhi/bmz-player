@@ -4,12 +4,14 @@ mod core;
 mod display;
 mod ir;
 mod play;
+mod select;
 mod ui;
 
 pub(super) use core::*;
 pub(super) use display::*;
 pub(super) use ir::*;
 pub(super) use play::*;
+pub(super) use select::*;
 pub(super) use ui::*;
 
 pub(super) struct ProfileSectionContext<'a> {

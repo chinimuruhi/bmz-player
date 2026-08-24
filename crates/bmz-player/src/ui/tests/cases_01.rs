@@ -215,6 +215,7 @@ fn restricted_profile_settings_keep_only_realtime_categories() {
     let mut edited = baseline.clone();
     edited.display_name = "Changed".to_string();
     edited.play.rule_mode = RuleMode::Dx;
+    edited.select.difficulty_table_level_display = DifficultyTableLevelDisplay::Chart;
     edited.audio_mix.master_volume = 23;
     edited.judge.input_offset_us = 4_000;
     edited.lane.hispeed = 3.25;
@@ -227,6 +228,10 @@ fn restricted_profile_settings_keep_only_realtime_categories() {
 
     assert_eq!(edited.display_name, baseline.display_name);
     assert_eq!(edited.play.rule_mode, baseline.play.rule_mode);
+    assert_eq!(
+        edited.select.difficulty_table_level_display,
+        baseline.select.difficulty_table_level_display
+    );
     assert_eq!(edited.audio_mix.master_volume, 23);
     assert_eq!(edited.judge.input_offset_us, 4_000);
     assert_eq!(edited.lane.hispeed, 3.25);

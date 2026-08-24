@@ -6,10 +6,11 @@ use bmz_gameplay::rule::RuleMode;
 use crate::config::play_input::resolve_play_bindings;
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
-    DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig,
-    HispeedModeConfig, HsFixConfig, InputActionConfig, JudgeAlgorithmConfig, LaneConfig,
-    LaneEffectConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig, ReplaySlotRule,
-    ScratchDirectionConfig, SelectInputModeConfig, TargetOptionConfig,
+    DifficultyTableLevelDisplay, DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig,
+    HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, InputActionConfig,
+    JudgeAlgorithmConfig, LaneConfig, LaneEffectConfig, ProfileConfig, ProfileInputConfig,
+    RandomOptionConfig, ReplaySlotRule, ScratchDirectionConfig, SelectInputModeConfig,
+    TargetOptionConfig,
 };
 use crate::config::settings_registry::{
     SettingsEntryId, adjust_settings_value, eight_key_hispeed_lane, format_settings_value,
@@ -239,6 +240,7 @@ enum SettingsBaseline {
     HispeedMode(HispeedModeConfig),
     HispeedDirection(HispeedDirectionConfig),
     SelectInputMode(SelectInputModeConfig),
+    DifficultyTableLevelDisplay(DifficultyTableLevelDisplay),
     ReplaySlotRule(ReplaySlotRule),
 }
 
@@ -322,6 +324,11 @@ impl SettingsEditSession {
             }
             SettingsEntryId::SelectInputMode => {
                 SettingsBaseline::SelectInputMode(profile.input.select_input_mode)
+            }
+            SettingsEntryId::DifficultyTableLevelDisplay => {
+                SettingsBaseline::DifficultyTableLevelDisplay(
+                    profile.select.difficulty_table_level_display,
+                )
             }
             SettingsEntryId::SelectRandomSelect => {
                 SettingsBaseline::Bool(profile.select.random_select)
@@ -525,6 +532,12 @@ impl SettingsEditSession {
             (SettingsEntryId::SelectInputMode, SettingsBaseline::SelectInputMode(value)) => {
                 profile.input.select_input_mode = *value;
             }
+            (
+                SettingsEntryId::DifficultyTableLevelDisplay,
+                SettingsBaseline::DifficultyTableLevelDisplay(value),
+            ) => {
+                profile.select.difficulty_table_level_display = *value;
+            }
             (SettingsEntryId::SelectRandomSelect, SettingsBaseline::Bool(value)) => {
                 profile.select.random_select = *value;
             }
@@ -711,6 +724,15 @@ mod tests {
     #[test]
     fn edit_session_restore_reverts_input_and_replay_settings() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        let table_level_session =
+            SettingsEditSession::capture(&profile, SettingsEntryId::DifficultyTableLevelDisplay);
+        profile.select.difficulty_table_level_display = DifficultyTableLevelDisplay::Chart;
+        table_level_session.restore(&mut profile);
+        assert_eq!(
+            profile.select.difficulty_table_level_display,
+            DifficultyTableLevelDisplay::Table
+        );
+
         let analog_2p_session =
             SettingsEditSession::capture(&profile, SettingsEntryId::AnalogScratch2P);
         profile.input.gamepad2.analog_scratch = false;

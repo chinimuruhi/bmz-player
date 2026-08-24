@@ -222,6 +222,14 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
                 next,
             )
         }
+        SettingsEntryId::DifficultyTableLevelDisplay => {
+            profile.select.difficulty_table_level_display =
+                match profile.select.difficulty_table_level_display {
+                    DifficultyTableLevelDisplay::Table => DifficultyTableLevelDisplay::Chart,
+                    DifficultyTableLevelDisplay::Chart => DifficultyTableLevelDisplay::Table,
+                };
+            true
+        }
         SettingsEntryId::SelectRandomSelect => {
             if delta == 0 {
                 false

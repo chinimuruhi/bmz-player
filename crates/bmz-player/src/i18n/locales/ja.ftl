@@ -377,6 +377,11 @@ profile-display-step-range = HS変更刻みの範囲: 0.05..=1.00
 profile-display-lift-enabled = LIFTを有効にする
 profile-display-auto-adjust-hispeed = レーンカバー変更時に現在BPMへHSを自動調整
 profile-display-green-number = 緑数字ターゲット
+profile-select-title = 選曲
+profile-select-difficulty-table-level-display = 難易度表フォルダのレベル表示
+profile-select-difficulty-table-level-display-help = 難易度表のレベルフォルダ内で表示するレベルを選びます。
+profile-select-level-table = 難易度表レベル
+profile-select-level-chart = 譜面本来のレベル
 profile-input-title = 入力
 profile-input-analog-sensitivity = アナログ感度
 profile-input-analog-scratch = アナログスクラッチ

@@ -64,6 +64,7 @@ pub(in crate::ui) fn build_profile_settings_panel(
             build_profile_judge_section(ui, &mut section);
             build_profile_play_section(ui, &mut section);
             build_profile_display_section(ui, &mut section);
+            build_profile_select_section(ui, &mut section);
             build_profile_input_section(ui, &mut section);
             build_profile_replay_section(ui, &mut section);
             build_profile_system_sound_section(ui, &mut section);

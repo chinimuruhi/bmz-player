@@ -110,6 +110,13 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
                 .expect("8K key lane has a hispeed direction"),
             )
         }
+        SettingsEntryId::DifficultyTableLevelDisplay => {
+            match profile.select.difficulty_table_level_display {
+                DifficultyTableLevelDisplay::Table => "TABLE LEVEL",
+                DifficultyTableLevelDisplay::Chart => "CHART LEVEL",
+            }
+            .to_string()
+        }
         SettingsEntryId::SelectRandomSelect => format_bool_on_off(profile.select.random_select),
         SettingsEntryId::RandomMixTargetLevel => {
             format_random_mix_level(profile.select.random_mix.target_level, "OFF")
