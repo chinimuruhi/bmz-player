@@ -16,6 +16,8 @@ use crate::command::{AudioEngineHandle, CommandedAudioEngine};
 use crate::engine::AudioEngine;
 
 pub(crate) mod callback;
+#[cfg(target_os = "macos")]
+mod coreaudio_compat;
 mod device;
 mod source;
 

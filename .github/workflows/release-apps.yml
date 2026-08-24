@@ -223,15 +223,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-latest
+          - runner: macos-15
             target: aarch64-apple-darwin
             arch: arm64
+            minimum_system_version: '11.0'
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             arch: x64
+            minimum_system_version: '10.13'
     env:
       BMZ_VERSION: ${{ needs.metadata.outputs.version }}
       BMZ_MACOS_ARCH: ${{ matrix.arch }}
+      BMZ_MACOS_DEPLOYMENT_TARGET: ${{ matrix.minimum_system_version }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.minimum_system_version }}
       BMZ_MACOS_CODESIGN_IDENTITY: ${{ secrets.BMZ_MACOS_CODESIGN_IDENTITY }}
       BMZ_MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.BMZ_MACOS_CERTIFICATE_P12_BASE64 }}
       BMZ_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.BMZ_MACOS_CERTIFICATE_PASSWORD }}
@@ -260,17 +264,36 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: release-macos-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          key: release-macos-${{ matrix.minimum_system_version }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            release-macos-${{ matrix.target }}-
+            release-macos-${{ matrix.minimum_system_version }}-${{ matrix.target }}-
+
+      - name: Cache macOS FFmpeg
+        id: cache-macos-ffmpeg
+        uses: actions/cache@v5
+        with:
+          path: .cache/bmz-ffmpeg/${{ matrix.target }}
+          key: release-macos-ffmpeg-${{ matrix.target }}-${{ matrix.minimum_system_version }}-${{ hashFiles('scripts/build-ffmpeg-macos.sh') }}
 
       - name: Install cargo-about
         run: cargo install --locked --features cli cargo-about
 
-      - name: Install macOS dependencies
+      - name: Install macOS build dependencies
         run: |
-          brew install ffmpeg pkg-config
-          FFMPEG_PREFIX="$(brew --prefix ffmpeg)"
+          brew install nasm pkg-config
+
+      - name: Build macOS FFmpeg
+        if: steps.cache-macos-ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          scripts/build-ffmpeg-macos.sh \
+            --target "${{ matrix.target }}" \
+            --prefix "${GITHUB_WORKSPACE}/.cache/bmz-ffmpeg/${{ matrix.target }}"
+
+      - name: Configure macOS build environment
+        run: |
+          FFMPEG_PREFIX="${GITHUB_WORKSPACE}/.cache/bmz-ffmpeg/${{ matrix.target }}"
+          test -f "${FFMPEG_PREFIX}/lib/pkgconfig/libavcodec.pc"
+          test -f "${FFMPEG_PREFIX}/share/bmz-player/ffmpeg-build.txt"
           {
             echo "FFMPEG_DIR=${FFMPEG_PREFIX}"
             echo "PKG_CONFIG_PATH=${FFMPEG_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
@@ -325,9 +348,9 @@ jobs:
         run: |
           mkdir -p dist/release
 
-          brew info --json=v2 ffmpeg > "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-brew-ffmpeg.json"
-          ffmpeg -version > "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-ffmpeg-version.txt"
-          if grep -q -- "--enable-nonfree" "dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-ffmpeg-version.txt"; then
+          provenance="dist/release/bmz-player-v${BMZ_VERSION}-macos-${BMZ_MACOS_ARCH}-ffmpeg-build.txt"
+          cp "${FFMPEG_DIR}/share/bmz-player/ffmpeg-build.txt" "${provenance}"
+          if grep -q -- "--enable-nonfree" "${provenance}"; then
             echo "FFmpeg was built with --enable-nonfree and must not be redistributed" >&2
             exit 1
           fi
@@ -348,6 +371,7 @@ jobs:
 
           scripts/package-macos-app.sh \
             --target "${{ matrix.target }}" \
+            --minimum-system-version "${BMZ_MACOS_DEPLOYMENT_TARGET}" \
             --bundle-dylibs \
             "${sign_args[@]}"
 
