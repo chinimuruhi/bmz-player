@@ -144,6 +144,7 @@ where
 ///
 /// CPAL normally owns this state inside its data callback. WASAPI exclusive mode has to service
 /// endpoint buffers itself, so it moves the same state onto its dedicated worker thread.
+#[cfg(windows)]
 pub(crate) struct NativeOutputRenderer {
     channel_offset: usize,
     output_commands: SharedOutputCommands,
@@ -153,6 +154,7 @@ pub(crate) struct NativeOutputRenderer {
     buffers: OutputRenderBuffers,
 }
 
+#[cfg(windows)]
 impl NativeOutputRenderer {
     pub(super) fn new(
         channel_offset: usize,

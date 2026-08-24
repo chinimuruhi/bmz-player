@@ -214,13 +214,13 @@ pub(super) async fn connect_with_pending_commands(
     url: &str,
     rx: &mut mpsc::UnboundedReceiver<ObsCommand>,
     pending_commands: &mut VecDeque<ObsCommand>,
-) -> std::result::Result<Option<ObsWebSocket>, TungsteniteError> {
+) -> std::result::Result<Option<ObsWebSocket>, Box<TungsteniteError>> {
     let connection = connect_async(url);
     tokio::pin!(connection);
     loop {
         tokio::select! {
             result = &mut connection => {
-                return result.map(|(ws, _)| Some(ws));
+                return result.map(|(ws, _)| Some(ws)).map_err(Box::new);
             }
             command = rx.recv() => {
                 match command {

@@ -458,7 +458,7 @@ fn hex_decode_32(value: &str) -> Result<[u8; 32]> {
     }
 
     let mut out = [0_u8; 32];
-    for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+    for (index, chunk) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         out[index] = (hex_digit(chunk[0])? << 4) | hex_digit(chunk[1])?;
     }
     Ok(out)

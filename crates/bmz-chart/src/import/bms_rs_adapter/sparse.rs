@@ -64,7 +64,7 @@ pub(super) fn extract_sparse_bms_message_line(
     }
     let measure = measure_text.parse::<u64>().ok()?;
     let mut objects = Vec::new();
-    for (index, chunk) in payload.as_bytes().chunks_exact(2).enumerate() {
+    for (index, chunk) in payload.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         if chunk != b"00" {
             let id = std::str::from_utf8(chunk).ok()?.to_string();
             objects.push(SparseBmsObject { index: index as u64, id });
@@ -108,7 +108,7 @@ pub(super) fn extract_bga_message_line(line: &str, line_number: usize) -> Option
     }
     let measure = measure_text.parse::<u64>().ok()?;
     let mut objects = Vec::new();
-    for (index, chunk) in payload.as_bytes().chunks_exact(2).enumerate() {
+    for (index, chunk) in payload.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         if chunk != b"00" {
             let id = std::str::from_utf8(chunk).ok()?.to_string();
             objects.push(SparseBmsObject { index: index as u64, id });

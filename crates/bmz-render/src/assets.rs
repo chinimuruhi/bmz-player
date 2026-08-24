@@ -126,13 +126,22 @@ fn load_cim_rgba(path: &Path) -> Result<RgbaImageAsset> {
     let pixels = match format {
         1 => source.into_iter().flat_map(|a| [255, 255, 255, a]).collect(),
         2 => source
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .flat_map(|pixel| [pixel[0], pixel[0], pixel[0], pixel[1]])
             .collect(),
-        3 => source.chunks_exact(3).flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255]).collect(),
+        3 => source
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
+            .collect(),
         4 => source,
         5 => source
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .flat_map(|pixel| {
                 let value = u16::from_le_bytes([pixel[0], pixel[1]]);
                 let r = (((value >> 11) & 0x1f) * 255 / 31) as u8;
@@ -142,7 +151,9 @@ fn load_cim_rgba(path: &Path) -> Result<RgbaImageAsset> {
             })
             .collect(),
         6 => source
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .flat_map(|pixel| {
                 let value = u16::from_le_bytes([pixel[0], pixel[1]]);
                 let r = (((value >> 12) & 0x0f) * 17) as u8;

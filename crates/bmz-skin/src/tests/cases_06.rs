@@ -331,7 +331,7 @@ fn peaceful_play_integral_property_ops_are_selectable_when_available() {
         })
         .collect::<Vec<_>>();
     assert_eq!(keybeams.len(), 9 * 4 * 2);
-    for pair in keybeams.chunks_exact(2) {
+    for pair in keybeams.as_chunks::<2>().0 {
         assert!(pair[0].timer.is_none());
         assert!(pair[0].draw.starts_with("keybeam_hold("), "hold: {:?}", pair[0]);
         assert!(matches!(pair[1].timer, Some(120..=129)));

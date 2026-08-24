@@ -41,7 +41,7 @@ pub fn hex_to_hash<const N: usize>(s: &str) -> rusqlite::Result<[u8; N]> {
         ));
     }
     let mut out = [0_u8; N];
-    for (i, chunk) in s.as_bytes().chunks_exact(2).enumerate() {
+    for (i, chunk) in s.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         let hi = hex_nibble(chunk[0])?;
         let lo = hex_nibble(chunk[1])?;
         out[i] = (hi << 4) | lo;

@@ -29,8 +29,11 @@ pub(super) fn discover_chart_files_with_progress(
     root: &Path,
     recursive: bool,
     scan: &ScanConfig,
-    mut on_discovered: impl FnMut(u32),
+    on_discovered: impl FnMut(u32),
 ) -> ChartDiscovery {
+    #[cfg(windows)]
+    let mut on_discovered = on_discovered;
+
     #[cfg(windows)]
     if scan.use_everything {
         match super::everything::discover_chart_files_everything(

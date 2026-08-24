@@ -280,7 +280,7 @@ fn decode_packed_key_input(encoded: &str) -> Result<Vec<DecodedKeyInput>> {
     }
 
     let mut inputs = Vec::with_capacity(bytes.len() / KEY_INPUT_RECORD_BYTES);
-    for record in bytes.chunks_exact(KEY_INPUT_RECORD_BYTES) {
+    for record in bytes.as_chunks::<KEY_INPUT_RECORD_BYTES>().0 {
         let signed_keycode = record[0] as i8;
         if signed_keycode == 0 {
             bail!("beatoraja keyinput contains keycode zero");
