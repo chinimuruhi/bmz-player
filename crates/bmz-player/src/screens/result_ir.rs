@@ -18,7 +18,7 @@ use crate::ir::sync::{
     IR_SYNC_BATCH_LIMIT, IrSyncJobFilter, IrSyncReport, IrSyncThrottle, ensure_fresh_credentials,
     sync_pending_ir_jobs, sync_pending_ir_jobs_filtered,
 };
-use crate::ir::types::{IrCourseRankingResult, IrRankingResult, IrRankingScope};
+use crate::ir::types::{IrCourseRankingResult, IrRankingResult, IrRankingScope, IrSubmitResponse};
 use crate::ln_policy::LnScorePolicy;
 use crate::select_options::DoubleOptionScoreBucket;
 use crate::storage::network_db::{IrJobKind, IrScoreJobRecord, IrScoreJobStatus};
@@ -447,6 +447,7 @@ use snapshot::*;
 use task::*;
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::sync::mpsc::channel;
 
@@ -457,7 +458,7 @@ mod tests {
         IrCourseRankingBody, IrCourseRankingCourseRef, IrCourseRankingEntry, IrCourseRankingResult,
         IrCourseRankingScore, IrRankingBody, IrRankingChartRef, IrRankingEntry,
         IrRankingPagination, IrRankingPlayer, IrRankingResult, IrRankingScope, IrRankingScore,
-        IrRankingSelfRef,
+        IrRankingSelfRef, IrScopedRankingResponse, IrSubmitResponse,
     };
     use crate::ln_policy::LnScorePolicy;
     use crate::select_options::DoubleOptionScoreBucket;
@@ -467,7 +468,8 @@ mod tests {
         IrSubmitState, RankingLoadState, ResultIrEvent, ResultIrRanking, ResultIrRankingEntry,
         ResultIrState, ResultIrTarget, ResultIrTaskQuery, ResultRankingTab,
         course_ranking_to_result_ir_ranking, included_global_ranking_for_query,
-        ranking_to_ir_snapshot, result_ir_ranking_to_skin_snapshot_at, result_ranking_limit,
+        included_global_ranking_from_response, ranking_to_ir_snapshot,
+        result_ir_ranking_to_skin_snapshot_at, result_ranking_limit,
     };
 
     #[test]
@@ -768,6 +770,52 @@ mod tests {
         assert_eq!(ranking.clear_rate, Some(75));
         assert_eq!(ranking.previous_rank, Some(9));
         assert_eq!(ranking.total, Some(2));
+    }
+
+    #[test]
+    fn stored_submission_response_restores_previous_rank_for_current_attempt() {
+        let query = ResultIrTaskQuery {
+            profile_root: PathBuf::new(),
+            provider: "bmz-official".to_string(),
+            account_id: "account-1".to_string(),
+            base_url: "https://ir.example.test".to_string(),
+            target: ResultIrTarget::Chart {
+                local_score_id: 2,
+                chart_sha256_hex: "current".to_string(),
+                ln_policy: LnScorePolicy::AutoLn,
+                double_option: DoubleOptionScoreBucket::Off,
+                rule_mode: RuleMode::Beatoraja,
+            },
+        };
+        let response = IrSubmitResponse {
+            accepted: true,
+            score_id: Some("remote-2".to_string()),
+            best_updated: true,
+            previous_best: None,
+            rankings: BTreeMap::from([(
+                IrRankingScope::Global,
+                IrScopedRankingResponse {
+                    succeeded: true,
+                    previous_rank: Some(9),
+                    data: Some(IrRankingResult {
+                        chart: IrRankingChartRef { sha256: "current".to_string() },
+                        ranking: IrRankingBody {
+                            scope: IrRankingScope::Global,
+                            entries: Vec::new(),
+                            clear_rate: Some(75),
+                            self_summary: None,
+                            pagination: None,
+                        },
+                    }),
+                    error: None,
+                },
+            )]),
+        };
+
+        let ranking = included_global_ranking_from_response(&query, &response).unwrap();
+
+        assert_eq!(ranking.previous_rank, Some(9));
+        assert_eq!(ranking.clear_rate, Some(75));
     }
 
     #[test]

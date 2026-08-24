@@ -260,6 +260,7 @@ pub(super) async fn sync_pending_ir_jobs_with_filter(
                                 error: String::new(),
                             },
                             replay_job.as_ref(),
+                            &response_json,
                         )?;
                         Ok(())
                     });

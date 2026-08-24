@@ -245,8 +245,16 @@ fn completing_score_job_atomically_enqueues_replay_job() {
             error: String::new(),
         },
         Some(&replay_job),
+        r#"{"accepted":true,"score_id":"remote-42","best_updated":true,"rankings":{}}"#,
     )
     .unwrap();
+
+    assert_eq!(
+        db.latest_ir_score_submission_response("bmz-official", "account-1", IrJobKind::Score, 42,)
+            .unwrap()
+            .as_deref(),
+        Some(r#"{"accepted":true,"score_id":"remote-42","best_updated":true,"rankings":{}}"#),
+    );
 
     let (score_status, score_payload): (String, String) = db
         .conn()

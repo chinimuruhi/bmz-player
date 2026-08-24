@@ -180,8 +180,24 @@ pub(super) fn spawn_result_ir_task_for_target(
                 // 別の同期 task がこの job を先に claim していても、送信完了まで
                 // 待ってから ranking を取得する。これで古いサーバ側 ranking を
                 // Result に固定しない。
-                let event = watch_result_submission(&network_db_path, &submit_query.target).await;
+                let event = watch_result_submission(&network_db_path, &submit_query).await;
                 let _ = submit_sender.send(event);
+                if included_global_ranking.is_none() {
+                    match stored_included_global_ranking(&network_db_path, &submit_query) {
+                        Ok(Some(ranking)) => {
+                            let _ = submit_sender.send(ResultIrEvent::Ranking {
+                                scope: IrRankingScope::Global,
+                                result: Ok(ranking.clone()),
+                            });
+                            included_global_ranking = Some(ranking);
+                        }
+                        Ok(None) => {}
+                        Err(error) => tracing::warn!(
+                            %error,
+                            "failed to load the completed IR submission response",
+                        ),
+                    }
+                }
             }
             Err(error) => {
                 let _ = submit_sender.send(ResultIrEvent::Submit {
@@ -214,18 +230,27 @@ pub(super) fn spawn_result_ir_task_for_target(
 /// 常駐同期との claim race があっても、今回の attempt の終端状態を待つ。
 pub(super) async fn watch_result_submission(
     network_db_path: &std::path::Path,
-    target: &ResultIrTarget,
+    query: &ResultIrTaskQuery,
 ) -> ResultIrEvent {
     const POLL_INTERVAL: Duration = Duration::from_millis(250);
     const MAX_POLLS: usize = 120;
-    let (kind, local_score_id) = target.submission_job();
+    let (kind, local_score_id) = query.target.submission_job();
 
     for _ in 0..MAX_POLLS {
         match crate::storage::network_db::NetworkDatabase::open(network_db_path)
             .and_then(|db| db.ir_score_jobs_for_local_score(kind, local_score_id))
         {
             Ok(jobs) => {
-                if let Some((submitted, failed, message)) = submission_result_from_jobs(&jobs) {
+                let primary_jobs = jobs
+                    .iter()
+                    .filter(|job| {
+                        job.provider == query.provider && job.account_id == query.account_id
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if let Some((submitted, failed, message)) =
+                    submission_result_from_jobs(&primary_jobs)
+                {
                     return ResultIrEvent::Submit { submitted, failed, message };
                 }
             }
@@ -302,6 +327,40 @@ pub(super) fn included_global_ranking_for_query(
                 ranking.previous_rank,
             )
         })
+}
+
+fn stored_included_global_ranking(
+    network_db_path: &std::path::Path,
+    query: &ResultIrTaskQuery,
+) -> anyhow::Result<Option<ResultIrRanking>> {
+    let ResultIrTarget::Chart { local_score_id, .. } = &query.target else {
+        return Ok(None);
+    };
+    let response_json = crate::storage::network_db::NetworkDatabase::open(network_db_path)?
+        .latest_ir_score_submission_response(
+            &query.provider,
+            &query.account_id,
+            IrJobKind::Score,
+            *local_score_id,
+        )?;
+    let Some(response_json) = response_json else {
+        return Ok(None);
+    };
+    let response = serde_json::from_str::<IrSubmitResponse>(&response_json)?;
+    Ok(included_global_ranking_from_response(query, &response))
+}
+
+pub(super) fn included_global_ranking_from_response(
+    query: &ResultIrTaskQuery,
+    response: &IrSubmitResponse,
+) -> Option<ResultIrRanking> {
+    let ResultIrTarget::Chart { chart_sha256_hex, .. } = &query.target else {
+        return None;
+    };
+    let ranking =
+        response.rankings.get(&IrRankingScope::Global).filter(|ranking| ranking.succeeded)?;
+    let data = ranking.data.as_ref().filter(|data| data.chart.sha256 == *chart_sha256_hex)?;
+    Some(chart_ranking_to_result_ir_ranking_with_previous(data, ranking.previous_rank))
 }
 
 pub(super) fn spawn_ranking_fetch(
