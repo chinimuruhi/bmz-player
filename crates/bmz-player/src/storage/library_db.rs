@@ -36,7 +36,7 @@ pub(crate) fn library_path_key(path: &Path) -> String {
 }
 
 pub const CHART_IMPORT_VERSION: i64 = 7;
-pub const CHART_LOUDNESS_ANALYSIS_VERSION: i64 = 1;
+pub const CHART_LOUDNESS_ANALYSIS_VERSION: i64 = 2;
 const MAX_ANALYSIS_DISTRIBUTION_SECONDS: usize = 10 * 60;
 
 pub struct LibraryDatabase {
@@ -132,6 +132,8 @@ pub struct ChartAnalysisSummary {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChartNormalizationAnalysis {
     pub loudness_lufs: f32,
+    pub short_term_lufs: f32,
+    pub sample_peak: f32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

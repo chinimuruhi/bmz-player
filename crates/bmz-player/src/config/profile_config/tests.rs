@@ -349,6 +349,7 @@ fn default_profile_uses_normalized_quieter_audio_and_prefetches_ir_rankings() {
 
     assert_eq!(profile.audio_mix.master_volume, 50);
     assert!(profile.audio_mix.normalize_chart_volume);
+    assert!(profile.audio_mix.normalize_system_bgm_volume);
     assert_eq!(profile.audio_mix.key_volume, 50);
     assert_eq!(profile.audio_mix.bgm_volume, 50);
     assert_eq!(profile.audio_mix.preview_volume, 50);
@@ -358,6 +359,23 @@ fn default_profile_uses_normalized_quieter_audio_and_prefetches_ir_rankings() {
     assert!(profile.ir.prefetch_rival_ranking_on_score_submit);
     assert_eq!(profile.ir.providers[0], IrProviderConfig::bmz_ir());
     assert_eq!(profile.ir.providers[1], IrProviderConfig::rian_ir());
+}
+
+#[test]
+fn existing_audio_mix_defaults_system_bgm_normalization_on() {
+    let audio_mix: AudioMixConfig = toml::from_str(
+        r#"
+        master_volume = 50
+        key_volume = 50
+        bgm_volume = 50
+        preview_volume = 50
+        system_bgm_volume = 50
+        system_se_volume = 50
+        "#,
+    )
+    .unwrap();
+
+    assert!(audio_mix.normalize_system_bgm_volume);
 }
 
 #[test]
@@ -565,6 +583,7 @@ fn replay_slot_rule_empty_string_disables_slot() {
 
             [audio_mix]
             normalize_chart_volume = true
+            normalize_system_bgm_volume = true
             master_volume = 50
             key_volume = 50
             bgm_volume = 50
@@ -583,6 +602,7 @@ fn replay_slot_rule_empty_string_disables_slot() {
     assert_eq!(profile.replay.slot_rules[3], ReplaySlotRule::Disabled);
     assert!(profile.ir.prefetch_global_ranking_on_score_submit);
     assert!(profile.ir.prefetch_rival_ranking_on_score_submit);
+    assert!(profile.audio_mix.normalize_system_bgm_volume);
 }
 
 #[test]

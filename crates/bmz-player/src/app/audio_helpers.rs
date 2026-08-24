@@ -269,6 +269,7 @@ pub(super) fn system_sound_catalog_from_boot(
 pub(super) fn system_sound_manager_from_catalog(
     catalog: &crate::system_sound::SoundSetCatalog,
     audio: &crate::audio::SystemAudio,
+    normalize_bgm_volume: bool,
 ) -> crate::system_sound_manager::SystemSoundManager {
     let selection = catalog.select_random();
     tracing::info!(
@@ -276,7 +277,9 @@ pub(super) fn system_sound_manager_from_catalog(
         se_dir = ?selection.se_dir,
         "selected system sound sets"
     );
-    crate::system_sound_manager::SystemSoundManager::new(audio.engine(), &selection)
+    let manager = crate::system_sound_manager::SystemSoundManager::new(audio.engine(), &selection);
+    manager.set_bgm_normalization_enabled(normalize_bgm_volume);
+    manager
 }
 
 pub(super) fn system_sound_volume_from_mix(

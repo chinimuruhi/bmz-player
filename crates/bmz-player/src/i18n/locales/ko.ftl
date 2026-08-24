@@ -332,6 +332,7 @@ profile-basic-title = 기본
 profile-display-name = 표시 이름
 profile-volume-title = 음량
 profile-volume-normalize = 차트 및 미리듣기 음량 정규화
+profile-volume-normalize-system-bgm = 시스템 BGM 음량 정규화
 profile-volume-master = 마스터
 profile-volume-keysound = 키음
 profile-volume-preview = 곡 선택 미리듣기

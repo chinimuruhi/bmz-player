@@ -6,26 +6,162 @@ use bmz_core::time::TimeUs;
 use crate::sample::{DecodedSample, SampleBank};
 
 /// プレイ再生に適用する正規化の目標 loudness。
-/// DBには loudness だけを保存し、適用時にこの目標へ変換する。
+/// DBには解析指標を保存し、適用時に用途別の目標へ変換する。
 pub const PLAY_TARGET_LUFS: f32 = -6.0;
 /// 選曲プレビューに適用する正規化の目標 loudness。
 /// プレイ再生と同じ目標値を使う。
 pub const PREVIEW_TARGET_LUFS: f32 = PLAY_TARGET_LUFS;
 /// 選曲プレビューの sample peak 上限。true peak ではなく decode 済み PCM の最大値で判定する。
 pub const PREVIEW_PEAK_CEILING_DBFS: f32 = -1.0;
+/// プレイ / システム BGM は全体目標よりこの値だけ大きい短時間区間を許容する。
+pub const LONG_FORM_SHORT_TERM_HEADROOM_LU: f32 = 3.0;
+/// プレイ / システム BGM の sample peak 上限。
+pub const LONG_FORM_PEAK_CEILING_DBFS: f32 = -1.0;
 const MAX_ANALYSIS_DURATION_US: i64 = 10 * 60 * 1_000_000;
 const ANALYSIS_CHUNK_FRAMES: usize = 2048;
+const ENERGY_BLOCK_DURATION_MS: u64 = 100;
+const INTEGRATED_WINDOW_BLOCKS: usize = 4;
+const SHORT_TERM_WINDOW_BLOCKS: usize = 30;
+const ABSOLUTE_GATE_LUFS: f32 = -70.0;
+const RELATIVE_GATE_LU: f32 = 10.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ChartLoudnessAnalysis {
+pub struct LoudnessAnalysis {
     pub loudness_lufs: f32,
+    pub short_term_lufs: f32,
+    pub peak_abs: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PreviewLoudnessAnalysis {
     pub loudness_lufs: f32,
+    pub short_term_lufs: f32,
     pub peak_abs: f32,
     pub normalization_gain: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EnergyBlock {
+    sum_square: f64,
+    frames: u64,
+}
+
+struct LoudnessAccumulator {
+    frames_per_block: u64,
+    current_sum_square: f64,
+    current_frames: u64,
+    blocks: Vec<EnergyBlock>,
+    peak_abs: f32,
+    valid: bool,
+}
+
+impl LoudnessAccumulator {
+    fn new(sample_rate: u32) -> Option<Self> {
+        if sample_rate == 0 {
+            return None;
+        }
+        let frames_per_block = (u64::from(sample_rate) * ENERGY_BLOCK_DURATION_MS / 1_000).max(1);
+        Some(Self {
+            frames_per_block,
+            current_sum_square: 0.0,
+            current_frames: 0,
+            blocks: Vec::new(),
+            peak_abs: 0.0,
+            valid: true,
+        })
+    }
+
+    fn push_stereo(&mut self, left: f32, right: f32) {
+        if !left.is_finite() || !right.is_finite() {
+            self.valid = false;
+            return;
+        }
+        self.peak_abs = self.peak_abs.max(left.abs()).max(right.abs());
+        let left = f64::from(left);
+        let right = f64::from(right);
+        self.current_sum_square += left * left + right * right;
+        self.current_frames += 1;
+        if self.current_frames >= self.frames_per_block {
+            self.finish_block();
+        }
+    }
+
+    fn finish(mut self) -> Option<LoudnessAnalysis> {
+        if self.current_frames > 0 {
+            self.finish_block();
+        }
+        if !self.valid || self.peak_abs <= 0.0 || self.blocks.is_empty() {
+            return None;
+        }
+
+        let integrated_windows = window_mean_squares(&self.blocks, INTEGRATED_WINDOW_BLOCKS);
+        let absolute_gated = integrated_windows
+            .iter()
+            .copied()
+            .filter(|mean_square| {
+                loudness_lufs(*mean_square).is_some_and(|v| v >= ABSOLUTE_GATE_LUFS)
+            })
+            .collect::<Vec<_>>();
+        if absolute_gated.is_empty() {
+            return None;
+        }
+        let preliminary_mean = mean(&absolute_gated)?;
+        let relative_gate = loudness_lufs(preliminary_mean)? - RELATIVE_GATE_LU;
+        let gated = absolute_gated
+            .iter()
+            .copied()
+            .filter(|mean_square| loudness_lufs(*mean_square).is_some_and(|v| v >= relative_gate))
+            .collect::<Vec<_>>();
+        let integrated_lufs = loudness_lufs(mean(&gated)?)?;
+
+        let short_term_lufs = window_mean_squares(&self.blocks, SHORT_TERM_WINDOW_BLOCKS)
+            .into_iter()
+            .filter_map(loudness_lufs)
+            .fold(f32::NEG_INFINITY, f32::max);
+        if !short_term_lufs.is_finite() {
+            return None;
+        }
+
+        Some(LoudnessAnalysis {
+            loudness_lufs: integrated_lufs,
+            short_term_lufs,
+            peak_abs: self.peak_abs,
+        })
+    }
+
+    fn finish_block(&mut self) {
+        self.blocks
+            .push(EnergyBlock { sum_square: self.current_sum_square, frames: self.current_frames });
+        self.current_sum_square = 0.0;
+        self.current_frames = 0;
+    }
+}
+
+fn window_mean_squares(blocks: &[EnergyBlock], window_blocks: usize) -> Vec<f64> {
+    if blocks.is_empty() {
+        return Vec::new();
+    }
+    let window_blocks = window_blocks.min(blocks.len()).max(1);
+    blocks
+        .windows(window_blocks)
+        .filter_map(|window| {
+            let sum_square = window.iter().map(|block| block.sum_square).sum::<f64>();
+            let frames = window.iter().map(|block| block.frames).sum::<u64>();
+            (frames > 0).then_some(sum_square / frames as f64)
+        })
+        .collect()
+}
+
+fn mean(values: &[f64]) -> Option<f64> {
+    (!values.is_empty()).then(|| values.iter().sum::<f64>() / values.len() as f64)
+}
+
+fn loudness_lufs(mean_square: f64) -> Option<f32> {
+    if mean_square <= f64::MIN_POSITIVE {
+        return None;
+    }
+    let value = (-0.691 + 10.0 * mean_square.log10()) as f32;
+    value.is_finite().then_some(value)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,10 +182,8 @@ pub fn analyze_chart_loudness(
     chart: &PlayableChart,
     samples: &SampleBank,
     sample_rate: u32,
-) -> Option<ChartLoudnessAnalysis> {
-    if sample_rate == 0 {
-        return None;
-    }
+) -> Option<LoudnessAnalysis> {
+    let mut loudness = LoudnessAccumulator::new(sample_rate)?;
 
     let mut events = collect_loudness_events(chart, sample_rate);
     if events.is_empty() {
@@ -64,8 +198,6 @@ pub fn analyze_chart_loudness(
 
     let mut active = Vec::<ActiveLoudnessVoice>::new();
     let mut next_event = 0usize;
-    let mut sum_square = 0.0f64;
-    let mut measured_frames = 0u64;
     let mut output_frame = 0u64;
 
     while output_frame < duration_frames {
@@ -100,62 +232,79 @@ pub fn analyze_chart_loudness(
                 voice.sample_frame < sample.frame_count()
             });
 
-            sum_square += f64::from(left * left + right * right);
-            measured_frames += 1;
+            loudness.push_stereo(left, right);
         }
         output_frame += chunk_frames as u64;
     }
+    loudness.finish()
+}
 
-    if measured_frames == 0 || sum_square <= f64::MIN_POSITIVE {
+/// Decode 済み音源を、プレイの合成音声と同じゲーティング規則で解析する。
+pub fn analyze_decoded_loudness(sample: &DecodedSample) -> Option<LoudnessAnalysis> {
+    if sample.frame_count() == 0 {
         return None;
     }
-
-    let mean_square = sum_square / measured_frames as f64;
-    let loudness_lufs = (-0.691 + 10.0 * mean_square.log10()) as f32;
-    if !loudness_lufs.is_finite() {
-        return None;
+    let mut loudness = LoudnessAccumulator::new(sample.sample_rate)?;
+    for frame in 0..sample.frame_count() {
+        let (left, right) = sample.sample_stereo(frame);
+        loudness.push_stereo(left, right);
     }
-    Some(ChartLoudnessAnalysis { loudness_lufs })
+    loudness.finish()
 }
 
 /// Decode 済みの選曲プレビューを解析し、loudness と sample peak の両方を満たす
 /// 下げ方向のみのゲインを返す。
 pub fn analyze_preview_loudness(sample: &DecodedSample) -> Option<PreviewLoudnessAnalysis> {
-    let frame_count = sample.frame_count();
-    if frame_count == 0 || sample.frames.iter().any(|value| !value.is_finite()) {
-        return None;
-    }
+    let analysis = analyze_decoded_loudness(sample)?;
+    let normalization_gain = normalization_gain_for_analysis(
+        analysis,
+        PREVIEW_TARGET_LUFS,
+        PREVIEW_TARGET_LUFS,
+        PREVIEW_PEAK_CEILING_DBFS,
+    );
 
-    let peak_abs = sample.frames.iter().fold(0.0f32, |peak, value| peak.max(value.abs()));
-    let mut sum_square = 0.0f64;
-    for frame in 0..frame_count {
-        let (left, right) = sample.sample_stereo(frame);
-        let left = f64::from(left);
-        let right = f64::from(right);
-        sum_square += left * left + right * right;
-    }
-    if sum_square <= f64::MIN_POSITIVE {
-        return None;
-    }
-
-    let mean_square = sum_square / frame_count as f64;
-    let loudness_lufs = (-0.691 + 10.0 * mean_square.log10()) as f32;
-    if !loudness_lufs.is_finite() || !peak_abs.is_finite() || peak_abs <= 0.0 {
-        return None;
-    }
-
-    let loudness_gain = normalization_gain_for_target(loudness_lufs, PREVIEW_TARGET_LUFS);
-    let peak_ceiling = 10.0f32.powf(PREVIEW_PEAK_CEILING_DBFS / 20.0);
-    let peak_gain = (peak_ceiling / peak_abs).clamp(0.0, 1.0);
-    let normalization_gain = loudness_gain.min(peak_gain).clamp(0.0, 1.0);
-
-    Some(PreviewLoudnessAnalysis { loudness_lufs, peak_abs, normalization_gain })
+    Some(PreviewLoudnessAnalysis {
+        loudness_lufs: analysis.loudness_lufs,
+        short_term_lufs: analysis.short_term_lufs,
+        peak_abs: analysis.peak_abs,
+        normalization_gain,
+    })
 }
 
-/// プレイ適用用: `PLAY_TARGET_LUFS` (-6) 基準の下げのみゲイン。
+/// 全体 loudness だけがある場合の互換用: `PLAY_TARGET_LUFS` (-6) 基準の下げのみゲイン。
+/// 通常のプレイ経路では短時間 loudness と sample peak も使う
+/// [`play_normalization_gain_for_analysis`] を使用する。
 /// DB の `loudness_lufs` から毎回導出する。
 pub fn play_normalization_gain_for_loudness(loudness_lufs: f32) -> f32 {
     normalization_gain_for_target(loudness_lufs, PLAY_TARGET_LUFS)
+}
+
+pub fn play_normalization_gain_for_analysis(analysis: LoudnessAnalysis) -> f32 {
+    normalization_gain_for_analysis(
+        analysis,
+        PLAY_TARGET_LUFS,
+        PLAY_TARGET_LUFS + LONG_FORM_SHORT_TERM_HEADROOM_LU,
+        LONG_FORM_PEAK_CEILING_DBFS,
+    )
+}
+
+pub fn system_bgm_normalization_gain_for_analysis(analysis: LoudnessAnalysis) -> f32 {
+    play_normalization_gain_for_analysis(analysis)
+}
+
+fn normalization_gain_for_analysis(
+    analysis: LoudnessAnalysis,
+    integrated_target_lufs: f32,
+    short_term_target_lufs: f32,
+    peak_ceiling_dbfs: f32,
+) -> f32 {
+    let integrated_gain =
+        normalization_gain_for_target(analysis.loudness_lufs, integrated_target_lufs);
+    let short_term_gain =
+        normalization_gain_for_target(analysis.short_term_lufs, short_term_target_lufs);
+    let peak_ceiling = 10.0f32.powf(peak_ceiling_dbfs / 20.0);
+    let peak_gain = (peak_ceiling / analysis.peak_abs).clamp(0.0, 1.0);
+    integrated_gain.min(short_term_gain).min(peak_gain).clamp(0.0, 1.0)
 }
 
 fn normalization_gain_for_target(loudness_lufs: f32, target_lufs: f32) -> f32 {
@@ -324,6 +473,45 @@ mod tests {
     }
 
     #[test]
+    fn gated_analysis_ignores_a_long_silent_tail() {
+        let sample_rate = 1_000;
+        let loud = stereo_frames(0.75, 3 * sample_rate as usize);
+        let mut with_tail = loud.clone();
+        with_tail.extend(stereo_frames(0.0, 15 * sample_rate as usize));
+
+        let loud =
+            analyze_decoded_loudness(&DecodedSample { channels: 2, sample_rate, frames: loud })
+                .unwrap();
+        let with_tail = analyze_decoded_loudness(&DecodedSample {
+            channels: 2,
+            sample_rate,
+            frames: with_tail,
+        })
+        .unwrap();
+
+        assert!((loud.loudness_lufs - with_tail.loudness_lufs).abs() < 0.5);
+        assert!((loud.short_term_lufs - with_tail.short_term_lufs).abs() < 0.001);
+    }
+
+    #[test]
+    fn preview_short_term_guard_is_stricter_than_long_form_audio() {
+        let sample_rate = 1_000;
+        let mut frames = stereo_frames(0.5, 3 * sample_rate as usize);
+        frames.extend(stereo_frames(0.2, 30 * sample_rate as usize));
+        let sample = DecodedSample { channels: 2, sample_rate, frames };
+
+        let preview = analyze_preview_loudness(&sample).unwrap();
+        let long_form = analyze_decoded_loudness(&sample).unwrap();
+        let play_gain = play_normalization_gain_for_analysis(long_form);
+
+        assert!(preview.loudness_lufs < PREVIEW_TARGET_LUFS);
+        assert!(preview.short_term_lufs > PREVIEW_TARGET_LUFS);
+        assert!(preview.normalization_gain < 1.0);
+        assert!((play_gain - 1.0).abs() < 0.001);
+        assert_eq!(system_bgm_normalization_gain_for_analysis(long_form), play_gain);
+    }
+
+    #[test]
     fn analyze_chart_loudness_uses_bgm_and_key_events() {
         let mut samples = SampleBank::default();
         samples.insert(
@@ -355,9 +543,13 @@ mod tests {
 
         let result = analyze_chart_loudness(&chart, &samples, 48_000).unwrap();
         assert!(result.loudness_lufs.is_finite());
-        let gain = play_normalization_gain_for_loudness(result.loudness_lufs);
+        let gain = play_normalization_gain_for_analysis(result);
         assert!(gain > 0.0);
         assert!(gain <= 1.0);
+    }
+
+    fn stereo_frames(value: f32, frame_count: usize) -> Vec<f32> {
+        std::iter::repeat_n([value, value], frame_count).flatten().collect()
     }
 
     fn chart() -> PlayableChart {

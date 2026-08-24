@@ -518,6 +518,7 @@ impl ProfileConfig {
             },
             audio_mix: AudioMixConfig {
                 normalize_chart_volume: true,
+                normalize_system_bgm_volume: true,
                 master_volume: 50,
                 key_volume: 50,
                 bgm_volume: 50,

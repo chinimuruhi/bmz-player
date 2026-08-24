@@ -16,6 +16,7 @@ use crate::ln_policy::LnPolicySetting;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SettingsEntryId {
     NormalizeChartVolume,
+    NormalizeSystemBgmVolume,
     MasterVolume,
     KeyVolume,
     BgmVolume,
@@ -88,6 +89,7 @@ pub enum SettingsEntryId {
 impl SettingsEntryId {
     pub const VOLUME_ENTRIES: &'static [Self] = &[
         Self::NormalizeChartVolume,
+        Self::NormalizeSystemBgmVolume,
         Self::MasterVolume,
         Self::KeyVolume,
         Self::BgmVolume,
@@ -181,6 +183,7 @@ impl SettingsEntryId {
     pub fn label(self) -> &'static str {
         match self {
             Self::NormalizeChartVolume => "NORMALIZE",
+            Self::NormalizeSystemBgmVolume => "SYS BGM NORM",
             Self::MasterVolume => "MASTER",
             Self::KeyVolume => "KEY",
             Self::BgmVolume => "BGM",
@@ -273,6 +276,13 @@ mod tests {
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::NormalizeChartVolume, 1));
         assert!(!profile.audio_mix.normalize_chart_volume);
         assert_eq!(format_settings_value(&profile, SettingsEntryId::NormalizeChartVolume), "OFF");
+        assert!(profile.audio_mix.normalize_system_bgm_volume);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::NormalizeSystemBgmVolume, 1,));
+        assert!(!profile.audio_mix.normalize_system_bgm_volume);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::NormalizeSystemBgmVolume),
+            "OFF"
+        );
         profile.audio_mix.master_volume = 98;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::MasterVolume, 5));
         assert_eq!(profile.audio_mix.master_volume, 100);

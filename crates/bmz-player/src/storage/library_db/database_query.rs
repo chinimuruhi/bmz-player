@@ -421,19 +421,30 @@ impl LibraryDatabase {
     ) -> Result<Option<ChartNormalizationAnalysis>> {
         self.conn
             .query_row(
-                "SELECT loudness_lufs
+                "SELECT loudness_lufs, short_term_lufs, sample_peak
                  FROM chart_analysis
                  WHERE chart_id = ?1
                     AND loudness_analysis_version = ?2
-                    AND loudness_lufs IS NOT NULL",
+                    AND loudness_lufs IS NOT NULL
+                    AND short_term_lufs IS NOT NULL
+                    AND sample_peak IS NOT NULL",
                 params![chart_id, CHART_LOUDNESS_ANALYSIS_VERSION],
                 |row| {
                     let loudness_lufs: f32 = row.get(0)?;
-                    Ok(ChartNormalizationAnalysis { loudness_lufs })
+                    let short_term_lufs: f32 = row.get(1)?;
+                    let sample_peak: f32 = row.get(2)?;
+                    Ok(ChartNormalizationAnalysis { loudness_lufs, short_term_lufs, sample_peak })
                 },
             )
             .optional()
-            .map(|value| value.filter(|analysis| analysis.loudness_lufs.is_finite()))
+            .map(|value| {
+                value.filter(|analysis| {
+                    analysis.loudness_lufs.is_finite()
+                        && analysis.short_term_lufs.is_finite()
+                        && analysis.sample_peak.is_finite()
+                        && analysis.sample_peak > 0.0
+                })
+            })
             .map_err(Into::into)
     }
 
@@ -446,10 +457,18 @@ impl LibraryDatabase {
             .prepare_cached(
                 "UPDATE chart_analysis
              SET loudness_lufs = ?2,
-                 loudness_analysis_version = ?3
+                 short_term_lufs = ?3,
+                 sample_peak = ?4,
+                 loudness_analysis_version = ?5
              WHERE chart_id = ?1",
             )?
-            .execute(params![chart_id, analysis.loudness_lufs, CHART_LOUDNESS_ANALYSIS_VERSION,])?;
+            .execute(params![
+                chart_id,
+                analysis.loudness_lufs,
+                analysis.short_term_lufs,
+                analysis.sample_peak,
+                CHART_LOUDNESS_ANALYSIS_VERSION,
+            ])?;
         Ok(())
     }
 

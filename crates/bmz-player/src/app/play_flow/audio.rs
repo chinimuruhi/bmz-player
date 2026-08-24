@@ -215,6 +215,7 @@ impl WinitApp {
             self.audio.system_sound = Some(system_sound_manager_from_catalog(
                 &self.audio.system_sound_catalog,
                 &system_audio,
+                self.boot.profile_config.audio_mix.normalize_system_bgm_volume,
             ));
         }
         if !self.select.select_assets.has_preview() {

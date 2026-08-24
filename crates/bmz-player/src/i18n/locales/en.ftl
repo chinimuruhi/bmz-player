@@ -335,6 +335,7 @@ profile-basic-title = General
 profile-display-name = Display name
 profile-volume-title = Volume
 profile-volume-normalize = Normalize chart and preview volume
+profile-volume-normalize-system-bgm = Normalize system BGM volume
 profile-volume-master = Master
 profile-volume-keysound = Key sounds
 profile-volume-preview = Song select preview

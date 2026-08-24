@@ -10,6 +10,11 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             profile.audio_mix.normalize_chart_volume = !profile.audio_mix.normalize_chart_volume;
             true
         }
+        SettingsEntryId::NormalizeSystemBgmVolume => {
+            profile.audio_mix.normalize_system_bgm_volume =
+                !profile.audio_mix.normalize_system_bgm_volume;
+            true
+        }
         SettingsEntryId::MasterVolume => {
             adjust_u32(&mut profile.audio_mix.master_volume, delta, 0, 100)
         }

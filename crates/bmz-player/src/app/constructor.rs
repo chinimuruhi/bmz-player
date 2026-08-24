@@ -127,9 +127,13 @@ impl WinitApp {
         //   ときはスキャン済み候補から再抽選する。
         // - 空なら scan を省略し、`default_sound_dir` だけにフォールバックする。
         let system_sound_catalog = system_sound_catalog_from_boot(&boot);
-        let system_sound = system_audio
-            .as_ref()
-            .map(|audio| system_sound_manager_from_catalog(&system_sound_catalog, audio));
+        let system_sound = system_audio.as_ref().map(|audio| {
+            system_sound_manager_from_catalog(
+                &system_sound_catalog,
+                audio,
+                boot.profile_config.audio_mix.normalize_system_bgm_volume,
+            )
+        });
         let select_preview =
             system_audio.as_ref().map(|audio| SelectChartPreview::new(audio.engine()));
         let select_assets =

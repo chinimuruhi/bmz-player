@@ -505,11 +505,17 @@ fn chart_normalization_analysis_roundtrips_and_rescan_clears_it() {
 
     db.write_chart_normalization_analysis(
         chart_id,
-        ChartNormalizationAnalysis { loudness_lufs: -10.5 },
+        ChartNormalizationAnalysis {
+            loudness_lufs: -10.5,
+            short_term_lufs: -8.0,
+            sample_peak: 0.75,
+        },
     )
     .unwrap();
     let stored = db.chart_normalization_analysis_by_chart_id(chart_id).unwrap().unwrap();
     assert_eq!(stored.loudness_lufs, -10.5);
+    assert_eq!(stored.short_term_lufs, -8.0);
+    assert_eq!(stored.sample_peak, 0.75);
 
     db.upsert_chart_import(&record_for_chart("/songs/normalization.bms", &chart)).unwrap();
     assert!(db.chart_normalization_analysis_by_chart_id(chart_id).unwrap().is_none());

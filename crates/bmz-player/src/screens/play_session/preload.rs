@@ -680,7 +680,11 @@ pub(super) fn load_or_compute_chart_normalization_gain(
     audio: &AudioEngine,
 ) -> Result<f32> {
     if let Some(analysis) = library_db.chart_normalization_analysis_by_chart_id(chart_id)? {
-        return Ok(play_normalization_gain_for_loudness(analysis.loudness_lufs));
+        return Ok(play_normalization_gain_for_analysis(LoudnessAnalysis {
+            loudness_lufs: analysis.loudness_lufs,
+            short_term_lufs: analysis.short_term_lufs,
+            peak_abs: analysis.sample_peak,
+        }));
     }
 
     let Some(analysis) = analyze_chart_loudness(chart, &audio.samples, audio.output_sample_rate())
@@ -688,12 +692,18 @@ pub(super) fn load_or_compute_chart_normalization_gain(
         tracing::warn!(chart_id, "failed to analyze chart loudness; using unity gain");
         return Ok(1.0);
     };
-    let stored = ChartNormalizationAnalysis { loudness_lufs: analysis.loudness_lufs };
+    let stored = ChartNormalizationAnalysis {
+        loudness_lufs: analysis.loudness_lufs,
+        short_term_lufs: analysis.short_term_lufs,
+        sample_peak: analysis.peak_abs,
+    };
     library_db.write_chart_normalization_analysis(chart_id, stored)?;
-    let play_gain = play_normalization_gain_for_loudness(stored.loudness_lufs);
+    let play_gain = play_normalization_gain_for_analysis(analysis);
     tracing::info!(
         chart_id,
         loudness_lufs = stored.loudness_lufs,
+        short_term_lufs = stored.short_term_lufs,
+        sample_peak = stored.sample_peak,
         chart_normalization_gain = play_gain,
         "stored chart volume normalization analysis"
     );

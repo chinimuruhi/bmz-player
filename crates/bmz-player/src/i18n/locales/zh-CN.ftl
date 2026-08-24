@@ -332,6 +332,7 @@ profile-basic-title = 基本
 profile-display-name = 显示名称
 profile-volume-title = 音量
 profile-volume-normalize = 标准化谱面和试听音量
+profile-volume-normalize-system-bgm = 标准化系统 BGM 音量
 profile-volume-master = 主音量
 profile-volume-keysound = 按键音
 profile-volume-preview = 选曲试听

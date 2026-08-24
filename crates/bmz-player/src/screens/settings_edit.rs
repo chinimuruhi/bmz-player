@@ -257,6 +257,9 @@ impl SettingsEditSession {
             SettingsEntryId::NormalizeChartVolume => {
                 SettingsBaseline::Bool(profile.audio_mix.normalize_chart_volume)
             }
+            SettingsEntryId::NormalizeSystemBgmVolume => {
+                SettingsBaseline::Bool(profile.audio_mix.normalize_system_bgm_volume)
+            }
             SettingsEntryId::MasterVolume => {
                 SettingsBaseline::Volume(profile.audio_mix.master_volume)
             }
@@ -420,6 +423,9 @@ impl SettingsEditSession {
         match (&self.entry_id, &self.baseline) {
             (SettingsEntryId::NormalizeChartVolume, SettingsBaseline::Bool(value)) => {
                 profile.audio_mix.normalize_chart_volume = *value;
+            }
+            (SettingsEntryId::NormalizeSystemBgmVolume, SettingsBaseline::Bool(value)) => {
+                profile.audio_mix.normalize_system_bgm_volume = *value;
             }
             (SettingsEntryId::MasterVolume, SettingsBaseline::Volume(value)) => {
                 profile.audio_mix.master_volume = *value;
@@ -710,6 +716,12 @@ mod tests {
         profile.audio_mix.normalize_chart_volume = false;
         normalize_session.restore(&mut profile);
         assert!(profile.audio_mix.normalize_chart_volume);
+
+        let system_bgm_session =
+            SettingsEditSession::capture(&profile, SettingsEntryId::NormalizeSystemBgmVolume);
+        profile.audio_mix.normalize_system_bgm_volume = false;
+        system_bgm_session.restore(&mut profile);
+        assert!(profile.audio_mix.normalize_system_bgm_volume);
     }
 
     #[test]

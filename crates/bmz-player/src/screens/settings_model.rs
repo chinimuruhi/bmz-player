@@ -365,13 +365,16 @@ mod tests {
     #[test]
     fn settings_volume_lists_entries() {
         let items = load_settings_items(CONFIG_VOLUME_PATH);
-        assert_eq!(items.len(), 8);
+        assert_eq!(items.len(), SettingsEntryId::VOLUME_ENTRIES.len() + 1);
         assert!(matches!(items.first(), Some(SelectItem::SettingsBack)));
         assert!(
             matches!(&items[1], SelectItem::Config(row) if row.entry_id == SettingsEntryId::NormalizeChartVolume)
         );
         assert!(
-            matches!(&items[2], SelectItem::Config(row) if row.entry_id == SettingsEntryId::MasterVolume)
+            matches!(&items[2], SelectItem::Config(row) if row.entry_id == SettingsEntryId::NormalizeSystemBgmVolume)
+        );
+        assert!(
+            matches!(&items[3], SelectItem::Config(row) if row.entry_id == SettingsEntryId::MasterVolume)
         );
     }
 

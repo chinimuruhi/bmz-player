@@ -5,6 +5,7 @@ impl WinitApp {
         self.sync_active_play_realtime_profile_settings();
         if let Some(manager) = &self.audio.system_sound {
             let mix = self.boot.profile_config.audio_mix.clone();
+            manager.set_bgm_normalization_enabled(mix.normalize_system_bgm_volume);
             let preview_factor = select_preview_fade_factor(
                 self.select.select_assets.preview_fade(),
                 Instant::now(),

@@ -209,6 +209,9 @@ where
 pub struct AudioMixConfig {
     #[serde(default)]
     pub normalize_chart_volume: bool,
+    /// システム BGM (Select / Decide) の音量正規化を有効にする。
+    #[serde(default = "default_normalize_system_bgm_volume")]
+    pub normalize_system_bgm_volume: bool,
     /// マスターボリューム。0..=100 の整数で持ち、ランタイムでは /100 して扱う。
     pub master_volume: u32,
     /// キーボリューム。0..=100 の整数で持ち、ランタイムでは /100 して扱う。
@@ -223,6 +226,10 @@ pub struct AudioMixConfig {
     /// システム SE のボリューム。0..=100 の整数。
     #[serde(default = "default_system_se_volume")]
     pub system_se_volume: u32,
+}
+
+pub fn default_normalize_system_bgm_volume() -> bool {
+    true
 }
 
 pub fn default_system_bgm_volume() -> u32 {

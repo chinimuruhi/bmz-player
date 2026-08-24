@@ -332,6 +332,7 @@ profile-basic-title = 基本
 profile-display-name = 表示名
 profile-volume-title = 音量
 profile-volume-normalize = 譜面・プレビュー音量正規化
+profile-volume-normalize-system-bgm = システムBGM音量正規化
 profile-volume-master = マスター
 profile-volume-keysound = キー音
 profile-volume-preview = 選曲プレビュー

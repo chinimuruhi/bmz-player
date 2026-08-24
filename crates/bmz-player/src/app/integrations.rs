@@ -191,8 +191,11 @@ impl WinitApp {
         if let Some(manager) = &self.audio.system_sound {
             manager.stop_all_bgm();
         }
-        self.audio.system_sound =
-            Some(system_sound_manager_from_catalog(&self.audio.system_sound_catalog, system_audio));
+        self.audio.system_sound = Some(system_sound_manager_from_catalog(
+            &self.audio.system_sound_catalog,
+            system_audio,
+            self.boot.profile_config.audio_mix.normalize_system_bgm_volume,
+        ));
     }
 
     /// `profile.audio_mix.system_bgm_volume` / `system_se_volume` に

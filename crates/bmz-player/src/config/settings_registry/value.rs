@@ -17,6 +17,9 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::NormalizeChartVolume => {
             format_bool_on_off(profile.audio_mix.normalize_chart_volume)
         }
+        SettingsEntryId::NormalizeSystemBgmVolume => {
+            format_bool_on_off(profile.audio_mix.normalize_system_bgm_volume)
+        }
         SettingsEntryId::MasterVolume => format!("{}", profile.audio_mix.master_volume),
         SettingsEntryId::KeyVolume => format!("{}", profile.audio_mix.key_volume),
         SettingsEntryId::BgmVolume => format!("{}", profile.audio_mix.bgm_volume),
