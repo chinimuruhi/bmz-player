@@ -162,7 +162,9 @@ pub(super) fn build_random_mix_definition(
             .collect(),
         constraints: bmz_core::course::CourseConstraints::default(),
         trophies: Vec::new(),
-        release: true,
+        // RANDOM MIX is an ephemeral local course. Never submit its generated definition or
+        // result to IR, even when the current profile has an enabled provider.
+        release: false,
     })
 }
 
@@ -370,6 +372,21 @@ mod tests {
         let definition = build_random_mix_definition(&charts, config, KeyMode::K7, 3).unwrap();
 
         assert!((2..=4).contains(&definition.entries.len()));
+    }
+
+    #[test]
+    fn random_mix_is_never_released_to_ir() {
+        let charts = vec![chart(1, "a", "7K", "7", 120.0, 120.0)];
+
+        let definition = build_random_mix_definition(
+            &charts,
+            crate::config::profile_config::RandomMixConfig::default(),
+            KeyMode::K7,
+            3,
+        )
+        .unwrap();
+
+        assert!(!definition.release);
     }
 
     #[test]
