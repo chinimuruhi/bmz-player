@@ -22,9 +22,11 @@ use crate::input::gamepad::GamepadSlotMap;
 use crate::input::shared::SharedInputBackend;
 use crate::screens::play_session::{
     BattleOpponentOptions, PlaySessionOptions, PreloadedPlaySession, PreparedPlaySession,
-    SRandomScheme, build_prepared_play_session_from_preloaded,
+    SRandomScheme, build_practice_prepared_from_preloaded,
+    build_prepared_play_session_from_preloaded,
     load_prepared_play_session_for_chart_with_input_backend,
 };
+use crate::screens::practice::PracticeProperty;
 use crate::select_options::{
     ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
 };
@@ -388,6 +390,21 @@ pub fn prepare_winit_play_session_from_preloaded(
     let prepared = build_prepared_play_session_from_preloaded(
         preloaded.preloaded,
         profile,
+        preloaded.session_options,
+        Box::new(preloaded.input.clone()),
+    );
+    PreparedInputPlaySession { prepared, input: preloaded.input }
+}
+
+pub fn prepare_practice_winit_play_session_from_preloaded(
+    profile: &ProfileConfig,
+    property: &PracticeProperty,
+    preloaded: PreloadedInputPlaySession,
+) -> PreparedInputPlaySession {
+    let prepared = build_practice_prepared_from_preloaded(
+        preloaded.preloaded,
+        profile,
+        property,
         preloaded.session_options,
         Box::new(preloaded.input.clone()),
     );

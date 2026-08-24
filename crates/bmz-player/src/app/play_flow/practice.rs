@@ -212,6 +212,7 @@ impl WinitApp {
             &import.chart.identity.file_sha256,
             &import.chart,
             self.select.gauge_option,
+            self.boot.profile_config.play.rule_mode,
             cli,
         )?;
         let title = if import.chart.metadata.title.is_empty() {
@@ -298,7 +299,6 @@ impl WinitApp {
             practice.phase = PracticePhase::Playing;
         }
 
-        let chart_zero = self.play.practice_chart_zero_time.unwrap_or(TimeUs(0));
         let preloaded = match self.play.preloaded_play_session.take() {
             Some(preloaded) => preloaded,
             None => {
@@ -311,37 +311,11 @@ impl WinitApp {
             }
         };
 
-        let app_config = self.play_session_app_config();
-        let mut session_options = play_session_options_from_start(
-            &app_config,
-            PlayStartOptions {
-                session_mode: SessionMode::Practice,
-                autoplay: false,
-                playback_rate_percent: property.playback_rate_percent,
-                gauge_auto_shift: GaugeAutoShiftConfig::Off,
-                arrange: property.arrange,
-                arrange_2p: property.arrange_2p,
-                double_option: if property.dp_flip {
-                    DoubleOption::Flip
-                } else {
-                    DoubleOption::Off
-                },
-                chart_zero_time: chart_zero,
-                ..Default::default()
-            },
-        );
-        session_options.ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
-        let prepared = build_practice_prepared_from_preloaded(
-            preloaded.preloaded,
+        let prepared_winit = prepare_practice_winit_play_session_from_preloaded(
             &self.boot.profile_config,
             &property,
-            session_options,
-            Box::new(preloaded.input.clone()),
+            preloaded,
         );
-        let prepared_winit = crate::screens::play_start::PreparedInputPlaySession {
-            prepared,
-            input: preloaded.input,
-        };
         match self.open_prepared_winit_play_session(prepared_winit) {
             Ok(active_play) => {
                 self.install_active_play(chart_id, active_play);

@@ -253,6 +253,41 @@ fn build_game_session_initializes_floating_hispeed_for_hsfix_base_bpm() {
 }
 
 #[test]
+fn build_practice_session_preserves_preloaded_hsfix_and_rule_mode() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.target_green_number = 300;
+    profile.play.rule_mode = RuleMode::Lr2Oraja;
+    let mut bpm_chart = chart();
+    bpm_chart.metadata.initial_bpm = 120.0;
+    bpm_chart.timing_events.push(bmz_chart::model::TimingEvent {
+        tick: bmz_core::time::ChartTick(48),
+        time: TimeUs(1_000_000),
+        kind: TimingEventKind::BpmChange { bpm: 240.0 },
+    });
+    let options = PlaySessionOptions {
+        play_config_key_mode: Some(KeyMode::K7),
+        session_mode: SessionMode::Practice,
+        hs_fix: HsFixOption::MaxBpm,
+        rule_mode: RuleMode::Lr2Oraja,
+        ..PlaySessionOptions::default()
+    };
+
+    let prepared = build_practice_prepared_from_preloaded(
+        preloaded_play_session(bpm_chart),
+        &profile,
+        &PracticeProperty::default(),
+        options,
+        Box::new(NullInputBackend),
+    );
+
+    assert_eq!(prepared.session.hsfix_index, 2);
+    assert_eq!(prepared.session.hsfix_base_bpm, 240.0);
+    assert_eq!(prepared.session.hispeed_mode, HispeedMode::Floating);
+    assert_eq!(prepared.session.rule_mode, RuleMode::Lr2Oraja);
+    assert_eq!(prepared.skin_attempt.hsfix_index, Some(2));
+}
+
+#[test]
 fn main_bpm_uses_bpm_with_most_notes() {
     let mut bpm_chart = chart();
     bpm_chart.timing_events.push(bmz_chart::model::TimingEvent {

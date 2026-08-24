@@ -8,6 +8,8 @@ use bmz_chart::practice::apply_practice_section;
 use bmz_core::clear::GaugeType;
 use bmz_core::time::TimeUs;
 use bmz_gameplay::gauge::{GaugeProperty, GaugeState};
+use bmz_gameplay::judge::window::judge_rank_spec_to_percent_optional_for_keymode_and_rule_mode;
+use bmz_gameplay::rule::RuleMode;
 use bmz_render::snapshot::ResultGraphSnapshot;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,6 +17,8 @@ use std::sync::Arc;
 use crate::config::profile_config::GaugeTypeConfig;
 use crate::paths::ProfilePaths;
 use crate::select_options::ArrangeOption;
+
+const PRACTICE_PROPERTY_FORMAT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -92,6 +96,8 @@ pub enum PracticeGraphType {
 /// Persisted / editable practice settings for one chart (SHA-256).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PracticeProperty {
+    #[serde(default)]
+    pub format_version: u32,
     pub start_time_ms: u32,
     pub end_time_ms: u32,
     pub gauge: PracticeGaugeType,
@@ -114,6 +120,7 @@ pub struct PracticeProperty {
 impl Default for PracticeProperty {
     fn default() -> Self {
         Self {
+            format_version: PRACTICE_PROPERTY_FORMAT_VERSION,
             start_time_ms: 0,
             end_time_ms: 10_000,
             gauge: PracticeGaugeType::Normal,
@@ -169,6 +176,7 @@ pub fn load_practice_property(
     chart_sha256: &[u8; 32],
     chart: &PlayableChart,
     profile_gauge: GaugeTypeConfig,
+    rule_mode: RuleMode,
     cli: &PracticeCliOverrides,
 ) -> Result<PracticeProperty> {
     let path = practice_property_path(profile_paths, chart_sha256);
@@ -184,10 +192,12 @@ pub fn load_practice_property(
 
     if !loaded_from_file {
         property.end_time_ms = default_end_time_ms(chart);
-        property.judgerank = chart.metadata.judge_rank.unwrap_or(100);
+        property.judgerank = practice_judgerank_percent(chart, rule_mode);
         if profile_gauge != GaugeTypeConfig::AutoShift {
             property.gauge = profile_gauge.into();
         }
+    } else {
+        migrate_legacy_practice_property(&mut property, chart, rule_mode);
     }
     property
         .gauge_category
@@ -205,6 +215,35 @@ pub fn load_practice_property(
     clamp_practice_property(&mut property, chart);
 
     Ok(property)
+}
+
+fn practice_judgerank_percent(chart: &PlayableChart, rule_mode: RuleMode) -> i32 {
+    judge_rank_spec_to_percent_optional_for_keymode_and_rule_mode(
+        chart.metadata.judge_rank_spec,
+        chart.metadata.key_mode,
+        rule_mode,
+    )
+}
+
+fn migrate_legacy_practice_property(
+    property: &mut PracticeProperty,
+    chart: &PlayableChart,
+    rule_mode: RuleMode,
+) {
+    if property.format_version >= PRACTICE_PROPERTY_FORMAT_VERSION {
+        return;
+    }
+
+    // BMZ の旧形式は初回値に BMS の生 #RANK / #DEFEXRANK を保存し、
+    // 次回開始時に BMSON の倍率 (%) として再解釈していた。譜面由来の
+    // 旧初期値と一致する場合だけ移行し、ユーザーが変更した値は保持する。
+    if let Some(spec) = chart.metadata.judge_rank_spec
+        && matches!(spec.kind, JudgeRankKind::BmsRank | JudgeRankKind::DefExRank)
+        && property.judgerank == spec.value.clamp(1, 400)
+    {
+        property.judgerank = practice_judgerank_percent(chart, rule_mode);
+    }
+    property.format_version = PRACTICE_PROPERTY_FORMAT_VERSION;
 }
 
 pub fn save_practice_property(
@@ -399,6 +438,10 @@ mod tests {
             identity: ChartIdentity { file_md5: [0; 16], file_sha256: [1; 32] },
             metadata: ChartMetadata {
                 judge_rank: Some(150),
+                judge_rank_spec: Some(JudgeRankSpec {
+                    value: 150,
+                    kind: JudgeRankKind::BmsonJudgeRank,
+                }),
                 total: Some(250.0),
                 ..Default::default()
             },
@@ -448,6 +491,7 @@ mod tests {
             &chart.identity.file_sha256,
             &chart,
             GaugeTypeConfig::Hard,
+            RuleMode::Beatoraja,
             &PracticeCliOverrides { start_time_ms: Some(5000), end_time_ms: None },
         )
         .unwrap();
@@ -457,5 +501,60 @@ mod tests {
         assert_eq!(property.gauge, PracticeGaugeType::Hard);
         assert_eq!(property.total, Some(250.0));
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn practice_judgerank_normalizes_source_rank_kinds() {
+        let mut chart = empty_chart(120_000);
+        for (key_mode, spec, expected) in [
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 3, kind: JudgeRankKind::BmsRank },
+                100,
+            ),
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 2, kind: JudgeRankKind::BmsRank },
+                75,
+            ),
+            (
+                bmz_core::lane::KeyMode::K9,
+                JudgeRankSpec { value: 2, kind: JudgeRankKind::BmsRank },
+                70,
+            ),
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 125, kind: JudgeRankKind::DefExRank },
+                93,
+            ),
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 125, kind: JudgeRankKind::BmsonJudgeRank },
+                125,
+            ),
+        ] {
+            chart.metadata.key_mode = key_mode;
+            chart.metadata.judge_rank_spec = Some(spec);
+            assert_eq!(practice_judgerank_percent(&chart, RuleMode::Beatoraja), expected);
+        }
+    }
+
+    #[test]
+    fn legacy_practice_judgerank_migrates_only_unchanged_source_default() {
+        let mut chart = empty_chart(120_000);
+        chart.metadata.judge_rank_spec =
+            Some(JudgeRankSpec { value: 3, kind: JudgeRankKind::BmsRank });
+
+        let mut legacy_default =
+            PracticeProperty { format_version: 0, judgerank: 3, ..Default::default() };
+        migrate_legacy_practice_property(&mut legacy_default, &chart, RuleMode::Beatoraja);
+        assert_eq!(legacy_default.judgerank, 100);
+        assert_eq!(legacy_default.format_version, PRACTICE_PROPERTY_FORMAT_VERSION);
+
+        let mut customized =
+            PracticeProperty { format_version: 0, judgerank: 2, ..Default::default() };
+        migrate_legacy_practice_property(&mut customized, &chart, RuleMode::Beatoraja);
+        assert_eq!(customized.judgerank, 2);
+        assert_eq!(customized.format_version, PRACTICE_PROPERTY_FORMAT_VERSION);
     }
 }

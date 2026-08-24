@@ -102,7 +102,6 @@ use crate::screens::play_loop::{
     PlayEndingSkinTimers, advance_running_play_session, apply_play_arrange_to_snapshot,
     refresh_play_ending_snapshot,
 };
-use crate::screens::play_session::build_practice_prepared_from_preloaded;
 use crate::screens::play_session::{AppliedArrange, PreparedPlayChart};
 use crate::screens::play_snapshot::{
     BgaFrameCatalog, apply_fast_slow_display_filter, apply_prepared_chart_to_render_snapshot,
@@ -112,7 +111,8 @@ use crate::screens::play_start::{
     PlayStartOptions, PreloadedInputPlaySession, PreparedInputPlaySession, StartedInputPlaySession,
     apply_arrange_override, apply_course_constraints, apply_queued_replay,
     open_prepared_winit_play_session, play_session_options_from_start,
-    prepare_play_session_for_chart_with_winit_input, prepare_winit_play_session_from_preloaded,
+    prepare_play_session_for_chart_with_winit_input,
+    prepare_practice_winit_play_session_from_preloaded, prepare_winit_play_session_from_preloaded,
 };
 use crate::screens::practice::{
     PracticeCliOverrides, PracticePhase, PracticeSession, clamp_practice_property,

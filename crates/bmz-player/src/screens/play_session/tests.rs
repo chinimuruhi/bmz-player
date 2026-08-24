@@ -68,6 +68,30 @@ fn chart() -> PlayableChart {
     }
 }
 
+fn preloaded_play_session(chart: PlayableChart) -> PreloadedPlaySession {
+    let source_ln_profile = ChartLnProfile::from_chart(&chart);
+    let score_key =
+        ScoreKey::new(chart.identity.file_sha256, crate::ln_policy::LnScorePolicy::AutoLn);
+    let chart = Arc::new(chart);
+    PreloadedPlaySession {
+        render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(
+            &chart,
+        ),
+        chart,
+        skin_attempt: Default::default(),
+        source_ln_profile,
+        chart_length_ms: 0,
+        audio: AudioEngine::new(48_000),
+        sample_report: Vec::new(),
+        chart_normalization_gain: 1.0,
+        applied_arrange: AppliedArrange::default(),
+        score_key,
+        assist_runtime: AssistRuntime::default(),
+        score_save_disabled: false,
+        opponent_chart: None,
+    }
+}
+
 #[test]
 fn sound_preload_counts_distinct_sources_and_regions() {
     let mut chart = chart();
