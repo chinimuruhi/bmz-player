@@ -115,7 +115,9 @@ favorite 操作は invisible を使わず、登録済みなら解除、未登録
 曲リストがG-BATTLE相手選択へ一時的に切り替わります。短押しはそのキーモードでの通常の
 `KEY4`操作になり、長押し後にキーを離すと元の曲リストへ戻ります。`Tab`では固定表示でき、
 もう一度`Tab`、戻る操作、`Escape`で閉じます。
-SESSION MODEで`G-BATTLE`を選んで曲を決定した場合も、相手未選択ならこの画面を固定表示します。
+相手を決定してもSESSION MODEは変更しません。`NORMAL`では通常5K / 7Kスキン、
+`G-BATTLE`では5K / 7K BATTLEスキンのまま開始します。SESSION MODEで`G-BATTLE`を
+選んで曲を直接決定した場合は、相手選択画面を開かず`BATTLE OFF`で開始します。
 
 相手選択の先頭には`BATTLE OFF`（既定）、`MYBEST`、`REPLAY 1`〜`REPLAY 4`、
 `RIVAL (名前)`が並び、その後にIRランキングが続きます。上下・ページ移動・スクラッチ・
@@ -123,6 +125,7 @@ SESSION MODEで`G-BATTLE`を選んで曲を決定した場合も、相手未選�
 フル入力リプレイを独立した相手判定へ使用します。リプレイが未公開、未検証、形式不一致、
 譜面/LNポリシー不一致の場合は開始せず、選曲画面に理由を表示します。rianIRはghost/replayを
 公開しないため、`play_seed`が得られるスコアについて配置だけを再現します。
+`G-BATTLE`で`BATTLE OFF`を選んだ場合もSESSION MODEを維持し、相手側をAUTOPLAYにします。
 
 G-BATTLE相手を指定したプレイでは、`CHART REPLICATION`の`RIVALCHART`は相手の譜面
 オプションとseedを自分側にも適用し、`RIVALOPTION`は相手の譜面オプションだけを適用して

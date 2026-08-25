@@ -1,6 +1,7 @@
 use super::*;
 use crate::app::play_flow_practice::{
-    PracticeGamepadAction, practice_analog_cursor_delta, practice_gamepad_action,
+    PracticeGamepadAction, apply_session_mode_start_policy, practice_analog_cursor_delta,
+    practice_gamepad_action,
 };
 use crate::app::scene_state::playback_overlay_suffix;
 
@@ -20,11 +21,46 @@ fn decide_launch_promotes_only_staged_practice_config() {
         is_double: false,
         cursor: 0,
         preview_time_ms: None,
+        battle_target: None,
     };
     let promoted = DecideLaunch::Practice(staged).into_practice_session().unwrap();
 
     assert_eq!(promoted.chart_id, 42);
     assert_eq!(promoted.phase, PracticePhase::Config);
+}
+
+#[test]
+fn battle_target_start_policy_preserves_every_session_mode() {
+    for session_mode in SessionMode::VALUES {
+        let mut options = PlayStartOptions {
+            session_mode,
+            battle_target: Some(crate::screens::play_start::BattleTarget {
+                provider: "test".to_string(),
+                score_id: "score".to_string(),
+                player_id: "player".to_string(),
+                player_name: "RIVAL".to_string(),
+                rank: 1,
+                ex_score: 1234,
+                gauge: None,
+                playback: crate::screens::play_start::BattleTargetPlayback::Seed {
+                    arrange: ArrangeOption::Normal,
+                    arrange_2p: ArrangeOption::Normal,
+                    double_option: DoubleOption::Off,
+                    packed_seed: None,
+                },
+            }),
+            ..Default::default()
+        };
+
+        apply_session_mode_start_policy(&mut options);
+
+        assert_eq!(options.session_mode, session_mode);
+        assert_eq!(options.autoplay, session_mode == SessionMode::AutoplayBattle);
+        assert_eq!(
+            options.resolved_target,
+            Some(ResolvedTarget { name: "RIVAL".to_string(), ex_score: 1234 })
+        );
+    }
 }
 
 fn practice_gamepad_test_input(key_mode: KeyMode) -> PlayOptionInput {

@@ -72,6 +72,16 @@ pub(super) fn practice_analog_cursor_delta(
     }
 }
 
+pub(super) fn apply_session_mode_start_policy(options: &mut PlayStartOptions) {
+    if options.session_mode == SessionMode::AutoplayBattle {
+        options.autoplay = true;
+    }
+    if let Some(target) = options.battle_target.as_ref() {
+        options.resolved_target =
+            Some(ResolvedTarget { name: target.player_name.clone(), ex_score: target.ex_score });
+    }
+}
+
 impl WinitApp {
     pub(super) fn route_practice_gamepad_control(
         &mut self,
@@ -159,10 +169,6 @@ impl WinitApp {
             self.enter_practice(chart_id, PracticeCliOverrides::default());
             return;
         }
-        if options.session_mode == SessionMode::GBattle && options.battle_target.is_none() {
-            self.open_select_ir_battle();
-            return;
-        }
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
@@ -194,27 +200,15 @@ impl WinitApp {
         chart_id: i64,
         options: &mut PlayStartOptions,
     ) -> Result<()> {
-        if options.session_mode == SessionMode::GBattle && options.battle_target.is_none() {
-            anyhow::bail!("G-BATTLE requires a selected opponent");
-        }
-        if options.session_mode != SessionMode::AutoplayBattle && options.battle_target.is_none() {
+        apply_session_mode_start_policy(options);
+        let Some(target) = options.battle_target.as_ref() else {
             return Ok(());
-        }
+        };
         let chart = crate::screens::play_session::load_source_chart_for_chart(
             &self.boot.library_db,
             chart_id,
             None,
         )?;
-        if options.session_mode == SessionMode::AutoplayBattle {
-            options.autoplay = true;
-        }
-        let Some(target) = options.battle_target.as_ref() else {
-            return Ok(());
-        };
-        options.session_mode = SessionMode::GBattle;
-        options.autoplay = false;
-        options.resolved_target =
-            Some(ResolvedTarget { name: target.player_name.clone(), ex_score: target.ex_score });
         if let crate::screens::play_start::BattleTargetPlayback::Replay(replay) = &target.playback {
             let ln_policy = crate::ln_policy::score_ln_policy_for_chart(
                 self.boot.profile_config.play.ln_mode_policy,
@@ -250,6 +244,15 @@ impl WinitApp {
     }
 
     pub(super) fn enter_practice(&mut self, chart_id: i64, cli: PracticeCliOverrides) {
+        self.enter_practice_with_battle_target(chart_id, cli, None);
+    }
+
+    pub(super) fn enter_practice_with_battle_target(
+        &mut self,
+        chart_id: i64,
+        cli: PracticeCliOverrides,
+        battle_target: Option<crate::screens::play_start::BattleTarget>,
+    ) {
         let defaults = match self.load_practice_defaults_for_chart(chart_id, &cli) {
             Ok(defaults) => defaults,
             Err(error) => {
@@ -269,6 +272,7 @@ impl WinitApp {
             is_double: defaults.is_double,
             cursor: 0,
             preview_time_ms: None,
+            battle_target: battle_target.clone(),
         };
         self.play.practice_session = None;
         self.result.finished_play = None;
@@ -283,6 +287,7 @@ impl WinitApp {
             gauge_auto_shift: self.select.gauge_auto_shift_option,
             bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: ArrangeOption::Normal,
+            battle_target,
             ..Default::default()
         };
         let snapshot = self.decide_snapshot_for_chart(chart_id);
@@ -498,6 +503,8 @@ impl WinitApp {
             practice.phase = PracticePhase::Config;
         }
 
+        let battle_target =
+            self.play.practice_session.as_ref().and_then(|practice| practice.battle_target.clone());
         let mut preload_options = PlayStartOptions {
             session_mode: SessionMode::Practice,
             autoplay: false,
@@ -505,6 +512,7 @@ impl WinitApp {
             gauge_auto_shift: self.select.gauge_auto_shift_option,
             bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: ArrangeOption::Normal,
+            battle_target,
             ..Default::default()
         };
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &preload_options);

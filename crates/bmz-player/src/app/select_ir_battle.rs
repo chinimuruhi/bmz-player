@@ -260,9 +260,6 @@ impl WinitApp {
         };
         match choice {
             SelectBattleChoice::Off => {
-                if self.select.session_mode == SessionMode::GBattle {
-                    self.set_session_mode(SessionMode::Normal);
-                }
                 let mut options = self.play_start_options();
                 options.battle_target = None;
                 if self.prepare_session_mode_or_show_error(chart_id, &mut options) {
@@ -518,14 +515,21 @@ impl WinitApp {
         chart_id: i64,
         target: crate::screens::play_start::BattleTarget,
     ) {
-        self.set_session_mode(SessionMode::GBattle);
         let mut options = self.play_start_options();
         options.battle_target = Some(target);
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
         self.close_select_ir_battle_for_start();
-        self.begin_decide_for_chart(chart_id, options);
+        if options.session_mode.is_practice() {
+            self.enter_practice_with_battle_target(
+                chart_id,
+                crate::screens::practice::PracticeCliOverrides::default(),
+                options.battle_target,
+            );
+        } else {
+            self.begin_decide_for_chart(chart_id, options);
+        }
     }
 
     pub(super) fn poll_select_ir_battle_replay(&mut self) {

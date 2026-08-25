@@ -160,6 +160,8 @@ pub struct PracticeSession {
     pub cursor: usize,
     /// `last_play_snapshot` に反映済みの設定中プレビュー時刻。
     pub preview_time_ms: Option<u32>,
+    /// KEY4 の相手選択から PRACTICE を開始した場合に、各練習ラウンドへ引き継ぐ相手。
+    pub battle_target: Option<crate::screens::play_start::BattleTarget>,
 }
 
 /// CLI-only overrides applied when entering practice from the command line.
