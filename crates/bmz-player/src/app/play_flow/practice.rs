@@ -10,6 +10,13 @@ impl WinitApp {
         if !is_config {
             return false;
         }
+        if self.play.play_ending.is_some() {
+            return true;
+        }
+        if pressed && self.play.play_e2_held && self.play.play_e3_held {
+            self.stop_play_like_escape("E2+E3 pressed in practice configuration");
+            return true;
+        }
         if !pressed {
             return true;
         }
@@ -68,7 +75,9 @@ impl WinitApp {
                 self.refresh_practice_preview_snapshot();
             }
             Action::Start => self.start_practice_round(),
-            Action::Leave => self.leave_practice(),
+            Action::Leave => {
+                self.stop_play_like_escape("practice gamepad leave requested");
+            }
             Action::Ignore => {}
         }
         true
@@ -251,6 +260,34 @@ impl WinitApp {
         self.play.practice_session.is_some()
             && self.play.preloaded_play_session.is_some()
             && self.play.pending_play_preload.is_none()
+            && self.play.play_ending.is_none()
+    }
+
+    pub(super) fn begin_practice_leave_transition(&mut self, reason: &'static str) {
+        if self.play.play_ending.is_some() {
+            return;
+        }
+        if let Some(practice) = &self.play.practice_session
+            && let Err(error) = save_practice_property(
+                &self.boot.profile_paths,
+                &practice.chart_sha256,
+                &practice.property,
+            )
+        {
+            tracing::warn!(%error, "failed to save practice property before exit");
+        }
+        if let Some(active_play) = &mut self.play.active_play
+            && let Err(error) = active_play.running.pause_audio()
+        {
+            tracing::warn!(%error, "failed to pause practice audio during exit");
+        }
+        self.clear_play_control_holds();
+        self.stop_system_sound(crate::system_sound::SoundType::PlayReady);
+        self.notify_obs_play_ended();
+        let now = Instant::now();
+        self.play.play_ending = Some(practice_leave_ending(now));
+        self.update_play_ending_snapshot();
+        tracing::info!(reason, "started practice fadeout to select");
     }
 
     pub(super) fn leave_practice(&mut self) {
@@ -271,6 +308,8 @@ impl WinitApp {
         self.play.pending_play_start = None;
         self.play.preloaded_play_session = None;
         self.invalidate_play_preload();
+        self.play.play_option_input = None;
+        self.clear_play_control_holds();
         self.play.play_media_cache = None;
         self.play.play_ending = None;
         self.result.finished_play = None;
@@ -443,6 +482,9 @@ impl WinitApp {
     /// reload は行わない。beatoraja の Practice `LaneRenderer` と同じく
     /// 設定中だけ hispeed 1.0 と秒線/BPMガイドを使う。
     pub(super) fn refresh_practice_preview_snapshot(&mut self) {
+        if self.play.play_ending.is_some() {
+            return;
+        }
         let (chart_id, start_time_ms) = {
             let Some(practice) = self.play.practice_session.as_ref() else {
                 return;

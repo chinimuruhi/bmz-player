@@ -152,6 +152,12 @@ pub(in crate::app) fn play_ready_blocked_by_recent_control_hold(
     })
 }
 
+pub(in crate::app) fn play_exit_should_leave_practice(
+    practice_phase: Option<PracticePhase>,
+) -> bool {
+    practice_phase == Some(PracticePhase::Config)
+}
+
 pub(in crate::app) fn should_begin_play_fadeout_after_final_notes(
     control: &str,
     bindings: &SelectKeyBindings,

@@ -343,6 +343,13 @@ fn play_ready_has_no_release_delay_without_prior_control_hold() {
 }
 
 #[test]
+fn practice_config_play_exit_uses_the_same_leave_path_as_escape() {
+    assert!(play_exit_should_leave_practice(Some(PracticePhase::Config)));
+    assert!(!play_exit_should_leave_practice(Some(PracticePhase::Playing)));
+    assert!(!play_exit_should_leave_practice(None));
+}
+
+#[test]
 fn play_analog_lane_cover_delta_maps_scratch_bindings() {
     let gamepad_keys =
         SelectKeyBindings::from_profile(&ProfileConfig::new_default("default", "Default", 1).input);

@@ -461,8 +461,19 @@ impl WinitApp {
             .is_some_and(|practice| practice.phase == PracticePhase::Playing);
         match final_notes_control_action(should_begin, practice_playing) {
             Some(FinalNotesControlAction::ReturnToPractice) => {
-                self.finish_practice_round();
-                tracing::info!(control, "finished practice round after final notes");
+                let now = Instant::now();
+                if let Some(active_play) = &mut self.play.active_play {
+                    active_play.running.session.state = bmz_gameplay::session::PlayState::Finished;
+                    if let Err(error) = active_play.running.pause_audio() {
+                        tracing::warn!(%error, "failed to stop practice audio on requested finish");
+                    }
+                }
+                self.commit_active_play_lane_state_to_profile();
+                self.clear_play_control_holds();
+                self.notify_obs_play_ended();
+                self.play.play_ending = Some(practice_requested_finish_ending(now));
+                self.update_play_ending_snapshot();
+                tracing::info!(control, "started practice fadeout after final notes");
                 return true;
             }
             Some(FinalNotesControlAction::BeginResultFadeout) => {}
@@ -544,6 +555,7 @@ impl WinitApp {
         self.notify_obs_play_ended();
         self.play.play_ending = Some(PlayEndingTransition {
             started_at: now,
+            music_end_started_at: None,
             fadeout_started_at: Some(now),
             failed: false,
             completion: PlayEndingCompletion::Result,

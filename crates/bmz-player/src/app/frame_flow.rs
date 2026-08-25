@@ -23,6 +23,7 @@ fn egui_scene_name(scene_kind: AppSceneKind) -> &'static str {
 fn practice_panel_context(
     practice: Option<&mut PracticeSession>,
     media_ready: bool,
+    input_enabled: bool,
     default_position: Option<(f32, f32)>,
 ) -> Option<PracticePanelContext<'_>> {
     let practice = practice.filter(|practice| practice.phase == PracticePhase::Config)?;
@@ -34,6 +35,7 @@ fn practice_panel_context(
         cursor: &mut practice.cursor,
         chart_title: &practice.chart_title,
         media_ready,
+        input_enabled,
         max_end_time_ms: practice.max_end_time_ms,
         default_position,
     })
@@ -136,10 +138,12 @@ impl WinitApp {
         let course_preview = self.egui_course_preview(scene_kind);
         let course_editor = &self.course_editor_cache.data;
         let practice_media_ready = self.practice_media_ready();
+        let practice_input_enabled = self.play.play_ending.is_none();
         let practice_default_position = self.renderer.play_skin_practice_position();
         let mut practice_panel_ctx = practice_panel_context(
             self.play.practice_session.as_mut(),
             practice_media_ready,
+            practice_input_enabled,
             practice_default_position,
         );
         let result_ir_panel = self.result.result_ir.as_mut();
@@ -510,7 +514,7 @@ impl WinitApp {
         self.apply_egui_input_config(window, &profile_before.app_input);
         self.renderer.set_egui_frame(output.frame);
         if output.practice_leave {
-            self.leave_practice();
+            self.stop_play_like_escape("practice egui leave requested");
             return;
         }
         if output.practice_start {

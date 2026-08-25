@@ -21,6 +21,7 @@ impl WinitApp {
             self.play.active_play.is_some() || self.play.pending_play_start.is_some();
         if control_event.pressed
             && !control_event.repeat
+            && self.play.play_ending.is_none()
             && let Some(control) = play_control
             && self.handle_quick_retry_control(control)
         {
@@ -31,6 +32,9 @@ impl WinitApp {
             && let Some(control) = play_control
             && self.begin_play_fadeout_after_final_notes_control(control)
         {
+            return;
+        }
+        if self.play.play_ending.is_some() {
             return;
         }
         if has_play_control_context && let Some(control) = play_physical_control.as_ref() {

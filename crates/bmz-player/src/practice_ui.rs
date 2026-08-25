@@ -16,6 +16,8 @@ pub struct PracticePanelContext<'a> {
     pub cursor: &'a mut usize,
     pub chart_title: &'a str,
     pub media_ready: bool,
+    /// Practice の終了演出中は表示だけを維持し、egui 操作を受け付けない。
+    pub input_enabled: bool,
     pub max_end_time_ms: u32,
     /// Surface 左上原点の正規化座標。beatoraja skin の practice destination 由来。
     pub default_position: Option<(f32, f32)>,
@@ -34,14 +36,16 @@ pub fn build_practice_panel(
     let mut start_play = false;
     let mut leave = false;
     let field_count = crate::screens::practice::practice_field_count(practice.is_double);
-    if ctx.input(|input| input.key_pressed(egui::Key::ArrowDown)) {
+    if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowDown)) {
         *practice.cursor = (*practice.cursor + 1) % field_count;
     }
-    if ctx.input(|input| input.key_pressed(egui::Key::ArrowUp)) {
+    if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowUp)) {
         *practice.cursor = (*practice.cursor + field_count - 1) % field_count;
     }
-    let decrement = ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft));
-    let increment = ctx.input(|input| input.key_pressed(egui::Key::ArrowRight));
+    let decrement =
+        practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft));
+    let increment =
+        practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowRight));
     if decrement || increment {
         crate::screens::practice::adjust_practice_selected_field(
             practice.property,
@@ -55,7 +59,7 @@ pub fn build_practice_panel(
     let mut window = egui::Window::new(text.text("practice-title"))
         .id(egui::Id::new("practice_config_panel"))
         .order(egui::Order::Foreground)
-        .movable(true)
+        .movable(practice.input_enabled)
         .resizable(false)
         .collapsible(false)
         .default_width(360.0)
@@ -73,6 +77,9 @@ pub fn build_practice_panel(
     window = window.default_pos(default_position);
     window.show(ctx, |ui| {
         ui.set_min_width(360.0);
+        if !practice.input_enabled {
+            ui.disable();
+        }
         ui.label(RichText::new(practice.chart_title).weak());
         ui.separator();
 
@@ -222,10 +229,13 @@ pub fn build_practice_panel(
         });
     });
 
-    if ctx.input(|input| input.key_pressed(egui::Key::Enter)) && practice.media_ready {
+    if practice.input_enabled
+        && ctx.input(|input| input.key_pressed(egui::Key::Enter))
+        && practice.media_ready
+    {
         start_play = true;
     }
-    if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+    if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
         leave = true;
     }
 

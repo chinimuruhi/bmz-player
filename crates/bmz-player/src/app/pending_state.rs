@@ -30,6 +30,11 @@ pub(super) struct PracticeChartDefaults {
 
 pub(super) struct PlayEndingTransition {
     pub(super) started_at: Instant,
+    /// beatoraja の TIMER_MUSIC_END (timer 143) を開始した時刻。
+    ///
+    /// 最終ノーツ後の手動終了や Practice 設定画面からの退出は timer 2 だけを
+    /// 開始するため、終了状態であってもここは `None` になる。
+    pub(super) music_end_started_at: Option<Instant>,
     pub(super) fadeout_started_at: Option<Instant>,
     pub(super) finished: Option<FinishedPlaySession>,
     pub(super) failed: bool,
@@ -41,15 +46,66 @@ pub(super) struct PlayEndingTransition {
 pub(super) enum PlayEndingCompletion {
     Result,
     Select,
+    PracticeConfig,
+    PracticeLeave,
 }
 
 pub(super) fn pre_play_abort_ending(started_at: Instant) -> PlayEndingTransition {
     PlayEndingTransition {
         started_at,
+        music_end_started_at: None,
         fadeout_started_at: Some(started_at),
         finished: None,
         failed: false,
         completion: PlayEndingCompletion::Select,
+        full_combo_elapsed_at_finish_ms: None,
+    }
+}
+
+pub(super) fn practice_natural_finish_ending(started_at: Instant) -> PlayEndingTransition {
+    PlayEndingTransition {
+        started_at,
+        music_end_started_at: Some(started_at),
+        fadeout_started_at: None,
+        finished: None,
+        failed: false,
+        completion: PlayEndingCompletion::PracticeConfig,
+        full_combo_elapsed_at_finish_ms: None,
+    }
+}
+
+pub(super) fn practice_requested_finish_ending(started_at: Instant) -> PlayEndingTransition {
+    PlayEndingTransition {
+        started_at,
+        music_end_started_at: None,
+        fadeout_started_at: Some(started_at),
+        finished: None,
+        failed: false,
+        completion: PlayEndingCompletion::PracticeConfig,
+        full_combo_elapsed_at_finish_ms: None,
+    }
+}
+
+pub(super) fn practice_failed_ending(started_at: Instant) -> PlayEndingTransition {
+    PlayEndingTransition {
+        started_at,
+        music_end_started_at: None,
+        fadeout_started_at: None,
+        finished: None,
+        failed: true,
+        completion: PlayEndingCompletion::PracticeConfig,
+        full_combo_elapsed_at_finish_ms: None,
+    }
+}
+
+pub(super) fn practice_leave_ending(started_at: Instant) -> PlayEndingTransition {
+    PlayEndingTransition {
+        started_at,
+        music_end_started_at: None,
+        fadeout_started_at: Some(started_at),
+        finished: None,
+        failed: false,
+        completion: PlayEndingCompletion::PracticeLeave,
         full_combo_elapsed_at_finish_ms: None,
     }
 }

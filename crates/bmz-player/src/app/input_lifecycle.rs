@@ -109,6 +109,9 @@ impl WinitApp {
     }
 
     pub(super) fn raw_input_gameplay_blocked(&self) -> bool {
+        if self.play.play_ending.is_some() {
+            return true;
+        }
         let practice_overlay = self
             .play
             .practice_session

@@ -90,7 +90,7 @@ impl WinitApp {
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        if !practice_config {
+        if !practice_config && self.play.play_ending.is_none() {
             self.route_play_device_input(device_event);
         }
         self.route_gamepad_button(event.device_id, &event.name, event.pressed);
@@ -343,10 +343,13 @@ impl WinitApp {
         if self.route_practice_gamepad_control(button, pressed) {
             return;
         }
-        if pressed && self.handle_quick_retry_control(button) {
+        if pressed && self.play.play_ending.is_none() && self.handle_quick_retry_control(button) {
             return;
         }
         if pressed && self.begin_play_fadeout_after_final_notes_control(button) {
+            return;
+        }
+        if self.play.play_ending.is_some() {
             return;
         }
         let play_e1_control = has_play_control_context
