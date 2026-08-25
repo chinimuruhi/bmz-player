@@ -236,6 +236,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let scene_before = self.current_scene_kind();
                 let pending_skin_before = self.has_pending_skin_reload();
                 let render_probe_before = self.skin.pending_skin_render_probe.is_some();
+                self.start_deferred_skin_uploads_if_ready();
                 let cursor_start = Instant::now();
                 if self.ui.cursor_visible
                     && self.ui.last_cursor_action_at.elapsed() >= Duration::from_secs(2)

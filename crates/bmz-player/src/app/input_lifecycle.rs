@@ -236,9 +236,9 @@ impl WinitApp {
                     height = size.height,
                     "window and renderer surface ready"
                 );
-                // surface 接続後 (= GPU device/queue 利用可能) に upload worker を起動する。
-                // decode 結果はそれまで skin_decode_rx にバッファされ、起動後にドレインされる。
-                self.start_skin_upload_worker();
+                // Decide / Result の decode 結果は、Select の開始演出が終わるまで
+                // skin_decode_rx に保持する。遷移側が先に必要とした場合は
+                // ensure_skin_ready() が upload worker を即時起動する。
                 self.configure_device_events(event_loop);
                 let raw_input_attach_error =
                     self.gamepad.as_mut().and_then(|backend| backend.attach_window(&window).err());
