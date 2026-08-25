@@ -114,7 +114,13 @@ impl WinitApp {
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        self.ui.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay))
+        let egui_blocks_game_input =
+            self.ui.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay));
+        egui_blocks_raw_play_keyboard(
+            egui_blocks_game_input,
+            self.play.play_e1_held,
+            self.play.play_e2_held,
+        )
     }
 
     pub(super) fn play_input_backend(&self) -> Option<SharedInputBackend> {

@@ -225,6 +225,93 @@ fn play_control_hold_state_keeps_legacy_and_default_e1_fallbacks() {
 }
 
 #[test]
+fn egui_keyboard_routing_switches_to_play_only_for_e1_e2_controls_and_holds() {
+    let input = crate::config::play_input::default_profile_input();
+    let mut play_input = play_option_input_for(&input, KeyMode::K7);
+    let keyboard = |control: &str| PhysicalControl::KeyboardKey(control.to_string());
+
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("Q")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("W")),
+        Some(&play_input),
+    ));
+    assert!(!keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("ArrowLeft")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        true,
+        false,
+        false,
+        Some(&keyboard("ArrowLeft")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        false,
+        true,
+        false,
+        Some(&keyboard("ArrowUp")),
+        Some(&play_input),
+    ));
+    assert!(!keyboard_input_bypasses_egui(
+        false,
+        false,
+        false,
+        false,
+        Some(&keyboard("Q")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        false,
+        false,
+        false,
+        true,
+        Some(&keyboard("ArrowLeft")),
+        Some(&play_input),
+    ));
+
+    play_input.binding.entries.push(bmz_gameplay::input::binding::BindingEntry {
+        device: Some(W_KEYBOARD_DEVICE_ID),
+        control: keyboard("Q"),
+        lane: Lane::Key1,
+        scratch_direction: None,
+    });
+    assert!(!keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("Q")),
+        Some(&play_input),
+    ));
+}
+
+#[test]
+fn raw_keyboard_is_unblocked_only_during_e1_or_e2_hold() {
+    assert!(egui_blocks_raw_play_keyboard(true, false, false));
+    assert!(!egui_blocks_raw_play_keyboard(true, true, false));
+    assert!(!egui_blocks_raw_play_keyboard(true, false, true));
+    assert!(!egui_blocks_raw_play_keyboard(false, false, false));
+}
+
+#[test]
 fn play_ready_is_blocked_while_e1_or_e2_is_held() {
     assert!(!play_ready_blocked_by_control_holds(false, false));
     assert!(play_ready_blocked_by_control_holds(true, false));

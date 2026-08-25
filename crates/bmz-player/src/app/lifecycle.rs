@@ -47,11 +47,51 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
         let select_course_builder = self.select.course_builder.is_some();
-        let egui_consumed = match (self.window.clone(), self.ui.egui.as_mut()) {
-            (Some(window), Some(egui)) => {
-                egui.on_window_event(&window, &event, practice_overlay, select_course_builder)
+        let egui_blocks_game_input =
+            self.ui.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay))
+                || select_course_builder;
+        let play_owns_keyboard_input = match &event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                let control = physical_key_to_control(event.physical_key);
+                let app_key_held = event.state == ElementState::Released
+                    && control.as_ref().is_some_and(|control| {
+                        self.input
+                            .pressed_play_inputs
+                            .contains(&(W_KEYBOARD_DEVICE_ID, control.clone()))
+                    });
+                keyboard_input_bypasses_egui(
+                    self.play.active_play.is_some() || self.play.pending_play_start.is_some(),
+                    self.play.play_e1_held,
+                    self.play.play_e2_held,
+                    app_key_held,
+                    control.as_ref(),
+                    self.play.play_option_input.as_ref(),
+                )
+            }
+            WindowEvent::Ime(_) => {
+                (self.play.active_play.is_some() || self.play.pending_play_start.is_some())
+                    && self.play_lane_value_changing()
             }
             _ => false,
+        };
+        // Press を egui へ渡すと、E1/E2 を押しながら行うプレイ操作が UI も
+        // 同時に動かしてしまう。Release は egui の押下状態を残さないため供給する。
+        let suppress_egui_event = match &event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                play_owns_keyboard_input && event.state == ElementState::Pressed
+            }
+            WindowEvent::Ime(_) => play_owns_keyboard_input,
+            _ => false,
+        };
+        let egui_consumed = if suppress_egui_event {
+            false
+        } else {
+            match (self.window.clone(), self.ui.egui.as_mut()) {
+                (Some(window), Some(egui)) => {
+                    egui.on_window_event(&window, &event, practice_overlay, select_course_builder)
+                }
+                _ => false,
+            }
         };
 
         match event {
@@ -70,6 +110,12 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     }
                     return;
                 }
+                // egui 表示中は、widget が消費したかにかかわらず keyboard を
+                // UI 専用にする。E1/E2 操作中と app 側へ渡したキーの Release だけ
+                // プレイ側へ通す。
+                if !play_owns_keyboard_input && (egui_blocks_game_input || egui_consumed) {
+                    return;
+                }
                 if self.select.key_config_edit.is_none()
                     && event.state == ElementState::Pressed
                     && !event.repeat
@@ -77,10 +123,6 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                         .is_some_and(|control| self.select.select_keys.is_screenshot(&control))
                 {
                     self.request_manual_screenshot();
-                    return;
-                }
-                // egui がフォーカスを持つ間はゲーム入力へ伝播させない。
-                if egui_consumed {
                     return;
                 }
                 self.route_keyboard_input(&event);
@@ -125,7 +167,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_mouse_input(state, button);
             }
             WindowEvent::Ime(ime) => {
-                if egui_consumed {
+                if play_owns_keyboard_input || egui_blocks_game_input || egui_consumed {
                     return;
                 }
                 self.route_ime_event(&ime);

@@ -74,6 +74,44 @@ pub(in crate::app) fn play_option_control_for_input(
     }
 }
 
+/// egui がゲーム入力を占有している間でも、プレイ操作へ渡すべきキーボード入力か。
+///
+/// E1/E2 自体の Press を先にプレイ側へ渡すことでホールドを開始できるようにし、
+/// ホールド中は全キーをプレイ側へ切り替える。egui 表示前やホールド中に app 側へ
+/// 渡したキーの Release も通し、押下状態を残さない。
+pub(in crate::app) fn keyboard_input_bypasses_egui(
+    has_play_context: bool,
+    e1_held: bool,
+    e2_held: bool,
+    app_key_held: bool,
+    control: Option<&PhysicalControl>,
+    play_input: Option<&PlayOptionInput>,
+) -> bool {
+    if app_key_held {
+        return true;
+    }
+    if !has_play_context {
+        return false;
+    }
+    if e1_held || e2_held {
+        return true;
+    }
+    let (Some(control), Some(play_input)) = (control, play_input) else {
+        return false;
+    };
+    !play_input.resolves_lane(W_KEYBOARD_DEVICE_ID, control)
+        && (play_input.is_action(W_KEYBOARD_DEVICE_ID, control, InputActionConfig::E1)
+            || play_input.is_action(W_KEYBOARD_DEVICE_ID, control, InputActionConfig::E2))
+}
+
+pub(in crate::app) fn egui_blocks_raw_play_keyboard(
+    egui_blocks_game_input: bool,
+    e1_held: bool,
+    e2_held: bool,
+) -> bool {
+    egui_blocks_game_input && !e1_held && !e2_held
+}
+
 pub(in crate::app) fn visual_offset_delta_control(
     control: &str,
     bindings: &SelectKeyBindings,
