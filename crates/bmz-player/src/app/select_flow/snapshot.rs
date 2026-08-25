@@ -5,6 +5,11 @@ impl WinitApp {
         let locale = self.boot.profile_config.ui.locale();
         let text = Localizer::new(locale);
         let selected = self.select.select_items.get(self.select.selected_index);
+        let session_mode = if self.select.ir_battle.active {
+            SessionMode::GBattle
+        } else {
+            self.select.session_mode
+        };
         let active_rival_name =
             self.select.select_ir.active_rival_display_name().map(str::to_string);
         let rival = match selected {
@@ -111,17 +116,14 @@ impl WinitApp {
                 crate::skin_extension::effective_key_mode(
                     mode,
                     self.select.double_option,
-                    self.select.session_mode,
+                    session_mode,
                     seven_to_six,
                 )
             }),
             seven_to_six,
             source_ln_profile_bits: source_ln_profile
                 .map(crate::skin_extension::source_ln_profile_bits),
-            session_mode_index: Some(crate::skin_extension::session_mode_index(
-                self.select.session_mode,
-                self.select.ir_battle.active,
-            )),
+            session_mode_index: Some(crate::skin_extension::session_mode_index(session_mode)),
             double_option_index: Some(crate::skin_extension::double_option_index(
                 self.select.double_option,
             )),
@@ -282,7 +284,7 @@ impl WinitApp {
                 .as_ref()
                 .map(|config| hs_fix_option_from_profile(config.hs_fix).as_str().to_string())
                 .unwrap_or_default(),
-            assist: self.select.session_mode.as_str().to_string(),
+            assist: session_mode.as_str().to_string(),
             assist_flags: self.boot.profile_config.play.assist.flags(),
             assist_extra_note_depth: self.boot.profile_config.play.assist.extra_note_depth,
             assist_mine_mode: self.boot.profile_config.play.assist.mine_mode as i64,

@@ -404,7 +404,6 @@ impl WinitApp {
             )),
             session_mode_index: Some(crate::skin_extension::session_mode_index(
                 options.session_mode,
-                options.battle_target.is_some(),
             )),
             double_option_index: Some(crate::skin_extension::double_option_index(
                 applied_double_option,

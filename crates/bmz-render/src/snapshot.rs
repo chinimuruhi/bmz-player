@@ -32,7 +32,7 @@ pub struct SkinAttemptState {
     pub seven_to_six: bool,
     /// [`SKIN_SOURCE_LN_UNDEFINED_BIT`] などのbit mask。Noneは譜面未確定。
     pub source_ln_profile_bits: Option<u8>,
-    /// 0=NORMAL, 1=AUTOPLAY, 2=AUTOPLAY BATTLE, 3=G-BATTLE, 4=PRACTICE。
+    /// 0=NORMAL, 1=PRACTICE, 2=AUTOPLAY, 3=AUTO BATTLE, 4=G-BATTLE。
     pub session_mode_index: Option<usize>,
     pub double_option_index: Option<usize>,
     pub hsfix_index: Option<usize>,

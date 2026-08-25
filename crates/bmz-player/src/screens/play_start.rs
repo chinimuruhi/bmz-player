@@ -116,7 +116,7 @@ pub struct PlayStartOptions {
     pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
     pub replay_player: Option<ReplayPlayer>,
-    /// G-BATTLE target selected independently from SessionMode.
+    /// Target required by `SessionMode::GBattle`.
     pub battle_target: Option<BattleTarget>,
     pub chart_zero_time: TimeUs,
     /// Override profile gauge type. None means use the profile default.

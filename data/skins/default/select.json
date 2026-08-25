@@ -764,22 +764,22 @@
     },
     {
       "id": "option_assist_1",
-      "constantText": "AUTOPLAY",
+      "constantText": "PRACTICE",
       "size": 12
     },
     {
       "id": "option_assist_2",
-      "constantText": "AUTO BATTLE",
+      "constantText": "AUTOPLAY",
       "size": 12
     },
     {
       "id": "option_assist_3",
-      "constantText": "BATTLE",
+      "constantText": "AUTO BATTLE",
       "size": 12
     },
     {
       "id": "option_assist_4",
-      "constantText": "PRACTICE",
+      "constantText": "G-BATTLE",
       "size": 12
     },
     {
@@ -4427,7 +4427,7 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 3",
+      "draw": "event_index(1970) == 4",
       "dst": [
         {
           "x": 998,
@@ -4460,7 +4460,7 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 2",
+      "draw": "event_index(1970) == 3",
       "dst": [
         {
           "x": 998,
@@ -4493,7 +4493,7 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 1",
+      "draw": "event_index(1970) == 2",
       "dst": [
         {
           "x": 998,
@@ -4526,7 +4526,7 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 4",
+      "draw": "event_index(1970) == 1",
       "dst": [
         {
           "x": 998,
@@ -5618,7 +5618,7 @@
       ]
     },
     {
-      "id": "option_assist_3",
+      "id": "option_assist_4",
       "op": [21],
       "dst": [
         {
@@ -5634,7 +5634,7 @@
       ]
     },
     {
-      "id": "option_assist_2",
+      "id": "option_assist_3",
       "op": [21],
       "dst": [
         {
@@ -5650,7 +5650,7 @@
       ]
     },
     {
-      "id": "option_assist_1",
+      "id": "option_assist_2",
       "op": [21],
       "dst": [
         {
@@ -5666,7 +5666,7 @@
       ]
     },
     {
-      "id": "option_assist_4",
+      "id": "option_assist_1",
       "op": [21],
       "dst": [
         {

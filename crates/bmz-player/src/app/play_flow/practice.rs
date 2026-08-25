@@ -159,6 +159,10 @@ impl WinitApp {
             self.enter_practice(chart_id, PracticeCliOverrides::default());
             return;
         }
+        if options.session_mode == SessionMode::GBattle && options.battle_target.is_none() {
+            self.open_select_ir_battle();
+            return;
+        }
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
@@ -190,6 +194,9 @@ impl WinitApp {
         chart_id: i64,
         options: &mut PlayStartOptions,
     ) -> Result<()> {
+        if options.session_mode == SessionMode::GBattle && options.battle_target.is_none() {
+            anyhow::bail!("G-BATTLE requires a selected opponent");
+        }
         if options.session_mode != SessionMode::AutoplayBattle && options.battle_target.is_none() {
             return Ok(());
         }
@@ -204,6 +211,8 @@ impl WinitApp {
         let Some(target) = options.battle_target.as_ref() else {
             return Ok(());
         };
+        options.session_mode = SessionMode::GBattle;
+        options.autoplay = false;
         options.resolved_target =
             Some(ResolvedTarget { name: target.player_name.clone(), ex_score: target.ex_score });
         if let crate::screens::play_start::BattleTargetPlayback::Replay(replay) = &target.playback {

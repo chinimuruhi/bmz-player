@@ -43,7 +43,7 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
         Arc::new(battle_chart),
         &profile,
         PlaySessionOptions {
-            session_mode: SessionMode::Normal,
+            session_mode: SessionMode::GBattle,
             battle_opponent: Some(BattleOpponentOptions {
                 replay_player: Some(ReplayPlayer::default()),
                 gauge: None,
@@ -363,7 +363,7 @@ fn placeholder_session_visuals_expose_score_save_and_play_modes() {
         &mut battle_snapshot,
         &profile,
         KeyMode::K7,
-        &PlaySessionOptions { session_mode: SessionMode::Normal, ..PlaySessionOptions::default() },
+        &PlaySessionOptions { session_mode: SessionMode::GBattle, ..PlaySessionOptions::default() },
     );
     assert!(!battle_snapshot.replay_playback);
     assert!(battle_snapshot.score_save_enabled);

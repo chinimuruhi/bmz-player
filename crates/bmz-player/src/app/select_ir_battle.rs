@@ -178,6 +178,10 @@ impl WinitApp {
             self.close_select_ir_battle();
             return true;
         }
+        self.open_select_ir_battle()
+    }
+
+    pub(super) fn open_select_ir_battle(&mut self) -> bool {
         if !self.select_ir_battle_is_available() {
             let text = Localizer::new(self.boot.profile_config.ui.locale());
             self.show_left_overlay_toast(text.text("toast-ir-battle-unavailable"));
@@ -256,6 +260,9 @@ impl WinitApp {
         };
         match choice {
             SelectBattleChoice::Off => {
+                if self.select.session_mode == SessionMode::GBattle {
+                    self.set_session_mode(SessionMode::Normal);
+                }
                 let mut options = self.play_start_options();
                 options.battle_target = None;
                 if self.prepare_session_mode_or_show_error(chart_id, &mut options) {
@@ -511,6 +518,7 @@ impl WinitApp {
         chart_id: i64,
         target: crate::screens::play_start::BattleTarget,
     ) {
+        self.set_session_mode(SessionMode::GBattle);
         let mut options = self.play_start_options();
         options.battle_target = Some(target);
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {

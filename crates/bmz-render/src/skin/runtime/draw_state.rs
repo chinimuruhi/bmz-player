@@ -67,7 +67,7 @@ pub struct SkinDrawState {
     pub assist_scroll_mode: i64,
     pub assist_long_note_mode: i64,
     /// BMZ extension: exact select session mode index.
-    /// 0=NORMAL, 1=AUTOPLAY, 2=AUTO BATTLE, 3=BATTLE, 4=PRACTICE.
+    /// 0=NORMAL, 1=PRACTICE, 2=AUTOPLAY, 3=AUTO BATTLE, 4=G-BATTLE.
     pub select_session_mode_index: usize,
     pub select_mode_index: usize,
     pub select_difficulty_filter_index: usize,

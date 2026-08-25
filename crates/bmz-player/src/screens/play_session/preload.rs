@@ -203,10 +203,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
             imported.source_ln_profile,
         )),
-        session_mode_index: Some(crate::skin_extension::session_mode_index(
-            options.session_mode,
-            options.battle_opponent.is_some(),
-        )),
+        session_mode_index: Some(crate::skin_extension::session_mode_index(options.session_mode)),
         double_option_index: Some(crate::skin_extension::double_option_index(
             imported.applied_arrange.double_option,
         )),
@@ -585,7 +582,7 @@ pub fn build_practice_prepared_from_preloaded(
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&session.chart);
     let mut skin_attempt = preloaded.skin_attempt;
     skin_attempt.session_mode_index =
-        Some(crate::skin_extension::session_mode_index(SessionMode::Practice, false));
+        Some(crate::skin_extension::session_mode_index(SessionMode::Practice));
     skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
     skin_attempt.double_option_index =
         Some(crate::skin_extension::double_option_index(applied_arrange.double_option));

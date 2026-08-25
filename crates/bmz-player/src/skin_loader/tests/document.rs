@@ -51,9 +51,10 @@ fn bundled_default_select_displays_all_session_modes() {
 
     for (id, label) in [
         ("option_assist_0", "NORMAL"),
-        ("option_assist_1", "AUTOPLAY"),
-        ("option_assist_2", "AUTO BATTLE"),
-        ("option_assist_3", "BATTLE"),
+        ("option_assist_1", "PRACTICE"),
+        ("option_assist_2", "AUTOPLAY"),
+        ("option_assist_3", "AUTO BATTLE"),
+        ("option_assist_4", "G-BATTLE"),
     ] {
         assert!(
             decoded.document.text.iter().any(|text| text.id == id && text.constant_text == label),
@@ -62,7 +63,7 @@ fn bundled_default_select_displays_all_session_modes() {
         );
     }
 
-    for index in 0..4 {
+    for index in 0..5 {
         let draw = format!("event_index({SKIN_REF_BMZ_SELECT_SESSION_MODE}) == {index}");
         assert!(decoded.document.destination.iter().any(|entry| matches!(
             entry,

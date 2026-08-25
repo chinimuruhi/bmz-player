@@ -190,11 +190,11 @@ impl FinishSessionSnapshot {
             session.primary_key_mode
         };
         let session_mode_index = if session.battle_opponent.is_some() {
-            3
+            4
         } else if session.opponent_score.is_some() {
-            2
+            3
         } else if session.autoplay.is_some() {
-            1
+            2
         } else {
             0
         };

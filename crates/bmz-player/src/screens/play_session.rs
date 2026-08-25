@@ -119,9 +119,9 @@ pub struct PlaySessionOptions {
     /// 譜面変換時に確定した実効 assist。preload 後に内部で設定する。
     pub assist_runtime: AssistRuntime,
     pub replay_player: Option<ReplayPlayer>,
-    /// G-BATTLE is orthogonal to SessionMode. When present, preload builds a
-    /// separately arranged opponent chart and gameplay advances this replay
-    /// without taking over the primary input lanes.
+    /// `SessionMode::GBattle` opponent. Preload builds a separately arranged
+    /// opponent chart and gameplay advances this replay without taking over
+    /// the primary input lanes.
     pub battle_opponent: Option<BattleOpponentOptions>,
     /// Preload-only output consumed by `build_game_session*`.
     pub opponent_chart: Option<Arc<PlayableChart>>,

@@ -115,6 +115,7 @@ favorite 操作は invisible を使わず、登録済みなら解除、未登録
 曲リストがG-BATTLE相手選択へ一時的に切り替わります。短押しはそのキーモードでの通常の
 `KEY4`操作になり、長押し後にキーを離すと元の曲リストへ戻ります。`Tab`では固定表示でき、
 もう一度`Tab`、戻る操作、`Escape`で閉じます。
+SESSION MODEで`G-BATTLE`を選んで曲を決定した場合も、相手未選択ならこの画面を固定表示します。
 
 相手選択の先頭には`BATTLE OFF`（既定）、`MYBEST`、`REPLAY 1`〜`REPLAY 4`、
 `RIVAL (名前)`が並び、その後にIRランキングが続きます。上下・ページ移動・スクラッチ・
@@ -134,8 +135,8 @@ G-BATTLE相手選択中も、人物表示に使うタイトル・サブタイト
 だけを再生します。
 
 G-BATTLEは2K / 4K / 5K / 6K / 7K / 8K / 9K / 10K / 14Kで使用できます。
-SESSION MODEが`NORMAL`なら通常スキンを使います。`AUTOPLAY BATTLE`では5K / 7Kだけ
-バトルスキンを使い、それ以外のキーモードは通常スキンを使います。
+`AUTOPLAY BATTLE` / `G-BATTLE`では5K / 7Kだけバトルスキンを使い、
+それ以外のキーモードは通常スキンを使います。
 
 `COURSE` フォルダの `新規コース` を決定すると、LR2風のコース作成モードへ入ります。
 通常どおり曲フォルダや難易度表、検索結果を移動し、所持譜面を決定すると課題曲へ追加します。
@@ -168,7 +169,7 @@ SESSION MODEが`NORMAL`なら通常スキンを使います。`AUTOPLAY BATTLE`�
 | KEY4 | 戻る / 閉じる（120ms長押しでG-BATTLE相手選択） | GAUGE 前 | LEGACY NOTE 切替 | GREEN NUMBER -1 |
 | KEY5 | 決定 / 開く / 曲開始 | HS-FIX 次 | MARK NOTE 切替 | VISUAL OFFSET -1 ms |
 | KEY6 | 戻る / 閉じる | DP OPTION 次 | BPM GUIDE 切替 | GREEN NUMBER +1 |
-| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → PRACTICE → AUTOPLAY → AUTOPLAY BATTLE） | NO MINE 切替 | VISUAL OFFSET +1 ms |
+| KEY7 | 決定 / 開く / 曲開始 | SESSION MODE 次（NORMAL → PRACTICE → AUTOPLAY → AUTOPLAY BATTLE → G-BATTLE） | NO MINE 切替 | VISUAL OFFSET +1 ms |
 | 2P KEY1 | 決定 / 開く / 曲開始 | 2P RANDOM 次 | - | BGA 切替 |
 | 2P KEY2 | 戻る / 閉じる | 2P RANDOM 前 | - | GAUGE AUTO SHIFT 切替 |
 | 2P KEY3 | 決定 / 開く / 曲開始 | GAUGE 次 | - | JUDGE AUTO ADJUST 切替 |

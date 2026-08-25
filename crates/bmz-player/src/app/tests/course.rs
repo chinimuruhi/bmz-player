@@ -581,6 +581,30 @@ fn course_normalizes_battle_session_modes() {
     normalize_session_mode_for_course(&mut practice);
     assert_eq!(practice.session_mode, SessionMode::Normal);
     assert!(!practice.autoplay);
+
+    let mut g_battle = PlayStartOptions {
+        session_mode: SessionMode::GBattle,
+        battle_target: Some(crate::screens::play_start::BattleTarget {
+            provider: "local".to_string(),
+            score_id: "score".to_string(),
+            player_id: "rival".to_string(),
+            player_name: "RIVAL".to_string(),
+            rank: 1,
+            ex_score: 100,
+            gauge: None,
+            playback: crate::screens::play_start::BattleTargetPlayback::Seed {
+                arrange: ArrangeOption::Normal,
+                arrange_2p: ArrangeOption::Normal,
+                double_option: DoubleOption::Off,
+                packed_seed: None,
+            },
+        }),
+        ..PlayStartOptions::default()
+    };
+    normalize_session_mode_for_course(&mut g_battle);
+    assert_eq!(g_battle.session_mode, SessionMode::Normal);
+    assert!(!g_battle.autoplay);
+    assert!(g_battle.battle_target.is_none());
 }
 
 #[test]

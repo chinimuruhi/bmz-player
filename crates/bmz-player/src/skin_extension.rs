@@ -42,16 +42,13 @@ pub(crate) const fn ln_score_policy_index(policy: LnScorePolicy) -> usize {
     }
 }
 
-pub(crate) const fn session_mode_index(mode: SessionMode, ghost_battle: bool) -> usize {
-    if ghost_battle {
-        3
-    } else {
-        match mode {
-            SessionMode::Normal => 0,
-            SessionMode::Autoplay => 1,
-            SessionMode::AutoplayBattle => 2,
-            SessionMode::Practice => 4,
-        }
+pub(crate) const fn session_mode_index(mode: SessionMode) -> usize {
+    match mode {
+        SessionMode::Normal => 0,
+        SessionMode::Practice => 1,
+        SessionMode::Autoplay => 2,
+        SessionMode::AutoplayBattle => 3,
+        SessionMode::GBattle => 4,
     }
 }
 
@@ -157,11 +154,11 @@ mod tests {
         assert_eq!(rule_mode_index(RuleMode::Beatoraja), 0);
         assert_eq!(rule_mode_index(RuleMode::Lr2Oraja), 1);
         assert_eq!(rule_mode_index(RuleMode::Dx), 2);
-        assert_eq!(session_mode_index(SessionMode::Normal, false), 0);
-        assert_eq!(session_mode_index(SessionMode::Autoplay, false), 1);
-        assert_eq!(session_mode_index(SessionMode::AutoplayBattle, false), 2);
-        assert_eq!(session_mode_index(SessionMode::Normal, true), 3);
-        assert_eq!(session_mode_index(SessionMode::Practice, false), 4);
+        assert_eq!(session_mode_index(SessionMode::Normal), 0);
+        assert_eq!(session_mode_index(SessionMode::Practice), 1);
+        assert_eq!(session_mode_index(SessionMode::Autoplay), 2);
+        assert_eq!(session_mode_index(SessionMode::AutoplayBattle), 3);
+        assert_eq!(session_mode_index(SessionMode::GBattle), 4);
 
         let score_policies = [
             LnScorePolicy::AutoLn,

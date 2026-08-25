@@ -138,14 +138,12 @@ fn practice_gamepad_dp_normalizes_second_player_key_parity() {
 }
 
 #[test]
-fn playback_overlay_suffix_distinguishes_all_modes() {
+fn playback_overlay_suffix_groups_battle_modes_with_their_primary_mode() {
     assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, false), None);
     assert_eq!(playback_overlay_suffix(SessionMode::Practice, false, false), Some("practice"));
     assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, false), Some("autoplay"));
-    assert_eq!(
-        playback_overlay_suffix(SessionMode::AutoplayBattle, true, false),
-        Some("auto battle")
-    );
+    assert_eq!(playback_overlay_suffix(SessionMode::AutoplayBattle, true, false), Some("autoplay"));
+    assert_eq!(playback_overlay_suffix(SessionMode::GBattle, false, false), None);
 }
 
 #[test]
@@ -184,6 +182,20 @@ fn session_mode_profile_persists_practice_without_legacy_autoplay() {
     assert!(!profile.play.auto_play);
     let serialized = toml::to_string(&profile).unwrap();
     assert!(serialized.contains(r#"session_mode = "Practice""#));
+}
+
+#[test]
+fn session_mode_profile_persists_g_battle_without_legacy_autoplay() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut options = select_play_options_from_profile(&profile.play);
+    options.session_mode = SessionMode::GBattle;
+
+    apply_current_play_options_to_profile(&mut profile, None, None, options, 2);
+
+    assert_eq!(profile.play.session_mode, Some(SessionMode::GBattle));
+    assert!(!profile.play.auto_play);
+    let serialized = toml::to_string(&profile).unwrap();
+    assert!(serialized.contains(r#"session_mode = "GBattle""#));
 }
 
 #[test]

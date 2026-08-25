@@ -56,10 +56,10 @@ beatoraja には対応する skin type が無いため、BMZ 専用 skin とし�
 
 ## Battle Session Skin
 
-`SessionMode::AutoplayBattle` では、5K は skin type `13`、7K は
+`SessionMode::AutoplayBattle` / `SessionMode::GBattle` では、5K は skin type `13`、7K は
 skin type `12` の専用スロット (`skin.battle5` / `skin.battle7`) を優先する。
 未設定なら既存の `play10` / `play14` スロットへフォールバックする。
-`SessionMode::Normal` のG-BATTLE、および5K/7K以外のG-BATTLEは通常play skinを使う。
+5K/7K以外のG-BATTLEは通常play skinを使う。
 
 2P側のノート、LN、key-on/off、hold、bomb、HCN、judge は通常の2Pレーン ref/timerで
 公開する。次の対になっているtimerは1P/2Pを別状態として扱う。
@@ -124,15 +124,14 @@ extended index は beatoraja 互換値 `0=NORMAL`, `1=MIRROR`, `2=RANDOM`, `3=R-
 ### BMZ Attempt Session Mode Ref
 
 beatoraja 互換の assist `ref` / `event_index` `73` は従来どおり 2 値を返す。
-`NORMAL` は `0`、`AUTOPLAY` / `AUTOPLAY BATTLE` は `1` とし、
+`NORMAL` / `PRACTICE` / `G-BATTLE`は`0`、`AUTOPLAY` / `AUTOPLAY BATTLE`は`1`とし、
 既存 skin の 2 行 option panel を崩さない。
 
 BMZ 対応 skin で5種類を区別する場合は、BMZ 拡張 ref `1970` を使う。
-`number(1970)` / `event_index(1970)` は `0=NORMAL`, `1=AUTOPLAY`,
-`2=AUTO BATTLE`, `3=BATTLE`, `4=PRACTICE` を返す。BMZ デフォルトスキンの play mode panel も
-この ref を使用する。Selectではこれから開始するモード、Decide / Play / Resultでは
-試行開始時に固定したモードを返す。G-BATTLEは`SessionMode::Normal`とは独立しているが、
-skin上では`3=BATTLE`として公開する。
+`number(1970)` / `event_index(1970)` は `0=NORMAL`, `1=PRACTICE`, `2=AUTOPLAY`,
+`3=AUTO BATTLE`, `4=G-BATTLE` を返す。BMZ デフォルトスキンのplay mode panelも
+このrefを使用する。Selectではこれから開始するモード、Decide / Play / Resultでは
+試行開始時に固定したモードを返す。
 
 ### Practice Configuration Position
 

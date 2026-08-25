@@ -275,6 +275,7 @@ pub enum SessionMode {
     Practice,
     Autoplay,
     AutoplayBattle,
+    GBattle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -549,12 +550,16 @@ mod tests {
         assert_eq!(SessionMode::Normal.cycle(), SessionMode::Practice);
         assert_eq!(SessionMode::Practice.cycle(), SessionMode::Autoplay);
         assert_eq!(SessionMode::Autoplay.cycle(), SessionMode::AutoplayBattle);
-        assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::Normal);
+        assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::GBattle);
+        assert_eq!(SessionMode::GBattle.cycle(), SessionMode::Normal);
         assert!(SessionMode::Practice.is_practice());
         assert!(!SessionMode::Practice.primary_autoplay());
         assert!(!SessionMode::Practice.score_save_enabled());
         assert!(SessionMode::AutoplayBattle.primary_autoplay());
         assert!(!SessionMode::AutoplayBattle.score_save_enabled());
+        assert!(!SessionMode::GBattle.primary_autoplay());
+        assert!(SessionMode::GBattle.is_battle());
+        assert!(SessionMode::GBattle.score_save_enabled());
     }
 
     #[test]
@@ -570,15 +575,16 @@ mod tests {
 }
 
 impl SessionMode {
-    pub const VALUES: [Self; 4] =
-        [Self::Normal, Self::Practice, Self::Autoplay, Self::AutoplayBattle];
+    pub const VALUES: [Self; 5] =
+        [Self::Normal, Self::Practice, Self::Autoplay, Self::AutoplayBattle, Self::GBattle];
 
     pub fn cycle(self) -> Self {
         match self {
             Self::Normal => Self::Practice,
             Self::Practice => Self::Autoplay,
             Self::Autoplay => Self::AutoplayBattle,
-            Self::AutoplayBattle => Self::Normal,
+            Self::AutoplayBattle => Self::GBattle,
+            Self::GBattle => Self::Normal,
         }
     }
 
@@ -588,6 +594,7 @@ impl SessionMode {
             Self::Practice => "PRACTICE",
             Self::Autoplay => "AUTOPLAY",
             Self::AutoplayBattle => "AUTOPLAY BATTLE",
+            Self::GBattle => "G-BATTLE",
         }
     }
 
@@ -600,10 +607,10 @@ impl SessionMode {
     }
 
     pub const fn is_battle(self) -> bool {
-        matches!(self, Self::AutoplayBattle)
+        matches!(self, Self::AutoplayBattle | Self::GBattle)
     }
 
     pub const fn score_save_enabled(self) -> bool {
-        matches!(self, Self::Normal)
+        matches!(self, Self::Normal | Self::GBattle)
     }
 }

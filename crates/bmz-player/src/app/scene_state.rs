@@ -530,6 +530,7 @@ pub(super) const fn playback_overlay_suffix(
         SessionMode::Normal => None,
         SessionMode::Practice => Some("practice"),
         SessionMode::Autoplay => Some("autoplay"),
-        SessionMode::AutoplayBattle => Some("auto battle"),
+        SessionMode::AutoplayBattle => Some("autoplay"),
+        SessionMode::GBattle => None,
     }
 }
