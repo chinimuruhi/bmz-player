@@ -321,9 +321,62 @@ pub fn practice_field_count(is_double: bool) -> usize {
     if is_double { 12 } else { 10 }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PracticeCursorTarget {
+    Field(usize),
+    Start,
+    Leave,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PracticeCursorAction {
+    None,
+    Start,
+    Leave,
+}
+
+pub fn practice_cursor_count(is_double: bool) -> usize {
+    practice_field_count(is_double) + 2
+}
+
+pub fn practice_start_cursor(is_double: bool) -> usize {
+    practice_field_count(is_double)
+}
+
+pub fn practice_leave_cursor(is_double: bool) -> usize {
+    practice_field_count(is_double) + 1
+}
+
+pub fn practice_cursor_target(cursor: usize, is_double: bool) -> PracticeCursorTarget {
+    let field_count = practice_field_count(is_double);
+    match cursor % practice_cursor_count(is_double) {
+        index if index < field_count => PracticeCursorTarget::Field(index),
+        index if index == field_count => PracticeCursorTarget::Start,
+        _ => PracticeCursorTarget::Leave,
+    }
+}
+
 pub fn move_practice_cursor(cursor: &mut usize, is_double: bool, forward: bool) {
-    let count = practice_field_count(is_double);
+    let count = practice_cursor_count(is_double);
     *cursor = (*cursor + if forward { 1 } else { count - 1 }) % count;
+}
+
+pub fn apply_practice_cursor_horizontal(
+    property: &mut PracticeProperty,
+    cursor: usize,
+    is_double: bool,
+    increment: bool,
+    max_end_time_ms: u32,
+) -> PracticeCursorAction {
+    match practice_cursor_target(cursor, is_double) {
+        PracticeCursorTarget::Field(field) => {
+            adjust_practice_selected_field(property, field, is_double, increment, max_end_time_ms);
+            PracticeCursorAction::None
+        }
+        PracticeCursorTarget::Start if increment => PracticeCursorAction::Start,
+        PracticeCursorTarget::Leave if increment => PracticeCursorAction::Leave,
+        PracticeCursorTarget::Start | PracticeCursorTarget::Leave => PracticeCursorAction::None,
+    }
 }
 
 pub fn adjust_practice_selected_field(
@@ -558,5 +611,49 @@ mod tests {
         migrate_legacy_practice_property(&mut customized, &chart, RuleMode::Beatoraja);
         assert_eq!(customized.judgerank, 2);
         assert_eq!(customized.format_version, PRACTICE_PROPERTY_FORMAT_VERSION);
+    }
+
+    #[test]
+    fn practice_cursor_includes_start_and_leave_actions() {
+        assert_eq!(practice_cursor_count(false), 12);
+        assert_eq!(practice_cursor_target(9, false), PracticeCursorTarget::Field(9));
+        assert_eq!(practice_cursor_target(10, false), PracticeCursorTarget::Start);
+        assert_eq!(practice_cursor_target(11, false), PracticeCursorTarget::Leave);
+        assert_eq!(practice_cursor_count(true), 14);
+        assert_eq!(practice_cursor_target(12, true), PracticeCursorTarget::Start);
+        assert_eq!(practice_cursor_target(13, true), PracticeCursorTarget::Leave);
+    }
+
+    #[test]
+    fn practice_cursor_wraps_across_action_rows() {
+        let mut cursor = 0;
+        move_practice_cursor(&mut cursor, false, false);
+        assert_eq!(practice_cursor_target(cursor, false), PracticeCursorTarget::Leave);
+        move_practice_cursor(&mut cursor, false, true);
+        assert_eq!(practice_cursor_target(cursor, false), PracticeCursorTarget::Field(0));
+    }
+
+    #[test]
+    fn practice_action_rows_activate_only_in_the_increment_direction() {
+        let mut property = PracticeProperty::default();
+        let start = practice_start_cursor(false);
+        let leave = practice_leave_cursor(false);
+
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, start, false, true, 120_000),
+            PracticeCursorAction::Start
+        );
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, start, false, false, 120_000),
+            PracticeCursorAction::None
+        );
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, leave, false, true, 120_000),
+            PracticeCursorAction::Leave
+        );
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, leave, false, false, 120_000),
+            PracticeCursorAction::None
+        );
     }
 }

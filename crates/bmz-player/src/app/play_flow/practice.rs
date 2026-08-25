@@ -1,7 +1,85 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PracticeGamepadAction {
+    Move(bool),
+    Adjust(bool),
+    Ignore,
+}
+
+pub(super) fn practice_gamepad_action(
+    device: DeviceId,
+    control: &PhysicalControl,
+    synthesized_analog_axis: bool,
+    input: Option<&PlayOptionInput>,
+) -> PracticeGamepadAction {
+    let Some(input) = input else { return PracticeGamepadAction::Ignore };
+    let Some(resolution) = input.resolve_entry(device, control) else {
+        return match control {
+            PhysicalControl::GamepadButton(button)
+                if matches!(button.as_str(), "DPadUp" | "DPadNorth") =>
+            {
+                PracticeGamepadAction::Move(false)
+            }
+            PhysicalControl::GamepadButton(button)
+                if matches!(button.as_str(), "DPadDown" | "DPadSouth") =>
+            {
+                PracticeGamepadAction::Move(true)
+            }
+            _ => PracticeGamepadAction::Ignore,
+        };
+    };
+    if matches!(resolution.lane, Lane::Scratch | Lane::Scratch2) {
+        if synthesized_analog_axis {
+            return PracticeGamepadAction::Ignore;
+        }
+        return match resolution.scratch_direction {
+            Some(ScratchDirection::Up) => PracticeGamepadAction::Move(false),
+            Some(ScratchDirection::Down) => PracticeGamepadAction::Move(true),
+            None => PracticeGamepadAction::Ignore,
+        };
+    }
+
+    let lane_index = resolution.lane.index();
+    let key_index = if matches!(input.key_mode, KeyMode::K10 | KeyMode::K14) && lane_index >= 8 {
+        lane_index - 7
+    } else {
+        lane_index
+    };
+    PracticeGamepadAction::Adjust(key_index % 2 == 1)
+}
+
+pub(super) fn practice_analog_cursor_delta(
+    device: DeviceId,
+    axis: &str,
+    ticks: i32,
+    input: Option<&PlayOptionInput>,
+) -> Option<i32> {
+    if ticks == 0 {
+        return None;
+    }
+    let input = input?;
+    let control =
+        PhysicalControl::GamepadButton(format!("{}{}", axis, if ticks > 0 { "+" } else { "-" }));
+    let resolution = input.resolve_entry(device, &control)?;
+    if !matches!(resolution.lane, Lane::Scratch | Lane::Scratch2) {
+        return None;
+    }
+    match resolution.scratch_direction {
+        Some(ScratchDirection::Up) => Some(-ticks.abs()),
+        Some(ScratchDirection::Down) => Some(ticks.abs()),
+        None => None,
+    }
+}
+
 impl WinitApp {
-    pub(super) fn route_practice_gamepad_control(&mut self, button: &str, pressed: bool) -> bool {
+    pub(super) fn route_practice_gamepad_control(
+        &mut self,
+        device: DeviceId,
+        button: &str,
+        pressed: bool,
+        synthesized_analog_axis: bool,
+    ) -> bool {
         let is_config = self
             .play
             .practice_session
@@ -17,43 +95,23 @@ impl WinitApp {
             self.stop_play_like_escape("E2+E3 pressed in practice configuration");
             return true;
         }
+        if self.play.play_e1_held || self.play.play_e2_held {
+            return false;
+        }
         if !pressed {
             return true;
         }
 
-        enum Action {
-            Move(bool),
-            Adjust(bool),
-            Start,
-            Leave,
-            Ignore,
-        }
-        let action = if self.select.select_keys.is_enter(button) {
-            Action::Start
-        } else if self.select.select_keys.is_back(button) {
-            Action::Leave
-        } else if self.select.select_keys.is_select_previous(button)
-            || matches!(button, "DPadUp" | "DPadNorth")
-        {
-            Action::Move(false)
-        } else if self.select.select_keys.is_select_next(button)
-            || matches!(button, "DPadDown" | "DPadSouth")
-        {
-            Action::Move(true)
-        } else if self.select.select_keys.is_target_previous(button)
-            || matches!(button, "DPadLeft" | "DPadWest")
-        {
-            Action::Adjust(false)
-        } else if self.select.select_keys.is_target_next(button)
-            || matches!(button, "DPadRight" | "DPadEast")
-        {
-            Action::Adjust(true)
-        } else {
-            Action::Ignore
-        };
+        let control = PhysicalControl::GamepadButton(button.to_string());
+        let action = practice_gamepad_action(
+            device,
+            &control,
+            synthesized_analog_axis,
+            self.play.play_option_input.as_ref(),
+        );
 
         match action {
-            Action::Move(forward) => {
+            PracticeGamepadAction::Move(forward) => {
                 if let Some(practice) = &mut self.play.practice_session {
                     crate::screens::practice::move_practice_cursor(
                         &mut practice.cursor,
@@ -62,23 +120,34 @@ impl WinitApp {
                     );
                 }
             }
-            Action::Adjust(increment) => {
-                if let Some(practice) = &mut self.play.practice_session {
-                    crate::screens::practice::adjust_practice_selected_field(
-                        &mut practice.property,
-                        practice.cursor,
-                        practice.is_double,
-                        increment,
-                        practice.max_end_time_ms,
-                    );
+            PracticeGamepadAction::Adjust(increment) => {
+                let cursor_action = self
+                    .play
+                    .practice_session
+                    .as_mut()
+                    .map(|practice| {
+                        crate::screens::practice::apply_practice_cursor_horizontal(
+                            &mut practice.property,
+                            practice.cursor,
+                            practice.is_double,
+                            increment,
+                            practice.max_end_time_ms,
+                        )
+                    })
+                    .unwrap_or(crate::screens::practice::PracticeCursorAction::None);
+                match cursor_action {
+                    crate::screens::practice::PracticeCursorAction::None => {
+                        self.refresh_practice_preview_snapshot();
+                    }
+                    crate::screens::practice::PracticeCursorAction::Start => {
+                        self.start_practice_round();
+                    }
+                    crate::screens::practice::PracticeCursorAction::Leave => {
+                        self.stop_play_like_escape("practice gamepad leave requested");
+                    }
                 }
-                self.refresh_practice_preview_snapshot();
             }
-            Action::Start => self.start_practice_round(),
-            Action::Leave => {
-                self.stop_play_like_escape("practice gamepad leave requested");
-            }
-            Action::Ignore => {}
+            PracticeGamepadAction::Ignore => {}
         }
         true
     }

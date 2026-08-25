@@ -1,4 +1,7 @@
 use super::*;
+use crate::app::play_flow_practice::{
+    PracticeGamepadAction, practice_analog_cursor_delta, practice_gamepad_action,
+};
 use crate::app::scene_state::playback_overlay_suffix;
 
 #[test]
@@ -22,6 +25,116 @@ fn decide_launch_promotes_only_staged_practice_config() {
 
     assert_eq!(promoted.chart_id, 42);
     assert_eq!(promoted.phase, PracticePhase::Config);
+}
+
+fn practice_gamepad_test_input(key_mode: KeyMode) -> PlayOptionInput {
+    let entry =
+        |control: &str, lane, scratch_direction| bmz_gameplay::input::binding::BindingEntry {
+            device: None,
+            control: PhysicalControl::GamepadButton(control.to_string()),
+            lane,
+            scratch_direction,
+        };
+    PlayOptionInput {
+        key_mode,
+        binding: LaneBinding {
+            entries: vec![
+                entry("Button1", Lane::Key1, None),
+                entry("Button2", Lane::Key2, None),
+                entry("Button3", Lane::Key3, None),
+                entry("Button4", Lane::Key4, None),
+                entry("Axis1+", Lane::Scratch, Some(ScratchDirection::Down)),
+                entry("Axis1-", Lane::Scratch, Some(ScratchDirection::Up)),
+            ],
+        },
+        scratch_binding: LaneBinding { entries: Vec::new() },
+        action_bindings: Vec::new(),
+    }
+}
+
+#[test]
+fn practice_gamepad_uses_play_lanes_for_horizontal_controls() {
+    let input = practice_gamepad_test_input(KeyMode::K7);
+    let action = |button: &str| {
+        practice_gamepad_action(
+            DeviceId(16),
+            &PhysicalControl::GamepadButton(button.to_string()),
+            false,
+            Some(&input),
+        )
+    };
+
+    assert_eq!(action("Button1"), PracticeGamepadAction::Adjust(true));
+    assert_eq!(action("Button2"), PracticeGamepadAction::Adjust(false));
+    assert_eq!(action("Button3"), PracticeGamepadAction::Adjust(true));
+    assert_eq!(action("Button4"), PracticeGamepadAction::Adjust(false));
+    assert_eq!(action("Button9"), PracticeGamepadAction::Ignore);
+}
+
+#[test]
+fn practice_gamepad_scratch_moves_cursor_without_double_counting_analog_press() {
+    let input = practice_gamepad_test_input(KeyMode::K7);
+    let down = PhysicalControl::GamepadButton("Axis1+".to_string());
+    let up = PhysicalControl::GamepadButton("Axis1-".to_string());
+
+    assert_eq!(
+        practice_gamepad_action(DeviceId(16), &down, false, Some(&input)),
+        PracticeGamepadAction::Move(true)
+    );
+    assert_eq!(
+        practice_gamepad_action(DeviceId(16), &up, false, Some(&input)),
+        PracticeGamepadAction::Move(false)
+    );
+    assert_eq!(
+        practice_gamepad_action(DeviceId(16), &down, true, Some(&input)),
+        PracticeGamepadAction::Ignore
+    );
+    assert_eq!(practice_analog_cursor_delta(DeviceId(16), "Axis1", 4, Some(&input)), Some(4));
+    assert_eq!(practice_analog_cursor_delta(DeviceId(16), "Axis1", -3, Some(&input)), Some(-3));
+}
+
+#[test]
+fn practice_gamepad_dp_normalizes_second_player_key_parity() {
+    let input = PlayOptionInput {
+        key_mode: KeyMode::K14,
+        binding: LaneBinding {
+            entries: vec![
+                bmz_gameplay::input::binding::BindingEntry {
+                    device: Some(DeviceId(17)),
+                    control: PhysicalControl::GamepadButton("Button1".to_string()),
+                    lane: Lane::Key8,
+                    scratch_direction: None,
+                },
+                bmz_gameplay::input::binding::BindingEntry {
+                    device: Some(DeviceId(17)),
+                    control: PhysicalControl::GamepadButton("Button2".to_string()),
+                    lane: Lane::Key9,
+                    scratch_direction: None,
+                },
+            ],
+        },
+        scratch_binding: LaneBinding { entries: Vec::new() },
+        action_bindings: Vec::new(),
+    };
+
+    assert_eq!(
+        practice_gamepad_action(
+            DeviceId(17),
+            &PhysicalControl::GamepadButton("Button1".to_string()),
+            false,
+            Some(&input),
+        ),
+        PracticeGamepadAction::Adjust(true)
+    );
+    assert_eq!(
+        practice_gamepad_action(
+            DeviceId(17),
+            &PhysicalControl::GamepadButton("Button2".to_string()),
+            false,
+            Some(&input),
+        ),
+        PracticeGamepadAction::Adjust(false)
+    );
 }
 
 #[test]

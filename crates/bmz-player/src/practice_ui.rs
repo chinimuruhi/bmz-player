@@ -3,7 +3,9 @@
 use egui::{Context, RichText};
 
 use crate::i18n::Localizer;
-use crate::screens::practice::{PracticeGaugeType, PracticeGraphType, PracticeProperty};
+use crate::screens::practice::{
+    PracticeCursorAction, PracticeGaugeType, PracticeGraphType, PracticeProperty,
+};
 use crate::select_options::ArrangeOption;
 use bmz_gameplay::gauge::GaugeProperty;
 use bmz_render::snapshot::ResultGraphSnapshot;
@@ -35,25 +37,29 @@ pub fn build_practice_panel(
 ) -> PracticePanelOutput {
     let mut start_play = false;
     let mut leave = false;
-    let field_count = crate::screens::practice::practice_field_count(practice.is_double);
+    let cursor_count = crate::screens::practice::practice_cursor_count(practice.is_double);
     if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowDown)) {
-        *practice.cursor = (*practice.cursor + 1) % field_count;
+        *practice.cursor = (*practice.cursor + 1) % cursor_count;
     }
     if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowUp)) {
-        *practice.cursor = (*practice.cursor + field_count - 1) % field_count;
+        *practice.cursor = (*practice.cursor + cursor_count - 1) % cursor_count;
     }
     let decrement =
         practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft));
     let increment =
         practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowRight));
     if decrement || increment {
-        crate::screens::practice::adjust_practice_selected_field(
+        match crate::screens::practice::apply_practice_cursor_horizontal(
             practice.property,
             *practice.cursor,
             practice.is_double,
             increment,
             practice.max_end_time_ms,
-        );
+        ) {
+            PracticeCursorAction::None => {}
+            PracticeCursorAction::Start => start_play = true,
+            PracticeCursorAction::Leave => leave = true,
+        }
     }
 
     let mut window = egui::Window::new(text.text("practice-title"))
@@ -208,8 +214,7 @@ pub fn build_practice_panel(
             ui.checkbox(&mut practice.property.dp_flip, "FLIP");
         }
 
-        let last_field = if practice.is_double { 11 } else { 9 };
-        *practice.cursor = (*practice.cursor).min(last_field);
+        *practice.cursor = (*practice.cursor).min(cursor_count - 1);
         draw_practice_graph(ui, practice);
 
         ui.separator();
@@ -220,10 +225,18 @@ pub fn build_practice_panel(
         }
 
         ui.horizontal(|ui| {
-            if ui.button(text.text("practice-start-play")).clicked() {
+            let start_cursor = crate::screens::practice::practice_start_cursor(practice.is_double);
+            let start_button = egui::Button::new(text.text("practice-start-play"))
+                .selected(*practice.cursor == start_cursor);
+            if ui.add_enabled(practice.media_ready, start_button).clicked() {
+                *practice.cursor = start_cursor;
                 start_play = true;
             }
-            if ui.button(text.text("practice-back-to-select")).clicked() {
+            let leave_cursor = crate::screens::practice::practice_leave_cursor(practice.is_double);
+            let leave_button = egui::Button::new(text.text("practice-back-to-select"))
+                .selected(*practice.cursor == leave_cursor);
+            if ui.add(leave_button).clicked() {
+                *practice.cursor = leave_cursor;
                 leave = true;
             }
         });

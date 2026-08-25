@@ -62,7 +62,7 @@ impl WinitApp {
                 self.apply_key_config_gamepad(&control);
                 continue;
             }
-            self.route_gamepad_axis_ticks(&tick.name, tick.ticks);
+            self.route_gamepad_axis_ticks(tick.device_id, &tick.name, tick.ticks);
         }
     }
 
@@ -93,7 +93,12 @@ impl WinitApp {
         if !practice_config && self.play.play_ending.is_none() {
             self.route_play_device_input(device_event);
         }
-        self.route_gamepad_button(event.device_id, &event.name, event.pressed);
+        self.route_gamepad_button(
+            event.device_id,
+            &event.name,
+            event.pressed,
+            event.synthesized_analog_axis,
+        );
     }
 
     fn resync_gamepad_pressed_controls(
@@ -112,7 +117,19 @@ impl WinitApp {
             .is_some_and(|session| session.listening && session.target.slot().is_controller())
     }
 
-    pub(super) fn route_gamepad_axis_ticks(&mut self, axis: &str, ticks: i32) {
+    pub(super) fn route_gamepad_axis_ticks(&mut self, device: DeviceId, axis: &str, ticks: i32) {
+        let practice_config = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        if practice_config
+            && !self.play.play_e1_held
+            && !self.play.play_e2_held
+            && self.apply_practice_analog_cursor_ticks(device, axis, ticks)
+        {
+            return;
+        }
         if self.apply_play_analog_option_ticks(axis, ticks) {
             return;
         }
@@ -120,6 +137,56 @@ impl WinitApp {
             return;
         }
         self.accumulate_select_analog_ticks(axis, ticks);
+    }
+
+    pub(super) fn apply_practice_analog_cursor_ticks(
+        &mut self,
+        device: DeviceId,
+        axis: &str,
+        ticks: i32,
+    ) -> bool {
+        let is_config = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        if !is_config {
+            return false;
+        }
+        if self.play.play_ending.is_some() {
+            return true;
+        }
+        let Some(delta) = crate::app::play_flow_practice::practice_analog_cursor_delta(
+            device,
+            axis,
+            ticks,
+            self.play.play_option_input.as_ref(),
+        ) else {
+            return false;
+        };
+        let now = Instant::now();
+        let idle = self.play.play_analog_last_tick_at.is_none_or(|last| {
+            now.duration_since(last) > Duration::from_millis(SELECT_ANALOG_SCROLL_TOLERANCE_MS)
+        });
+        self.play.play_analog_last_tick_at = Some(now);
+        if idle {
+            self.play.play_analog_scroll_buffer = 0;
+        }
+        self.play.play_analog_scroll_buffer += delta;
+
+        let ticks_per_scroll = self.boot.profile_config.input.analog_ticks_per_scroll.max(1) as i32;
+        let steps =
+            take_analog_scroll_steps(&mut self.play.play_analog_scroll_buffer, ticks_per_scroll);
+        if let Some(practice) = &mut self.play.practice_session {
+            for _ in 0..steps.abs() {
+                crate::screens::practice::move_practice_cursor(
+                    &mut practice.cursor,
+                    practice.is_double,
+                    steps > 0,
+                );
+            }
+        }
+        true
     }
 
     pub(super) fn apply_play_analog_option_ticks(&mut self, axis: &str, ticks: i32) -> bool {
@@ -327,7 +394,13 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn route_gamepad_button(&mut self, device: DeviceId, button: &str, pressed: bool) {
+    pub(super) fn route_gamepad_button(
+        &mut self,
+        device: DeviceId,
+        button: &str,
+        pressed: bool,
+        synthesized_analog_axis: bool,
+    ) {
         let control_event = ControlInputEvent::gamepad(device, button, pressed);
         let physical_control =
             control_event.physical.as_ref().expect("gamepad control always has a physical value");
@@ -340,7 +413,7 @@ impl WinitApp {
             self.request_manual_screenshot();
             return;
         }
-        if self.route_practice_gamepad_control(button, pressed) {
+        if self.route_practice_gamepad_control(device, button, pressed, synthesized_analog_axis) {
             return;
         }
         if pressed && self.play.play_ending.is_none() && self.handle_quick_retry_control(button) {
