@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn result_document_state_maps_canvas_mouse_position_to_skin_pixels() {
+    let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
+        panic!("sample result scene");
+    };
+    let document: SkinDocument =
+        serde_json::from_str(r#"{ "type": 7, "w": 200, "h": 100 }"#).unwrap();
+
+    let unavailable = result_skin_draw_state_for_document(&snapshot, &document);
+    assert_eq!(unavailable.mouse_x, None);
+    assert_eq!(unavailable.mouse_y, None);
+
+    snapshot.mouse_position = Some((0.25, 0.75));
+    let hovered = result_skin_draw_state_for_document(&snapshot, &document);
+    assert_eq!(hovered.mouse_x, Some(50.0));
+    assert_eq!(hovered.mouse_y, Some(25.0));
+}
+
+#[test]
 fn result_skin_state_exposes_autoplay_options() {
     let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
         panic!("sample result scene");
@@ -200,6 +218,7 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
         skin_input: Default::default(),
         skin_attempt: Default::default(),
         skin_offsets: Default::default(),
+        mouse_position: None,
         hispeed_auto_adjust: false,
         assist_flags: [false; 7],
         assist_extra_note_depth: 0,
@@ -359,6 +378,7 @@ fn result_plan_renders_timing_distribution_from_result_graph_data() {
         skin_input: Default::default(),
         skin_attempt: Default::default(),
         skin_offsets: Default::default(),
+        mouse_position: None,
         hispeed_auto_adjust: false,
         assist_flags: [false; 7],
         assist_extra_note_depth: 0,

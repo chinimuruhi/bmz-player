@@ -200,6 +200,7 @@ pub fn sample_result_scene() -> AppSceneSnapshot {
         skin_input: Default::default(),
         skin_attempt: Default::default(),
         skin_offsets: Default::default(),
+        mouse_position: None,
         hispeed_auto_adjust: false,
         clear_type: bmz_core::clear::ClearType::Normal,
         result_failed: false,

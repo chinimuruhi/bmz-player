@@ -128,6 +128,9 @@ impl WinitApp {
                             }
                         },
                     ),
+                    mouse_position: self
+                        .renderer
+                        .result_skin_mouse_position(self.cursor_position_normalized()),
                     hispeed_auto_adjust: self.boot.profile_config.lane.hispeed_auto_adjust,
                     clear_type: summary.clear_type,
                     result_failed,

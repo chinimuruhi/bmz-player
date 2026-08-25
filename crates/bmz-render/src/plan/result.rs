@@ -7,7 +7,7 @@ pub(super) fn plan_result(
 ) -> DrawPlan {
     if let Some(document) = skin.document().filter(|document| matches!(document.skin_type, 7 | 15))
     {
-        let mut state = build_result_skin_draw_state(snapshot, document.ranktime);
+        let mut state = result_skin_draw_state_for_document(snapshot, document);
         state.start_input_ms =
             dynamic_timers.start_input_elapsed_ms(state.elapsed_ms, document.input);
         advance_skin_dynamic_timers(
@@ -137,6 +137,18 @@ pub fn result_skin_draw_state(
     result_ranktime_ms: i32,
 ) -> crate::skin::SkinDrawState {
     build_result_skin_draw_state(snapshot, result_ranktime_ms)
+}
+
+pub(crate) fn result_skin_draw_state_for_document(
+    snapshot: &crate::scene::ResultSnapshot,
+    document: &SkinDocument,
+) -> crate::skin::SkinDrawState {
+    let mut state = build_result_skin_draw_state(snapshot, document.ranktime);
+    if let Some((x, y)) = snapshot.mouse_position {
+        state.mouse_x = Some(x.clamp(0.0, 1.0) * document.w as f32);
+        state.mouse_y = Some((1.0 - y.clamp(0.0, 1.0)) * document.h as f32);
+    }
+    state
 }
 
 pub(super) fn build_result_skin_draw_state(

@@ -122,7 +122,8 @@ pub struct SelectSnapshot {
     /// 非入力時の placeholder / feedback はスキン本来の destination 順で描画し、
     /// 入力中の文字と caret だけを TextField 相当の最前面オーバーレイにする。
     pub search_input_active: bool,
-    /// Select skin mouse position in normalized screen coordinates.
+    /// Select skin mouse position in normalized skin-canvas coordinates.
+    /// The origin is the top-left corner.
     pub mouse_position: Option<(f32, f32)>,
     /// 選曲カーソル譜面の IR ランキング状態 (NUMBER_IR_* / OPTION_IR_*)。
     pub ir: ResultIrSnapshot,

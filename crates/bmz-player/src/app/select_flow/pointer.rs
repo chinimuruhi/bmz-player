@@ -161,7 +161,7 @@ impl WinitApp {
 
     pub(super) fn cursor_position_normalized(&self) -> Option<(f32, f32)> {
         let window = self.window.as_ref()?;
-        let position = self.select.last_cursor_position?;
+        let position = self.ui.last_cursor_position?;
         let size = window.inner_size();
         if size.width == 0 || size.height == 0 {
             return None;

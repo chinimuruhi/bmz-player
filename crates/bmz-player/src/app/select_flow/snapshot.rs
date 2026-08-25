@@ -390,7 +390,9 @@ impl WinitApp {
             search_word_alpha,
             search_caret_byte_index,
             search_input_active: self.select.search.is_active(),
-            mouse_position: self.cursor_position_normalized(),
+            mouse_position: self
+                .renderer
+                .select_skin_mouse_position(self.cursor_position_normalized()),
             ir: selected_course_ir.as_ref().map_or_else(
                 || {
                     self.select.select_ir.snapshot_for_binding(

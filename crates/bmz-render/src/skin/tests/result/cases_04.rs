@@ -170,6 +170,36 @@ fn result_click_hit_uses_runtime_panel_visibility() {
 }
 
 #[test]
+fn result_mouse_rect_requires_an_available_pointer() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 7,
+                "w": 100,
+                "h": 100,
+                "image": [
+                    { "id": "button", "src": 1, "x": 0, "y": 0, "w": 10, "h": 10, "act": 15 }
+                ],
+                "destination": [
+                    {
+                        "id": "button",
+                        "dst": [{ "x": 10, "y": 20, "w": 30, "h": 10 }],
+                        "mouseRect": { "x": 5, "y": 2, "w": 10, "h": 4 }
+                    }
+                ]
+            }
+        "#,
+    )
+    .unwrap();
+
+    assert!(document.result_click_hit(&SkinDrawState::default(), 0.2, 0.75).is_none());
+
+    let hovered =
+        SkinDrawState { mouse_x: Some(20.0), mouse_y: Some(24.0), ..SkinDrawState::default() };
+    assert!(document.result_click_hit(&hovered, 0.2, 0.75).is_some());
+}
+
+#[test]
 fn result_ir_slider_hit_and_rate_use_ranking_scroll_position() {
     let document: SkinDocument = serde_json::from_str(
             r#"

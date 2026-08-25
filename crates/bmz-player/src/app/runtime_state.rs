@@ -84,8 +84,6 @@ pub(super) struct SelectRuntimeState {
     pub(super) key_config_edit: Option<KeyConfigEditSession>,
     /// 選曲画面の検索文字列、IME、cursor、履歴、feedback状態。
     pub(super) search: SelectSearchRuntime,
-    /// 直近のマウスカーソル位置。select skin のクリック hit-test に使う。
-    pub(super) last_cursor_position: Option<PhysicalPosition<f64>>,
     /// ドラッグ中の select skin slider type。
     pub(super) select_slider_dragging_type: Option<i32>,
 }
@@ -328,6 +326,8 @@ pub(super) struct UiRuntimeState {
     pub(super) focused: bool,
     /// 直近のマウスカーソル移動 / 操作時刻。カーソル非表示判定に使う。
     pub(super) last_cursor_action_at: Instant,
+    /// 直近のウィンドウ内マウスカーソル位置。skin の hover / hit-test に使う。
+    pub(super) last_cursor_position: Option<PhysicalPosition<f64>>,
     /// 現在マウスカーソルが表示されているか。
     pub(super) cursor_visible: bool,
 }

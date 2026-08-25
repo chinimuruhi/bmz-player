@@ -245,7 +245,6 @@ impl WinitApp {
                 settings_edit: None,
                 key_config_edit: None,
                 search: SelectSearchRuntime::new(now),
-                last_cursor_position: None,
                 select_slider_dragging_type: None,
             },
             play: PlayRuntimeState {
@@ -376,6 +375,7 @@ impl WinitApp {
                 device_events_reconfigure_pending: false,
                 focused: true,
                 last_cursor_action_at: now,
+                last_cursor_position: None,
                 cursor_visible: true,
             },
             course_editor_cache: course_editor::CourseEditorDataCache::default(),

@@ -164,6 +164,9 @@ pub struct ResultSnapshot {
     pub skin_attempt: SkinAttemptState,
     /// 現在のリザルトスキンスロットに設定された destination offset。
     pub skin_offsets: SkinOffsetValues,
+    /// Result skin mouse position in normalized skin-canvas coordinates.
+    /// The origin is the top-left corner.
+    pub mouse_position: Option<(f32, f32)>,
     /// beatoraja image/index ref 342。
     pub hispeed_auto_adjust: bool,
     pub clear_type: ClearType,

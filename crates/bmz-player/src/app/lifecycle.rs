@@ -1,5 +1,13 @@
 use super::*;
 
+pub(super) fn clear_window_cursor_state(
+    position: &mut Option<PhysicalPosition<f64>>,
+    dragging_slider_type: &mut Option<i32>,
+) {
+    *position = None;
+    *dragging_slider_type = None;
+}
+
 impl ApplicationHandler<AppUserEvent> for WinitApp {
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
         match cause {
@@ -145,7 +153,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_mouse_wheel(delta);
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.select.last_cursor_position = Some(position);
+                self.ui.last_cursor_position = Some(position);
                 self.ui.last_cursor_action_at = Instant::now();
                 if !self.ui.cursor_visible {
                     if let Some(window) = &self.window {
@@ -156,6 +164,12 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 if !egui_consumed {
                     self.route_select_slider_drag();
                 }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                clear_window_cursor_state(
+                    &mut self.ui.last_cursor_position,
+                    &mut self.select.select_slider_dragging_type,
+                );
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 self.ui.last_cursor_action_at = Instant::now();
