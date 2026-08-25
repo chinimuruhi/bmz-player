@@ -50,6 +50,8 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
         let egui_blocks_game_input =
             self.ui.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay))
                 || select_course_builder;
+        let has_play_context =
+            self.play.active_play.is_some() || self.play.pending_play_start.is_some();
         let play_owns_keyboard_input = match &event {
             WindowEvent::KeyboardInput { event, .. } => {
                 let control = physical_key_to_control(event.physical_key);
@@ -60,7 +62,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                             .contains(&(W_KEYBOARD_DEVICE_ID, control.clone()))
                     });
                 keyboard_input_bypasses_egui(
-                    self.play.active_play.is_some() || self.play.pending_play_start.is_some(),
+                    has_play_context,
                     self.play.play_e1_held,
                     self.play.play_e2_held,
                     app_key_held,
@@ -68,10 +70,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     self.play.play_option_input.as_ref(),
                 )
             }
-            WindowEvent::Ime(_) => {
-                (self.play.active_play.is_some() || self.play.pending_play_start.is_some())
-                    && self.play_lane_value_changing()
-            }
+            WindowEvent::Ime(_) => has_play_context && self.play_lane_value_changing(),
             _ => false,
         };
         // Press を egui へ渡すと、E1/E2 を押しながら行うプレイ操作が UI も
@@ -110,10 +109,15 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     }
                     return;
                 }
-                // egui 表示中は、widget が消費したかにかかわらず keyboard を
-                // UI 専用にする。E1/E2 操作中と app 側へ渡したキーの Release だけ
-                // プレイ側へ通す。
-                if !play_owns_keyboard_input && (egui_blocks_game_input || egui_consumed) {
+                // Practice 設定画面だけは keyboard を UI 専用にする。通常プレイ中の
+                // F1メニュー等はeguiへ供給しつつ、プレイ側にも同じ入力を通す。
+                if egui_blocks_window_keyboard_route(
+                    has_play_context,
+                    practice_overlay,
+                    play_owns_keyboard_input,
+                    egui_blocks_game_input,
+                    egui_consumed,
+                ) {
                     return;
                 }
                 if self.select.key_config_edit.is_none()

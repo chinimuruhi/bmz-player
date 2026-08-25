@@ -74,7 +74,7 @@ pub(in crate::app) fn play_option_control_for_input(
     }
 }
 
-/// egui がゲーム入力を占有している間でも、プレイ操作へ渡すべきキーボード入力か。
+/// Practice 設定 egui がゲーム入力を占有している間でも、プレイ操作へ渡すべき入力か。
 ///
 /// E1/E2 自体の Press を先にプレイ側へ渡すことでホールドを開始できるようにし、
 /// ホールド中は全キーをプレイ側へ切り替える。egui 表示前やホールド中に app 側へ
@@ -105,11 +105,24 @@ pub(in crate::app) fn keyboard_input_bypasses_egui(
 }
 
 pub(in crate::app) fn egui_blocks_raw_play_keyboard(
-    egui_blocks_game_input: bool,
+    practice_overlay: bool,
     e1_held: bool,
     e2_held: bool,
 ) -> bool {
-    egui_blocks_game_input && !e1_held && !e2_held
+    practice_overlay && !e1_held && !e2_held
+}
+
+pub(in crate::app) fn egui_blocks_window_keyboard_route(
+    has_play_context: bool,
+    practice_overlay: bool,
+    play_owns_keyboard_input: bool,
+    egui_blocks_game_input: bool,
+    egui_consumed: bool,
+) -> bool {
+    if play_owns_keyboard_input || (has_play_context && !practice_overlay) {
+        return false;
+    }
+    egui_blocks_game_input || egui_consumed
 }
 
 pub(in crate::app) fn visual_offset_delta_control(
