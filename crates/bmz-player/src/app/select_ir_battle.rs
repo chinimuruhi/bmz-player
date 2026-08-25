@@ -559,7 +559,7 @@ impl WinitApp {
         self.launch_battle_target(result.chart_id, target);
     }
 
-    fn show_ir_battle_error(&mut self, error: &str) {
+    pub(super) fn show_ir_battle_error(&mut self, error: &str) {
         let text = Localizer::new(self.boot.profile_config.ui.locale());
         let mut args = FluentArgs::new();
         args.set("error", error.to_string());
@@ -671,7 +671,7 @@ async fn download_ir_battle_target(
         anyhow::bail!("IR replay hash does not match its metadata");
     }
     let text = std::str::from_utf8(&bytes).context("IR replay is not UTF-8 TOML")?;
-    let replay = crate::storage::replay::parse_replay(text)?;
+    let mut replay = crate::storage::replay::parse_replay(text)?;
     if replay.chart_sha256_bytes()? != chart_sha256 {
         anyhow::bail!("IR replay chart hash does not match the selected chart");
     }
@@ -680,18 +680,10 @@ async fn download_ir_battle_target(
     {
         anyhow::bail!("IR replay long note policy does not match the selected chart");
     }
-    if replay.uses_legacy_seed_scheme() {
-        anyhow::bail!("IR replay uses an unsupported legacy random seed");
-    }
-    if replay.events.is_empty() || replay.events.len() > IR_BATTLE_REPLAY_MAX_EVENTS {
+    if replay.events.len() > IR_BATTLE_REPLAY_MAX_EVENTS {
         anyhow::bail!("IR replay has an invalid event count");
     }
-    if replay.events.iter().any(|event| !key_mode.active_lanes().contains(&event.lane)) {
-        anyhow::bail!("IR replay contains input lanes outside the selected key mode");
-    }
-    if replay.events.windows(2).any(|events| events[0].time > events[1].time) {
-        anyhow::bail!("IR replay events are not ordered by time");
-    }
+    crate::screens::play_start::normalize_battle_replay_for_key_mode(&mut replay, key_mode)?;
 
     let provider_cache = hash_to_hex(&Sha256::digest(provider.as_bytes()));
     let score_cache = hash_to_hex(&Sha256::digest(score_id.as_bytes()));

@@ -180,15 +180,21 @@ impl WinitApp {
         chart_id: i64,
         options: &mut PlayStartOptions,
     ) -> bool {
+        let has_battle_target = options.battle_target.is_some();
         if let Err(error) = self.prepare_session_mode_for_chart(chart_id, options) {
+            let error_text = format_error_chain(&error);
             tracing::warn!(
                 chart_id,
                 session_mode = options.session_mode.as_str(),
-                error = %format_error_chain(&error),
+                error = %error_text,
                 "session mode is unavailable for selected chart"
             );
-            let text = Localizer::new(self.boot.profile_config.ui.locale());
-            self.show_left_overlay_toast(text.text("toast-session-mode-unavailable"));
+            if has_battle_target {
+                self.show_ir_battle_error(&error_text);
+            } else {
+                let text = Localizer::new(self.boot.profile_config.ui.locale());
+                self.show_left_overlay_toast(text.text("toast-session-mode-unavailable"));
+            }
             false
         } else {
             true
@@ -201,7 +207,7 @@ impl WinitApp {
         options: &mut PlayStartOptions,
     ) -> Result<()> {
         apply_session_mode_start_policy(options);
-        let Some(target) = options.battle_target.as_ref() else {
+        let Some(target) = options.battle_target.as_mut() else {
             return Ok(());
         };
         let chart = crate::screens::play_session::load_source_chart_for_chart(
@@ -209,7 +215,9 @@ impl WinitApp {
             chart_id,
             None,
         )?;
-        if let crate::screens::play_start::BattleTargetPlayback::Replay(replay) = &target.playback {
+        if let crate::screens::play_start::BattleTargetPlayback::Replay(replay) =
+            &mut target.playback
+        {
             let ln_policy = crate::ln_policy::score_ln_policy_for_chart(
                 self.boot.profile_config.play.ln_mode_policy,
                 &chart,
@@ -223,22 +231,10 @@ impl WinitApp {
             {
                 anyhow::bail!("battle replay long note policy does not match selected chart");
             }
-            if replay.uses_legacy_seed_scheme() {
-                anyhow::bail!("legacy replay seed scheme is not supported by G-BATTLE");
-            }
-            if replay.events.is_empty() {
-                anyhow::bail!("battle score has no full input replay");
-            }
-            if replay
-                .events
-                .iter()
-                .any(|event| !chart.metadata.key_mode.active_lanes().contains(&event.lane))
-            {
-                anyhow::bail!("battle replay contains input lanes outside the selected key mode");
-            }
-            if replay.events.windows(2).any(|events| events[0].time > events[1].time) {
-                anyhow::bail!("battle replay events are not ordered by time");
-            }
+            crate::screens::play_start::normalize_battle_replay_for_key_mode(
+                replay,
+                chart.metadata.key_mode,
+            )?;
         }
         Ok(())
     }

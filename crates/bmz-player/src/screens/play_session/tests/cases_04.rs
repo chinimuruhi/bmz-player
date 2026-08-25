@@ -597,6 +597,7 @@ fn normal_session_battle_target_preloads_an_expanded_opponent_chart() {
             double_option: DoubleOption::Off,
             arrange_seed: None,
             arrange_seed_2p: None,
+            legacy_arrange_seed: false,
             packed_seed: None,
             bms_random_choices: None,
             arrange_pattern: None,

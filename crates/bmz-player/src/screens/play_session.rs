@@ -195,6 +195,7 @@ pub struct BattleOpponentOptions {
     pub double_option: DoubleOption,
     pub arrange_seed: Option<i64>,
     pub arrange_seed_2p: Option<i64>,
+    pub legacy_arrange_seed: bool,
     /// rianIR-compatible packed side seeds. Expanded after the source key mode
     /// is known during preload.
     pub packed_seed: Option<i64>,

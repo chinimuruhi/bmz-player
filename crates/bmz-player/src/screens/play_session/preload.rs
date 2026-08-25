@@ -175,6 +175,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         opponent_options.double_option = opponent.double_option;
         opponent_options.arrange_seed = opponent.arrange_seed;
         opponent_options.arrange_seed_2p = opponent.arrange_seed_2p;
+        opponent_options.legacy_arrange_seed = opponent.legacy_arrange_seed;
         if let Some(packed) = opponent.packed_seed.and_then(|seed| u64::try_from(seed).ok())
             && let Some(seeds) = RandomOptionSeeds::unpack(
                 packed,

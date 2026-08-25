@@ -5,6 +5,7 @@ use bmz_core::course::{
     CourseClassConstraint, CourseConstraints, CourseGaugeConstraint, CourseJudgeConstraint,
     CourseLnConstraint, CourseSpeedConstraint,
 };
+use bmz_core::lane::KeyMode;
 use bmz_core::time::TimeUs;
 use bmz_gameplay::gauge::{GaugeCarryValue, GaugeProperty};
 use bmz_gameplay::input::backend::{InputBackend, NullInputBackend};
@@ -105,6 +106,40 @@ impl BattleTargetPlayback {
             }
         }
     }
+}
+
+/// G-BATTLEの相手は元譜面のプレイヤー側入力だけを再生する。
+///
+/// 旧BMZでは5K/7Kのバトル表示中に2P側キーバインドが有効だったため、表示用入力が
+/// リプレイへ混入することがあった。また、同じpollで得た複数入力のtimestampが数usだけ
+/// 前後する場合がある。再生対象を1P側へ限定し、安定sortして既存リプレイを救済する。
+pub(crate) fn normalize_battle_replay_for_key_mode(
+    replay: &mut ReplayFile,
+    key_mode: KeyMode,
+) -> Result<()> {
+    if replay.events.is_empty() {
+        anyhow::bail!("battle score has no full input replay");
+    }
+    let has_arrangement_pattern =
+        replay.lane_shuffle_pattern.as_ref().is_some_and(|pattern| !pattern.is_empty());
+    let missing_1p_arrangement =
+        !matches!(replay.arrange_option(), ArrangeOption::Normal | ArrangeOption::Mirror)
+            && replay.arrange_seed.is_none()
+            && !has_arrangement_pattern;
+    let missing_2p_arrangement =
+        !matches!(replay.arrange_2p_option(), ArrangeOption::Normal | ArrangeOption::Mirror)
+            && replay.arrange_seed_2p.is_none()
+            && !has_arrangement_pattern;
+    if missing_1p_arrangement || missing_2p_arrangement {
+        anyhow::bail!("battle replay has no seed or pattern for its recorded arrangement");
+    }
+    let active_lanes = key_mode.active_lanes();
+    replay.events.retain(|event| active_lanes.contains(&event.lane));
+    if replay.events.is_empty() {
+        anyhow::bail!("battle replay has no playable input for the selected key mode");
+    }
+    replay.events.sort_by_key(|event| event.time);
+    Ok(())
 }
 
 #[derive(Debug, Clone, Default)]
@@ -230,6 +265,7 @@ pub fn play_session_options_from_start(
             double_option: arrangement.double_option,
             arrange_seed: arrangement.arrange_seed,
             arrange_seed_2p: arrangement.arrange_seed_2p,
+            legacy_arrange_seed: arrangement.legacy_arrange_seed,
             packed_seed: arrangement.packed_seed,
             bms_random_choices,
             arrange_pattern: arrangement.arrange_pattern,
@@ -677,6 +713,66 @@ mod tests {
         assert!(arrangement.legacy_arrange_seed);
         assert_eq!(arrangement.s_random_scheme, SRandomScheme::Legacy40MsV1);
         assert_eq!(arrangement.s_random_scheme_2p, Some(SRandomScheme::Lm120HzV1));
+    }
+
+    #[test]
+    fn battle_replay_normalization_keeps_source_lanes_and_stably_orders_them() {
+        use bmz_core::input::{InputDeviceKind, InputKind};
+        use bmz_core::lane::Lane;
+        use bmz_core::replay::ReplayEvent;
+
+        let event = |lane, time, kind| ReplayEvent {
+            lane,
+            kind,
+            time: TimeUs(time),
+            device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
+        };
+        let mut replay =
+            ReplayFile::new([1; 32], 1, None, ArrangeOption::Normal, None, None, Vec::new())
+                .with_seed_scheme(crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3);
+        // Assign directly to model a replay loaded from an older, unsorted file.
+        replay.events = vec![
+            event(Lane::Key1, 30, InputKind::Release),
+            event(Lane::Key8, 10, InputKind::Press),
+            event(Lane::Key1, 20, InputKind::Press),
+            event(Lane::Key2, 20, InputKind::Release),
+        ];
+
+        normalize_battle_replay_for_key_mode(&mut replay, KeyMode::K7).unwrap();
+
+        assert_eq!(replay.events.len(), 3);
+        assert!(replay.events.iter().all(|event| event.lane != Lane::Key8));
+        assert_eq!(
+            replay.events.iter().map(|event| event.time.0).collect::<Vec<_>>(),
+            vec![20, 20, 30]
+        );
+        assert_eq!(replay.events[0].lane, Lane::Key1);
+        assert_eq!(replay.events[1].lane, Lane::Key2);
+    }
+
+    #[test]
+    fn play_session_options_carry_battle_legacy_seed_scheme() {
+        let replay =
+            ReplayFile::new([1; 32], 1, None, ArrangeOption::Random, Some(42), None, Vec::new())
+                .with_seed_scheme(crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3);
+        let target = BattleTarget {
+            provider: "local".to_string(),
+            score_id: "1".to_string(),
+            player_id: "self".to_string(),
+            player_name: "SELF".to_string(),
+            rank: 0,
+            ex_score: 0,
+            gauge: None,
+            playback: BattleTargetPlayback::Replay(Box::new(replay)),
+        };
+
+        let options = play_session_options_from_start(
+            &AppConfig::default(),
+            PlayStartOptions { battle_target: Some(target), ..Default::default() },
+        );
+
+        assert!(options.battle_opponent.expect("battle opponent").legacy_arrange_seed);
     }
 
     #[test]

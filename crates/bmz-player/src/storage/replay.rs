@@ -103,8 +103,12 @@ impl ReplayFile {
         arrange_2p: ArrangeOption,
         arrange_seed: Option<i64>,
         lane_shuffle_pattern: Option<Vec<u8>>,
-        events: Vec<ReplayEvent>,
+        mut events: Vec<ReplayEvent>,
     ) -> Self {
+        // Device timestamps received in the same poll can differ by a few
+        // microseconds and arrive out of order. ReplayPlayer consumes a time-
+        // ordered stream, so preserve equal-time order while normalizing it.
+        events.sort_by_key(|event| event.time);
         Self {
             version: REPLAY_FILE_VERSION,
             chart_sha256: hex_encode(&chart_sha256),
@@ -481,6 +485,34 @@ mod tests {
     use bmz_core::time::TimeUs;
 
     use super::*;
+
+    #[test]
+    fn replay_constructor_stably_orders_input_events() {
+        let event = |lane, time| ReplayEvent {
+            lane,
+            kind: InputKind::Press,
+            time: TimeUs(time),
+            device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
+        };
+
+        let replay = ReplayFile::new(
+            [1; 32],
+            1,
+            None,
+            ArrangeOption::Normal,
+            None,
+            None,
+            vec![event(Lane::Key1, 30), event(Lane::Key2, 20), event(Lane::Key3, 20)],
+        );
+
+        assert_eq!(
+            replay.events.iter().map(|event| event.time.0).collect::<Vec<_>>(),
+            vec![20, 20, 30]
+        );
+        assert_eq!(replay.events[0].lane, Lane::Key2);
+        assert_eq!(replay.events[1].lane, Lane::Key3);
+    }
 
     #[test]
     fn save_and_load_replay_file() {

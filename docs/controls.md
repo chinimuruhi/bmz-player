@@ -125,6 +125,8 @@ favorite 操作は invisible を使わず、登録済みなら解除、未登録
 フル入力リプレイを独立した相手判定へ使用します。リプレイが未公開、未検証、形式不一致、
 譜面/LNポリシー不一致の場合は開始せず、選曲画面に理由を表示します。rianIRはghost/replayを
 公開しないため、`play_seed`が得られるスコアについて配置だけを再現します。
+旧BMZの5K/7Kリプレイに混入した2P表示レーンは相手再生時に除外し、微小な入力時刻の前後は
+安定した時刻順へ補正します。Replay v3以前の配置seedも当時の方式で再現します。
 `G-BATTLE`で`BATTLE OFF`を選んだ場合もSESSION MODEを維持し、相手側をAUTOPLAYにします。
 
 G-BATTLE相手を指定したプレイでは、`CHART REPLICATION`の`RIVALCHART`は相手の譜面
