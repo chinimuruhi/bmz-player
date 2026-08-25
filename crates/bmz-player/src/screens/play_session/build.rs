@@ -91,6 +91,7 @@ pub fn apply_placeholder_session_visuals(
             snapshot.lane_cover,
             snapshot.lift,
             snapshot.now_bpm,
+            options.playback_rate_percent,
         )
     };
     snapshot.lanecover_enabled = lanecover_enabled_from_mode_config(&mode_config);
@@ -148,7 +149,10 @@ pub fn apply_placeholder_session_visuals(
 
     snapshot.note_display_duration_ms =
         crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(
-            snapshot.now_bpm,
+            crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+                f64::from(snapshot.now_bpm),
+                options.playback_rate_percent,
+            ) as f32,
             snapshot.hispeed,
             snapshot.lane_cover,
             snapshot.lift,
@@ -321,6 +325,7 @@ pub fn build_game_session_with_input_backend(
             &chart,
             &timing_map,
             hs_fix,
+            options.playback_rate_percent,
         )
     };
 
@@ -403,17 +408,20 @@ pub fn build_game_session_with_input_backend(
             );
             bmz_gameplay::session::BattleOpponentSession {
                 judge: JudgeEngine::new_with_window_set_algorithm_and_keymode(
-                    judge_windows_for_rule_mode_and_keymode(
-                        base_judge_windows,
-                        judge_percent_at_time_for_keymode(
-                            chart.metadata.judge_rank_spec,
-                            &chart.judge_rank_events,
-                            TimeUs(0),
-                            key_mode,
+                    scale_judge_windows_for_playback_rate(
+                        judge_windows_for_rule_mode_and_keymode(
+                            base_judge_windows,
+                            judge_percent_at_time_for_keymode(
+                                chart.metadata.judge_rank_spec,
+                                &chart.judge_rank_events,
+                                TimeUs(0),
+                                key_mode,
+                                rule_mode,
+                            ),
                             rule_mode,
+                            key_mode,
                         ),
-                        rule_mode,
-                        key_mode,
+                        options.playback_rate_percent,
                     ),
                     rule_mode,
                     judge_algorithm_from_config(profile.judge.judge_algorithm),
@@ -438,21 +446,27 @@ pub fn build_game_session_with_input_backend(
             }
         });
 
+    let mut audio_clock = AudioClock::stopped(options.sample_rate);
+    audio_clock.set_playback_rate_percent(options.playback_rate_percent);
+
     GameSession {
         gauge,
         opponent_gauge,
         judge: JudgeEngine::new_with_window_set_algorithm_and_keymode(
-            judge_windows_for_rule_mode_and_keymode(
-                base_judge_windows,
-                judge_percent_at_time_for_keymode(
-                    chart.metadata.judge_rank_spec,
-                    &chart.judge_rank_events,
-                    TimeUs(0),
-                    primary_key_mode,
+            scale_judge_windows_for_playback_rate(
+                judge_windows_for_rule_mode_and_keymode(
+                    base_judge_windows,
+                    judge_percent_at_time_for_keymode(
+                        chart.metadata.judge_rank_spec,
+                        &chart.judge_rank_events,
+                        TimeUs(0),
+                        primary_key_mode,
+                        rule_mode,
+                    ),
                     rule_mode,
+                    primary_key_mode,
                 ),
-                rule_mode,
-                primary_key_mode,
+                options.playback_rate_percent,
             ),
             rule_mode,
             judge_algorithm_from_config(profile.judge.judge_algorithm),
@@ -461,7 +475,7 @@ pub fn build_game_session_with_input_backend(
         base_judge_window,
         base_judge_windows,
         rule_mode,
-        audio_clock: AudioClock::stopped(options.sample_rate),
+        audio_clock,
         chart,
         play_config_key_mode,
         primary_key_mode,
@@ -622,12 +636,16 @@ pub(super) fn initial_hispeed_for_mode(
     chart: &PlayableChart,
     timing_map: &bmz_chart::timing::TimingMap,
     hs_fix: HsFixOption,
+    playback_rate_percent: u16,
 ) -> f32 {
     if hispeed_mode == HispeedMode::Normal {
         return clamp_hispeed(mode_config.hispeed);
     }
 
-    let now_bpm = hsfix_base_bpm_for_chart(chart, timing_map, hs_fix);
+    let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+        hsfix_base_bpm_for_chart(chart, timing_map, hs_fix),
+        playback_rate_percent,
+    );
     let scroll_multiplier =
         crate::screens::play_snapshot::current_scroll_multiplier(chart, timing_map, TimeUs(0));
     let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
@@ -713,16 +731,21 @@ pub(super) fn placeholder_hispeed_for_mode(
     lane_cover: f32,
     lift: f32,
     now_bpm: f32,
+    playback_rate_percent: u16,
 ) -> f32 {
     if hispeed_mode == HispeedMode::Normal {
         return clamp_hispeed(mode_config.hispeed);
     }
 
     let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
+    let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+        f64::from(now_bpm),
+        playback_rate_percent,
+    );
     clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
         target_green_number as f32,
         visible_max,
-        now_bpm as f64,
+        now_bpm,
         1.0,
     ))
 }

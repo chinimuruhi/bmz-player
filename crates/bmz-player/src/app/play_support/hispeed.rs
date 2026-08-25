@@ -58,7 +58,10 @@ pub(in crate::app) fn note_display_duration_ms_for_hispeed(
     lane_cover: f32,
     now: TimeUs,
 ) -> f32 {
-    let now_bpm = floating_hispeed_target_bpm(session, now);
+    let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+        floating_hispeed_target_bpm(session, now),
+        session.audio_clock.playback_rate_percent(),
+    );
     let scroll_multiplier = crate::screens::play_snapshot::current_scroll_multiplier(
         &session.chart,
         &session.timing_map,
@@ -98,6 +101,10 @@ pub(in crate::app) fn hispeed_for_green_number_at_bpm(
         &session.chart,
         &session.timing_map,
         now,
+    );
+    let target_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+        target_bpm,
+        session.audio_clock.playback_rate_percent(),
     );
     let hispeed =
         hispeed_for_green_number_values(target_green, visible_max, target_bpm, scroll_multiplier);

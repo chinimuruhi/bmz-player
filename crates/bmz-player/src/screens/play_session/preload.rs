@@ -562,13 +562,12 @@ pub fn build_practice_prepared_from_preloaded(
     options.assist_runtime = preloaded.assist_runtime;
     options.autoplay = false;
     options.replay_player = None;
-    options.gauge_override = Some(property.gauge.gauge_type());
+    let (practice_gauge, gauge_auto_shift, bottom_shiftable_gauge) =
+        practice_gauge_runtime_options(profile, property.gauge, &options);
+    options.gauge_override = Some(practice_gauge);
     options.gauge_property = property.gauge_category;
-    options.gauge_auto_shift = if property.gauge == PracticeGaugeType::AutoShift {
-        GaugeAutoShiftMode::BestClear
-    } else {
-        GaugeAutoShiftMode::Off
-    };
+    options.gauge_auto_shift = gauge_auto_shift;
+    options.bottom_shiftable_gauge = bottom_shiftable_gauge;
     options.arrange = property.arrange;
     options.arrange_2p = property.arrange_2p;
     options.double_option = double_option;
@@ -617,6 +616,41 @@ pub fn build_practice_prepared_from_preloaded(
         score_save_disabled,
         playback_rate_percent,
     }
+}
+
+/// beatoraja は Practice のゲージ種類とプロファイルの GAUGE AUTO SHIFT を
+/// 独立して扱う。SELECT TO UNDER の上限だけはプロファイル側の選択ゲージになる。
+pub(super) fn practice_gauge_runtime_options(
+    profile: &ProfileConfig,
+    practice_gauge: PracticeGaugeType,
+    options: &PlaySessionOptions,
+) -> (GaugeType, GaugeAutoShiftMode, GaugeType) {
+    let select_gauge =
+        options.gauge_override.unwrap_or_else(|| gauge_type_from_config(profile.play.gauge));
+    let profile_auto_shift = if options.gauge_override.is_some() {
+        options.gauge_auto_shift
+    } else {
+        gauge_auto_shift_from_config(profile.play.gauge, profile.play.gauge_auto_shift)
+    };
+    let bottom_shiftable_gauge = if options.gauge_override.is_some() {
+        options.bottom_shiftable_gauge
+    } else {
+        bottom_shiftable_gauge_from_config(profile.play.bottom_shiftable_gauge)
+    };
+    // 旧BMZのPractice設定にだけ存在する AutoShift は従来通りBEST CLEARへ移行する。
+    let auto_shift = if practice_gauge == PracticeGaugeType::AutoShift
+        && profile_auto_shift == GaugeAutoShiftMode::Off
+    {
+        GaugeAutoShiftMode::BestClear
+    } else {
+        profile_auto_shift
+    };
+    let selected = if auto_shift == GaugeAutoShiftMode::SelectToUnder {
+        select_gauge
+    } else {
+        practice_gauge.gauge_type()
+    };
+    (selected, auto_shift, bottom_shiftable_gauge)
 }
 
 pub fn build_prepared_play_session_from_preloaded(

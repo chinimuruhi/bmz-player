@@ -192,6 +192,9 @@ impl WinitApp {
         let preload_options = PlayStartOptions {
             session_mode: SessionMode::Practice,
             autoplay: false,
+            gauge: Some(self.select.gauge_option),
+            gauge_auto_shift: self.select.gauge_auto_shift_option,
+            bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: ArrangeOption::Normal,
             ..Default::default()
         };
@@ -383,6 +386,9 @@ impl WinitApp {
         let mut preload_options = PlayStartOptions {
             session_mode: SessionMode::Practice,
             autoplay: false,
+            gauge: Some(self.select.gauge_option),
+            gauge_auto_shift: self.select.gauge_auto_shift_option,
+            bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: ArrangeOption::Normal,
             ..Default::default()
         };

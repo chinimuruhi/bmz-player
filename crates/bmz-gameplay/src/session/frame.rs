@@ -6,11 +6,15 @@ pub fn sync_judge_windows(session: &mut GameSession, now: TimeUs) {
         session.primary_key_mode,
         session.rule_mode,
     );
-    session.judge.set_window_set(judge_windows_for_rule_mode_and_keymode(
+    let windows = judge_windows_for_rule_mode_and_keymode(
         session.base_judge_windows,
         percent,
         session.rule_mode,
         session.primary_key_mode,
+    );
+    session.judge.set_window_set(scale_judge_windows_for_playback_rate(
+        windows,
+        session.audio_clock.playback_rate_percent(),
     ));
 }
 
@@ -107,6 +111,7 @@ pub fn advance_session_frame(
 }
 
 fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
+    let playback_rate_percent = session.audio_clock.playback_rate_percent();
     let Some(opponent) = &mut session.battle_opponent else {
         return;
     };
@@ -124,12 +129,15 @@ fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
         opponent.key_mode,
         opponent.rule_mode,
     );
-    opponent.judge.set_window_set(judge_windows_for_rule_mode_and_keymode(
+    let windows = judge_windows_for_rule_mode_and_keymode(
         opponent.base_judge_windows,
         percent,
         opponent.rule_mode,
         opponent.key_mode,
-    ));
+    );
+    opponent
+        .judge
+        .set_window_set(scale_judge_windows_for_playback_rate(windows, playback_rate_percent));
 
     let inputs = opponent.replay_player.as_mut().expect("checked above").poll_until(now);
     for input in inputs {

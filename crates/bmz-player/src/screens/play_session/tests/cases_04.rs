@@ -183,6 +183,122 @@ fn build_game_session_initializes_floating_hispeed_for_chart_bpm() {
 }
 
 #[test]
+fn build_game_session_compensates_floating_hispeed_for_practice_rate() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.lane.target_green_number = 300;
+    let mut fast_chart = chart();
+    fast_chart.metadata.initial_bpm = 240.0;
+
+    let normal = build_game_session(
+        Arc::new(fast_chart.clone()),
+        &profile,
+        PlaySessionOptions {
+            hs_fix: HsFixOption::StartBpm,
+            playback_rate_percent: 100,
+            ..PlaySessionOptions::default()
+        },
+    );
+    let double_speed = build_game_session(
+        Arc::new(fast_chart),
+        &profile,
+        PlaySessionOptions {
+            session_mode: SessionMode::Practice,
+            hs_fix: HsFixOption::StartBpm,
+            playback_rate_percent: 200,
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert!((double_speed.hispeed - normal.hispeed / 2.0).abs() < f32::EPSILON);
+    assert_eq!(double_speed.audio_clock.playback_rate_percent(), 200);
+    let duration_ms = crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(
+        crate::screens::play_snapshot::effective_bpm_for_playback_rate(240.0, 200) as f32,
+        double_speed.hispeed,
+        double_speed.lane_cover,
+        double_speed.lift,
+        1.0,
+    )
+    .round() as i32;
+    assert_eq!(bmz_render::skin::duration_to_green_number_ms(duration_ms), 300);
+}
+
+#[test]
+fn build_game_session_scales_judge_windows_to_keep_practice_wall_time_fixed() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let normal = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    let mut double_speed = build_game_session(
+        Arc::new(chart()),
+        &profile,
+        PlaySessionOptions {
+            session_mode: SessionMode::Practice,
+            playback_rate_percent: 200,
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert_eq!(
+        double_speed.judge.window_set.note.pgreat_us,
+        normal.judge.window_set.note.pgreat_us * 2
+    );
+    assert_eq!(
+        double_speed.judge.window_set.note.bad_slow_us,
+        normal.judge.window_set.note.bad_slow_us * 2
+    );
+    assert_eq!(double_speed.base_judge_windows, normal.base_judge_windows);
+
+    bmz_gameplay::session::sync_judge_windows(&mut double_speed, TimeUs(0));
+    assert_eq!(
+        double_speed.judge.window_set.note.pgreat_us,
+        normal.judge.window_set.note.pgreat_us * 2
+    );
+}
+
+#[test]
+fn practice_gauge_inherits_profile_auto_shift_mode() {
+    use crate::config::profile_config::{
+        BottomShiftableGaugeConfig, GaugeAutoShiftConfig, GaugeTypeConfig,
+    };
+
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.gauge = GaugeTypeConfig::Hard;
+    profile.play.gauge_auto_shift = GaugeAutoShiftConfig::BestClear;
+    profile.play.bottom_shiftable_gauge = BottomShiftableGaugeConfig::Normal;
+    let mut options = PlaySessionOptions {
+        gauge_override: Some(GaugeType::Hard),
+        gauge_auto_shift: GaugeAutoShiftMode::BestClear,
+        bottom_shiftable_gauge: GaugeType::Normal,
+        ..PlaySessionOptions::default()
+    };
+
+    let (selected, mode, bottom) =
+        practice_gauge_runtime_options(&profile, PracticeGaugeType::Easy, &options);
+    assert_eq!(selected, GaugeType::Easy);
+    assert_eq!(mode, GaugeAutoShiftMode::BestClear);
+    assert_eq!(bottom, GaugeType::Normal);
+    let session = build_game_session(
+        Arc::new(chart()),
+        &profile,
+        PlaySessionOptions {
+            session_mode: SessionMode::Practice,
+            gauge_override: Some(selected),
+            gauge_auto_shift: mode,
+            bottom_shiftable_gauge: bottom,
+            ..PlaySessionOptions::default()
+        },
+    );
+    assert_eq!(session.gauge.auto_shift_mode, GaugeAutoShiftMode::BestClear);
+    assert_eq!(session.gauge.selected, GaugeType::Hazard);
+    assert_eq!(session.gauge.bottom_shiftable_gauge, GaugeType::Normal);
+
+    profile.play.gauge_auto_shift = GaugeAutoShiftConfig::SelectToUnder;
+    options.gauge_auto_shift = GaugeAutoShiftMode::SelectToUnder;
+    let (selected, mode, _) =
+        practice_gauge_runtime_options(&profile, PracticeGaugeType::Easy, &options);
+    assert_eq!(selected, GaugeType::Hard);
+    assert_eq!(mode, GaugeAutoShiftMode::SelectToUnder);
+}
+
+#[test]
 fn build_game_session_uses_hsfix_to_select_hispeed_mode() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.lane.hispeed_mode = HispeedModeConfig::Floating;

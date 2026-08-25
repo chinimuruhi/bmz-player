@@ -29,6 +29,10 @@ pub(super) fn note_display_duration_ms(
     } else {
         0.0
     };
+    let now_bpm = effective_bpm_for_playback_rate(
+        f64::from(now_bpm),
+        session.audio_clock.playback_rate_percent(),
+    ) as f32;
     display_duration_ms_for_bpm_hispeed(
         now_bpm,
         session.hispeed,
@@ -38,6 +42,14 @@ pub(super) fn note_display_duration_ms(
     )
     .round()
     .clamp(0.0, i32::MAX as f32) as i32
+}
+
+/// beatoraja Practice は譜面の BPM を再生速度倍してから LaneRenderer を初期化する。
+/// BMZ は譜面時刻を速度倍で進めるため、レーン表示の計算時だけ同じ実効 BPM に変換する。
+pub(crate) fn effective_bpm_for_playback_rate(bpm: f64, playback_rate_percent: u16) -> f64 {
+    let playback_rate_percent =
+        bmz_audio::clock::clamp_playback_rate_percent(playback_rate_percent);
+    bpm * f64::from(playback_rate_percent) / 100.0
 }
 
 pub(crate) fn display_duration_ms_for_bpm_hispeed(

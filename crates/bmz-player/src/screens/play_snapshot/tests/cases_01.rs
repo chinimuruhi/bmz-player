@@ -293,6 +293,17 @@ fn display_duration_uses_current_bpm_and_absolute_lane_range() {
         1100
     );
     assert_eq!(display_duration_ms_for_bpm_hispeed(120.0, 1.0, 0.0, 0.0, 2.0).round() as i32, 1000);
+    assert_eq!(
+        display_duration_ms_for_bpm_hispeed(
+            effective_bpm_for_playback_rate(120.0, 200) as f32,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+        .round() as i32,
+        1000
+    );
 }
 
 #[test]
