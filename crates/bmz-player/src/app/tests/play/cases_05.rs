@@ -23,10 +23,18 @@ fn decide_launch_promotes_only_staged_practice_config() {
         preview_time_ms: None,
         battle_target: None,
     };
-    let promoted = DecideLaunch::Practice(staged).into_practice_session().unwrap();
+    let promoted = DecideLaunch::practice(staged).into_practice_session().unwrap();
 
     assert_eq!(promoted.chart_id, 42);
     assert_eq!(promoted.phase, PracticePhase::Config);
+}
+
+#[test]
+fn decide_launch_keeps_large_practice_state_out_of_line() {
+    assert!(
+        std::mem::size_of::<DecideLaunch>() <= std::mem::size_of::<usize>() * 2,
+        "DecideLaunch should remain pointer-sized instead of embedding PracticeSession"
+    );
 }
 
 #[test]

@@ -293,7 +293,7 @@ impl WinitApp {
             snapshot,
             None,
             None,
-            DecideLaunch::Practice(practice_session),
+            DecideLaunch::practice(practice_session),
         );
         tracing::info!(chart_id, "practice decide screen ready");
     }

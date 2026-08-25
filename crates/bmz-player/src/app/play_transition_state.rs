@@ -28,14 +28,18 @@ pub(super) fn table_breadcrumb_from_record(table: &DifficultyTableRecord) -> Tab
 
 pub(super) enum DecideLaunch {
     Play,
-    Practice(PracticeSession),
+    Practice(Box<PracticeSession>),
 }
 
 impl DecideLaunch {
+    pub(super) fn practice(practice: PracticeSession) -> Self {
+        Self::Practice(Box::new(practice))
+    }
+
     pub(super) fn into_practice_session(self) -> Option<PracticeSession> {
         match self {
             Self::Play => None,
-            Self::Practice(practice) => Some(practice),
+            Self::Practice(practice) => Some(*practice),
         }
     }
 }
