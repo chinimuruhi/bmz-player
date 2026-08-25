@@ -167,6 +167,23 @@ pub(in crate::app) fn should_begin_play_fadeout_after_final_notes(
         && (play_fadeout_after_final_notes_control(control, bindings) || control == "Escape")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::app) enum FinalNotesControlAction {
+    ReturnToPractice,
+    BeginResultFadeout,
+}
+
+pub(in crate::app) fn final_notes_control_action(
+    should_begin: bool,
+    practice_playing: bool,
+) -> Option<FinalNotesControlAction> {
+    should_begin.then_some(if practice_playing {
+        FinalNotesControlAction::ReturnToPractice
+    } else {
+        FinalNotesControlAction::BeginResultFadeout
+    })
+}
+
 pub(in crate::app) fn should_play_retire_sound_for_failed_transition(
     previous: bmz_gameplay::session::PlayState,
     current: bmz_gameplay::session::PlayState,

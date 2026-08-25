@@ -350,18 +350,7 @@ fn draw_practice_graph(ui: &mut egui::Ui, practice: &PracticePanelContext<'_>) {
     let max_total =
         visible.iter().map(|bucket| bucket.iter().copied().sum::<u32>()).max().unwrap_or(1).max(1)
             as f32;
-    let colors = [
-        egui::Color32::from_rgb(90, 100, 120),
-        egui::Color32::from_rgb(80, 210, 255),
-        egui::Color32::from_rgb(255, 220, 80),
-        egui::Color32::from_rgb(120, 220, 120),
-        egui::Color32::from_rgb(255, 150, 70),
-        egui::Color32::from_rgb(245, 80, 90),
-        egui::Color32::from_rgb(210, 70, 210),
-        egui::Color32::from_rgb(70, 160, 255),
-        egui::Color32::from_rgb(255, 100, 180),
-        egui::Color32::from_rgb(150, 80, 220),
-    ];
+    let colors = practice_graph_colors(practice.property.graph_type);
     let width = rect.width() / visible.len() as f32;
     for (index, bucket) in visible.iter().enumerate() {
         let mut bottom = rect.bottom();
@@ -378,6 +367,36 @@ fn draw_practice_graph(ui: &mut egui::Ui, practice: &PracticePanelContext<'_>) {
             bottom -= height;
         }
     }
+}
+
+fn practice_graph_colors(graph_type: PracticeGraphType) -> [egui::Color32; 10] {
+    if graph_type == PracticeGraphType::NoteType {
+        // beatoraja SkinNoteDistributionGraph.JGRAPH[TYPE_NORMAL] と同じ系列順。
+        return [
+            egui::Color32::from_rgb(0x44, 0xff, 0x44),
+            egui::Color32::from_rgb(0x22, 0x88, 0x22),
+            egui::Color32::from_rgb(0xff, 0x44, 0x44),
+            egui::Color32::from_rgb(0x44, 0x44, 0xff),
+            egui::Color32::from_rgb(0x22, 0x22, 0x88),
+            egui::Color32::from_rgb(0xcc, 0xcc, 0xcc),
+            egui::Color32::from_rgb(0x88, 0x00, 0x00),
+            egui::Color32::TRANSPARENT,
+            egui::Color32::TRANSPARENT,
+            egui::Color32::TRANSPARENT,
+        ];
+    }
+    [
+        egui::Color32::from_rgb(90, 100, 120),
+        egui::Color32::from_rgb(80, 210, 255),
+        egui::Color32::from_rgb(255, 220, 80),
+        egui::Color32::from_rgb(120, 220, 120),
+        egui::Color32::from_rgb(255, 150, 70),
+        egui::Color32::from_rgb(245, 80, 90),
+        egui::Color32::from_rgb(210, 70, 210),
+        egui::Color32::from_rgb(70, 160, 255),
+        egui::Color32::from_rgb(255, 100, 180),
+        egui::Color32::from_rgb(150, 80, 220),
+    ]
 }
 
 fn arrange_label(text: Localizer, arrange: ArrangeOption) -> String {
@@ -436,5 +455,13 @@ mod tests {
     fn time_format_is_locale_neutral() {
         assert_eq!(format_time_ms(0), "00:00.0");
         assert_eq!(format_time_ms(125_678), "02:05.6");
+    }
+
+    #[test]
+    fn note_type_graph_uses_beatoraja_key_and_scratch_colors() {
+        let colors = practice_graph_colors(PracticeGraphType::NoteType);
+
+        assert_eq!(colors[2], egui::Color32::from_rgb(0xff, 0x44, 0x44));
+        assert_eq!(colors[5], egui::Color32::from_rgb(0xcc, 0xcc, 0xcc));
     }
 }

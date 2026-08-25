@@ -271,6 +271,8 @@ SESSION MODEが`NORMAL`なら通常スキンを使います。`AUTOPLAY BATTLE`�
 
 Escape / E1+E2 hold / E2+E3 による中断は、実プレイ開始前（譜面・音源ロード中および READY 演出中）なら timer=2 の黒フェードアウトを開始し、リザルトを表示せず選曲へ戻ります。実プレイ開始後は FAILED 演出を開始し、通常の終了処理へ進みます。
 
+Practiceでは最終ノーツ処理後にE1 / E2 / Escapeで終了した場合もリザルトを表示せず、直前の判定グラフを反映してPractice設定画面へ戻ります。
+
 E1/E2 hold 中の鍵盤方向は、譜面の KEY MODE ごとに次のとおりです。`Down` はハイスピードまたは緑数字を下げ、`Up` は上げます。10K/14K は 1P/2P の両側に同じ規則を適用します。
 
 | KEY MODE | Down | Up |

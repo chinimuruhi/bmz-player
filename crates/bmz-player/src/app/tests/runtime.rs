@@ -329,6 +329,19 @@ fn final_notes_fadeout_requires_active_finished_note_state() {
 }
 
 #[test]
+fn final_notes_control_returns_practice_to_configuration() {
+    assert_eq!(
+        final_notes_control_action(true, true),
+        Some(FinalNotesControlAction::ReturnToPractice)
+    );
+    assert_eq!(
+        final_notes_control_action(true, false),
+        Some(FinalNotesControlAction::BeginResultFadeout)
+    );
+    assert_eq!(final_notes_control_action(false, true), None);
+}
+
+#[test]
 fn failed_transition_retire_sound_only_starts_on_new_failure() {
     use bmz_gameplay::session::PlayState;
 

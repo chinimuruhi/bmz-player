@@ -454,8 +454,19 @@ impl WinitApp {
             active_play.running.session.state,
             active_play.running.session.judge.is_exhausted(&active_play.running.session.chart),
         );
-        if !should_begin {
-            return false;
+        let practice_playing = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Playing);
+        match final_notes_control_action(should_begin, practice_playing) {
+            Some(FinalNotesControlAction::ReturnToPractice) => {
+                self.finish_practice_round();
+                tracing::info!(control, "finished practice round after final notes");
+                return true;
+            }
+            Some(FinalNotesControlAction::BeginResultFadeout) => {}
+            None => return false,
         }
 
         let finish_mode = if self.play.active_course.is_some() {
