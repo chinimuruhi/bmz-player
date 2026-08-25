@@ -26,9 +26,24 @@ pub(super) fn table_breadcrumb_from_record(table: &DifficultyTableRecord) -> Tab
     TableBreadcrumb { name: table.name.clone(), symbol: table.symbol.clone() }
 }
 
+pub(super) enum DecideLaunch {
+    Play,
+    Practice(PracticeSession),
+}
+
+impl DecideLaunch {
+    pub(super) fn into_practice_session(self) -> Option<PracticeSession> {
+        match self {
+            Self::Play => None,
+            Self::Practice(practice) => Some(practice),
+        }
+    }
+}
+
 pub(super) struct DecideTransition {
     pub(super) chart_id: i64,
     pub(super) options: PlayStartOptions,
+    pub(super) launch: DecideLaunch,
     pub(super) started_at: Instant,
     pub(super) fadeout_started_at: Option<Instant>,
     pub(super) cancel: bool,

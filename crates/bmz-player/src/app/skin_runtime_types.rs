@@ -28,6 +28,7 @@ pub(super) struct PendingSkinRenderProbe {
 
 pub(super) type PlaySkinSignature = (
     KeyMode,
+    SessionMode,
     String,
     BTreeMap<String, String>,
     BTreeMap<String, String>,

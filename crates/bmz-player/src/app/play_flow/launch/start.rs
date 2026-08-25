@@ -23,7 +23,11 @@ impl WinitApp {
             &self.boot.profile_config.display_name,
             skin_attempt,
         );
-        self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
+        self.spawn_play_skin_decode_for(
+            play_skin_key_mode,
+            options.session_mode,
+            play_skin_runtime_state,
+        );
         self.ensure_skin_ready(SkinKind::Play);
         if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
             self.play.play_media_cache = None;
@@ -60,7 +64,11 @@ impl WinitApp {
             &self.boot.profile_config.display_name,
             skin_attempt,
         );
-        self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
+        self.spawn_play_skin_decode_for(
+            play_skin_key_mode,
+            options.session_mode,
+            play_skin_runtime_state,
+        );
         self.ensure_skin_ready(SkinKind::Play);
         self.invalidate_play_preload();
         if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {

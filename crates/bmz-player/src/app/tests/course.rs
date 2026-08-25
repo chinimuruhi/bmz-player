@@ -5,6 +5,7 @@ fn course_decide_title_override_preserves_play_metadata_and_course_context() {
     let transition = DecideTransition {
         chart_id: 1,
         options: PlayStartOptions::default(),
+        launch: DecideLaunch::Play,
         started_at: Instant::now(),
         fadeout_started_at: None,
         cancel: false,

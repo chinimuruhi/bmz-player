@@ -309,6 +309,9 @@ fn play_skin_selection_for_returns_per_mode_fields() {
     assert_eq!(battle5.path, "battle5.json");
     let battle7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::AutoplayBattle);
     assert_eq!(battle7.path, "battle7.json");
+    let practice7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::Practice);
+    assert_eq!(practice7.path, "skin7.json");
+    assert!(practice7.options.contains_key("b"));
     assert_eq!(
         play_skin_selection_for_session(&skin, KeyMode::K14, SessionMode::Normal).path,
         "skin14.json"

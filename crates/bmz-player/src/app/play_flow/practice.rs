@@ -169,7 +169,7 @@ impl WinitApp {
                 return;
             }
         };
-        self.play.practice_session = Some(PracticeSession {
+        let practice_session = PracticeSession {
             chart_id,
             chart_title: defaults.title,
             chart_sha256: defaults.sha256,
@@ -180,7 +180,8 @@ impl WinitApp {
             graph_start_time_ms: 0,
             is_double: defaults.is_double,
             cursor: 0,
-        });
+        };
+        self.play.practice_session = None;
         self.result.finished_play = None;
         self.play.play_ending = None;
         self.result.result_exit = None;
@@ -192,9 +193,16 @@ impl WinitApp {
             arrange: ArrangeOption::Normal,
             ..Default::default()
         };
-        self.start_play_preload(chart_id, preload_options.clone());
-        self.enter_play_scene(chart_id, preload_options, self.decide_snapshot_for_chart(chart_id));
-        tracing::info!(chart_id, "practice configuration screen ready");
+        let snapshot = self.decide_snapshot_for_chart(chart_id);
+        self.begin_decide_for_chart_with_snapshot(
+            chart_id,
+            preload_options,
+            snapshot,
+            None,
+            None,
+            DecideLaunch::Practice(practice_session),
+        );
+        tracing::info!(chart_id, "practice decide screen ready");
     }
 
     pub(super) fn load_practice_defaults_for_chart(

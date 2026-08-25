@@ -44,7 +44,11 @@ impl WinitApp {
             &self.boot.profile_config.display_name,
             skin_attempt,
         );
-        self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
+        self.spawn_play_skin_decode_for(
+            play_skin_key_mode,
+            options.session_mode,
+            play_skin_runtime_state,
+        );
         tracing::info!(
             course_id,
             entry_index,

@@ -36,12 +36,11 @@ impl WinitApp {
         }
         // 旧 generation 分の upload 結果は apply_uploaded_skin の generation
         // チェックで破棄されるため、ここでの明示的なキュー破棄は不要。
-        if let Some((key_mode, old_path, old_options, old_files, runtime_state)) =
+        if let Some((key_mode, session_mode, old_path, old_options, old_files, runtime_state)) =
             self.skin.last_play_skin_signature.clone()
             && skin_reload_request_includes_key_mode(request, key_mode)
         {
-            let selection =
-                play_skin_selection_for_session(&skin, key_mode, self.select.session_mode);
+            let selection = play_skin_selection_for_session(&skin, key_mode, session_mode);
             let play_options_only = self.play.active_play.is_some()
                 && old_path == selection.path.trim()
                 && old_files == *selection.files
@@ -54,6 +53,7 @@ impl WinitApp {
             {
                 self.skin.last_play_skin_signature = Some((
                     key_mode,
+                    session_mode,
                     selection.path.trim().to_string(),
                     selection.options.clone(),
                     selection.files.clone(),
@@ -67,7 +67,7 @@ impl WinitApp {
                 return;
             }
             self.skin.last_play_skin_signature = None;
-            self.spawn_play_skin_decode_for(key_mode, runtime_state);
+            self.spawn_play_skin_decode_for(key_mode, session_mode, runtime_state);
         }
         let pending_after_reload = self.has_pending_skin_reload();
         tracing::info!(?request, "skin reload queued from egui skin panel");
@@ -144,20 +144,19 @@ impl WinitApp {
     pub(super) fn spawn_play_skin_decode_for(
         &mut self,
         key_mode: KeyMode,
+        session_mode: SessionMode,
         mut runtime_state: bmz_skin::LuaLoadRuntimeState,
     ) {
         runtime_state.runtime_mode = self.skin.lua_runtime_mode;
-        let selection = play_skin_selection_for_session(
-            &self.boot.profile_config.skin,
-            key_mode,
-            self.select.session_mode,
-        );
+        let selection =
+            play_skin_selection_for_session(&self.boot.profile_config.skin, key_mode, session_mode);
         runtime_state.offset_values.clear();
         runtime_state.offset_id_values.clear();
         apply_skin_offsets_to_lua_runtime_state(&mut runtime_state, selection.offsets);
         let trimmed = selection.path.trim();
         let signature = (
             key_mode,
+            session_mode,
             trimmed.to_string(),
             selection.options.clone(),
             selection.files.clone(),

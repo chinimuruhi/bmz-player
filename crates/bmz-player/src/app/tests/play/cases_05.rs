@@ -2,6 +2,28 @@ use super::*;
 use crate::app::scene_state::playback_overlay_suffix;
 
 #[test]
+fn decide_launch_promotes_only_staged_practice_config() {
+    assert!(DecideLaunch::Play.into_practice_session().is_none());
+
+    let staged = PracticeSession {
+        chart_id: 42,
+        chart_title: "Practice".to_string(),
+        chart_sha256: [7; 32],
+        property: Default::default(),
+        phase: PracticePhase::Config,
+        max_end_time_ms: 120_000,
+        last_graph: Arc::new(Default::default()),
+        graph_start_time_ms: 0,
+        is_double: false,
+        cursor: 0,
+    };
+    let promoted = DecideLaunch::Practice(staged).into_practice_session().unwrap();
+
+    assert_eq!(promoted.chart_id, 42);
+    assert_eq!(promoted.phase, PracticePhase::Config);
+}
+
+#[test]
 fn playback_overlay_suffix_distinguishes_all_modes() {
     assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, false), None);
     assert_eq!(playback_overlay_suffix(SessionMode::Practice, false, false), Some("practice"));

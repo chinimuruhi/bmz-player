@@ -5,7 +5,14 @@ impl WinitApp {
         self.normalize_seven_to_six_options(chart_id, &mut options);
         self.apply_rival_play_overrides(chart_id, &mut options);
         let snapshot = self.decide_snapshot_for_chart(chart_id);
-        self.begin_decide_for_chart_with_snapshot(chart_id, options, snapshot, None, None);
+        self.begin_decide_for_chart_with_snapshot(
+            chart_id,
+            options,
+            snapshot,
+            None,
+            None,
+            DecideLaunch::Play,
+        );
     }
 
     pub(super) fn apply_rival_play_overrides(&self, chart_id: i64, options: &mut PlayStartOptions) {
@@ -99,6 +106,7 @@ impl WinitApp {
             snapshot,
             Some(title_override),
             Some(chart_metadata),
+            DecideLaunch::Play,
         );
     }
 
@@ -109,6 +117,7 @@ impl WinitApp {
         mut snapshot: RenderSnapshot,
         title_override: Option<DecideTitleOverride>,
         chart_metadata: Option<ChartListItem>,
+        launch: DecideLaunch,
     ) {
         // Pre-import placeholder only: resolve the same AUTO fallback / FORCE
         // priority as preload and account for Battle here. The running session
@@ -187,12 +196,17 @@ impl WinitApp {
             &self.boot.profile_config.display_name,
             skin_attempt,
         );
-        self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
+        self.spawn_play_skin_decode_for(
+            play_skin_key_mode,
+            options.session_mode,
+            play_skin_runtime_state,
+        );
         self.start_play_preload(chart_id, options.clone());
         let now = Instant::now();
         self.play.pending_decide = Some(DecideTransition {
             chart_id,
             options,
+            launch,
             started_at: now,
             fadeout_started_at: None,
             cancel: false,
