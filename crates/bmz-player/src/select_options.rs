@@ -606,8 +606,12 @@ impl SessionMode {
         matches!(self, Self::Autoplay | Self::AutoplayBattle)
     }
 
-    pub const fn is_battle(self) -> bool {
+    pub const fn uses_battle_skin(self) -> bool {
         matches!(self, Self::AutoplayBattle | Self::GBattle)
+    }
+
+    pub const fn is_battle(self) -> bool {
+        self.uses_battle_skin()
     }
 
     pub const fn score_save_enabled(self) -> bool {

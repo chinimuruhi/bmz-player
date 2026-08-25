@@ -6,8 +6,10 @@ fn direct_skin_reload_request_maps_battle_slots_and_offsets() {
     request_skin_reload(&mut request, SkinSlot::Battle5, false);
     request_skin_reload(&mut request, SkinSlot::Battle7, true);
 
-    assert!(request.play10);
-    assert!(request.play14);
+    assert!(request.play5);
+    assert!(request.play7);
+    assert!(!request.play10);
+    assert!(!request.play14);
     assert!(request.offsets);
     assert!(!request.select);
     assert!(!request.result);
@@ -63,6 +65,8 @@ fn skin_reload_diff_marks_each_offset_slot_for_redecode() {
         ("play9", |skin| skin.play9_offsets.push(Default::default()), |request| request.play9),
         ("play10", |skin| skin.play10_offsets.push(Default::default()), |request| request.play10),
         ("play14", |skin| skin.play14_offsets.push(Default::default()), |request| request.play14),
+        ("battle5", |skin| skin.battle5_offsets.push(Default::default()), |request| request.play5),
+        ("battle7", |skin| skin.battle7_offsets.push(Default::default()), |request| request.play7),
         ("result", |skin| skin.result_offsets.push(Default::default()), |request| request.result),
         (
             "course_result",

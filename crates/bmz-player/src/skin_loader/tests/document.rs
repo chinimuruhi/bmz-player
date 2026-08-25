@@ -330,8 +330,26 @@ fn play_skin_selection_for_returns_per_mode_fields() {
 
     let battle5 = play_skin_selection_for_session(&skin, KeyMode::K5, SessionMode::AutoplayBattle);
     assert_eq!(battle5.path, "battle5.json");
+    assert_eq!(battle5.key_mode, KeyMode::K5);
     let battle7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::AutoplayBattle);
     assert_eq!(battle7.path, "battle7.json");
+    assert_eq!(battle7.key_mode, KeyMode::K7);
+    let g_battle7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::GBattle);
+    assert_eq!(g_battle7.path, "battle7.json");
+    assert_eq!(g_battle7.key_mode, KeyMode::K7);
+
+    skin.battle5.clear();
+    skin.battle7.clear();
+    let fallback5 =
+        play_skin_selection_for_session(&skin, KeyMode::K5, SessionMode::AutoplayBattle);
+    assert_eq!(fallback5.path, "skin5.json");
+    assert_eq!(fallback5.key_mode, KeyMode::K5);
+    assert!(fallback5.options.contains_key("a"));
+    let fallback7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::GBattle);
+    assert_eq!(fallback7.path, "skin7.json");
+    assert_eq!(fallback7.key_mode, KeyMode::K7);
+    assert!(fallback7.options.contains_key("b"));
+
     let practice7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::Practice);
     assert_eq!(practice7.path, "skin7.json");
     assert!(practice7.options.contains_key("b"));

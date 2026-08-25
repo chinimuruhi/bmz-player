@@ -113,7 +113,7 @@ impl WinitApp {
         let skin_attempt = bmz_render::snapshot::SkinAttemptState {
             source_key_mode,
             effective_key_mode: source_key_mode.map(|mode| {
-                crate::skin_extension::effective_key_mode(
+                crate::skin_extension::select_effective_key_mode(
                     mode,
                     self.select.double_option,
                     session_mode,

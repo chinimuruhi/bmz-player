@@ -58,8 +58,12 @@ beatoraja には対応する skin type が無いため、BMZ 専用 skin とし�
 
 `SessionMode::AutoplayBattle` / `SessionMode::GBattle` では、5K は skin type `13`、7K は
 skin type `12` の専用スロット (`skin.battle5` / `skin.battle7`) を優先する。
-未設定なら既存の `play10` / `play14` スロットへフォールバックする。
+未設定なら同じ譜面モードの通常スロット (`skin.play5` / `skin.play7`) へフォールバックする。
 5K/7K以外のG-BATTLEは通常play skinを使う。
+
+SessionMode の battle は、Select上のkey modeとスキン選択キーを5K/7Kのまま維持する。
+Play内部ではbattle skinへ2P側レーンと対戦表示を公開するが、通常のDP OPTION `BATTLE` の
+10K/14Kスキン選択とは区別する。
 
 2P側のノート、LN、key-on/off、hold、bomb、HCN、judge は通常の2Pレーン ref/timerで
 公開する。次の対になっているtimerは1P/2Pを別状態として扱う。
@@ -436,7 +440,8 @@ select snapshotへ予定配置を設定する。
 | 1915 | option | double play (10K / 14K) |
 
 `1903..1915`は、Selectでは現在の設定を適用した場合、Decide / Play / Resultでは実際に
-開始した試行の**実効key mode**を返す。7K→6K変換やAUTO BATTLEの10K/14K化を含む。
+開始した試行の**実効key mode**を返す。SelectのSessionMode `AUTO BATTLE` / `G-BATTLE`
+は5K/7Kのまま維持し、7K→6K変換と通常のDP OPTION `BATTLE`だけを反映する。
 
 ### BMZ Source Chart Refs
 

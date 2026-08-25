@@ -145,6 +145,25 @@ pub(crate) const fn effective_key_mode(
     source
 }
 
+/// Select に公開する実効 key mode。
+///
+/// SessionMode の battle は 5K/7K の専用 battle skin を選ぶための状態であり、
+/// 選曲中の譜面モード自体は 10K/14K に変換しない。DP OPTION の BATTLE は従来どおり
+/// Normal/Practice/Autoplay で 10K/14K を返す。
+pub(crate) const fn select_effective_key_mode(
+    source: KeyMode,
+    double_option: DoubleOption,
+    session_mode: SessionMode,
+    seven_to_six: bool,
+) -> KeyMode {
+    effective_key_mode(
+        source,
+        if session_mode.uses_battle_skin() { DoubleOption::Off } else { double_option },
+        SessionMode::Normal,
+        seven_to_six,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,5 +193,45 @@ mod tests {
             assert_eq!(ln_policy_setting_index(setting), index);
             assert_eq!(ln_score_policy_index(score_policy), index);
         }
+    }
+
+    #[test]
+    fn select_keeps_source_key_mode_for_battle_sessions() {
+        assert_eq!(
+            select_effective_key_mode(
+                KeyMode::K5,
+                DoubleOption::Battle,
+                SessionMode::AutoplayBattle,
+                false,
+            ),
+            KeyMode::K5
+        );
+        assert_eq!(
+            select_effective_key_mode(
+                KeyMode::K7,
+                DoubleOption::BattleAutoScratch,
+                SessionMode::GBattle,
+                false,
+            ),
+            KeyMode::K7
+        );
+        assert_eq!(
+            select_effective_key_mode(
+                KeyMode::K7,
+                DoubleOption::Battle,
+                SessionMode::Normal,
+                false,
+            ),
+            KeyMode::K14
+        );
+        assert_eq!(
+            select_effective_key_mode(
+                KeyMode::K7,
+                DoubleOption::Off,
+                SessionMode::AutoplayBattle,
+                true,
+            ),
+            KeyMode::K6
+        );
     }
 }

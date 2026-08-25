@@ -105,8 +105,10 @@ pub(in crate::ui) fn request_skin_reload(
         SkinSlot::Play7 => request.play7 = true,
         SkinSlot::Play8 => request.play8 = true,
         SkinSlot::Play9 => request.play9 = true,
-        SkinSlot::Play10 | SkinSlot::Battle5 => request.play10 = true,
-        SkinSlot::Play14 | SkinSlot::Battle7 => request.play14 = true,
+        SkinSlot::Play10 => request.play10 = true,
+        SkinSlot::Play14 => request.play14 = true,
+        SkinSlot::Battle5 => request.play5 = true,
+        SkinSlot::Battle7 => request.play7 = true,
         SkinSlot::Result => request.result = true,
         SkinSlot::CourseResult => request.course_result = true,
     }
@@ -208,14 +210,14 @@ pub(in crate::ui) fn skin_reload_request_from_diff(
         || before.battle5_files != after.battle5_files
         || battle5_offsets_changed
     {
-        request.play10 = true;
+        request.play5 = true;
     }
     if before.battle7 != after.battle7
         || before.battle7_options != after.battle7_options
         || before.battle7_files != after.battle7_files
         || battle7_offsets_changed
     {
-        request.play14 = true;
+        request.play7 = true;
     }
     if before.result != after.result
         || before.result_options != after.result_options
