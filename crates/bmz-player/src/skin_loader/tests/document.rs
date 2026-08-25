@@ -73,6 +73,28 @@ fn bundled_default_select_displays_all_session_modes() {
 }
 
 #[test]
+fn bundled_default_select_labels_hs_fix_in_event_index_order() {
+    let app_paths = test_app_paths();
+    let path = default_skin_document_path_from_paths(&app_paths, SkinKind::Select);
+    let decoded = decode_beatoraja_skin(&path, SkinKind::Select)
+        .unwrap_or_else(|error| panic!("failed to decode {}: {error:#}", path.display()));
+
+    for (id, label) in [
+        ("option_hsfix_0", "OFF"),
+        ("option_hsfix_1", "START BPM"),
+        ("option_hsfix_2", "MAX BPM"),
+        ("option_hsfix_3", "MAIN BPM"),
+        ("option_hsfix_4", "MIN BPM"),
+    ] {
+        assert!(
+            decoded.document.text.iter().any(|text| text.id == id && text.constant_text == label),
+            "{} should decode {id} as {label}",
+            path.display()
+        );
+    }
+}
+
+#[test]
 fn bundled_default_play_and_result_display_extended_arrange_labels() {
     let app_paths = test_app_paths();
     for (path, kind, ids) in [

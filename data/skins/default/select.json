@@ -724,17 +724,17 @@
     },
     {
       "id": "option_hsfix_2",
-      "constantText": "MIN BPM",
-      "size": 12
-    },
-    {
-      "id": "option_hsfix_3",
       "constantText": "MAX BPM",
       "size": 12
     },
     {
-      "id": "option_hsfix_4",
+      "id": "option_hsfix_3",
       "constantText": "MAIN BPM",
+      "size": 12
+    },
+    {
+      "id": "option_hsfix_4",
+      "constantText": "MIN BPM",
       "size": 12
     },
     {
