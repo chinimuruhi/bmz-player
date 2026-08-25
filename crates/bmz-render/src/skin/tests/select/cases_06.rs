@@ -47,18 +47,24 @@ fn select_state_exposes_best_judge_detail_counts() {
 fn select_state_starts_input_timer_after_document_delay() {
     let document: SkinDocument =
         serde_json::from_str(r#"{ "w": 1280, "h": 720, "input": 500 }"#).unwrap();
+    let mut runtime = DynamicTimerRuntime::default();
 
     let (waiting, _) = document.select_draw_state(
         &SelectSnapshot { time: TimeUs(500_000), ..SelectSnapshot::default() },
-        None,
+        Some(&mut runtime),
     );
     let (active, _) = document.select_draw_state(
         &SelectSnapshot { time: TimeUs(725_000), ..SelectSnapshot::default() },
-        None,
+        Some(&mut runtime),
+    );
+    let (advanced, _) = document.select_draw_state(
+        &SelectSnapshot { time: TimeUs(750_000), ..SelectSnapshot::default() },
+        Some(&mut runtime),
     );
 
     assert_eq!(waiting.start_input_ms, None);
-    assert_eq!(active.start_input_ms, Some(225));
+    assert_eq!(active.start_input_ms, Some(0));
+    assert_eq!(advanced.start_input_ms, Some(25));
 }
 
 #[test]

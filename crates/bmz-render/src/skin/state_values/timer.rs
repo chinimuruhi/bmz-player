@@ -96,8 +96,9 @@ pub(super) fn skin_timer_elapsed_ms(timer: Option<i32>, state: &SkinDrawState) -
     }
 }
 
-/// beatoraja の各 scene が TIMER_STARTINPUT を開始する条件と経過時間。
-/// `now > skin.input` の厳密な不等号も合わせる。
+/// renderer runtime を持たない単発の state 構築用フォールバック。
+/// 実描画では [`DynamicTimerRuntime::start_input_elapsed_ms`] が最初の発火フレームを
+/// 0 ms としてラッチする。ここでも開始条件の `now > skin.input` は合わせる。
 pub fn skin_start_input_elapsed_ms(elapsed_ms: i32, input_ms: i32) -> Option<i32> {
     (elapsed_ms > input_ms).then_some(elapsed_ms.saturating_sub(input_ms))
 }

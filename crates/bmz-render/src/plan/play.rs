@@ -37,6 +37,10 @@ pub(super) fn plan_play(
 
     let play_elapsed_ms = play_elapsed_ms(snapshot);
     let mut skin_state = build_play_skin_state(snapshot, skin, play_elapsed_ms);
+    skin_state.start_input_ms = dynamic_timers.start_input_elapsed_ms(
+        play_elapsed_ms,
+        skin.document().map_or(0, |document| document.input),
+    );
     dynamic_timers.ingest_skin_events(&snapshot.skin_events, key_mode, snapshot.time.0);
     let judge_region_count =
         skin.document().map(|document| document.judge_region_count()).unwrap_or(1);

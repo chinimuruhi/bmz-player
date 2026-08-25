@@ -1,8 +1,11 @@
 use super::*;
 
-/// `dynamicTimer` observe 条件のエッジ検出用ランタイム。Renderer が保持する。
+/// 発火時刻のラッチや `dynamicTimer` observe 条件のエッジ検出を行う skin timer
+/// ランタイム。scene ごとに Renderer が保持する。
 #[derive(Debug, Clone)]
 pub struct DynamicTimerRuntime {
+    start_input_started_at_ms: Option<i32>,
+    start_input_last_now_ms: Option<i32>,
     runtime_flags: HashMap<i32, bool>,
     runtime_flags_initialized: bool,
     starts: [Option<i32>; SKIN_DYNAMIC_TIMER_COUNT],
@@ -71,6 +74,8 @@ impl Default for JudgeLaneRuntime {
 impl Default for DynamicTimerRuntime {
     fn default() -> Self {
         Self {
+            start_input_started_at_ms: None,
+            start_input_last_now_ms: None,
             runtime_flags: HashMap::new(),
             runtime_flags_initialized: false,
             starts: [None; SKIN_DYNAMIC_TIMER_COUNT],
@@ -98,6 +103,24 @@ impl DynamicTimerRuntime {
         if let Some(document) = document {
             self.initialize_runtime_flags(document);
         }
+    }
+
+    /// beatoraja の各 scene が `now > skin.input` を初めて満たした描画フレームで
+    /// TIMER_STARTINPUT (1) を開始する。閾値を超えた量ではなく、実際に
+    /// `switchTimer(..., true)` が呼ばれた時点を 0 ms としてラッチする。
+    pub fn start_input_elapsed_ms(&mut self, now_ms: i32, input_ms: i32) -> Option<i32> {
+        if self.start_input_last_now_ms.is_some_and(|last| now_ms < last) {
+            self.start_input_started_at_ms = None;
+        }
+        self.start_input_last_now_ms = Some(now_ms);
+
+        if now_ms <= input_ms {
+            self.start_input_started_at_ms = None;
+            return None;
+        }
+
+        let started_at = self.start_input_started_at_ms.get_or_insert(now_ms);
+        Some(now_ms.saturating_sub(*started_at))
     }
 
     /// 宣言済み runtime event を dispatch する。対象 event がなければ false。

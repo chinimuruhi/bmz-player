@@ -9,7 +9,7 @@ pub(super) fn plan_result(
     {
         let mut state = build_result_skin_draw_state(snapshot, document.ranktime);
         state.start_input_ms =
-            crate::skin::skin_start_input_elapsed_ms(state.elapsed_ms, document.input);
+            dynamic_timers.start_input_elapsed_ms(state.elapsed_ms, document.input);
         advance_skin_dynamic_timers(
             skin,
             dynamic_timers,

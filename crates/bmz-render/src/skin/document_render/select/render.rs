@@ -330,7 +330,7 @@ macro_rules! skin_document_render_select_render_methods {
         fn select_draw_state<'a>(
             &self,
             snapshot: &'a SelectSnapshot,
-            dynamic_timers: Option<&mut DynamicTimerRuntime>,
+            mut dynamic_timers: Option<&mut DynamicTimerRuntime>,
         ) -> (SkinDrawState, Option<&'a SelectRowSnapshot>) {
             let selected_row =
                 snapshot.rows.iter().find(|row| row.index == snapshot.selected_index);
@@ -365,9 +365,13 @@ macro_rules! skin_document_render_select_render_methods {
             let duration_green_ms = snapshot.note_display_duration_ms;
             let elapsed_ms =
                 (snapshot.time.0 / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+            let start_input_ms = dynamic_timers.as_deref_mut().map_or_else(
+                || skin_start_input_elapsed_ms(elapsed_ms, self.input),
+                |runtime| runtime.start_input_elapsed_ms(elapsed_ms, self.input),
+            );
             let mut state = SkinDrawState {
                 elapsed_ms,
-                start_input_ms: skin_start_input_elapsed_ms(elapsed_ms, self.input),
+                start_input_ms,
                 current_fps: snapshot.current_fps,
                 operating_time_ms: snapshot.operating_time_ms,
                 logical_input_held: snapshot.skin_input.held,
