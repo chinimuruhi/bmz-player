@@ -216,7 +216,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         ..Default::default()
     };
     let mut primary_chart = imported.chart;
-    if options.session_mode.is_battle()
+    if (options.session_mode.is_battle() || options.battle_opponent.is_some())
         && let Some(opponent) = opponent_chart.as_deref()
     {
         apply_battle_opponent_chart(&mut primary_chart, opponent);
@@ -403,10 +403,11 @@ pub(super) fn load_transformed_chart_for_play(
     apply_start_note_margin(&mut chart);
     let source_key_mode = chart.metadata.key_mode;
     let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
-    let battle_presentation =
-        options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
-    // SessionMode の battle は表示用に2P側を作るが、通常の BATTLE 譜面オプションとは
-    // 異なり、1P側のスコアキーと保存可否を維持する。
+    let battle_presentation = (options.session_mode.is_battle()
+        || options.battle_opponent.is_some())
+        && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
+    // SessionMode のbattle、または明示したbattle targetは表示用に2P側を作るが、
+    // 通常のBATTLE譜面オプションとは異なり、1P側のスコアキーと保存可否を維持する。
     let applied_double_option = if seven_to_six || battle_presentation {
         DoubleOption::Off
     } else {

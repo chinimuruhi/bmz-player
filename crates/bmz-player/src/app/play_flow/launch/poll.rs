@@ -211,6 +211,7 @@ impl WinitApp {
             self.key_mode_for_chart(chart_id),
             prepared.chart.metadata.key_mode,
             options.session_mode,
+            options.battle_target.is_some(),
         );
         let Some(snapshot) = &mut self.play.last_play_snapshot else {
             return;

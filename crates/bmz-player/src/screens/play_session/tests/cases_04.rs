@@ -563,6 +563,62 @@ fn load_game_session_for_chart_imports_linked_file() {
 }
 
 #[test]
+fn normal_session_battle_target_preloads_an_expanded_opponent_chart() {
+    let path = write_temp_bms(
+        "\
+#TITLE Battle Target
+#BPM 120
+#00019:01
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    assert_eq!(imported.chart.metadata.key_mode, KeyMode::K7);
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+    let options = PlaySessionOptions {
+        session_mode: SessionMode::Normal,
+        battle_opponent: Some(BattleOpponentOptions {
+            replay_player: Some(ReplayPlayer::default()),
+            gauge: None,
+            arrange: ArrangeOption::Normal,
+            arrange_2p: ArrangeOption::Normal,
+            double_option: DoubleOption::Off,
+            arrange_seed: None,
+            arrange_seed_2p: None,
+            packed_seed: None,
+            bms_random_choices: None,
+            arrange_pattern: None,
+            s_random_scheme: SRandomScheme::default(),
+            s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
+        }),
+        ..PlaySessionOptions::default()
+    };
+
+    let preloaded = preload_play_session_for_chart(&library_db, chart_id, options).unwrap();
+
+    assert_eq!(preloaded.chart.metadata.key_mode, KeyMode::K14);
+    assert_eq!(
+        preloaded.opponent_chart.as_ref().map(|chart| chart.metadata.key_mode),
+        Some(KeyMode::K7)
+    );
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn load_transformed_chart_applies_start_note_margin() {
     let path = write_temp_bms(
         "\

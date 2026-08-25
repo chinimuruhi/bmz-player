@@ -71,6 +71,45 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
 }
 
 #[test]
+fn battle_target_uses_battle_presentation_while_session_mode_stays_normal() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut primary = chart();
+    primary.metadata.key_mode = KeyMode::K14;
+    let mut opponent = chart();
+    opponent.metadata.key_mode = KeyMode::K7;
+    let session = build_game_session(
+        Arc::new(primary),
+        &profile,
+        PlaySessionOptions {
+            play_config_key_mode: Some(KeyMode::K7),
+            session_mode: SessionMode::Normal,
+            battle_opponent: Some(BattleOpponentOptions {
+                replay_player: Some(ReplayPlayer::default()),
+                gauge: None,
+                arrange: ArrangeOption::Normal,
+                arrange_2p: ArrangeOption::Normal,
+                double_option: DoubleOption::Off,
+                arrange_seed: None,
+                arrange_seed_2p: None,
+                packed_seed: None,
+                bms_random_choices: None,
+                arrange_pattern: None,
+                s_random_scheme: SRandomScheme::default(),
+                s_random_scheme_2p: None,
+                h_random_threshold_ms: None,
+            }),
+            opponent_chart: Some(Arc::new(opponent)),
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert_eq!(session.session_mode_index, 0);
+    assert_eq!(session.primary_key_mode, KeyMode::K7);
+    assert!(session.display_only_lane_mask[Lane::Key8.index()]);
+    assert!(session.battle_opponent.is_some());
+}
+
+#[test]
 fn session_uses_source_mode_presentation_settings_for_battle_layout() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.normalize_play_mode_configs();

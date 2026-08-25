@@ -253,6 +253,7 @@ impl WinitApp {
                 self.key_mode_for_chart(chart_id),
                 prepared.chart.metadata.key_mode,
                 options.session_mode,
+                options.battle_target.is_some(),
             );
             apply_prepared_chart_to_render_snapshot(
                 &mut snapshot,
@@ -287,6 +288,7 @@ impl WinitApp {
                 self.key_mode_for_chart(chart_id),
                 prepared.chart.metadata.key_mode,
                 session_options.session_mode,
+                session_options.battle_opponent.is_some(),
             );
             apply_prepared_chart_to_render_snapshot(
                 &mut snapshot,

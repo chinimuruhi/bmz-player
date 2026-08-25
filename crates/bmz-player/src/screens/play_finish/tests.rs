@@ -858,6 +858,21 @@ fn spawned_settled_session_result_persists_on_background_worker() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn finish_snapshot_preserves_the_started_session_mode() {
+    let mut session = session();
+    session.session_mode_index = 1;
+    session.opponent_score = Some(session.score.clone());
+
+    let snapshot = FinishSessionSnapshot::from_session(
+        &session,
+        ChartLnProfile::default(),
+        &AppliedArrange::default(),
+    );
+
+    assert_eq!(snapshot.skin_attempt.session_mode_index, Some(1));
+}
+
 fn session() -> GameSession {
     let chart = Arc::new(chart());
     let timing_map = bmz_chart::timing::TimingMap::from_chart_timing_events(
@@ -865,6 +880,7 @@ fn session() -> GameSession {
         &chart.timing_events,
     );
     GameSession {
+        session_mode_index: 0,
         chart: Arc::clone(&chart),
         play_config_key_mode: chart.metadata.key_mode,
         primary_key_mode: chart.metadata.key_mode,

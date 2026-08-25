@@ -557,7 +557,8 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false
+            false,
+            false,
         ),
         KeyMode::K14
     );
@@ -567,6 +568,7 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             DoubleOption::BattleAutoScratch,
             SessionMode::Normal,
             false,
+            false,
         ),
         KeyMode::K14
     );
@@ -575,12 +577,19 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K5,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false
+            false,
+            false,
         ),
         KeyMode::K10
     );
     assert_eq!(
-        play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Flip, SessionMode::Normal, false),
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Flip,
+            SessionMode::Normal,
+            false,
+            false,
+        ),
         KeyMode::K7
     );
     assert_eq!(
@@ -588,7 +597,8 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K14,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false
+            false,
+            false,
         ),
         KeyMode::K14
     );
@@ -597,7 +607,8 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Off,
             SessionMode::AutoplayBattle,
-            false
+            false,
+            false,
         ),
         KeyMode::K7
     );
@@ -606,8 +617,19 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Battle,
             SessionMode::AutoplayBattle,
-            true
+            true,
+            false,
         ),
         KeyMode::K6
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Battle,
+            SessionMode::Normal,
+            false,
+            true,
+        ),
+        KeyMode::K7
     );
 }

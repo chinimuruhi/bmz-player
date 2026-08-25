@@ -108,6 +108,9 @@ impl AssistRuntime {
 }
 
 pub struct GameSession {
+    /// SessionMode is owned by the app crate; keep its stable skin/API index so
+    /// Result can preserve the mode even when a battle target is attached.
+    pub session_mode_index: u8,
     pub chart: Arc<PlayableChart>,
     /// Source chart mode used to select per-key player presentation settings.
     /// BATTLE can expand the rendered chart to K10/K14 while this remains K5/K7.

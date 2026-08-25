@@ -220,7 +220,7 @@ pub fn build_game_session_with_input_backend(
     let battle_opponent_chart = options.opponent_chart.clone();
     let chart_key_mode = chart.metadata.key_mode;
     let play_config_key_mode = play_config_key_mode(chart_key_mode, &options);
-    let battle_presentation = session_mode.is_battle()
+    let battle_presentation = (session_mode.is_battle() || battle_opponent_options.is_some())
         && matches!(
             (play_config_key_mode, chart_key_mode),
             (KeyMode::K5, KeyMode::K10) | (KeyMode::K7, KeyMode::K14)
@@ -556,6 +556,7 @@ pub fn build_game_session_with_input_backend(
         hsfix_index: hsfix_index_from_option(hs_fix),
         input_timestamp_anchor: None,
         pending_mine_hits: Vec::new(),
+        session_mode_index: crate::skin_extension::session_mode_index(session_mode) as u8,
         state: PlayState::Ready,
         last_hcn_gauge_at: None,
     }

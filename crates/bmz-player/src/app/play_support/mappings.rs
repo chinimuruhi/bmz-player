@@ -57,11 +57,12 @@ pub(in crate::app) fn play_skin_key_mode_for_options(
     double_option: DoubleOption,
     session_mode: SessionMode,
     seven_to_six: bool,
+    has_battle_target: bool,
 ) -> KeyMode {
     if seven_to_six && chart_key_mode == KeyMode::K7 {
         return KeyMode::K6;
     }
-    if session_mode.is_battle() {
+    if session_mode.is_battle() || has_battle_target {
         return chart_key_mode;
     }
     match double_option.normalize_for_key_mode(chart_key_mode) {
@@ -78,8 +79,9 @@ pub(in crate::app) const fn uses_battle_presentation(
     source_key_mode: KeyMode,
     rendered_key_mode: KeyMode,
     session_mode: SessionMode,
+    has_battle_target: bool,
 ) -> bool {
-    session_mode.is_battle()
+    (session_mode.is_battle() || has_battle_target)
         && matches!(
             (source_key_mode, rendered_key_mode),
             (KeyMode::K5, KeyMode::K10) | (KeyMode::K7, KeyMode::K14)

@@ -189,15 +189,7 @@ impl FinishSessionSnapshot {
         } else {
             session.primary_key_mode
         };
-        let session_mode_index = if session.battle_opponent.is_some() {
-            4
-        } else if session.opponent_score.is_some() {
-            3
-        } else if session.autoplay.is_some() {
-            2
-        } else {
-            0
-        };
+        let session_mode_index = usize::from(session.session_mode_index);
         Self {
             chart: Arc::clone(&session.chart),
             skin_attempt: bmz_render::snapshot::SkinAttemptState {

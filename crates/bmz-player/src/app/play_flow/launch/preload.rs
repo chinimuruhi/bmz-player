@@ -181,6 +181,7 @@ impl WinitApp {
                     options.double_option,
                     options.session_mode,
                     options.seven_to_six,
+                    options.battle_target.is_some(),
                 )
             })
             .unwrap_or_else(|| self.play_skin_key_mode_for_chart(chart_id, &options));
@@ -373,7 +374,10 @@ impl WinitApp {
             return bmz_render::snapshot::SkinAttemptState::default();
         };
         let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
-        let applied_double_option = if seven_to_six || options.session_mode.is_battle() {
+        let applied_double_option = if seven_to_six
+            || options.session_mode.is_battle()
+            || options.battle_target.is_some()
+        {
             DoubleOption::Off
         } else {
             options.double_option.normalize_for_key_mode(source_key_mode)
@@ -443,6 +447,7 @@ impl WinitApp {
             options.double_option,
             options.session_mode,
             options.seven_to_six,
+            options.battle_target.is_some(),
         )
     }
 
@@ -632,8 +637,8 @@ fn play_skin_score_key(
     rule_mode: RuleMode,
 ) -> ScoreKey {
     let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
-    let battle_presentation =
-        options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
+    let battle_presentation = (options.session_mode.is_battle() || options.battle_target.is_some())
+        && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
     let double_option = if seven_to_six || battle_presentation {
         DoubleOption::Off
     } else {
