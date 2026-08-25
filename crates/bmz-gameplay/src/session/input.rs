@@ -142,7 +142,9 @@ pub fn process_human_inputs(session: &mut GameSession) -> Vec<JudgementEvent> {
     update_lane_key_states(session, &inputs);
     let mut judgements = Vec::new();
     for input in inputs {
-        session.replay_recorder.record(input);
+        if !session.display_only_lane_mask[input.lane.index()] {
+            session.replay_recorder.record(input);
+        }
         let events = process_session_input(session, input);
         apply_input_offset_auto_adjust(session, &events);
         judgements.extend(events);

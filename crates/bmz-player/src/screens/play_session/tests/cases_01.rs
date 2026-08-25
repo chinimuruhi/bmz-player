@@ -153,6 +153,29 @@ fn autoplay_battle_marks_only_expanded_single_play_lanes_as_display_only() {
 }
 
 #[test]
+fn g_battle_off_autoplays_only_the_expanded_opponent_lanes() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut expanded_chart = chart();
+    expanded_chart.metadata.key_mode = KeyMode::K14;
+    let session = build_game_session(
+        Arc::new(expanded_chart),
+        &profile,
+        PlaySessionOptions {
+            play_config_key_mode: Some(KeyMode::K7),
+            session_mode: SessionMode::GBattle,
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    let autoplay = session.autoplay.as_ref().expect("BATTLE OFF opponent autoplay");
+    assert!(!autoplay.is_lane_enabled(Lane::Scratch));
+    assert!(!autoplay.is_lane_enabled(Lane::Key1));
+    assert!(autoplay.is_lane_enabled(Lane::Scratch2));
+    assert!(autoplay.is_lane_enabled(Lane::Key8));
+    assert!(autoplay.is_lane_enabled(Lane::Key14));
+}
+
+#[test]
 fn build_game_session_uses_release_bounce_settings_from_profile() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.input.keyboard_release_bounce_ms = 3;

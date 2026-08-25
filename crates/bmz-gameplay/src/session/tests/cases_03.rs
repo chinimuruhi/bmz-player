@@ -364,6 +364,45 @@ fn process_human_inputs_uses_monotonic_event_time() {
 }
 
 #[test]
+fn process_human_inputs_does_not_record_display_only_opponent_lanes() {
+    use crate::input::backend::{
+        BufferedInputBackend, DeviceId, DeviceInputEvent, DeviceTimestamp, PhysicalControl,
+    };
+    use crate::input::binding::{BindingEntry, LaneBinding};
+
+    let mut session = session_with_autoplay(chart_with_bgm());
+    session.autoplay = None;
+    session.display_only_lane_mask[Lane::Key8.index()] = true;
+    let mut backend = BufferedInputBackend::default();
+    backend.push(DeviceInputEvent {
+        device: DeviceId(1),
+        control: PhysicalControl::KeyboardKey("M".to_string()),
+        kind: InputKind::Press,
+        timestamp: DeviceTimestamp::Unknown,
+        bounce_policy: Default::default(),
+    });
+    session.input_system = InputSystem {
+        backend: Box::new(backend),
+        translator: Box::new(DefaultInputTranslator {
+            binding: LaneBinding {
+                entries: vec![BindingEntry {
+                    device: None,
+                    control: PhysicalControl::KeyboardKey("M".to_string()),
+                    lane: Lane::Key8,
+                    scratch_direction: None,
+                }],
+            },
+        }),
+        bounce_filter: Default::default(),
+    };
+
+    process_human_inputs(&mut session);
+
+    assert!(session.replay_recorder.events.is_empty());
+    assert_eq!(session.recent_inputs[0].lane, Lane::Key8);
+}
+
+#[test]
 fn drain_pre_ready_visual_inputs_updates_lane_key_states_without_judging() {
     use crate::input::backend::{
         BufferedInputBackend, DeviceId, DeviceInputEvent, DeviceTimestamp, PhysicalControl,

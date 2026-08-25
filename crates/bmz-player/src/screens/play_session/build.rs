@@ -264,6 +264,20 @@ pub fn build_game_session_with_input_backend(
         && (session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     let autoplay = if autoplay_enabled {
         Some(AutoplayController::default())
+    } else if session_mode == SessionMode::GBattle
+        && battle_presentation
+        && battle_opponent_options.is_none()
+    {
+        let mut lanes = Lane::ALL
+            .into_iter()
+            .filter(|lane| display_only_lane_mask[lane.index()])
+            .collect::<Vec<_>>();
+        if options.double_option == DoubleOption::BattleAutoScratch
+            && !lanes.contains(&Lane::Scratch)
+        {
+            lanes.push(Lane::Scratch);
+        }
+        Some(AutoplayController::for_lanes(&lanes))
     } else if options.double_option == DoubleOption::BattleAutoScratch {
         Some(AutoplayController::for_lanes(&[Lane::Scratch, Lane::Scratch2]))
     } else {
@@ -276,7 +290,6 @@ pub fn build_game_session_with_input_backend(
         } else {
             None
         };
-    let key_mode = chart.metadata.key_mode;
     // `chart` is built from the source file and already has the selected LN
     // policy, course override, and double option applied.  Derive the gameplay
     // denominator here instead of using the policy-independent library count.
@@ -291,7 +304,7 @@ pub fn build_game_session_with_input_backend(
         translator: Box::new(DefaultInputTranslator {
             binding: lane_binding_for_chart_with_slots(
                 &profile.input,
-                key_mode,
+                play_config_key_mode,
                 options.gamepad_slots,
             ),
         }),

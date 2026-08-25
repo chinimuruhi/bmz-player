@@ -494,6 +494,40 @@ fn build_game_session_accepts_custom_input_backend() {
 }
 
 #[test]
+fn expanded_g_battle_uses_the_source_key_mode_binding() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut backend = BufferedInputBackend::default();
+    backend.push(DeviceInputEvent {
+        device: DeviceId(1),
+        control: PhysicalControl::KeyboardKey("M".to_string()),
+        kind: InputKind::Press,
+        timestamp: DeviceTimestamp::Unknown,
+        bounce_policy: Default::default(),
+    });
+    let mut expanded_chart = chart();
+    expanded_chart.metadata.key_mode = KeyMode::K14;
+    let mut session = build_game_session_with_input_backend(
+        Arc::new(expanded_chart),
+        &profile,
+        PlaySessionOptions {
+            play_config_key_mode: Some(KeyMode::K7),
+            session_mode: SessionMode::GBattle,
+            ..PlaySessionOptions::default()
+        },
+        Box::new(backend),
+    );
+    let ctx = InputTimingContext {
+        audio_clock: &session.audio_clock,
+        offsets: session.offsets,
+        timestamp_anchor: None,
+    };
+
+    let inputs = session.input_system.collect_game_inputs(&ctx);
+
+    assert!(inputs.is_empty(), "14K-only M binding must not control a 7K battle session");
+}
+
+#[test]
 fn load_game_session_for_chart_imports_linked_file() {
     let path = write_temp_bms(
         "\
