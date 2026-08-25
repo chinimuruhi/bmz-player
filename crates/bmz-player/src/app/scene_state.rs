@@ -526,11 +526,11 @@ pub(super) const fn playback_overlay_suffix(
         return Some("replay");
     }
     match mode {
-        SessionMode::Normal if autoplay => Some("autoplay"),
+        SessionMode::Normal if autoplay => Some("AUTOPLAY"),
         SessionMode::Normal => None,
-        SessionMode::Practice => Some("practice"),
-        SessionMode::Autoplay => Some("autoplay"),
-        SessionMode::AutoplayBattle => Some("autoplay"),
-        SessionMode::GBattle => None,
+        SessionMode::Practice => Some("PRACTICE"),
+        SessionMode::Autoplay => Some("AUTOPLAY"),
+        SessionMode::AutoplayBattle => Some("AUTO BATTLE"),
+        SessionMode::GBattle => Some("G-BATTLE"),
     }
 }

@@ -138,17 +138,20 @@ fn practice_gamepad_dp_normalizes_second_player_key_parity() {
 }
 
 #[test]
-fn playback_overlay_suffix_groups_battle_modes_with_their_primary_mode() {
+fn playback_overlay_suffix_exposes_each_non_normal_session_mode() {
     assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, false), None);
-    assert_eq!(playback_overlay_suffix(SessionMode::Practice, false, false), Some("practice"));
-    assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, false), Some("autoplay"));
-    assert_eq!(playback_overlay_suffix(SessionMode::AutoplayBattle, true, false), Some("autoplay"));
-    assert_eq!(playback_overlay_suffix(SessionMode::GBattle, false, false), None);
+    assert_eq!(playback_overlay_suffix(SessionMode::Practice, false, false), Some("PRACTICE"));
+    assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, false), Some("AUTOPLAY"));
+    assert_eq!(
+        playback_overlay_suffix(SessionMode::AutoplayBattle, true, false),
+        Some("AUTO BATTLE")
+    );
+    assert_eq!(playback_overlay_suffix(SessionMode::GBattle, false, false), Some("G-BATTLE"));
 }
 
 #[test]
 fn playback_overlay_suffix_uses_effective_playback_flags() {
-    assert_eq!(playback_overlay_suffix(SessionMode::Normal, true, false), Some("autoplay"));
+    assert_eq!(playback_overlay_suffix(SessionMode::Normal, true, false), Some("AUTOPLAY"));
     assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, true), Some("replay"));
     assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, true), Some("replay"));
 }
