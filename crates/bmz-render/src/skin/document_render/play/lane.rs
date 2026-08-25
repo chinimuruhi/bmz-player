@@ -60,8 +60,7 @@ macro_rules! skin_document_render_play_lane_methods {
                     skin_image_texture_region_for_state(
                         image,
                         source.source_size,
-                        elapsed,
-                        Some(state),
+                        state,
                         pixel_rect,
                     ),
                     source.source_size,

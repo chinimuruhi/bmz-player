@@ -140,14 +140,9 @@ macro_rules! skin_document_render_core_resolve_methods {
             if let Some(item) = self.direct_source_image_render_item(destination, frame, sources) {
                 return Some(vec![item]);
             }
-            if let Some(items) = self.resolve_image_destination_items(
-                destination,
-                frame,
-                elapsed,
-                images,
-                state,
-                sources,
-            ) {
+            if let Some(items) =
+                self.resolve_image_destination_items(destination, frame, images, state, sources)
+            {
                 return items;
             }
 
@@ -157,14 +152,9 @@ macro_rules! skin_document_render_core_resolve_methods {
 
             // imageset (キービーム・ボム等) を destination 自身のタイマー駆動で描画する。
             // timer が非アクティブな destination は上の skin_timer_elapsed_ms で除外済み。
-            if let Some(items) = self.resolve_imageset_destination_items(
-                destination,
-                frame,
-                elapsed,
-                images,
-                state,
-                sources,
-            ) {
+            if let Some(items) =
+                self.resolve_imageset_destination_items(destination, frame, images, state, sources)
+            {
                 return items;
             }
 
@@ -231,7 +221,6 @@ macro_rules! skin_document_render_core_resolve_methods {
             &self,
             destination: &SkinDestinationDef,
             mut frame: ResolvedSkinFrame,
-            elapsed: i32,
             images: &HashMap<&str, &SkinImageDef>,
             state: &SkinDrawState,
             sources: &HashMap<String, SkinDocumentTexture>,
@@ -253,13 +242,8 @@ macro_rules! skin_document_render_core_resolve_methods {
                 return Some(None);
             };
             let pixel_rect = skin_image_pixel_rect(image);
-            let mut uv = skin_image_texture_region_for_state(
-                image,
-                source.source_size,
-                elapsed,
-                Some(state),
-                pixel_rect,
-            );
+            let mut uv =
+                skin_image_texture_region_for_state(image, source.source_size, state, pixel_rect);
             if self.should_clip_image_at_disappear_line(destination, image)
                 && let Some((disappear_line, link_lift)) = self.disappear_line_for_lane_cover_clip()
             {
@@ -372,7 +356,6 @@ macro_rules! skin_document_render_core_resolve_methods {
             &self,
             destination: &SkinDestinationDef,
             frame: ResolvedSkinFrame,
-            elapsed: i32,
             images: &HashMap<&str, &SkinImageDef>,
             state: &SkinDrawState,
             sources: &HashMap<String, SkinDocumentTexture>,
@@ -398,13 +381,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             let (rect, uv) = stretch_skin_image_geometry(
                 destination.stretch,
                 normalize_skin_frame_rect(frame, self.w, self.h),
-                skin_image_texture_region_for_state(
-                    image,
-                    source.source_size,
-                    elapsed,
-                    Some(state),
-                    pixel_rect,
-                ),
+                skin_image_texture_region_for_state(image, source.source_size, state, pixel_rect),
                 source.source_size,
                 self.w,
                 self.h,
@@ -458,8 +435,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                 let mut uv = skin_image_texture_region_for_state(
                     image,
                     source.source_size,
-                    elapsed,
-                    Some(state),
+                    state,
                     pixel_rect,
                 );
                 if self.should_clip_image_at_disappear_line(destination, image)

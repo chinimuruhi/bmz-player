@@ -190,21 +190,74 @@ fn skin_image_act_uses_event_index_for_button_frame_row() {
     let off = skin_image_texture_region_for_state(
         &image,
         source_size,
-        0,
-        Some(&SkinDrawState::default()),
+        &SkinDrawState::default(),
         (0, 0, 68, 99),
     );
     let on = skin_image_texture_region_for_state(
         &image,
         source_size,
-        0,
-        Some(&SkinDrawState { judge_timing_auto_adjust: true, ..SkinDrawState::default() }),
+        &SkinDrawState { judge_timing_auto_adjust: true, ..SkinDrawState::default() },
         (0, 0, 68, 99),
     );
 
     assert!(approx_eq(off.y, 0.0));
     assert!(approx_eq(on.y, 1.0 / 3.0));
     assert!(approx_eq(on.height, 1.0 / 3.0));
+}
+
+#[test]
+fn image_cycle_uses_its_own_clock_independently_of_destination_timer() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 0,
+                "w": 100,
+                "h": 100,
+                "source": [{ "id": "src", "path": "flash.png" }],
+                "image": [
+                    {
+                        "id": "scene-cycle", "src": "src",
+                        "x": 0, "y": 0, "w": 400, "h": 100,
+                        "divx": 4, "cycle": 100
+                    },
+                    {
+                        "id": "timer-cycle", "src": "src",
+                        "x": 0, "y": 0, "w": 400, "h": 100,
+                        "divx": 4, "cycle": 100, "timer": 11
+                    }
+                ],
+                "destination": [
+                    {
+                        "id": "scene-cycle", "timer": 11,
+                        "dst": [
+                            { "time": 0, "x": 0, "y": 0, "w": 10, "h": 10 },
+                            { "time": 100, "x": 100, "y": 0, "w": 10, "h": 10 }
+                        ]
+                    },
+                    {
+                        "id": "timer-cycle",
+                        "dst": [{ "time": 0, "x": 0, "y": 20, "w": 10, "h": 10 }]
+                    }
+                ]
+            }
+            "#,
+    )
+    .unwrap();
+    let sources = mock_source("src", 400.0, 100.0);
+    let state =
+        SkinDrawState { elapsed_ms: 75, select_bar_elapsed_ms: 25, ..SkinDrawState::default() };
+
+    let items = document.static_image_render_items(&sources, &state);
+
+    let SkinRenderItem::Image { rect: scene_rect, uv: scene_uv, .. } = &items[0] else {
+        panic!("expected scene-cycle image");
+    };
+    let SkinRenderItem::Image { uv: timer_uv, .. } = &items[1] else {
+        panic!("expected timer-cycle image");
+    };
+    assert!(approx_eq(scene_rect.x, 0.25));
+    assert!(approx_eq(scene_uv.x, 0.75));
+    assert!(approx_eq(timer_uv.x, 0.25));
 }
 
 #[test]
