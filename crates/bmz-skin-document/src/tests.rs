@@ -232,3 +232,21 @@ fn scene_audio_and_custom_event_deserialize() {
     assert_eq!(document.custom_events[0].audio_actions.len(), 2);
     assert_eq!(document.custom_events[0].audio_actions[0].volume, 1.0);
 }
+
+#[test]
+fn practice_destination_position_uses_beatoraja_practice_object() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"{
+            "w": 1280,
+            "h": 720,
+            "practice": { "id": "practice", "visibleItems": 12 },
+            "destination": [
+                { "id": "practice", "dst": [{ "x": 128, "y": 72, "w": 500, "h": 360 }] }
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    assert_eq!(document.practice.as_ref().unwrap().visible_items, 12);
+    assert_eq!(document.practice_destination_position(), Some((0.1, 0.4)));
+}

@@ -315,6 +315,8 @@ pub struct RenderSnapshot {
     pub ln_score_policy_index: Option<usize>,
     /// プラクティス再生中かどうか。beatoraja OPTION_PRACTICE (1080) 用。
     pub practice_mode: bool,
+    /// プラクティスの設定中プレビューか。秒線/BPMガイドはこの間だけ表示する。
+    pub practice_preview: bool,
     /// beatoraja assist button 301..307 の選択状態。
     pub assist_flags: [bool; 7],
     pub assist_extra_note_depth: u8,

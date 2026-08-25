@@ -93,6 +93,27 @@ fn preloaded_play_session(chart: PlayableChart) -> PreloadedPlaySession {
 }
 
 #[test]
+fn cloned_preload_reuses_loaded_pcm_without_playback_state() {
+    let mut preloaded = preloaded_play_session(chart());
+    preloaded.audio.insert_sample(
+        SoundId(7),
+        bmz_audio::sample::DecodedSample {
+            channels: 1,
+            sample_rate: 48_000,
+            frames: vec![0.25, 0.5],
+        },
+    );
+    preloaded.audio.play_now(SoundId(7), 1.0, false);
+
+    let reused = preloaded.clone_loaded_resources();
+
+    assert!(Arc::ptr_eq(&preloaded.chart, &reused.chart));
+    assert_eq!(reused.audio.samples.source_count(), 1);
+    assert_eq!(reused.audio.samples.region_count(), 1);
+    assert!(reused.audio.is_idle());
+}
+
+#[test]
 fn sound_preload_counts_distinct_sources_and_regions() {
     let mut chart = chart();
     chart.sounds = vec![

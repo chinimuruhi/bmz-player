@@ -134,6 +134,13 @@ BMZ 対応 skin で5種類を区別する場合は、BMZ 拡張 ref `1970` を�
 試行開始時に固定したモードを返す。G-BATTLEは`SessionMode::Normal`とは独立しているが、
 skin上では`3=BATTLE`として公開する。
 
+### Practice Configuration Position
+
+beatoraja JSON / Lua play skin の `practice` オブジェクトをdecodeする。`practice.id` と同じ
+`destination.id` の先頭 `dst` にある `x` / `y` / `h` を、BMZのプラクティス設定ウィンドウの
+初期位置として使う。指定がないskinでは画面左上に配置する。設定内容はBMZのeguiウィンドウで
+表示し、ウィンドウは初期位置からドラッグ移動できる。
+
 ### Play Gauge Type Ref
 
 `ref=44`は、Lua skinのimageset `value`が`main_state.gauge_type()`を返す場合に、BMZが

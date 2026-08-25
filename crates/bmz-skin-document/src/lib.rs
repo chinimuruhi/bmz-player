@@ -391,6 +391,39 @@ impl SkinDocument {
         None
     }
 
+    /// beatoraja JSON play skin の `practice.id` が参照する destination の
+    /// 初期位置を、画面左上原点の正規化座標で返す。
+    pub fn practice_destination_position(&self) -> Option<(f32, f32)> {
+        let practice_id = self.practice.as_ref()?.id.as_str();
+        if practice_id.is_empty() {
+            return None;
+        }
+        let canvas_w = self.w.max(1) as f32;
+        let canvas_h = self.h.max(1) as f32;
+        for entry in &self.destination {
+            let candidates: Vec<&SkinDestinationDef> = match entry {
+                DestinationListEntry::Single(destination) => vec![destination],
+                DestinationListEntry::Conditional { destinations, .. } => {
+                    destinations.iter().collect()
+                }
+            };
+            for destination in candidates {
+                if destination.id != practice_id {
+                    continue;
+                }
+                let frame = destination.dst.iter().find_map(|dst| match dst {
+                    SkinDstEntry::Frame(frame) => Some(frame),
+                    SkinDstEntry::Conditional { frames, .. } => frames.first(),
+                })?;
+                let raw_x = frame.x.unwrap_or(0) as f32;
+                let raw_y = frame.y.unwrap_or(0) as f32;
+                let raw_h = frame.h.unwrap_or(0).max(0) as f32;
+                return Some((raw_x / canvas_w, (canvas_h - (raw_y + raw_h)) / canvas_h));
+            }
+        }
+        None
+    }
+
     pub fn all_destinations<'a>(&'a self, enabled_options: &[i32]) -> Vec<&'a SkinDestinationDef> {
         let mut result = Vec::new();
         for entry in &self.destination {

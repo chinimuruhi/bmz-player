@@ -158,6 +158,8 @@ pub struct PracticeSession {
     pub graph_start_time_ms: u32,
     pub is_double: bool,
     pub cursor: usize,
+    /// `last_play_snapshot` に反映済みの設定中プレビュー時刻。
+    pub preview_time_ms: Option<u32>,
 }
 
 /// CLI-only overrides applied when entering practice from the command line.

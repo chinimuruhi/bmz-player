@@ -285,6 +285,20 @@ impl Renderer {
         self.play_skin_context.document()
     }
 
+    /// Play skin の beatoraja `practice` destination を、surface 全体の
+    /// 左上原点正規化座標へ変換して返す。
+    pub fn play_skin_practice_position(&self) -> Option<(f32, f32)> {
+        let position = self.play_skin_context.document()?.practice_destination_position()?;
+        let Some(surface) = self.gpu.as_ref().map(WgpuRenderer::surface_size) else {
+            return Some(position);
+        };
+        let viewport = CanvasViewport::from_policy(surface, self.play_skin_canvas_render_policy());
+        Some((
+            viewport.rect.x + position.0 * viewport.rect.width,
+            viewport.rect.y + position.1 * viewport.rect.height,
+        ))
+    }
+
     pub fn set_play_skin_user_selected_options(&mut self, enabled_options: Vec<i32>) -> bool {
         self.play_skin_context.set_user_selected_options(enabled_options)
     }

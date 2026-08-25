@@ -16,6 +16,7 @@ fn decide_launch_promotes_only_staged_practice_config() {
         graph_start_time_ms: 0,
         is_double: false,
         cursor: 0,
+        preview_time_ms: None,
     };
     let promoted = DecideLaunch::Practice(staged).into_practice_session().unwrap();
 

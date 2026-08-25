@@ -23,6 +23,7 @@ fn egui_scene_name(scene_kind: AppSceneKind) -> &'static str {
 fn practice_panel_context(
     practice: Option<&mut PracticeSession>,
     media_ready: bool,
+    default_position: Option<(f32, f32)>,
 ) -> Option<PracticePanelContext<'_>> {
     let practice = practice.filter(|practice| practice.phase == PracticePhase::Config)?;
     Some(PracticePanelContext {
@@ -34,6 +35,7 @@ fn practice_panel_context(
         chart_title: &practice.chart_title,
         media_ready,
         max_end_time_ms: practice.max_end_time_ms,
+        default_position,
     })
 }
 
@@ -134,8 +136,12 @@ impl WinitApp {
         let course_preview = self.egui_course_preview(scene_kind);
         let course_editor = &self.course_editor_cache.data;
         let practice_media_ready = self.practice_media_ready();
-        let mut practice_panel_ctx =
-            practice_panel_context(self.play.practice_session.as_mut(), practice_media_ready);
+        let practice_default_position = self.renderer.play_skin_practice_position();
+        let mut practice_panel_ctx = practice_panel_context(
+            self.play.practice_session.as_mut(),
+            practice_media_ready,
+            practice_default_position,
+        );
         let result_ir_panel = self.result.result_ir.as_mut();
         let update_dialog = self.jobs.update_prompt.as_ref().map(UpdatePrompt::as_dialog);
         let obs_connection_status = self
@@ -509,6 +515,8 @@ impl WinitApp {
         }
         if output.practice_start {
             self.start_practice_round();
+        } else {
+            self.refresh_practice_preview_snapshot();
         }
         if let Some(action) = output.course_editor_action {
             self.apply_course_editor_action(action);

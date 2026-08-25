@@ -320,6 +320,30 @@ impl PreloadedPlaySession {
             opponent_chart: self.opponent_chart.clone(),
         }
     }
+
+    /// デコード済み PCM と変換済み譜面を共有し、再生状態だけを空にした
+    /// 新しい preload を作る。Practice の反復開始で filesystem / FFmpeg の
+    /// 再ロードを行わないための beatoraja `BMSResource` 相当の経路。
+    pub fn clone_loaded_resources(&self) -> Self {
+        Self {
+            chart: Arc::clone(&self.chart),
+            skin_attempt: self.skin_attempt,
+            source_ln_profile: self.source_ln_profile,
+            chart_length_ms: self.chart_length_ms,
+            audio: AudioEngine::with_sample_bank(
+                self.audio.output_sample_rate(),
+                self.audio.samples.clone(),
+            ),
+            sample_report: self.sample_report.clone(),
+            chart_normalization_gain: self.chart_normalization_gain,
+            render_snapshot_cache: self.render_snapshot_cache.clone(),
+            applied_arrange: self.applied_arrange.clone(),
+            score_key: self.score_key,
+            assist_runtime: self.assist_runtime,
+            score_save_disabled: self.score_save_disabled,
+            opponent_chart: self.opponent_chart.clone(),
+        }
+    }
 }
 
 impl Default for PlaySessionOptions {

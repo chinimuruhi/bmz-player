@@ -190,6 +190,17 @@ pub struct PreloadedInputPlaySession {
     pub session_options: PlaySessionOptions,
 }
 
+impl PreloadedInputPlaySession {
+    pub fn clone_loaded_resources(&self) -> Self {
+        Self {
+            chart_id: self.chart_id,
+            preloaded: self.preloaded.clone_loaded_resources(),
+            input: SharedInputBackend::default(),
+            session_options: self.session_options.clone(),
+        }
+    }
+}
+
 pub fn play_session_options_from_start(
     app_config: &AppConfig,
     start_options: PlayStartOptions,

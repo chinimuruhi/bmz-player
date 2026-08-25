@@ -395,6 +395,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         rule_mode_index: crate::skin_extension::rule_mode_index(session.rule_mode),
         ln_score_policy_index: None,
         practice_mode: false,
+        practice_preview: false,
         assist_flags: crate::assist::mask_flags(session.assist.configured_mask),
         assist_extra_note_depth: session.assist.extra_note_depth,
         assist_mine_mode: session.assist.mine_mode,

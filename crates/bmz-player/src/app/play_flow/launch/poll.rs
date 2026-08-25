@@ -108,6 +108,7 @@ impl WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config)
         {
+            self.refresh_practice_preview_snapshot();
             return;
         }
         let Some(play_start) = self.play.pending_play_start.as_ref() else {

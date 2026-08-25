@@ -65,6 +65,7 @@ impl WinitApp {
                         practice.max_end_time_ms,
                     );
                 }
+                self.refresh_practice_preview_snapshot();
             }
             Action::Start => self.start_practice_round(),
             Action::Leave => self.leave_practice(),
@@ -180,6 +181,7 @@ impl WinitApp {
             graph_start_time_ms: 0,
             is_double: defaults.is_double,
             cursor: 0,
+            preview_time_ms: None,
         };
         self.play.practice_session = None;
         self.result.finished_play = None;
@@ -266,6 +268,7 @@ impl WinitApp {
         self.play.pending_play_start = None;
         self.play.preloaded_play_session = None;
         self.invalidate_play_preload();
+        self.play.play_media_cache = None;
         self.play.play_ending = None;
         self.result.finished_play = None;
         self.play.play_ready_sound_started_at = None;
@@ -307,8 +310,8 @@ impl WinitApp {
             practice.phase = PracticePhase::Playing;
         }
 
-        let preloaded = match self.play.preloaded_play_session.take() {
-            Some(preloaded) => preloaded,
+        let preloaded = match self.play.preloaded_play_session.as_ref() {
+            Some(preloaded) => preloaded.clone_loaded_resources(),
             None => {
                 tracing::error!(chart_id, "practice start without preloaded session");
                 self.play.practice_chart_zero_time = None;
@@ -324,6 +327,8 @@ impl WinitApp {
             &property,
             preloaded,
         );
+        // Exclusive output を含め、前ラウンドの出力streamを新しいstreamより先に解放する。
+        self.audio.draining_audio = None;
         match self.open_prepared_winit_play_session(prepared_winit) {
             Ok(active_play) => {
                 self.install_active_play(chart_id, active_play);
@@ -353,12 +358,14 @@ impl WinitApp {
             tracing::warn!(%error, "failed to save practice property after round");
         }
         self.commit_active_play_lane_state_to_profile();
-        if let Some(started) = self.play.active_play.take() {
+        if let Some(mut started) = self.play.active_play.take() {
             let graph = started.running.result_graph.snapshot_for_session(&started.running.session);
             if let Some(practice) = &mut self.play.practice_session {
                 practice.last_graph = std::sync::Arc::new(graph);
                 practice.graph_start_time_ms = property.start_time_ms;
+                practice.preview_time_ms = None;
             }
+            self.capture_play_media_cache_from_running(chart_id, &mut started.running);
             let mut audio = started.running.audio;
             audio.mark_draining();
             self.audio.draining_audio = Some(audio);
@@ -379,8 +386,6 @@ impl WinitApp {
             arrange: ArrangeOption::Normal,
             ..Default::default()
         };
-        self.invalidate_play_preload();
-        self.start_play_preload(chart_id, preload_options.clone());
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &preload_options);
         let play_config_key_mode = self.key_mode_for_chart(chart_id);
         self.boot.profile_config.activate_play_mode(play_config_key_mode);
@@ -422,6 +427,68 @@ impl WinitApp {
         ));
         self.play.last_play_snapshot = Some(snapshot);
         self.play.pending_play_start = Some(pending_play_start);
-        tracing::info!(chart_id, "practice round finished; back to configuration");
+        self.refresh_practice_preview_snapshot();
+        tracing::info!(chart_id, "practice round finished; reused resources for configuration");
+    }
+
+    /// 設定中の開始位置へ Play skin の譜面表示を移動する。
+    ///
+    /// preload が保持する変換済み譜面を参照するだけで、音源・画像・動画の
+    /// reload は行わない。beatoraja の Practice `LaneRenderer` と同じく
+    /// 設定中だけ hispeed 1.0 と秒線/BPMガイドを使う。
+    pub(super) fn refresh_practice_preview_snapshot(&mut self) {
+        let (chart_id, start_time_ms) = {
+            let Some(practice) = self.play.practice_session.as_ref() else {
+                return;
+            };
+            if practice.phase != PracticePhase::Config
+                || practice.preview_time_ms == Some(practice.property.start_time_ms)
+            {
+                return;
+            }
+            (practice.chart_id, practice.property.start_time_ms)
+        };
+        let Some(preloaded) = self
+            .play
+            .preloaded_play_session
+            .as_ref()
+            .filter(|preloaded| preloaded.chart_id == chart_id)
+        else {
+            return;
+        };
+
+        let mut preview_session = crate::screens::play_session::build_game_session(
+            Arc::clone(&preloaded.preloaded.chart),
+            &self.boot.profile_config,
+            preloaded.session_options.clone(),
+        );
+        preview_session.hispeed = 1.0;
+        let chart_now = TimeUs(i64::from(start_time_ms) * 1_000);
+        let mut snapshot = build_render_snapshot_with_target_and_bga_frames_cached(
+            &preview_session,
+            chart_now,
+            &[],
+            None,
+            None,
+            None,
+            &self.play.bga_preload.frames,
+            &preloaded.preloaded.render_snapshot_cache,
+        );
+        snapshot.practice_mode = true;
+        snapshot.practice_preview = true;
+        snapshot.skin_attempt.merge_known(preloaded.preloaded.skin_attempt);
+        apply_play_arrange_to_snapshot(&mut snapshot, &preloaded.preloaded.applied_arrange);
+        snapshot.stagefile_background = self.play.play_stagefile_loaded;
+        snapshot.stagefile_image_size = self.play.play_stagefile_size;
+        snapshot.backbmp_background = self.play.play_backbmp_loaded;
+        self.apply_profile_fast_slow_filter(&mut snapshot);
+        self.apply_play_table_text(&mut snapshot);
+        self.play.last_play_snapshot = Some(snapshot);
+        if let Some(practice) = self.play.practice_session.as_mut()
+            && practice.chart_id == chart_id
+            && practice.phase == PracticePhase::Config
+        {
+            practice.preview_time_ms = Some(start_time_ms);
+        }
     }
 }
