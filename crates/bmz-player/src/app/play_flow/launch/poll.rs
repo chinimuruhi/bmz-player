@@ -281,9 +281,7 @@ impl WinitApp {
         // Result から Retry した直後は、前回結果の score DB 更新を
         // SelectItem がまだ取り込んでいない。曲開始前退出でも必ず再取得する。
         self.reload_select_items();
-        let now = Instant::now();
-        self.select.select_scene_started_at = now;
-        self.restart_select_bar_timer_without_scroll(now);
+        self.restart_select_scene_timers();
     }
 
     /// Clears any active course session and the cached finished-course

@@ -23,9 +23,7 @@ impl WinitApp {
         self.play.last_play_snapshot = None;
         self.reload_select_items();
         self.sync_select_holds_from_pressed_controls();
-        let now = Instant::now();
-        self.select.select_scene_started_at = now;
-        self.restart_select_bar_timer_without_scroll(now);
+        self.restart_select_scene_timers();
     }
 
     pub(super) fn decide_scene_duration(&self) -> Duration {

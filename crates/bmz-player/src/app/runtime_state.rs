@@ -67,6 +67,8 @@ pub(super) struct SelectRuntimeState {
     pub(super) select_analog_last_tick_at: Option<Instant>,
     /// キーコンフィグ確定/キャンセル直後、スクラッチが止まるまでアナログスクロールを抑止する。
     pub(super) select_analog_suppress_until_idle: bool,
+    /// Select の先頭 frame が surface へ正常に描画された後だけ scene 系 timer を進める。
+    pub(super) select_scene_timer_armed: bool,
     pub(super) select_scene_started_at: Instant,
     pub(super) select_bar_started_at: Instant,
     pub(super) option_panel_started_at: Instant,

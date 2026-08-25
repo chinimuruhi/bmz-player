@@ -47,6 +47,7 @@ impl WinitApp {
         let frame_timings = self.renderer.last_frame_timings();
         let surface_status = render_status.as_ref().ok().copied();
         self.frame.record_surface_status(Instant::now(), surface_status);
+        self.arm_select_scene_timers_after_render(select_view, surface_status);
         self.log_pending_skin_render_probe(
             scene_kind,
             surface_status,

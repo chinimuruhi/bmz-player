@@ -22,12 +22,18 @@ impl WinitApp {
     }
 
     pub(super) fn select_time(&self) -> TimeUs {
+        if !self.select.select_scene_timer_armed {
+            return TimeUs::default();
+        }
         let micros =
             self.select.select_scene_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
         TimeUs(micros)
     }
 
     pub(super) fn select_bar_time(&self) -> TimeUs {
+        if !self.select.select_scene_timer_armed {
+            return TimeUs::default();
+        }
         let micros =
             self.select.select_bar_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
         TimeUs(micros)
@@ -40,7 +46,8 @@ impl WinitApp {
     }
 
     pub(super) fn select_bar_scroll_progress(&self) -> f32 {
-        if self.select.select_bar_scroll_direction == 0
+        if !self.select.select_scene_timer_armed
+            || self.select.select_bar_scroll_direction == 0
             || self.select.select_bar_scroll_duration.is_zero()
         {
             return 0.0;
@@ -94,6 +101,9 @@ impl WinitApp {
     }
 
     pub(super) fn option_panel_time(&self) -> TimeUs {
+        if !self.select.select_scene_timer_armed {
+            return TimeUs::default();
+        }
         let micros =
             self.select.option_panel_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
         TimeUs(micros)

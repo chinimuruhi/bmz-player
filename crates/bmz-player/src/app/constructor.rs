@@ -234,6 +234,7 @@ impl WinitApp {
                 select_analog_scroll_buffer: 0,
                 select_analog_last_tick_at: None,
                 select_analog_suppress_until_idle: false,
+                select_scene_timer_armed: false,
                 select_scene_started_at: now,
                 select_bar_started_at: now,
                 option_panel_started_at: now,

@@ -131,9 +131,7 @@ impl WinitApp {
             // out before the first chart actually began.
             self.clear_active_course_state();
             self.select.autoplay_folder = None;
-            let now = Instant::now();
-            self.select.select_scene_started_at = now;
-            self.restart_select_bar_timer_without_scroll(now);
+            self.restart_select_scene_timers();
         } else {
             let practice = decide.launch.into_practice_session();
             let entering_practice = practice.is_some();

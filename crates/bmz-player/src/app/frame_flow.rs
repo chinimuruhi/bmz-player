@@ -44,6 +44,27 @@ fn practice_panel_context(
 impl WinitApp {
     pub(super) fn restart_select_scene_timers(&mut self) {
         let now = Instant::now();
+        self.select.select_scene_timer_armed = false;
+        self.select.select_scene_started_at = now;
+        self.restart_select_bar_timer_without_scroll(now);
+        self.select.option_panel_started_at = now;
+        self.select.option_panel_off_started_at = [None; 6];
+    }
+
+    pub(super) fn arm_select_scene_timers_after_render(
+        &mut self,
+        select_view: bool,
+        render_status: Option<RenderSurfaceStatus>,
+    ) {
+        if !should_arm_select_scene_timers(
+            select_view,
+            self.select.select_scene_timer_armed,
+            render_status,
+        ) {
+            return;
+        }
+        let now = Instant::now();
+        self.select.select_scene_timer_armed = true;
         self.select.select_scene_started_at = now;
         self.restart_select_bar_timer_without_scroll(now);
         self.select.option_panel_started_at = now;
@@ -873,5 +894,31 @@ impl WinitApp {
             tracing::info!(reason, "saved app config on exit");
         }
         self.integrations.exit_configs_saved = true;
+    }
+}
+
+fn should_arm_select_scene_timers(
+    select_view: bool,
+    timer_armed: bool,
+    render_status: Option<RenderSurfaceStatus>,
+) -> bool {
+    select_view && !timer_armed && render_status == Some(RenderSurfaceStatus::Rendered)
+}
+
+#[cfg(test)]
+mod select_scene_timer_tests {
+    use super::{RenderSurfaceStatus, should_arm_select_scene_timers};
+
+    #[test]
+    fn select_timer_arms_only_after_first_rendered_surface() {
+        assert!(!should_arm_select_scene_timers(
+            true,
+            false,
+            Some(RenderSurfaceStatus::Reconfigured)
+        ));
+        assert!(!should_arm_select_scene_timers(true, false, Some(RenderSurfaceStatus::TimedOut)));
+        assert!(should_arm_select_scene_timers(true, false, Some(RenderSurfaceStatus::Rendered)));
+        assert!(!should_arm_select_scene_timers(true, true, Some(RenderSurfaceStatus::Rendered)));
+        assert!(!should_arm_select_scene_timers(false, false, Some(RenderSurfaceStatus::Rendered)));
     }
 }
