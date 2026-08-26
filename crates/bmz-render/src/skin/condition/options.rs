@@ -253,6 +253,7 @@ pub(in crate::skin) fn test_skin_op(
         271 => state.lanecover_enabled,
         272 => state.lift_enabled,
         273 => state.hidden_enabled,
+        400 => state.constant_enabled,
         // OPTION_1P_0_9 .. OPTION_1P_100. beatoraja evaluates these only on
         // BMSPlayer and compares the displayed gauge value with its configured maximum.
         230..=240 => gauge_range_option_matches(op, state),

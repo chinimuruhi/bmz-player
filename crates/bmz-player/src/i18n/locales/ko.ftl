@@ -355,6 +355,7 @@ profile-play-ln-mode = LN 모드
 profile-play-gauge = 게이지
 profile-play-gauge-auto-shift = 게이지 자동 전환
 profile-play-gas-floor = GAS 최소 게이지
+profile-play-guide-se = 판정 가이드 SE 재생
 profile-play-random = 랜덤
 profile-play-random-2p = 랜덤 2P
 profile-play-dp-option = DP 옵션
@@ -378,6 +379,9 @@ profile-display-step-range = HS 변경 단위 범위: 0.05..=1.00
 profile-display-lift-enabled = LIFT 사용
 profile-display-auto-adjust-hispeed = 레인 커버 변경 시 현재 BPM에 맞춰 HS 자동 조정
 profile-display-green-number = 목표 그린 넘버
+profile-display-note-duration = 노트 표시 시간 (ms)
+profile-display-constant = CONSTANT 사용
+profile-display-constant-fade = CONSTANT 페이드 시간 (ms)
 profile-select-title = 곡 선택
 profile-select-difficulty-table-level-display = 난이도표 폴더 레벨 표시
 profile-select-difficulty-table-level-display-help = 난이도표의 레벨 폴더 안에 표시할 레벨을 선택합니다.

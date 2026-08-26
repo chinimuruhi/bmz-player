@@ -53,6 +53,8 @@ impl WinitApp {
                     result_settled_at,
                 );
                 active_play.running.result_graph.record_frame(&frame);
+                let guide_se_enabled = active_play.running.session.guide_se_enabled;
+                let guide_judgements = frame.judgements.clone();
                 let fallback_mine_hits =
                     frame.mine_hits.iter().filter(|hit| hit.sound.is_none()).count();
                 let mut snapshot = frame.render_snapshot;
@@ -79,6 +81,7 @@ impl WinitApp {
                     );
                 }
                 self.play.last_play_snapshot = Some(snapshot);
+                self.play_guide_se_for_judgements(guide_se_enabled, &guide_judgements);
                 self.play_landmine_se(fallback_mine_hits);
                 if result_settled {
                     self.finalize_settled_play_result_once(result_settled_at);
@@ -90,6 +93,8 @@ impl WinitApp {
                     frame.state,
                 );
                 active_play.running.result_graph.record_frame(&frame);
+                let guide_se_enabled = active_play.running.session.guide_se_enabled;
+                let guide_judgements = frame.judgements.clone();
                 if self
                     .play
                     .practice_session
@@ -117,6 +122,7 @@ impl WinitApp {
                     self.apply_profile_fast_slow_filter(&mut snapshot);
                     self.apply_play_table_text(&mut snapshot);
                     self.play.last_play_snapshot = Some(snapshot);
+                    self.play_guide_se_for_judgements(guide_se_enabled, &guide_judgements);
                     if should_play_retire_sound {
                         self.play_system_sound(crate::system_sound::SoundType::PlayStop);
                     }
@@ -202,6 +208,7 @@ impl WinitApp {
                 self.apply_profile_fast_slow_filter(&mut snapshot);
                 self.apply_play_table_text(&mut snapshot);
                 self.play.last_play_snapshot = Some(snapshot);
+                self.play_guide_se_for_judgements(guide_se_enabled, &guide_judgements);
                 if should_play_retire_sound {
                     self.play_system_sound(crate::system_sound::SoundType::PlayStop);
                 }

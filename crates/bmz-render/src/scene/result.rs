@@ -190,7 +190,8 @@ pub struct ResultSnapshot {
     pub gauge_type: i32,
     pub total_notes: u32,
     pub duration_ms: i32,
-    /// NUMBER_DURATION/NUMBER_DURATION_GREEN に渡す緑数字 ms。
+    /// NUMBER_DURATION に渡す設定済みノーツ表示時間 ms。
+    /// NUMBER_DURATION_GREEN は描画state構築時にこの値から導出する。
     pub note_display_duration_ms: Option<i32>,
     pub initial_bpm: f32,
     pub min_bpm: f32,

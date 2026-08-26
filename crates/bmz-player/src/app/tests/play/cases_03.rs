@@ -130,7 +130,7 @@ fn egui_lane_profile_cover_change_keeps_runtime_nhs_hispeed() {
     );
     session.hispeed = 3.5;
 
-    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false));
+    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false, false,));
     assert!((session.hispeed - 3.5).abs() < f32::EPSILON);
     assert!((session.lane_cover - 0.25).abs() < f32::EPSILON);
 }
@@ -153,11 +153,30 @@ fn egui_lane_profile_changes_do_not_modify_no_speed_session() {
         },
     );
 
-    assert!(!apply_profile_lane_settings_to_session(&mut session, &before, &edited, true));
+    assert!(!apply_profile_lane_settings_to_session(&mut session, &before, &edited, true, false,));
     assert_eq!(session.hispeed, 1.0);
     assert_eq!(session.hispeed_mode, HispeedMode::Normal);
     assert_eq!(session.lane_cover, 0.0);
     assert_eq!(session.lift, 0.0);
+}
+
+#[test]
+fn egui_lane_profile_cannot_enable_constant_during_practice() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let before = profile.lane.clone();
+    let mut edited = profile.lane.clone();
+    edited.constant_enabled = true;
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(app_test_chart()),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions {
+            session_mode: SessionMode::Practice,
+            ..Default::default()
+        },
+    );
+
+    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false, true,));
+    assert!(!session.constant_enabled);
 }
 
 #[test]
@@ -176,7 +195,7 @@ fn egui_lane_profile_target_change_recalculates_fhs_hispeed() {
         },
     );
 
-    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false));
+    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false, false,));
     assert_eq!(session.hispeed_mode, HispeedMode::Floating);
     assert_eq!(session.target_green_number, 320);
     assert!((session.hispeed - 3.75).abs() < 0.000_1, "hispeed={}", session.hispeed);

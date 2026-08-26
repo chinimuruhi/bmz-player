@@ -356,6 +356,7 @@ profile-play-ln-mode = LN 模式
 profile-play-gauge = 血條
 profile-play-gauge-auto-shift = 血條自動切換
 profile-play-gas-floor = GAS 最低血條
+profile-play-guide-se = 播放判定引導音效
 profile-play-random = 隨機
 profile-play-random-2p = 隨機 2P
 profile-play-dp-option = DP 選項
@@ -379,6 +380,9 @@ profile-display-step-range = HS 調整步長範圍：0.05..=1.00
 profile-display-lift-enabled = 啟用 LIFT
 profile-display-auto-adjust-hispeed = 軌道遮罩變更時依目前 BPM 自動調整 HS
 profile-display-green-number = 目標綠數字
+profile-display-note-duration = 音符顯示時間 (ms)
+profile-display-constant = 啟用 CONSTANT
+profile-display-constant-fade = CONSTANT 淡出時間 (ms)
 profile-select-title = 選曲
 profile-select-difficulty-table-level-display = 難度表資料夾等級顯示
 profile-select-difficulty-table-level-display-help = 選擇在難度表等級資料夾內顯示的等級。

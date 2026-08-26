@@ -38,6 +38,15 @@ pub const RIAN_IR_RANKING_LIMIT: u32 = 100;
 /// also allows the public origin. Both forms must resolve to the web app's
 /// `/ranking?sha256=...` route rather than an API endpoint.
 pub fn chart_page_url(base_url: &str, sha256: &str) -> Result<String> {
+    public_page_url(base_url, "ranking", "sha256", sha256)
+}
+
+/// Build the public rianIR ranking page for a course.
+pub fn course_page_url(base_url: &str, course_hash: &str) -> Result<String> {
+    public_page_url(base_url, "ranking/course_ranking", "course_sha256", course_hash)
+}
+
+fn public_page_url(base_url: &str, route: &str, query: &str, value: &str) -> Result<String> {
     let mut base = Url::parse(base_url).context("invalid rianIR public URL")?;
     base.set_query(None);
     base.set_fragment(None);
@@ -58,8 +67,8 @@ pub fn chart_page_url(base_url: &str, sha256: &str) -> Result<String> {
     }
     base.set_path(&path);
 
-    let mut page = base.join("ranking")?;
-    page.query_pairs_mut().append_pair("sha256", sha256);
+    let mut page = base.join(route)?;
+    page.query_pairs_mut().append_pair(query, value);
     Ok(page.to_string())
 }
 
@@ -754,6 +763,20 @@ mod tests {
         assert_eq!(
             chart_page_url("https://example.test/rianir/api/", &sha256).unwrap(),
             format!("https://example.test/rianir/ranking?sha256={sha256}")
+        );
+    }
+
+    #[test]
+    fn course_page_url_uses_rian_course_ranking_route() {
+        let course_sha256 = "course-hash";
+
+        assert_eq!(
+            course_page_url("https://rianir.link/api/", course_sha256).unwrap(),
+            "https://rianir.link/ranking/course_ranking?course_sha256=course-hash"
+        );
+        assert_eq!(
+            course_page_url("https://example.test/rianir/api/", course_sha256).unwrap(),
+            "https://example.test/rianir/ranking/course_ranking?course_sha256=course-hash"
         );
     }
 

@@ -25,13 +25,26 @@ pub const DEFAULT_JUDGE_WINDOW: JudgeWindow = JudgeWindow {
 };
 
 pub const TARGET_GREEN_NUMBER_MIN: u32 = 1;
-pub const TARGET_GREEN_NUMBER_MAX: u32 = 999;
+/// beatoraja duration upper bound (10,000ms) expressed as green number.
+pub const TARGET_GREEN_NUMBER_MAX: u32 = 6_000;
+pub const NOTE_DISPLAY_DURATION_MIN_MS: u32 = 1;
+pub const NOTE_DISPLAY_DURATION_MAX_MS: u32 = 10_000;
+pub const CONSTANT_FADE_MIN_MS: i32 = -1_000;
+pub const CONSTANT_FADE_MAX_MS: i32 = 1_000;
 /// beatoraja `PlayConfig.HISPEED_MIN` / `HISPEED_MAX` compatible range.
 pub const HISPEED_MIN: f32 = 0.01;
 pub const HISPEED_MAX: f32 = 20.0;
 
 pub fn clamp_hispeed(hispeed: f32) -> f32 {
     hispeed.clamp(HISPEED_MIN, HISPEED_MAX)
+}
+
+pub const fn duration_ms_from_green_number(green_number: u32) -> u32 {
+    green_number.saturating_mul(5).saturating_add(1) / 3
+}
+
+pub const fn green_number_from_duration_ms(duration_ms: u32) -> u32 {
+    duration_ms.saturating_mul(3).saturating_add(2) / 5
 }
 
 pub fn play_offsets_from_profile(profile: &ProfileConfig) -> PlayOffsets {

@@ -125,7 +125,7 @@ pub fn open_browser_urls(urls: &[String]) -> Result<usize> {
     Ok(urls.len())
 }
 
-fn validated_browser_urls<'a>(urls: impl IntoIterator<Item = &'a String>) -> Vec<String> {
+pub fn validated_browser_urls<'a>(urls: impl IntoIterator<Item = &'a String>) -> Vec<String> {
     let mut seen = HashSet::new();
     urls.into_iter()
         .filter_map(|value| {
@@ -137,6 +137,19 @@ fn validated_browser_urls<'a>(urls: impl IntoIterator<Item = &'a String>) -> Vec
             Some(value.to_string())
         })
         .collect()
+}
+
+#[cfg(test)]
+mod public_url_tests {
+    use super::*;
+
+    #[test]
+    fn browser_urls_reject_non_http_and_deduplicate() {
+        let https = "https://example.test/song".to_string();
+        let duplicate = https.clone();
+        let file = "file:///tmp/song".to_string();
+        assert_eq!(validated_browser_urls([&https, &duplicate, &file]), vec![https]);
+    }
 }
 
 pub async fn download_chart(request: ChartDownloadRequest) -> Result<ChartDownloadResult> {

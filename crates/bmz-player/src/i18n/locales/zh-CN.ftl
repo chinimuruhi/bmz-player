@@ -355,6 +355,7 @@ profile-play-ln-mode = LN 模式
 profile-play-gauge = 血条
 profile-play-gauge-auto-shift = 血条自动切换
 profile-play-gas-floor = GAS 最低血条
+profile-play-guide-se = 播放判定引导音效
 profile-play-random = 随机
 profile-play-random-2p = 随机 2P
 profile-play-dp-option = DP 选项
@@ -378,6 +379,9 @@ profile-display-step-range = HS 调整步长范围：0.05..=1.00
 profile-display-lift-enabled = 启用 LIFT
 profile-display-auto-adjust-hispeed = 轨道遮罩变化时按当前 BPM 自动调整 HS
 profile-display-green-number = 目标绿数字
+profile-display-note-duration = 音符显示时间 (ms)
+profile-display-constant = 启用 CONSTANT
+profile-display-constant-fade = CONSTANT 淡出时间 (ms)
 profile-select-title = 选曲
 profile-select-difficulty-table-level-display = 难度表文件夹等级显示
 profile-select-difficulty-table-level-display-help = 选择在难度表等级文件夹内显示的等级。

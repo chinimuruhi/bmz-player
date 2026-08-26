@@ -362,7 +362,8 @@ macro_rules! skin_document_render_select_render_methods {
             let mouse_position = snapshot.mouse_position.map(|(x, y)| {
                 (x.clamp(0.0, 1.0) * self.w as f32, (1.0 - y.clamp(0.0, 1.0)) * self.h as f32)
             });
-            let duration_green_ms = snapshot.note_display_duration_ms;
+            let duration_ms = snapshot.note_display_duration_ms;
+            let duration_green_ms = duration_ms.map(duration_to_green_number_ms);
             let elapsed_ms =
                 (snapshot.time.0 / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
             let start_input_ms = dynamic_timers.as_deref_mut().map_or_else(
@@ -418,6 +419,8 @@ macro_rules! skin_document_render_select_render_methods {
                 assist_mine_mode: snapshot.assist_mine_mode,
                 assist_scroll_mode: snapshot.assist_scroll_mode,
                 assist_long_note_mode: snapshot.assist_long_note_mode,
+                guide_se_enabled: snapshot.guide_se_enabled,
+                constant_enabled: snapshot.constant_enabled,
                 select_session_mode_index: select_session_mode_index(&snapshot.assist),
                 select_mode_index: select_mode_index(&snapshot.select_mode),
                 select_difficulty_filter_index: snapshot.select_difficulty_filter as usize,
@@ -431,10 +434,7 @@ macro_rules! skin_document_render_select_render_methods {
                     &snapshot.judge_algorithm,
                 ),
                 hispeed: snapshot.hispeed,
-                total_duration_ms: duration_green_ms
-                    .map(green_duration_to_duration)
-                    .unwrap_or(0)
-                    .min(i32::MAX as i64) as i32,
+                total_duration_ms: duration_ms.unwrap_or(0),
                 duration_green_ms,
                 select_scroll_progress: select_scroll_progress(snapshot),
                 select_master_volume: snapshot.master_volume,

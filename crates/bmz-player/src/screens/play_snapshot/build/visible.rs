@@ -70,6 +70,9 @@ fn populate_visible_notes(
             note_lower_time,
             tick_upper_bound,
         ) {
+            let Some(alpha) = constant_object_alpha(session, lane_render_now, note.time) else {
+                continue;
+            };
             let processed_judge = session.judge.judged_notes.get(&note.id).copied();
             let falling_pms_poor = snapshot.key_mode == KeyMode::K9
                 && note.kind == NoteKind::Tap
@@ -86,6 +89,7 @@ fn populate_visible_notes(
                             lane,
                             time: note.time,
                             y,
+                            alpha,
                             damage: note.damage.unwrap_or(0.0),
                         });
                     }
@@ -104,6 +108,7 @@ fn populate_visible_notes(
                             lane,
                             time: note.time,
                             y,
+                            alpha,
                             kind: NoteVisualKind::Tap,
                             processed_judge,
                         });
@@ -146,11 +151,22 @@ fn populate_visible_guide_lines(
 ) {
     let tick_range = tick_upper_bound.map(|upper| (cursor_tick, upper));
     for bar in visible_bar_lines(&session.chart.bar_lines, scroll_time, tick_range) {
+        let Some(alpha) = constant_object_alpha(session, scroll_time, bar.time) else {
+            continue;
+        };
         if let Some(y) = scroll.note_y(bar.time, cursor_tick) {
-            snapshot.bar_lines.push(VisibleBarLine { time: bar.time, y, label: String::new() });
+            snapshot.bar_lines.push(VisibleBarLine {
+                time: bar.time,
+                y,
+                alpha,
+                label: String::new(),
+            });
         }
     }
     for event in visible_timing_events(&session.chart.timing_events, scroll_time, tick_range) {
+        let Some(alpha) = constant_object_alpha(session, scroll_time, event.time) else {
+            continue;
+        };
         let Some(y) = scroll.note_y(event.time, cursor_tick) else {
             continue;
         };
@@ -158,7 +174,7 @@ fn populate_visible_guide_lines(
             TimingEventKind::BpmChange { bpm } => format!("BPM{}", bpm as i32),
             TimingEventKind::Stop { duration_us } => format!("STOP {}ms", duration_us / 1_000),
         };
-        let line = VisibleBarLine { time: event.time, y, label };
+        let line = VisibleBarLine { time: event.time, y, alpha, label };
         match event.kind {
             TimingEventKind::BpmChange { .. } => snapshot.bpm_lines.push(line),
             TimingEventKind::Stop { .. } => snapshot.stop_lines.push(line),
@@ -170,10 +186,14 @@ fn populate_visible_guide_lines(
         visible_time_line_seconds(&session.timing_map, end_second, scroll_time, tick_upper_bound)
     {
         let time = TimeUs(second.saturating_mul(1_000_000));
+        let Some(alpha) = constant_object_alpha(session, scroll_time, time) else {
+            continue;
+        };
         if let Some(y) = scroll.note_y(time, cursor_tick) {
             snapshot.time_lines.push(VisibleBarLine {
                 time,
                 y,
+                alpha,
                 label: format!("{:.1}s", time.0 as f64 / 1_000_000.0),
             });
         }
@@ -218,6 +238,9 @@ fn populate_visible_long_notes(
         scroll_time,
         tick_range,
     ) {
+        let Some(alpha) = constant_object_alpha(session, scroll_time, long.start_time) else {
+            continue;
+        };
         let head = scroll.note_progress(long.start_time, cursor_tick);
         let tail = scroll.note_progress(long.end_time, cursor_tick);
         if tail < 0.0 || head > 1.0 {
@@ -229,8 +252,39 @@ fn populate_visible_long_notes(
             mode,
             head_y: head.clamp(0.0, 1.0),
             tail_y: tail.clamp(0.0, 1.0),
+            alpha,
             body_state: long_body_state(session, chart_now, pair_index, long, mode),
         });
+    }
+}
+
+pub(super) fn constant_object_alpha(
+    session: &GameSession,
+    render_now: TimeUs,
+    object_time: TimeUs,
+) -> Option<f32> {
+    if !session.constant_enabled {
+        return Some(1.0);
+    }
+    let target = render_now.0.saturating_add(
+        i64::from(session.configured_note_display_duration_ms).saturating_mul(1_000),
+    );
+    let difference = object_time.0.saturating_sub(target);
+    let fade_us = i64::from(session.constant_fade_ms).saturating_mul(1_000);
+    if fade_us >= 0 {
+        if difference < 0 {
+            Some(1.0)
+        } else if fade_us > 0 && difference < fade_us {
+            Some(1.0 - difference as f32 / fade_us as f32)
+        } else {
+            None
+        }
+    } else if difference >= 0 {
+        None
+    } else if difference > fade_us {
+        Some((-difference) as f32 / (-fade_us) as f32)
+    } else {
+        Some(1.0)
     }
 }
 
@@ -256,5 +310,37 @@ fn long_body_state(
         if timer.inclease { LongBodyState::HcnActive } else { LongBodyState::HcnDamage }
     } else {
         LongBodyState::Inactive
+    }
+}
+
+#[cfg(test)]
+mod constant_tests {
+    use std::sync::Arc;
+
+    use crate::config::profile_config::ProfileConfig;
+    use crate::screens::play_session::{PlaySessionOptions, build_game_session};
+
+    use super::*;
+
+    #[test]
+    fn constant_window_supports_positive_and_negative_fades() {
+        let profile = ProfileConfig::new_default("default", "Default", 1);
+        let mut session = build_game_session(
+            Arc::new(crate::screens::play_snapshot::tests::chart()),
+            &profile,
+            PlaySessionOptions::default(),
+        );
+        session.constant_enabled = true;
+        session.configured_note_display_duration_ms = 500;
+
+        session.constant_fade_ms = 100;
+        assert_eq!(constant_object_alpha(&session, TimeUs(0), TimeUs(499_000)), Some(1.0));
+        assert_eq!(constant_object_alpha(&session, TimeUs(0), TimeUs(550_000)), Some(0.5));
+        assert_eq!(constant_object_alpha(&session, TimeUs(0), TimeUs(600_000)), None);
+
+        session.constant_fade_ms = -100;
+        assert_eq!(constant_object_alpha(&session, TimeUs(0), TimeUs(399_000)), Some(1.0));
+        assert_eq!(constant_object_alpha(&session, TimeUs(0), TimeUs(450_000)), Some(0.5));
+        assert_eq!(constant_object_alpha(&session, TimeUs(0), TimeUs(500_000)), None);
     }
 }

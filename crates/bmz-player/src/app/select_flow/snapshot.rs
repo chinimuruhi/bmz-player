@@ -94,7 +94,7 @@ impl WinitApp {
             selected_play_mode.map(|mode| self.boot.profile_config.play_mode_config(mode));
         let note_display_duration_ms = mode_config
             .as_ref()
-            .map(|config| config.target_green_number.max(1).min(i32::MAX as u32) as i32);
+            .map(|config| config.note_display_duration_ms.max(1).min(i32::MAX as u32) as i32);
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let ln_score_policy = match selected {
             Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| {
@@ -290,6 +290,8 @@ impl WinitApp {
             assist_mine_mode: self.boot.profile_config.play.assist.mine_mode as i64,
             assist_scroll_mode: self.boot.profile_config.play.assist.scroll_mode as i64,
             assist_long_note_mode: self.boot.profile_config.play.assist.long_note_mode as i64,
+            guide_se_enabled: self.boot.profile_config.play.guide_se,
+            constant_enabled: mode_config.as_ref().is_some_and(|config| config.constant_enabled),
             select_mode: self.select.select_mode_filter.as_str().to_string(),
             select_difficulty_filter: self.select.select_difficulty_filter.difficulty_code(),
             random_mix_options: {
@@ -446,7 +448,7 @@ impl WinitApp {
     pub(super) fn select_note_display_duration_ms_for_skin(profile: &ProfileConfig) -> i32 {
         profile
             .play_mode_config(profile.active_play_mode)
-            .target_green_number
+            .note_display_duration_ms
             .max(1)
             .min(i32::MAX as u32) as i32
     }

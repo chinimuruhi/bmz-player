@@ -17,6 +17,46 @@ fn select_settings_screen_volume_numbers_match_beatoraja_refs() {
 }
 
 #[test]
+fn select_option_event_indices_expose_guide_assists_and_constant() {
+    let state = SkinDrawState {
+        select_screen: true,
+        select_difficulty_filter_index: 4,
+        guide_se_enabled: true,
+        assist_extra_note_depth: 3,
+        assist_mine_mode: 4,
+        assist_scroll_mode: 2,
+        assist_long_note_mode: 5,
+        constant_enabled: true,
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_event_index(10, &state), 4);
+    assert_eq!(skin_state_event_index(309, &state), 4);
+    assert_eq!(skin_state_event_index(343, &state), 1);
+    assert_eq!(skin_state_event_index(350, &state), 3);
+    assert_eq!(skin_state_event_index(351, &state), 4);
+    assert_eq!(skin_state_event_index(352, &state), 2);
+    assert_eq!(skin_state_event_index(353, &state), 5);
+    assert_eq!(skin_state_event_index(400, &state), 1);
+    assert_eq!(skin_image_index_number(343, &state), Some(1));
+    assert_eq!(skin_image_index_number(400, &state), Some(1));
+    assert!(test_skin_op(400, &[], &state));
+}
+
+#[test]
+fn select_duration_ref_preserves_exact_configured_milliseconds() {
+    let state = SkinDrawState {
+        select_screen: true,
+        total_duration_ms: 497,
+        duration_green_ms: Some(duration_to_green_number_ms(497)),
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_number(312, &state), Some(497));
+    assert_eq!(skin_state_number(313, &state), Some(298));
+}
+
+#[test]
 fn select_rank_and_judge_ops_are_hidden_in_settings() {
     let state = SkinDrawState {
         select_screen: true,

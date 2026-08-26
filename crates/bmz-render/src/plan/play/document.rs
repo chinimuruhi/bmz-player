@@ -51,6 +51,7 @@ fn push_document_long_notes(
     skin_state: &crate::skin::SkinDrawState,
 ) {
     for body in &snapshot.visible_long_notes {
+        let start = commands.len();
         if let Some(rect) =
             skin.note_body_rect(body.lane, snapshot.key_mode, body.head_y, body.tail_y, skin_state)
             && let Some(item) = skin.document_long_body_item(
@@ -92,6 +93,7 @@ fn push_document_long_notes(
         {
             append_document_item(commands, skin, skin_state, item);
         }
+        apply_draw_command_alpha(&mut commands[start..], body.alpha);
     }
 }
 
@@ -105,6 +107,7 @@ fn push_document_lane(
     let lane_index = lane.index();
     let note_height = skin.document_note_height(lane, snapshot.key_mode).unwrap_or(NOTE_HEIGHT);
     for note in &snapshot.visible_notes[lane_index] {
+        let start = commands.len();
         let Some(mut rect) =
             document_note_rect(snapshot, skin, skin_state, lane, note.y, note_height)
         else {
@@ -133,9 +136,11 @@ fn push_document_lane(
         } else if snapshot.mark_processed_note && note.processed_judge.is_some() {
             push_processed_note_fallback(commands, rect);
         }
+        apply_draw_command_alpha(&mut commands[start..], note.alpha);
     }
 
     for mine in &snapshot.visible_mines[lane_index] {
+        let start = commands.len();
         let Some(rect) =
             skin.note_rect_for_progress(lane, snapshot.key_mode, mine.y, note_height, skin_state)
         else {
@@ -161,6 +166,7 @@ fn push_document_lane(
                 },
             );
         }
+        apply_draw_command_alpha(&mut commands[start..], mine.alpha);
     }
 }
 

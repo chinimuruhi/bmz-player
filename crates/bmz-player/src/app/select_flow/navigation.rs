@@ -1,5 +1,15 @@
 use super::*;
 
+pub(in crate::app) fn select_explorer_path(item: &SelectItem) -> Option<PathBuf> {
+    match item {
+        SelectItem::Chart(row) => row.chart.as_ref().map(|chart| PathBuf::from(&chart.folder_path)),
+        SelectItem::Folder { path, kind: bmz_render::scene::SelectRowKind::Folder, .. } => {
+            Some(PathBuf::from(path))
+        }
+        _ => None,
+    }
+}
+
 impl WinitApp {
     pub(super) fn move_selection(&mut self, select_move: SelectMove) {
         self.move_selection_with_duration(select_move, self.select_scroll_duration_low());
@@ -90,6 +100,14 @@ impl WinitApp {
         }
         self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
         tracing::info!("opened egui advanced settings from select");
+    }
+
+    pub(super) fn open_skin_settings_from_select(&mut self) {
+        if let Some(egui) = self.ui.egui.as_mut() {
+            egui.open_skin_settings();
+        }
+        self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
+        tracing::info!("opened egui skin settings from select");
     }
 
     pub(super) fn open_key_config_from_select(&mut self) {
@@ -227,15 +245,16 @@ impl WinitApp {
 
     pub(super) fn open_selected_chart_folder(&mut self) {
         let text = Localizer::new(self.boot.profile_config.ui.locale());
-        let Some(chart) = self.selected_chart_row().and_then(|row| row.chart.clone()) else {
+        let Some(path) =
+            self.select.select_items.get(self.select.selected_index).and_then(select_explorer_path)
+        else {
             return;
         };
-        let folder = PathBuf::from(&chart.folder_path);
-        if let Err(error) = open_file_browser_path(&folder) {
-            tracing::warn!(path = %folder.display(), %error, "failed to open selected chart folder");
+        if let Err(error) = open_file_browser_path(&path) {
+            tracing::warn!(path = %path.display(), %error, "failed to open selected chart folder");
             self.show_left_overlay_toast(text.text("toast-chart-folder-open-failed"));
         } else {
-            tracing::info!(path = %folder.display(), "opened selected chart folder");
+            tracing::info!(path = %path.display(), "opened selected chart folder");
         }
     }
 
@@ -274,29 +293,48 @@ impl WinitApp {
 
     pub(super) fn open_primary_ir_for_selected(&mut self) {
         let text = Localizer::new(self.boot.profile_config.ui.locale());
-        let Some(row) = self.selected_chart_row() else {
-            return;
-        };
-        let Some(sha256) = row.score_sha256() else {
-            self.show_left_overlay_toast(text.text("toast-ir-chart-hash-missing"));
-            return;
-        };
         let Some(provider) = primary_ir_provider_for_profile(&self.boot.profile_config) else {
             self.show_left_overlay_toast(text.text("toast-primary-ir-not-configured"));
             return;
         };
-        let sha256_hex = hash_to_hex(&sha256);
-        let url = if crate::ir::rian_ir::is_rian_ir_config(provider) {
-            match crate::ir::rian_ir::chart_page_url(&provider.base_url, &sha256_hex) {
-                Ok(url) => url,
-                Err(error) => {
-                    tracing::warn!(%error, "failed to build primary rianIR chart page URL");
-                    self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
+        let url = match self.select.select_items.get(self.select.selected_index) {
+            Some(SelectItem::Chart(row)) => {
+                let Some(sha256) = row.score_sha256() else {
+                    self.show_left_overlay_toast(text.text("toast-ir-chart-hash-missing"));
                     return;
+                };
+                let sha256_hex = hash_to_hex(&sha256);
+                if crate::ir::rian_ir::is_rian_ir_config(provider) {
+                    crate::ir::rian_ir::chart_page_url(&provider.base_url, &sha256_hex)
+                } else {
+                    Ok(format!("{}/charts/{sha256_hex}", provider.base_url.trim_end_matches('/')))
                 }
             }
-        } else {
-            format!("{}/charts/{sha256_hex}", provider.base_url.trim_end_matches('/'))
+            Some(SelectItem::Course(row)) => {
+                let hash = if crate::ir::rian_ir::is_rian_ir_config(provider) {
+                    row.rian_course_hash_v1.as_deref()
+                } else {
+                    row.course_hash.as_deref()
+                };
+                let Some(hash) = hash else {
+                    self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
+                    return;
+                };
+                if crate::ir::rian_ir::is_rian_ir_config(provider) {
+                    crate::ir::rian_ir::course_page_url(&provider.base_url, hash)
+                } else {
+                    Ok(format!("{}/courses/{hash}", provider.base_url.trim_end_matches('/')))
+                }
+            }
+            _ => return,
+        };
+        let url = match url {
+            Ok(url) => url,
+            Err(error) => {
+                tracing::warn!(%error, "failed to build primary IR page URL");
+                self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
+                return;
+            }
         };
         match open_external_url(&url) {
             Ok(()) => {
@@ -306,6 +344,32 @@ impl WinitApp {
             Err(error) => {
                 tracing::warn!(%error, %url, "failed to open primary IR chart page");
                 self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
+            }
+        }
+    }
+
+    pub(super) fn open_selected_chart_download_sites(&mut self) {
+        let text = Localizer::new(self.boot.profile_config.ui.locale());
+        let Some(row) = self.selected_chart_row() else {
+            return;
+        };
+        let urls = crate::song_download::validated_browser_urls([
+            &row.download_metadata.url,
+            &row.download_metadata.append_url,
+        ]);
+        if urls.is_empty() {
+            self.show_left_overlay_toast(text.text("toast-chart-source-unavailable"));
+            return;
+        }
+        match open_browser_urls(&urls) {
+            Ok(count) => {
+                let mut args = FluentArgs::new();
+                args.set("count", count as i64);
+                self.show_left_overlay_toast(text.format("toast-chart-sources-opened", &args));
+            }
+            Err(error) => {
+                tracing::error!(%error, "failed to open selected chart URLs");
+                self.show_left_overlay_toast(text.text("toast-chart-sources-open-failed"));
             }
         }
     }

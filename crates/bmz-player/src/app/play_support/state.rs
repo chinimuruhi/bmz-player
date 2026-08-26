@@ -17,6 +17,9 @@ pub(in crate::app) fn profile_lane_settings_changed(
         || before.lift_enabled != after.lift_enabled
         || before.hispeed_auto_adjust != after.hispeed_auto_adjust
         || before.target_green_number != after.target_green_number
+        || before.note_display_duration_ms != after.note_display_duration_ms
+        || before.constant_enabled != after.constant_enabled
+        || before.constant_fade_ms != after.constant_fade_ms
 }
 
 pub(in crate::app) fn apply_profile_lane_settings_to_session(
@@ -24,6 +27,7 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     before: &LaneViewConfig,
     profile: &LaneViewConfig,
     speed_locked: bool,
+    practice_mode: bool,
 ) -> bool {
     if !profile_lane_settings_changed(before, profile) {
         return false;
@@ -39,6 +43,10 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     let lift_enabled_changed = before.lift_enabled != profile.lift_enabled;
     let auto_adjust_changed = before.hispeed_auto_adjust != profile.hispeed_auto_adjust;
     let target_green_changed = before.target_green_number != profile.target_green_number;
+    let note_display_duration_changed =
+        before.note_display_duration_ms != profile.note_display_duration_ms;
+    let constant_changed = before.constant_enabled != profile.constant_enabled;
+    let constant_fade_changed = before.constant_fade_ms != profile.constant_fade_ms;
     let cover_changed = sudden_changed || lift_changed || lift_enabled_changed;
 
     if cover_changed {
@@ -73,6 +81,21 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
 
     if target_green_changed {
         session.target_green_number = profile.target_green_number.max(1);
+    }
+    if note_display_duration_changed {
+        session.configured_note_display_duration_ms = profile.note_display_duration_ms.clamp(
+            crate::config::play::NOTE_DISPLAY_DURATION_MIN_MS,
+            crate::config::play::NOTE_DISPLAY_DURATION_MAX_MS,
+        );
+    }
+    if constant_changed {
+        session.constant_enabled = profile.constant_enabled && !practice_mode;
+    }
+    if constant_fade_changed {
+        session.constant_fade_ms = profile.constant_fade_ms.clamp(
+            crate::config::play::CONSTANT_FADE_MIN_MS,
+            crate::config::play::CONSTANT_FADE_MAX_MS,
+        );
     }
 
     let direct_hispeed_change = hispeed_changed;
@@ -276,7 +299,15 @@ pub(in crate::app) fn apply_lane_state_to_profile(
             profile.lane.lift = crate::config::play::lane_f32_to_unit(state.lift);
         }
         profile.lane.hispeed_mode = hispeed_mode_to_config(state.hispeed_mode);
-        profile.lane.target_green_number = state.target_green_number.max(1);
+        let target_green_number = state.target_green_number.max(1);
+        if profile.lane.target_green_number != target_green_number {
+            profile.lane.target_green_number = target_green_number;
+            profile.lane.note_display_duration_ms =
+                crate::config::play::duration_ms_from_green_number(target_green_number).clamp(
+                    crate::config::play::NOTE_DISPLAY_DURATION_MIN_MS,
+                    crate::config::play::NOTE_DISPLAY_DURATION_MAX_MS,
+                );
+        }
     }
 }
 

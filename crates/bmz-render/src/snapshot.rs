@@ -323,6 +323,11 @@ pub struct RenderSnapshot {
     pub assist_mine_mode: i64,
     pub assist_scroll_mode: i64,
     pub assist_long_note_mode: i64,
+    /// beatoraja event/index 343。
+    pub guide_se_enabled: bool,
+    /// beatoraja event/index/option 400。
+    pub constant_enabled: bool,
+    pub constant_fade_ms: i32,
     /// 描画専用アシスト。判定・譜面変換とは独立して renderer が参照する。
     pub judge_area: bool,
     pub mark_processed_note: bool,
@@ -465,6 +470,7 @@ pub struct VisibleNote {
     pub lane: Lane,
     pub time: TimeUs,
     pub y: f32,
+    pub alpha: f32,
     pub kind: NoteVisualKind,
     /// beatoraja の `Note.state` 相当。判定済みでも本来の時刻までは描画に残す。
     pub processed_judge: Option<Judge>,
@@ -476,6 +482,7 @@ pub struct VisibleMine {
     pub lane: Lane,
     pub time: TimeUs,
     pub y: f32,
+    pub alpha: f32,
     pub damage: f64,
 }
 
@@ -509,6 +516,7 @@ pub struct VisibleLongNote {
     pub mode: LongNoteMode,
     pub head_y: f32,
     pub tail_y: f32,
+    pub alpha: f32,
     /// 胴体の表示状態。胴体画像の切り替えに使う。
     pub body_state: LongBodyState,
 }
@@ -541,6 +549,7 @@ pub struct DisplayInput {
 pub struct VisibleBarLine {
     pub time: TimeUs,
     pub y: f32,
+    pub alpha: f32,
     pub label: String,
 }
 

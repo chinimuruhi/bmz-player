@@ -78,6 +78,13 @@ impl EguiLayer {
         tracing::info!("egui advanced settings opened from select");
     }
 
+    /// 選曲スキンの beatoraja event 14 からスキン設定を直接開く。
+    pub fn open_skin_settings(&mut self) {
+        self.visible = true;
+        self.show_skin = true;
+        tracing::info!("egui skin settings opened from select");
+    }
+
     pub fn set_score_import_status(&mut self, status: String, error: bool) {
         if error {
             self.score_import_error = status;

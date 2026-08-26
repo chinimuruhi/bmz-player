@@ -26,7 +26,7 @@ NHS は `profile.lane.hispeed` の倍率をそのまま使う。倍率は beator
 Floating Hispeed。設定画面では `FLOATING`、BMZ skin ref では `FHS` と表示する。
 
 FHS は `profile.lane.target_green_number` を固定したまま、BPM、SCROLL/SPEED 倍率、
-レーンカバー量に応じて `session.hispeed` を逆算する。緑数字の範囲は `1..=999`、
+レーンカバー量に応じて `session.hispeed` を逆算する。緑数字の範囲は `1..=6000`、
 既定値は `300`。
 
 FHS で HS 倍率を直接変更した場合は、現在の見た目から緑数字を再計算して
@@ -46,6 +46,16 @@ visible = 1.0 - lane_cover - lift
 duration_ms = 240000 / bpm / hispeed / scroll_multiplier * visible
 green_number = round(duration_ms * 0.6)
 ```
+
+`profile.lane.note_display_duration_ms` は beatoraja `PlayConfig.duration` と同じ
+`1..=10000ms` の設定値を保持する。緑数字を変更したときは表示時間を、表示時間を変更した
+ときは緑数字を相互変換する。skin の `NUMBER_DURATION` (312) には丸め直す前の表示時間、
+`NUMBER_DURATION_GREEN` (313) には表示時間から導出した緑数字を渡す。
+
+`CONSTANT` を有効にすると、現在時刻から `note_display_duration_ms` 先を表示境界として、
+それより遠いノーツ・LN・地雷・小節線・BPM/STOP/秒線を隠す。`constant_fade_ms` は
+`-1000..=1000ms` で、正値は境界の奥側、負値は境界の手前側をフェードさせる。
+Practice の区間プレビュー／プレイでは CONSTANT を無効にする。
 
 FHS ではこの式を逆向きに使う。
 
@@ -127,7 +137,7 @@ FHS の自動再計算は主に次の操作で起きる。
 - NHS から FHS に切り替える
 
 プレイ中に F1 から開くプロファイル設定の「表示」内でハイスピード、SUDDEN+、LIFT、
-緑数字ターゲット、HS Auto Adjust を変更した場合も、変更した項目だけを実行中の
+緑数字ターゲット、ノーツ表示時間、CONSTANT、CONSTANTフェード、HS Auto Adjustを変更した場合も、変更した項目だけを実行中の
 セッションへ即時反映する。未変更の項目は、プレイ中のキーボード／スクラッチ操作で
 更新された値を上書きしない。
 

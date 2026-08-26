@@ -59,6 +59,7 @@ fn play_plan_renders_long_note_body() {
         mode: bmz_chart::model::LongNoteMode::Ln,
         head_y: 0.1,
         tail_y: 0.7,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
 
@@ -84,6 +85,7 @@ fn play_plan_colors_long_note_body_by_mode() {
         mode: LongNoteMode::Cn,
         head_y: 0.1,
         tail_y: 0.7,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
     snapshot.visible_long_notes.push(VisibleLongNote {
@@ -91,6 +93,7 @@ fn play_plan_colors_long_note_body_by_mode() {
         mode: LongNoteMode::Hcn,
         head_y: 0.1,
         tail_y: 0.7,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
 
@@ -111,10 +114,16 @@ fn play_plan_includes_lanes_notes_and_bar_lines() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(900), y: 0.25, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(900),
+        y: 0.25,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
 
@@ -123,6 +132,27 @@ fn play_plan_includes_lanes_notes_and_bar_lines() {
         command,
         DrawCommand::Image { texture, tint, .. }
             if *texture == DEFAULT_NOTE_TEXTURE && *tint == skin_image_tint(Lane::Key1)
+    )));
+}
+
+#[test]
+fn play_plan_applies_constant_fade_alpha_to_notes() {
+    let mut snapshot = RenderSnapshot::default();
+    snapshot.visible_notes[Lane::Key1.index()].push(VisibleNote {
+        lane: Lane::Key1,
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 0.25,
+        kind: NoteVisualKind::Tap,
+        processed_judge: None,
+    });
+
+    let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
+
+    assert!(plan.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Image { texture, tint, .. }
+            if *texture == DEFAULT_NOTE_TEXTURE && approx_eq(tint.a, 0.25)
     )));
 }
 
@@ -139,6 +169,7 @@ fn play_plan_renders_judge_area_and_processed_note_fallback() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: Some(Judge::PGreat),
     });
@@ -162,6 +193,7 @@ fn play_plan_uses_note_textures_by_lane() {
         lane: Lane::Scratch,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -169,6 +201,7 @@ fn play_plan_uses_note_textures_by_lane() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -176,6 +209,7 @@ fn play_plan_uses_note_textures_by_lane() {
         lane: Lane::Key2,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });

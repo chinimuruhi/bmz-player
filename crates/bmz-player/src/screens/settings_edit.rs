@@ -222,6 +222,7 @@ enum SettingsBaseline {
     OffsetUs(i64),
     F32(f32),
     U32(u32),
+    I32(i32),
     Bool(bool),
     JudgeAlgorithm(JudgeAlgorithmConfig),
     RuleMode(RuleMode),
@@ -313,6 +314,7 @@ impl SettingsEditSession {
                 SettingsBaseline::U32(profile.play.misslayer_duration_ms)
             }
             SettingsEntryId::ShowLnTailCap => SettingsBaseline::Bool(profile.play.show_ln_tail_cap),
+            SettingsEntryId::GuideSe => SettingsBaseline::Bool(profile.play.guide_se),
             SettingsEntryId::Hispeed => SettingsBaseline::F32(profile.lane.hispeed),
             SettingsEntryId::HispeedMode => {
                 SettingsBaseline::HispeedMode(profile.lane.hispeed_mode)
@@ -325,6 +327,11 @@ impl SettingsEditSession {
             SettingsEntryId::TargetGreenNumber => {
                 SettingsBaseline::U32(profile.lane.target_green_number)
             }
+            SettingsEntryId::NoteDisplayDurationMs => {
+                SettingsBaseline::U32(profile.lane.note_display_duration_ms)
+            }
+            SettingsEntryId::Constant => SettingsBaseline::Bool(profile.lane.constant_enabled),
+            SettingsEntryId::ConstantFadeMs => SettingsBaseline::I32(profile.lane.constant_fade_ms),
             SettingsEntryId::SelectInputMode => {
                 SettingsBaseline::SelectInputMode(profile.input.select_input_mode)
             }
@@ -511,6 +518,9 @@ impl SettingsEditSession {
             (SettingsEntryId::ShowLnTailCap, SettingsBaseline::Bool(value)) => {
                 profile.play.show_ln_tail_cap = *value;
             }
+            (SettingsEntryId::GuideSe, SettingsBaseline::Bool(value)) => {
+                profile.play.guide_se = *value;
+            }
             (SettingsEntryId::Hispeed, SettingsBaseline::F32(value)) => {
                 profile.lane.hispeed = *value;
             }
@@ -534,6 +544,15 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::TargetGreenNumber, SettingsBaseline::U32(value)) => {
                 profile.lane.target_green_number = *value;
+            }
+            (SettingsEntryId::NoteDisplayDurationMs, SettingsBaseline::U32(value)) => {
+                profile.lane.note_display_duration_ms = *value;
+            }
+            (SettingsEntryId::Constant, SettingsBaseline::Bool(value)) => {
+                profile.lane.constant_enabled = *value;
+            }
+            (SettingsEntryId::ConstantFadeMs, SettingsBaseline::I32(value)) => {
+                profile.lane.constant_fade_ms = *value;
             }
             (SettingsEntryId::SelectInputMode, SettingsBaseline::SelectInputMode(value)) => {
                 profile.input.select_input_mode = *value;

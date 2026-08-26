@@ -115,6 +115,10 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
                 true
             }
         }
+        SettingsEntryId::GuideSe => {
+            profile.play.guide_se = !profile.play.guide_se;
+            true
+        }
         SettingsEntryId::Hispeed => {
             let (step, default) = match profile.lane.hispeed_mode {
                 HispeedModeConfig::Normal => {
@@ -150,12 +154,51 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             crate::config::play::lane_unit_max_for_other(profile.lane.sudden),
         ),
         SettingsEntryId::Hidden => adjust_u32(&mut profile.lane.hidden, delta, 0, 1000),
-        SettingsEntryId::TargetGreenNumber => adjust_u32(
-            &mut profile.lane.target_green_number,
-            delta,
-            TARGET_GREEN_NUMBER_MIN,
-            TARGET_GREEN_NUMBER_MAX,
-        ),
+        SettingsEntryId::TargetGreenNumber => {
+            let changed = adjust_u32(
+                &mut profile.lane.target_green_number,
+                delta,
+                TARGET_GREEN_NUMBER_MIN,
+                TARGET_GREEN_NUMBER_MAX,
+            );
+            if changed {
+                profile.lane.note_display_duration_ms =
+                    crate::config::play::duration_ms_from_green_number(
+                        profile.lane.target_green_number,
+                    )
+                    .clamp(NOTE_DISPLAY_DURATION_MIN_MS, NOTE_DISPLAY_DURATION_MAX_MS);
+            }
+            changed
+        }
+        SettingsEntryId::NoteDisplayDurationMs => {
+            let changed = adjust_u32(
+                &mut profile.lane.note_display_duration_ms,
+                delta,
+                NOTE_DISPLAY_DURATION_MIN_MS,
+                NOTE_DISPLAY_DURATION_MAX_MS,
+            );
+            if changed {
+                profile.lane.target_green_number =
+                    crate::config::play::green_number_from_duration_ms(
+                        profile.lane.note_display_duration_ms,
+                    )
+                    .clamp(TARGET_GREEN_NUMBER_MIN, TARGET_GREEN_NUMBER_MAX);
+            }
+            changed
+        }
+        SettingsEntryId::Constant => {
+            profile.lane.constant_enabled = !profile.lane.constant_enabled;
+            true
+        }
+        SettingsEntryId::ConstantFadeMs => {
+            let before = profile.lane.constant_fade_ms;
+            profile.lane.constant_fade_ms = profile
+                .lane
+                .constant_fade_ms
+                .saturating_add(delta)
+                .clamp(CONSTANT_FADE_MIN_MS, CONSTANT_FADE_MAX_MS);
+            profile.lane.constant_fade_ms != before
+        }
         SettingsEntryId::SelectInputMode => {
             cycle_enum(delta, profile.input.select_input_mode, cycle_select_input_mode)
                 .map(|next| profile.input.select_input_mode = next)

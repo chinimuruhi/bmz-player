@@ -314,6 +314,7 @@ pub(in crate::ui::profile_panel) fn build_profile_play_section(
                 },
             );
             ui.checkbox(&mut profile.play.show_ln_tail_cap, tr!(text, "profile-play-ln-tail-cap"));
+            ui.checkbox(&mut profile.play.guide_se, tr!(text, "profile-play-guide-se"));
             ui.add(
                 egui::Slider::new(&mut profile.play.misslayer_duration_ms, 0..=5000)
                     .text(tr!(text, "profile-play-miss-layer-duration")),

@@ -319,6 +319,7 @@ pub fn build_game_session_with_input_backend(
     let hispeed_mode =
         if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(hs_fix) };
     let target_green_number = mode_config.target_green_number.max(1);
+    let configured_note_display_duration_ms = mode_config.note_display_duration_ms.max(1);
     let lift = if speed_locked { 0.0 } else { lift_from_mode_config(&mode_config) };
     let lane_cover = if speed_locked {
         0.0
@@ -534,6 +535,11 @@ pub fn build_game_session_with_input_backend(
         hispeed,
         hispeed_mode,
         target_green_number,
+        configured_note_display_duration_ms,
+        constant_enabled: mode_config.constant_enabled
+            && session_mode != crate::select_options::SessionMode::Practice,
+        constant_fade_ms: mode_config.constant_fade_ms,
+        guide_se_enabled: profile.play.guide_se,
         hsfix_base_bpm,
         lift,
         lane_cover,

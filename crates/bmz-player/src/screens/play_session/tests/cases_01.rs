@@ -437,6 +437,7 @@ fn placeholder_session_visuals_expose_score_save_and_play_modes() {
 fn practice_session_disables_legacy_profile_autoplay() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.play.auto_play = true;
+    profile.lane.constant_enabled = true;
     let options =
         PlaySessionOptions { session_mode: SessionMode::Practice, ..PlaySessionOptions::default() };
     let mut snapshot = bmz_render::snapshot::RenderSnapshot::default();
@@ -448,6 +449,7 @@ fn practice_session_disables_legacy_profile_autoplay() {
     assert!(!snapshot.autoplay);
     assert!(!snapshot.score_save_enabled);
     assert!(session.autoplay.is_none());
+    assert!(!session.constant_enabled);
 }
 
 #[test]

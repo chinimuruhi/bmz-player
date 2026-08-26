@@ -203,6 +203,11 @@ pub struct GameSession {
     pub hispeed: f32,
     pub hispeed_mode: HispeedMode,
     pub target_green_number: u32,
+    /// Selectで設定した beatoraja `PlayConfig.duration`。CONSTANTの時間窓に使う。
+    pub configured_note_display_duration_ms: u32,
+    pub constant_enabled: bool,
+    pub constant_fade_ms: i32,
+    pub guide_se_enabled: bool,
     /// Floating hispeed の曲開始前基準 BPM。曲開始後は現在 BPM で再計算する。
     pub hsfix_base_bpm: f64,
     pub lift: f32,

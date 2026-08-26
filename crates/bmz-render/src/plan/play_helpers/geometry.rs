@@ -85,6 +85,7 @@ pub(super) fn push_play_bar_line(
         append_skin_render_items(commands, &items);
     }
     apply_bar_line_alpha_offset(&mut commands[start..], skin_offsets);
+    apply_draw_command_alpha(&mut commands[start..], bar.alpha);
 }
 
 pub(super) fn push_play_aux_lines(
@@ -151,6 +152,8 @@ fn push_bpm_guide_label(
         caret: None,
         post_scale: Point { x: 1.0, y: 1.0 },
     });
+    let start = commands.len() - 1;
+    apply_draw_command_alpha(&mut commands[start..], line.alpha);
 }
 
 pub(super) fn push_judge_area(
@@ -221,6 +224,36 @@ pub(super) fn push_play_aux_line(
     let items = skin.apply_play_skin_global_offset(render(skin, line.y), skin_state);
     append_skin_render_items(commands, &items);
     apply_bar_line_alpha_offset(&mut commands[start..], skin_offsets);
+    apply_draw_command_alpha(&mut commands[start..], line.alpha);
+}
+
+pub(super) fn apply_draw_command_alpha(commands: &mut [DrawCommand], alpha: f32) {
+    let alpha = alpha.clamp(0.0, 1.0);
+    for command in commands {
+        match command {
+            DrawCommand::Image { tint, .. } | DrawCommand::RotatedImage { tint, .. } => {
+                tint.a *= alpha;
+            }
+            DrawCommand::Rect { color, .. } => color.a *= alpha,
+            DrawCommand::RectBatch { rects, .. } => {
+                for rect in Arc::make_mut(rects) {
+                    rect.color.a *= alpha;
+                }
+            }
+            DrawCommand::Text { style, caret, .. } => {
+                style.color.a *= alpha;
+                if let Some(outline) = &mut style.outline {
+                    outline.color.a *= alpha;
+                }
+                if let Some(shadow) = &mut style.shadow {
+                    shadow.color.a *= alpha;
+                }
+                if let Some(caret) = caret {
+                    caret.color.a *= alpha;
+                }
+            }
+        }
+    }
 }
 
 /// beatoraja `SkinObject.prepareColor` 相当。小節線コマンド列に alpha offset を加算する。
@@ -289,6 +322,7 @@ mod tests {
             bpm_lines: vec![crate::snapshot::VisibleBarLine {
                 time: bmz_core::time::TimeUs(1_000_000),
                 y: 0.5,
+                alpha: 1.0,
                 label: "BPM180".to_string(),
             }],
             ..Default::default()

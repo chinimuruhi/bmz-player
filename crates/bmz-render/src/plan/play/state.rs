@@ -50,6 +50,8 @@ pub(in crate::plan) fn build_play_skin_state(
         assist_mine_mode: snapshot.assist_mine_mode,
         assist_scroll_mode: snapshot.assist_scroll_mode,
         assist_long_note_mode: snapshot.assist_long_note_mode,
+        guide_se_enabled: snapshot.guide_se_enabled,
+        constant_enabled: snapshot.constant_enabled,
         select_extended_arrange_index: crate::skin::extended_arrange_index(&snapshot.arrange),
         select_extended_arrange_2p_index: crate::skin::extended_arrange_index(&snapshot.arrange_2p),
         random_lane_refs: crate::skin::fixed_random_lane_refs(

@@ -367,6 +367,7 @@ profile-play-session-mode = セッションモード
 profile-play-seven-to-six = 7K TO 6K
 profile-play-seven-to-six-help = 7K譜面を6Kへ変換します。スコア・ランプ・リプレイは保存されず、IRにも送信されません。
 profile-play-ln-tail-cap = LN終端キャップを表示
+profile-play-guide-se = 判定ガイドSEを鳴らす
 profile-play-miss-layer-duration = ミスレイヤー表示時間 (ms)
 profile-play-exit-hold-duration = E1+E2 強制終了長押し時間 (ms)
 profile-display-title = 表示
@@ -378,6 +379,9 @@ profile-display-step-range = HS変更刻みの範囲: 0.05..=1.00
 profile-display-lift-enabled = LIFTを有効にする
 profile-display-auto-adjust-hispeed = レーンカバー変更時に現在BPMへHSを自動調整
 profile-display-green-number = 緑数字ターゲット
+profile-display-note-duration = ノーツ表示時間 (ms)
+profile-display-constant = CONSTANTを有効にする
+profile-display-constant-fade = CONSTANTフェード時間 (ms)
 profile-select-title = 選曲
 profile-select-difficulty-table-level-display = 難易度表フォルダのレベル表示
 profile-select-difficulty-table-level-display-help = 難易度表のレベルフォルダ内で表示するレベルを選びます。

@@ -5,6 +5,8 @@ pub fn settings_adjust_step(id: SettingsEntryId) -> i32 {
         SettingsEntryId::InputOffsetMs | SettingsEntryId::VisualOffsetMs => 1,
         SettingsEntryId::Sudden | SettingsEntryId::Lift | SettingsEntryId::Hidden => 25,
         SettingsEntryId::TargetGreenNumber => 10,
+        SettingsEntryId::NoteDisplayDurationMs => 10,
+        SettingsEntryId::ConstantFadeMs => 10,
         SettingsEntryId::MisslayerDurationMs => 50,
         SettingsEntryId::AnalogScratchThreshold1P | SettingsEntryId::AnalogScratchThreshold2P => 10,
         SettingsEntryId::RandomMixMaxBpm | SettingsEntryId::RandomMixMinBpm => 10,
@@ -54,6 +56,7 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::BgaExpand => format_bga_expand(profile.play.bga_expand),
         SettingsEntryId::AutoPlay => format_bool_on_off(profile.play.auto_play),
         SettingsEntryId::ShowLnTailCap => format_bool_on_off(profile.play.show_ln_tail_cap),
+        SettingsEntryId::GuideSe => format_bool_on_off(profile.play.guide_se),
         SettingsEntryId::MisslayerDurationMs => {
             format!("{} ms", profile.play.misslayer_duration_ms)
         }
@@ -65,6 +68,11 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::Lift => format_lane_unit(profile.lane.lift),
         SettingsEntryId::Hidden => format_lane_unit(profile.lane.hidden),
         SettingsEntryId::TargetGreenNumber => format!("{}", profile.lane.target_green_number),
+        SettingsEntryId::NoteDisplayDurationMs => {
+            format!("{} ms", profile.lane.note_display_duration_ms)
+        }
+        SettingsEntryId::Constant => format_bool_on_off(profile.lane.constant_enabled),
+        SettingsEntryId::ConstantFadeMs => format!("{} ms", profile.lane.constant_fade_ms),
         SettingsEntryId::SelectInputMode => {
             profile.input.select_input_mode.display_label().to_string()
         }

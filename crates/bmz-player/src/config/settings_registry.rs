@@ -1,4 +1,7 @@
-use super::play::{TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN, clamp_hispeed};
+use super::play::{
+    CONSTANT_FADE_MAX_MS, CONSTANT_FADE_MIN_MS, NOTE_DISPLAY_DURATION_MAX_MS,
+    NOTE_DISPLAY_DURATION_MIN_MS, TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN, clamp_hispeed,
+};
 use super::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
     DifficultyTableLevelDisplay, DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig,
@@ -44,6 +47,7 @@ pub enum SettingsEntryId {
     AutoPlay,
     MisslayerDurationMs,
     ShowLnTailCap,
+    GuideSe,
     Hispeed,
     HispeedMode,
     HispeedStepNhs,
@@ -52,6 +56,9 @@ pub enum SettingsEntryId {
     Lift,
     Hidden,
     TargetGreenNumber,
+    NoteDisplayDurationMs,
+    Constant,
+    ConstantFadeMs,
     SelectInputMode,
     AnalogScratch1P,
     AnalogScratchSensitivity1P,
@@ -123,6 +130,7 @@ impl SettingsEntryId {
         Self::AutoPlay,
         Self::MisslayerDurationMs,
         Self::ShowLnTailCap,
+        Self::GuideSe,
     ];
 
     pub const DISPLAY_ENTRIES: &'static [Self] = &[
@@ -134,6 +142,9 @@ impl SettingsEntryId {
         Self::Lift,
         Self::Hidden,
         Self::TargetGreenNumber,
+        Self::NoteDisplayDurationMs,
+        Self::Constant,
+        Self::ConstantFadeMs,
     ];
 
     pub const INPUT_ENTRIES: &'static [Self] = &[
@@ -211,6 +222,7 @@ impl SettingsEntryId {
             Self::AutoPlay => "AUTO PLAY",
             Self::MisslayerDurationMs => "MISSLAYER",
             Self::ShowLnTailCap => "LN TAIL CAP",
+            Self::GuideSe => "GUIDE SE",
             Self::Hispeed => "HISPEED",
             Self::HispeedMode => "HS MODE",
             Self::HispeedStepNhs => "HS STEP NHS",
@@ -219,6 +231,9 @@ impl SettingsEntryId {
             Self::Lift => "LIFT",
             Self::Hidden => "HIDDEN",
             Self::TargetGreenNumber => "GREEN NO.",
+            Self::NoteDisplayDurationMs => "DURATION",
+            Self::Constant => "CONSTANT",
+            Self::ConstantFadeMs => "CONSTANT FADE",
             Self::SelectInputMode => "SELECT INPUT",
             Self::AnalogScratch1P => "1P ANALOG SCRATCH",
             Self::AnalogScratchSensitivity1P => "1P ANALOG SENS",
@@ -426,9 +441,18 @@ mod tests {
     #[test]
     fn adjust_green_number_misslayer_and_analog_settings() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
-        profile.lane.target_green_number = 995;
+        profile.lane.target_green_number = 5_995;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::TargetGreenNumber, 10));
-        assert_eq!(profile.lane.target_green_number, 999);
+        assert_eq!(profile.lane.target_green_number, 6_000);
+        assert_eq!(profile.lane.note_display_duration_ms, 10_000);
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::NoteDisplayDurationMs, -10,));
+        assert_eq!(profile.lane.note_display_duration_ms, 9_990);
+        assert_eq!(profile.lane.target_green_number, 5_994);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::Constant, 1));
+        assert!(profile.lane.constant_enabled);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::GuideSe, 1));
+        assert!(profile.play.guide_se);
 
         profile.play.misslayer_duration_ms = 4_980;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::MisslayerDurationMs, 50));

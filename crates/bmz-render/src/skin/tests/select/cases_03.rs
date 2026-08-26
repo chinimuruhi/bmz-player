@@ -303,8 +303,8 @@ fn select_draw_state_maps_hispeed_and_green_number() {
 
     assert_eq!(skin_state_number(310, &state), Some(3));
     assert_eq!(skin_state_number(311, &state), Some(25));
-    assert_eq!(skin_state_number(312, &state), Some(467));
-    assert_eq!(skin_state_number(313, &state), Some(280));
+    assert_eq!(skin_state_number(312, &state), Some(280));
+    assert_eq!(skin_state_number(313, &state), Some(168));
 }
 
 #[test]

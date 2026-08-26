@@ -33,6 +33,7 @@ impl WinitApp {
             before,
             &profile_lane,
             speed_locked,
+            active_play.running.practice_mode,
         ) {
             update_pre_ready_play_snapshot_options_for_session(
                 self.play.play_ready_sound_started_at,
@@ -66,6 +67,7 @@ impl WinitApp {
             );
             session.input_offset_auto_adjust_enabled =
                 self.boot.profile_config.judge.visual_offset_auto_adjust;
+            session.guide_se_enabled = self.boot.profile_config.play.guide_se;
             let auto_adjust_available = session.replay_player.is_none()
                 && !session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full());
             if session.input_offset_auto_adjust_enabled && auto_adjust_available {

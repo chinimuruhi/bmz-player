@@ -370,6 +370,7 @@ profile-play-session-mode = Session mode
 profile-play-seven-to-six = 7K TO 6K
 profile-play-seven-to-six-help = Converts 7K charts to 6K. Scores, lamps, and replays are not saved or sent to IR.
 profile-play-ln-tail-cap = Show LN tail cap
+profile-play-guide-se = Play judgement guide SE
 profile-play-miss-layer-duration = Miss layer duration (ms)
 profile-play-exit-hold-duration = E1+E2 force-exit hold duration (ms)
 profile-display-title = Display
@@ -381,6 +382,9 @@ profile-display-step-range = HS adjustment step range: 0.05..=1.00
 profile-display-lift-enabled = Enable LIFT
 profile-display-auto-adjust-hispeed = Adjust HS to the current BPM when lane cover changes
 profile-display-green-number = Target green number
+profile-display-note-duration = Note display duration (ms)
+profile-display-constant = Enable CONSTANT
+profile-display-constant-fade = CONSTANT fade duration (ms)
 profile-select-title = Song Select
 profile-select-difficulty-table-level-display = Level shown in difficulty table folders
 profile-select-difficulty-table-level-display-help = Selects the level shown inside a difficulty table's level folder.

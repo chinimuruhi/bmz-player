@@ -263,6 +263,19 @@ impl WinitApp {
         self.play_system_sound(crate::system_sound::SoundType::Landmine);
     }
 
+    pub(super) fn play_guide_se_for_judgements(
+        &self,
+        enabled: bool,
+        judgements: &[bmz_gameplay::judge::model::JudgementEvent],
+    ) {
+        if !enabled {
+            return;
+        }
+        for event in judgements {
+            self.play_system_sound(crate::system_sound::guide_se_for_judge(event.judge));
+        }
+    }
+
     pub(super) fn stop_system_sound(&self, sound_type: crate::system_sound::SoundType) {
         if let Some(manager) = &self.audio.system_sound {
             manager.stop(sound_type);

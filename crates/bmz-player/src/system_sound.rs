@@ -14,6 +14,8 @@
 
 use std::path::{Path, PathBuf};
 
+use bmz_core::judge::Judge;
+
 /// beatoraja の `SystemSoundManager.SoundType` と対応する列挙体。
 /// `path` は beatoraja 既定のファイル名、`is_bgm` は BGM セット探索対象かどうか。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -120,6 +122,18 @@ impl SoundType {
 
     pub fn loops(&self) -> bool {
         matches!(self, SoundType::Select)
+    }
+}
+
+/// beatoraja の GUIDE SE と同じく、押下判定の POOR と見逃し MISS を分ける。
+pub const fn guide_se_for_judge(judge: Judge) -> SoundType {
+    match judge {
+        Judge::PGreat => SoundType::GuideSePGreat,
+        Judge::Great => SoundType::GuideSeGreat,
+        Judge::Good => SoundType::GuideSeGood,
+        Judge::Bad => SoundType::GuideSeBad,
+        Judge::EmptyPoor => SoundType::GuideSePoor,
+        Judge::Poor => SoundType::GuideSeMiss,
     }
 }
 
@@ -288,6 +302,16 @@ mod tests {
         assert_eq!(SoundType::ResultClear.file_name(), "clear.wav");
         assert_eq!(SoundType::Landmine.file_name(), "landmine.wav");
         assert!(!SoundType::Landmine.is_bgm());
+    }
+
+    #[test]
+    fn guide_se_distinguishes_empty_poor_from_missed_note() {
+        assert_eq!(guide_se_for_judge(Judge::PGreat), SoundType::GuideSePGreat);
+        assert_eq!(guide_se_for_judge(Judge::Great), SoundType::GuideSeGreat);
+        assert_eq!(guide_se_for_judge(Judge::Good), SoundType::GuideSeGood);
+        assert_eq!(guide_se_for_judge(Judge::Bad), SoundType::GuideSeBad);
+        assert_eq!(guide_se_for_judge(Judge::EmptyPoor), SoundType::GuideSePoor);
+        assert_eq!(guide_se_for_judge(Judge::Poor), SoundType::GuideSeMiss);
     }
 
     #[test]

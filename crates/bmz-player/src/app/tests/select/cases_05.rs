@@ -359,3 +359,32 @@ fn select_skin_key_config_does_not_duplicate_current_key_config_folder() {
     assert_eq!(folders, ["songs", CONFIG_KEYS_PATH]);
     assert_eq!(indices, [3, 5]);
 }
+
+#[test]
+fn select_skin_explorer_target_accepts_chart_and_real_folder_only() {
+    let mut row = select_chart_row(1);
+    row.chart.as_mut().unwrap().folder_path = "songs/genre/song".to_string();
+    let chart = SelectItem::Chart(row);
+    let folder = SelectItem::Folder {
+        path: "songs/genre".to_string(),
+        name: "genre".to_string(),
+        kind: SelectRowKind::Folder,
+        summary: None,
+    };
+    let virtual_folder = SelectItem::Folder {
+        path: "table://example".to_string(),
+        name: "table".to_string(),
+        kind: SelectRowKind::TableFolder,
+        summary: None,
+    };
+
+    assert_eq!(
+        crate::app::select_flow_navigation::select_explorer_path(&chart),
+        Some(std::path::PathBuf::from("songs/genre/song"))
+    );
+    assert_eq!(
+        crate::app::select_flow_navigation::select_explorer_path(&folder),
+        Some(std::path::PathBuf::from("songs/genre"))
+    );
+    assert_eq!(crate::app::select_flow_navigation::select_explorer_path(&virtual_folder), None);
+}

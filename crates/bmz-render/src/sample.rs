@@ -56,6 +56,8 @@ pub fn sample_select_scene() -> AppSceneSnapshot {
         selected_title: "Sample BMS".to_string(),
         hispeed: 2.0,
         note_display_duration_ms: Some(1_000),
+        guide_se_enabled: false,
+        constant_enabled: false,
         rows,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
@@ -141,6 +143,7 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
             lane,
             time: TimeUs(12_500_000 + index as i64 * 80_000),
             y: 0.18 + index as f32 * 0.08,
+            alpha: 1.0,
             kind: NoteVisualKind::Tap,
             processed_judge: None,
         });
@@ -149,17 +152,20 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
         lane: Lane::Key2,
         time: TimeUs(13_200_000),
         y: 0.86,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
     snapshot.bar_lines.push(VisibleBarLine {
         time: TimeUs(12_000_000),
         y: 0.25,
+        alpha: 1.0,
         label: String::new(),
     });
     snapshot.bar_lines.push(VisibleBarLine {
         time: TimeUs(13_000_000),
         y: 0.78,
+        alpha: 1.0,
         label: String::new(),
     });
     // ホールド中のロングノート（Key4）と上空に伸びるロングノート（Key6）
@@ -168,6 +174,7 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
         mode: LongNoteMode::Ln,
         head_y: 0.0,
         tail_y: 0.45,
+        alpha: 1.0,
         body_state: LongBodyState::Processing,
     });
     snapshot.visible_long_notes.push(VisibleLongNote {
@@ -175,6 +182,7 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
         mode: LongNoteMode::Hcn,
         head_y: 0.3,
         tail_y: 0.82,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
     snapshot.recent_judgements.push(DisplayJudgement {

@@ -359,8 +359,10 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         351 => Some(state.assist_mine_mode),
         352 => Some(state.assist_scroll_mode),
         353 => Some(state.assist_long_note_mode),
-        // seventonine / constant / guide SE は未対応。
-        360..=361 | 400 | 343 => Some(0),
+        343 => Some(i64::from(state.guide_se_enabled)),
+        400 => Some(i64::from(state.constant_enabled)),
+        // seventonine は未対応。
+        360..=361 => Some(0),
         370 if state.select_screen || state.result_failed.is_some() => {
             Some(state.select_clear_index)
         }
