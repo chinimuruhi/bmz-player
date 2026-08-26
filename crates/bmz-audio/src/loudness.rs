@@ -86,6 +86,13 @@ impl LoudnessAccumulator {
         }
     }
 
+    fn push_interleaved_stereo(&mut self, frames: &[f32]) {
+        debug_assert_eq!(frames.len() % 2, 0);
+        for frame in frames.chunks_exact(2) {
+            self.push_stereo(frame[0], frame[1]);
+        }
+    }
+
     fn finish(mut self) -> Option<LoudnessAnalysis> {
         if self.current_frames > 0 {
             self.finish_block();
@@ -173,6 +180,7 @@ struct LoudnessEvent {
 
 #[derive(Debug, Clone, Copy)]
 struct ActiveLoudnessVoice {
+    next_output_frame: u64,
     sound_id: SoundId,
     sample_frame: usize,
     volume: f32,
@@ -197,44 +205,51 @@ pub fn analyze_chart_loudness(
     }
 
     let mut active = Vec::<ActiveLoudnessVoice>::new();
+    let mut mixed_chunk = vec![0.0f32; ANALYSIS_CHUNK_FRAMES * 2];
     let mut next_event = 0usize;
     let mut output_frame = 0u64;
 
     while output_frame < duration_frames {
         let chunk_frames = ((duration_frames - output_frame) as usize).min(ANALYSIS_CHUNK_FRAMES);
-        for offset in 0..chunk_frames {
-            let absolute_frame = output_frame + offset as u64;
-            while next_event < events.len() && events[next_event].start_frame <= absolute_frame {
-                let event = events[next_event];
-                if samples.get(event.sound_id).is_some() && event.volume > 0.0 {
-                    active.push(ActiveLoudnessVoice {
-                        sound_id: event.sound_id,
-                        sample_frame: 0,
-                        volume: event.volume,
-                    });
-                }
-                next_event += 1;
+        let chunk_end_frame = output_frame + chunk_frames as u64;
+        mixed_chunk[..chunk_frames * 2].fill(0.0);
+
+        while next_event < events.len() && events[next_event].start_frame < chunk_end_frame {
+            let event = events[next_event];
+            if samples.get(event.sound_id).is_some() && event.volume > 0.0 {
+                active.push(ActiveLoudnessVoice {
+                    next_output_frame: event.start_frame,
+                    sound_id: event.sound_id,
+                    sample_frame: 0,
+                    volume: event.volume,
+                });
             }
-
-            let mut left = 0.0f32;
-            let mut right = 0.0f32;
-            active.retain_mut(|voice| {
-                let Some(sample) = samples.get(voice.sound_id) else {
-                    return false;
-                };
-                if voice.sample_frame >= sample.frame_count() {
-                    return false;
-                }
-                let (sample_left, sample_right) = sample.sample_stereo(voice.sample_frame);
-                left += sample_left * voice.volume;
-                right += sample_right * voice.volume;
-                voice.sample_frame += 1;
-                voice.sample_frame < sample.frame_count()
-            });
-
-            loudness.push_stereo(left, right);
+            next_event += 1;
         }
-        output_frame += chunk_frames as u64;
+
+        active.retain_mut(|voice| {
+            let Some(sample) = samples.get(voice.sound_id) else {
+                return false;
+            };
+            if voice.sample_frame >= sample.frame_count() {
+                return false;
+            }
+            let start_offset = voice.next_output_frame.saturating_sub(output_frame) as usize;
+            if start_offset >= chunk_frames {
+                return true;
+            }
+            let mixed_frames = sample.mix_stereo_into(
+                voice.sample_frame,
+                voice.volume,
+                &mut mixed_chunk[start_offset * 2..chunk_frames * 2],
+            );
+            voice.sample_frame += mixed_frames;
+            voice.next_output_frame += mixed_frames as u64;
+            voice.sample_frame < sample.frame_count()
+        });
+
+        loudness.push_interleaved_stereo(&mixed_chunk[..chunk_frames * 2]);
+        output_frame = chunk_end_frame;
     }
     loudness.finish()
 }
@@ -546,6 +561,120 @@ mod tests {
         let gain = play_normalization_gain_for_analysis(result);
         assert!(gain > 0.0);
         assert!(gain <= 1.0);
+    }
+
+    #[test]
+    fn chunked_chart_analysis_matches_frame_by_frame_reference() {
+        let mut samples = SampleBank::default();
+        samples.insert(
+            SoundId(1),
+            DecodedSample {
+                channels: 2,
+                sample_rate: 48_000,
+                frames: (0..10_000).map(|index| (index % 97) as f32 / 97.0 - 0.5).collect(),
+            },
+        );
+        samples.insert(
+            SoundId(2),
+            DecodedSample {
+                channels: 1,
+                sample_rate: 48_000,
+                frames: (0..3_000).map(|index| (index % 53) as f32 / 106.0).collect(),
+            },
+        );
+        samples.insert(
+            SoundId(3),
+            DecodedSample {
+                channels: 3,
+                sample_rate: 48_000,
+                frames: (0..9_000).map(|index| (index % 71) as f32 / 142.0 - 0.25).collect(),
+            },
+        );
+
+        let mut chart = chart();
+        chart.bgm_events.extend([
+            SoundEvent { tick: ChartTick(0), time: TimeUs(0), sound: SoundId(1) },
+            SoundEvent { tick: ChartTick(1), time: TimeUs(42_667), sound: SoundId(3) },
+        ]);
+        chart.lane_notes[0].push(NoteEvent {
+            id: NoteId(1),
+            lane: bmz_core::lane::Lane::Key1,
+            kind: NoteKind::Tap,
+            tick: ChartTick(0),
+            time: TimeUs(20_000),
+            sound: Some(SoundId(2)),
+            layered_sounds: Vec::new(),
+            damage: None,
+        });
+        chart.end_time = TimeUs(150_000);
+
+        let chunked = analyze_chart_loudness(&chart, &samples, 48_000).unwrap();
+        let reference = analyze_chart_loudness_frame_reference(&chart, &samples, 48_000).unwrap();
+
+        assert!((chunked.loudness_lufs - reference.loudness_lufs).abs() < 0.000_001);
+        assert!((chunked.short_term_lufs - reference.short_term_lufs).abs() < 0.000_001);
+        assert!((chunked.peak_abs - reference.peak_abs).abs() < 0.000_001);
+        assert!(
+            (play_normalization_gain_for_analysis(chunked)
+                - play_normalization_gain_for_analysis(reference))
+            .abs()
+                < 0.000_001
+        );
+    }
+
+    fn analyze_chart_loudness_frame_reference(
+        chart: &PlayableChart,
+        samples: &SampleBank,
+        sample_rate: u32,
+    ) -> Option<LoudnessAnalysis> {
+        #[derive(Clone, Copy)]
+        struct ReferenceVoice {
+            sound_id: SoundId,
+            sample_frame: usize,
+            volume: f32,
+        }
+
+        let mut loudness = LoudnessAccumulator::new(sample_rate)?;
+        let mut events = collect_loudness_events(chart, sample_rate);
+        if events.is_empty() {
+            return None;
+        }
+        events.sort_by_key(|event| (event.start_frame, event.sound_id.0));
+        let duration_frames = analysis_duration_frames(chart, samples, sample_rate, &events);
+        let mut active = Vec::<ReferenceVoice>::new();
+        let mut next_event = 0usize;
+
+        for absolute_frame in 0..duration_frames {
+            while next_event < events.len() && events[next_event].start_frame <= absolute_frame {
+                let event = events[next_event];
+                if samples.get(event.sound_id).is_some() && event.volume > 0.0 {
+                    active.push(ReferenceVoice {
+                        sound_id: event.sound_id,
+                        sample_frame: 0,
+                        volume: event.volume,
+                    });
+                }
+                next_event += 1;
+            }
+
+            let mut left = 0.0f32;
+            let mut right = 0.0f32;
+            active.retain_mut(|voice| {
+                let Some(sample) = samples.get(voice.sound_id) else {
+                    return false;
+                };
+                if voice.sample_frame >= sample.frame_count() {
+                    return false;
+                }
+                let (sample_left, sample_right) = sample.sample_stereo(voice.sample_frame);
+                left += sample_left * voice.volume;
+                right += sample_right * voice.volume;
+                voice.sample_frame += 1;
+                voice.sample_frame < sample.frame_count()
+            });
+            loudness.push_stereo(left, right);
+        }
+        loudness.finish()
     }
 
     fn stereo_frames(value: f32, frame_count: usize) -> Vec<f32> {
