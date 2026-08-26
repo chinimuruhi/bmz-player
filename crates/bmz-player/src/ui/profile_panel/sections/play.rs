@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::profile_config::{KeyModeConversionConfig, SevenToNinePattern, SevenToNineType};
 
 pub(in crate::ui::profile_panel) fn build_profile_play_section(
     ui: &mut egui::Ui,
@@ -193,8 +194,57 @@ pub(in crate::ui::profile_panel) fn build_profile_play_section(
                 });
             profile.play.session_mode = Some(session_mode);
             profile.play.auto_play = session_mode.primary_autoplay();
-            ui.checkbox(&mut profile.play.seven_to_six, tr!(text, "profile-play-seven-to-six"))
-                .on_hover_text(tr!(text, "profile-play-seven-to-six-help"));
+            let previous_conversion = profile.play.key_mode_conversion;
+            egui::ComboBox::new(
+                "profile_key_mode_conversion",
+                tr!(text, "profile-play-key-mode-conversion"),
+            )
+            .selected_text(profile.play.key_mode_conversion.as_str())
+            .show_ui(ui, |ui| {
+                for value in KeyModeConversionConfig::VALUES {
+                    ui.selectable_value(
+                        &mut profile.play.key_mode_conversion,
+                        value,
+                        value.as_str(),
+                    );
+                }
+            });
+            ui.label(tr!(text, "profile-play-key-mode-conversion-help"));
+            if profile.play.key_mode_conversion != previous_conversion
+                && profile.play.key_mode_conversion != KeyModeConversionConfig::Off
+            {
+                profile.play.double_option = DoubleOptionConfig::Off;
+            }
+            if profile.play.key_mode_conversion == KeyModeConversionConfig::SevenToNine {
+                egui::ComboBox::new(
+                    "profile_seven_to_nine_pattern",
+                    tr!(text, "profile-play-seven-to-nine-pattern"),
+                )
+                .selected_text(profile.play.seven_to_nine_pattern.label())
+                .show_ui(ui, |ui| {
+                    for value in SevenToNinePattern::VALUES {
+                        ui.selectable_value(
+                            &mut profile.play.seven_to_nine_pattern,
+                            value,
+                            value.label(),
+                        );
+                    }
+                });
+                egui::ComboBox::new(
+                    "profile_seven_to_nine_type",
+                    tr!(text, "profile-play-seven-to-nine-type"),
+                )
+                .selected_text(profile.play.seven_to_nine_type.label())
+                .show_ui(ui, |ui| {
+                    for value in SevenToNineType::VALUES {
+                        ui.selectable_value(
+                            &mut profile.play.seven_to_nine_type,
+                            value,
+                            value.label(),
+                        );
+                    }
+                });
+            }
             egui::CollapsingHeader::new("ASSIST / MODIFIERS").id_salt("profile_play_assist").show(
                 ui,
                 |ui| {

@@ -665,6 +665,85 @@ fn load_transformed_chart_applies_start_note_margin() {
 }
 
 #[test]
+fn load_transformed_chart_applies_only_compatible_key_mode_conversions() {
+    let seven_key_path = write_temp_bms(
+        "\
+#TITLE Seven Key Conversion
+#BPM 120
+#00011:01
+#00012:01
+#00013:01
+#00014:01
+#00015:01
+#00018:01
+#00019:01
+",
+    );
+    let five_key_path = write_temp_bms(
+        "\
+#TITLE Five Key Conversion
+#BPM 120
+#00011:01
+",
+    );
+    let seven_key = import_bms_chart(&seven_key_path, None, true).unwrap();
+    let five_key = import_bms_chart(&five_key_path, None, true).unwrap();
+    assert_eq!(seven_key.chart.metadata.key_mode, KeyMode::K7);
+    assert_eq!(five_key.chart.metadata.key_mode, KeyMode::K5);
+
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let seven_key_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &seven_key_path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &seven_key.chart,
+        })
+        .unwrap();
+    let five_key_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &five_key_path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &five_key.chart,
+        })
+        .unwrap();
+
+    for (conversion, target) in [
+        (KeyModeConversionConfig::SpToDp, KeyMode::K14),
+        (KeyModeConversionConfig::SevenToNine, KeyMode::K9),
+        (KeyModeConversionConfig::SevenToSix, KeyMode::K6),
+    ] {
+        let options = PlaySessionOptions { key_mode_conversion: conversion, ..Default::default() };
+        let transformed =
+            load_transformed_chart_for_play(&library_db, seven_key_id, &options).unwrap();
+        assert_eq!(transformed.chart.metadata.key_mode, target);
+        assert_eq!(transformed.applied_arrange.key_mode_conversion, conversion);
+        assert!(transformed.score_save_disabled);
+    }
+
+    let incompatible = PlaySessionOptions {
+        key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+        ..Default::default()
+    };
+    let transformed =
+        load_transformed_chart_for_play(&library_db, five_key_id, &incompatible).unwrap();
+    assert_eq!(transformed.chart.metadata.key_mode, KeyMode::K5);
+    assert_eq!(transformed.applied_arrange.key_mode_conversion, KeyModeConversionConfig::Off);
+    assert!(!transformed.score_save_disabled);
+
+    std::fs::remove_file(seven_key_path).unwrap();
+    std::fs::remove_file(five_key_path).unwrap();
+}
+
+#[test]
 fn load_game_session_counts_cn_ends_from_source_chart() {
     let path = write_temp_bms(
         "\

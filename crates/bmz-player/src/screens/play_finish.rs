@@ -20,7 +20,7 @@ use bmz_gameplay::session::{
     AssistLevel, AssistRuntime, GameSession, PlayState, ResultJudgementDetail,
 };
 
-use crate::config::profile_config::{IrConfig, ReplayConfig};
+use crate::config::profile_config::{IrConfig, KeyModeConversionConfig, ReplayConfig};
 use crate::ir::payload::{IrSubmissionContext, build_score_submission};
 use crate::ln_policy::ChartLnProfile;
 use crate::paths::ProfilePaths;
@@ -174,20 +174,29 @@ impl FinishSessionSnapshot {
         source_ln_profile: ChartLnProfile,
         applied_arrange: &AppliedArrange,
     ) -> Self {
-        let source_key_mode = if applied_arrange.seven_to_six {
-            KeyMode::K7
-        } else if matches!(
-            applied_arrange.double_option,
-            crate::select_options::DoubleOption::Battle
-                | crate::select_options::DoubleOption::BattleAutoScratch
-        ) {
-            match session.chart.metadata.key_mode {
+        let source_key_mode = match applied_arrange.key_mode_conversion {
+            KeyModeConversionConfig::SpToDp => match session.chart.metadata.key_mode {
                 KeyMode::K10 => KeyMode::K5,
                 KeyMode::K14 => KeyMode::K7,
                 mode => mode,
+            },
+            KeyModeConversionConfig::SevenToNine | KeyModeConversionConfig::SevenToSix => {
+                KeyMode::K7
             }
-        } else {
-            session.primary_key_mode
+            KeyModeConversionConfig::Off
+                if matches!(
+                    applied_arrange.double_option,
+                    crate::select_options::DoubleOption::Battle
+                        | crate::select_options::DoubleOption::BattleAutoScratch
+                ) =>
+            {
+                match session.chart.metadata.key_mode {
+                    KeyMode::K10 => KeyMode::K5,
+                    KeyMode::K14 => KeyMode::K7,
+                    mode => mode,
+                }
+            }
+            KeyModeConversionConfig::Off => session.primary_key_mode,
         };
         let session_mode_index = usize::from(session.session_mode_index);
         Self {
@@ -195,7 +204,15 @@ impl FinishSessionSnapshot {
             skin_attempt: bmz_render::snapshot::SkinAttemptState {
                 source_key_mode: Some(source_key_mode),
                 effective_key_mode: Some(session.chart.metadata.key_mode),
-                seven_to_six: applied_arrange.seven_to_six,
+                seven_to_six: applied_arrange.seven_to_six(),
+                seven_to_nine_pattern: if applied_arrange.key_mode_conversion
+                    == KeyModeConversionConfig::SevenToNine
+                {
+                    applied_arrange.seven_to_nine_pattern.value()
+                } else {
+                    0
+                },
+                seven_to_nine_type: applied_arrange.seven_to_nine_type.value(),
                 source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
                     source_ln_profile,
                 )),
@@ -328,15 +345,17 @@ fn finish_session_snapshot_result(
     let result = snapshot.result.clone();
     let summary_clear_type = finish_mode.summary_clear_type(result.clear_type);
     let replay_playback = snapshot.replay_playback;
-    let previous_best = (!applied_arrange.seven_to_six)
+    let key_mode_converted = applied_arrange.key_mode_converted();
+    let previous_best = (!key_mode_converted)
         .then(|| score_db.best_scores_for_charts(&[score_key]).ok())
         .flatten()
         .and_then(|mut bests| bests.pop());
     // オートプレイ / リプレイ再生 / プラクティス時はスコア・リプレイをDBに保存しない
     // （リザルト画面の表示のみ行う）。
     let full_autoplay = result.autoplay;
-    let score_data_changed = !full_autoplay && !replay_playback && !practice_mode;
-    let stored = if full_autoplay || replay_playback || practice_mode {
+    let score_data_changed =
+        !full_autoplay && !replay_playback && !practice_mode && !key_mode_converted;
+    let stored = if full_autoplay || replay_playback || practice_mode || key_mode_converted {
         StoredPlayResult {
             score_history_id: 0,
             played_at,
@@ -403,7 +422,7 @@ fn finish_session_snapshot_result(
     // 過去ベストスコア・ベストコンボを ResultSummary にフィルする。
     // 今回のスコアが直前に upsert_score_best されているので、`best_*` は
     // 「現在の最高記録」を返す。差分表示は `current - best` として 0 になり得る。
-    if !applied_arrange.seven_to_six
+    if !key_mode_converted
         && let Ok(bests) = score_db.best_scores_for_charts(&[score_key])
         && let Some(best) = bests.into_iter().next()
     {
@@ -412,9 +431,7 @@ fn finish_session_snapshot_result(
         summary.best_max_combo = Some(best.max_combo);
         summary.best_bp = Some(best.bp);
     }
-    if !applied_arrange.seven_to_six
-        && let Ok(slots) = score_db.replay_slots_for_chart(score_key)
-    {
+    if !key_mode_converted && let Ok(slots) = score_db.replay_slots_for_chart(score_key) {
         summary.replay_slots = slots.each_ref().map(Option::is_some);
         for (index, saved) in summary.saved_replay_slots.iter().enumerate() {
             if *saved {
@@ -422,7 +439,10 @@ fn finish_session_snapshot_result(
             }
         }
     }
-    if finish_mode.enqueue_score_ir() && snapshot.assist.score_update_enabled() {
+    if finish_mode.enqueue_score_ir()
+        && snapshot.assist.score_update_enabled()
+        && !key_mode_converted
+    {
         let mut ir_result = result.clone();
         ir_result.clear_type = summary_clear_type;
         enqueue_ir_jobs(

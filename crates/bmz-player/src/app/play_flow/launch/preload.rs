@@ -2,7 +2,7 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn begin_decide_for_chart(&mut self, chart_id: i64, mut options: PlayStartOptions) {
-        self.normalize_seven_to_six_options(chart_id, &mut options);
+        self.normalize_key_mode_conversion_options(chart_id, &mut options);
         self.apply_rival_play_overrides(chart_id, &mut options);
         let snapshot = self.decide_snapshot_for_chart(chart_id);
         self.begin_decide_for_chart_with_snapshot(
@@ -44,7 +44,10 @@ impl WinitApp {
             return;
         }
 
-        if options.session_mode != SessionMode::Normal || options.autoplay || options.seven_to_six {
+        if options.session_mode != SessionMode::Normal
+            || options.autoplay
+            || options.key_mode_conversion.applies_to(key_mode)
+        {
             return;
         }
         let policy = crate::ln_policy::score_ln_policy(
@@ -95,7 +98,7 @@ impl WinitApp {
         course_title: &str,
         chart_metadata: ChartListItem,
     ) {
-        self.normalize_seven_to_six_options(chart_id, &mut options);
+        self.normalize_key_mode_conversion_options(chart_id, &mut options);
         let mut snapshot = self.decide_snapshot_for_chart_with_metadata(chart_id, &chart_metadata);
         self.apply_course_skin_context(&mut snapshot);
         let title_override =
@@ -180,7 +183,7 @@ impl WinitApp {
                     key_mode,
                     options.double_option,
                     options.session_mode,
-                    options.seven_to_six,
+                    options.key_mode_conversion,
                     options.battle_target.is_some(),
                 )
             })
@@ -221,7 +224,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) -> u64 {
-        self.normalize_seven_to_six_options(chart_id, &mut options);
+        self.normalize_key_mode_conversion_options(chart_id, &mut options);
         // 通常開始・practice・retry は、残っているコース次曲先読みを置き換える。
         // コース側は worker 開始後に同じ generation の launch 情報を設定し直す。
         self.play.pending_course_stage_launch = None;
@@ -232,7 +235,7 @@ impl WinitApp {
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
         let play_config_key_mode =
-            effective_play_key_mode(self.key_mode_for_chart(chart_id), options.seven_to_six);
+            effective_play_key_mode(self.key_mode_for_chart(chart_id), options.key_mode_conversion);
         options.hs_fix = hs_fix_option_from_profile(
             self.boot.profile_config.play_mode_config(play_config_key_mode).hs_fix,
         );
@@ -373,8 +376,18 @@ impl WinitApp {
         let Some(source_key_mode) = KeyMode::from_str_opt(&chart.mode) else {
             return bmz_render::snapshot::SkinAttemptState::default();
         };
-        let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
-        let applied_double_option = if seven_to_six
+        let battle_option =
+            matches!(options.double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch);
+        let conversion = if !options.session_mode.is_battle()
+            && options.battle_target.is_none()
+            && !battle_option
+            && options.key_mode_conversion.applies_to(source_key_mode)
+        {
+            options.key_mode_conversion
+        } else {
+            KeyModeConversionConfig::Off
+        };
+        let applied_double_option = if conversion != KeyModeConversionConfig::Off
             || options.session_mode.is_battle()
             || options.battle_target.is_some()
         {
@@ -400,9 +413,15 @@ impl WinitApp {
                 source_key_mode,
                 applied_double_option,
                 options.session_mode,
-                seven_to_six,
+                conversion,
             )),
-            seven_to_six,
+            seven_to_six: conversion == KeyModeConversionConfig::SevenToSix,
+            seven_to_nine_pattern: if conversion == KeyModeConversionConfig::SevenToNine {
+                options.seven_to_nine_pattern.value()
+            } else {
+                0
+            },
+            seven_to_nine_type: options.seven_to_nine_type.value(),
             source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
                 chart.ln_profile,
             )),
@@ -446,7 +465,7 @@ impl WinitApp {
             self.key_mode_for_chart(chart_id),
             options.double_option,
             options.session_mode,
-            options.seven_to_six,
+            options.key_mode_conversion,
             options.battle_target.is_some(),
         )
     }
@@ -520,20 +539,37 @@ impl WinitApp {
         )
     }
 
-    pub(super) fn normalize_seven_to_six_options(
+    pub(super) fn normalize_key_mode_conversion_options(
         &self,
         chart_id: i64,
         options: &mut PlayStartOptions,
     ) {
-        if !options.seven_to_six || self.key_mode_for_chart(chart_id) != KeyMode::K7 {
+        let source_key_mode = self.key_mode_for_chart(chart_id);
+        if options.session_mode.is_battle()
+            || options.battle_target.is_some()
+            || matches!(
+                options.double_option,
+                DoubleOption::Battle | DoubleOption::BattleAutoScratch
+            )
+        {
+            options.key_mode_conversion = KeyModeConversionConfig::Off;
+            return;
+        }
+        if !options.key_mode_conversion.applies_to(source_key_mode) {
             return;
         }
         options.score_save_disabled = true;
-        options.arrange =
-            crate::screens::play_session::normalize_arrange_for_seven_to_six(options.arrange);
-        options.arrange_2p = ArrangeOption::Normal;
+        if options.key_mode_conversion == KeyModeConversionConfig::SevenToSix {
+            options.arrange =
+                crate::screens::play_session::normalize_arrange_for_seven_to_six(options.arrange);
+        }
+        if matches!(
+            options.key_mode_conversion,
+            KeyModeConversionConfig::SevenToNine | KeyModeConversionConfig::SevenToSix
+        ) {
+            options.arrange_2p = ArrangeOption::Normal;
+        }
         options.double_option = DoubleOption::Off;
-        options.autoplay = options.session_mode.primary_autoplay();
         options.target = TargetOption::None;
         options.resolved_target = None;
     }
@@ -636,14 +672,24 @@ fn play_skin_score_key(
     ln_policy_setting: LnPolicySetting,
     rule_mode: RuleMode,
 ) -> ScoreKey {
-    let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
     let battle_presentation = (options.session_mode.is_battle() || options.battle_target.is_some())
         && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
-    let double_option = if seven_to_six || battle_presentation {
-        DoubleOption::Off
+    let battle_option =
+        matches!(options.double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch);
+    let key_mode_conversion = if !battle_presentation
+        && !battle_option
+        && options.key_mode_conversion.applies_to(source_key_mode)
+    {
+        options.key_mode_conversion
     } else {
-        options.double_option.normalize_for_key_mode(source_key_mode)
+        KeyModeConversionConfig::Off
     };
+    let double_option =
+        if key_mode_conversion != KeyModeConversionConfig::Off || battle_presentation {
+            DoubleOption::Off
+        } else {
+            options.double_option.normalize_for_key_mode(source_key_mode)
+        };
     let ln_policy = crate::ln_policy::course_score_ln_policy(
         ln_policy_setting,
         options.ln_mode_override,

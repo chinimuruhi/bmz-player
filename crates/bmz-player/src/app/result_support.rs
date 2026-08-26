@@ -559,6 +559,13 @@ pub(super) fn apply_skin_attempt_lua_load_state(
         }
     }
     runtime_state.option_values.insert(SKIN_OPTION_BMZ_SEVEN_TO_SIX, attempt.seven_to_six);
+    for (ref_id, value) in [
+        (360, i32::from(attempt.seven_to_nine_pattern)),
+        (361, i32::from(attempt.seven_to_nine_type)),
+    ] {
+        runtime_state.number_values.insert(ref_id, value);
+        runtime_state.event_index_values.insert(ref_id, value);
+    }
 
     if let Some(bits) = attempt.source_ln_profile_bits {
         runtime_state.number_values.insert(SKIN_REF_BMZ_SOURCE_LN_PROFILE, i32::from(bits));

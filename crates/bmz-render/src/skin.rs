@@ -361,8 +361,9 @@ fn skin_image_index_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
         353 => Some(state.assist_long_note_mode),
         343 => Some(i64::from(state.guide_se_enabled)),
         400 => Some(i64::from(state.constant_enabled)),
-        // seventonine は未対応。
-        360..=361 => Some(0),
+        // beatorajaの7K TO 9K設定。patternは無効時0、有効時1..=6。
+        360 => Some(i64::from(state.skin_attempt.seven_to_nine_pattern)),
+        361 => Some(i64::from(state.skin_attempt.seven_to_nine_type)),
         370 if state.select_screen || state.result_failed.is_some() => {
             Some(state.select_clear_index)
         }

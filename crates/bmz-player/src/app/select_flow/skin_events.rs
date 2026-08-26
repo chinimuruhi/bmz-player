@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::profile_config::SevenToNinePattern;
 
 impl WinitApp {
     pub(super) fn execute_select_skin_event(&mut self, event_id: i32, arg: i32) {
@@ -141,6 +142,8 @@ impl WinitApp {
             351 => self.cycle_assist_mine_mode(arg),
             352 => self.cycle_assist_scroll_mode(arg),
             353 => self.cycle_assist_long_note_mode(arg),
+            360 => self.cycle_seven_to_nine_pattern(arg),
+            361 => self.cycle_seven_to_nine_type(arg),
             400 => self.toggle_select_constant(),
             _ => {
                 tracing::debug!(event_id, arg, "unsupported select skin event");
@@ -216,7 +219,56 @@ impl WinitApp {
     pub(super) fn cycle_select_double_option(&mut self, arg: i32) {
         self.select.double_option =
             cycle_double_option_with_direction(self.select.double_option, arg);
+        if matches!(
+            self.select.double_option,
+            DoubleOption::Battle | DoubleOption::BattleAutoScratch
+        ) && self.boot.profile_config.play.key_mode_conversion != KeyModeConversionConfig::Off
+        {
+            self.boot.profile_config.play.key_mode_conversion = KeyModeConversionConfig::Off;
+            self.boot.profile_config.updated_at = now_unix_seconds();
+            self.invalidate_play_preload();
+            self.play.play_media_cache = None;
+        }
         tracing::info!(double_option = self.select.double_option.as_str(), "double option changed");
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_seven_to_nine_pattern(&mut self, arg: i32) {
+        let current = if self.boot.profile_config.play.key_mode_conversion
+            == KeyModeConversionConfig::SevenToNine
+        {
+            self.boot.profile_config.play.seven_to_nine_pattern.value()
+        } else {
+            0
+        };
+        let next = if arg >= 0 {
+            (current + 1) % 7
+        } else if current == 0 {
+            6
+        } else {
+            current - 1
+        };
+        if next == 0 {
+            self.boot.profile_config.play.key_mode_conversion = KeyModeConversionConfig::Off;
+        } else if let Ok(pattern) = SevenToNinePattern::try_from(next) {
+            self.boot.profile_config.play.key_mode_conversion =
+                KeyModeConversionConfig::SevenToNine;
+            self.boot.profile_config.play.seven_to_nine_pattern = pattern;
+            self.boot.profile_config.play.double_option = DoubleOptionConfig::Off;
+            self.select.double_option = DoubleOption::Off;
+        }
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.invalidate_play_preload();
+        self.play.play_media_cache = None;
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_seven_to_nine_type(&mut self, arg: i32) {
+        self.boot.profile_config.play.seven_to_nine_type =
+            self.boot.profile_config.play.seven_to_nine_type.next(arg >= 0);
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.invalidate_play_preload();
+        self.play.play_media_cache = None;
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
     }
 

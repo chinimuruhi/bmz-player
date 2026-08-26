@@ -254,6 +254,8 @@ fn play_attempt_refs_use_frozen_source_and_effective_state() {
             source_key_mode: Some(KeyMode::K7),
             effective_key_mode: Some(KeyMode::K6),
             seven_to_six: true,
+            seven_to_nine_pattern: 5,
+            seven_to_nine_type: 2,
             source_ln_profile_bits: Some(source_ln_bits),
             session_mode_index: Some(3),
             double_option_index: Some(1),
@@ -278,7 +280,13 @@ fn play_attempt_refs_use_frozen_source_and_effective_state() {
     assert_eq!(skin_state_number(308, &state), Some(2));
     assert_eq!(skin_state_number(340, &state), Some(2));
     assert_eq!(skin_state_number(341, &state), Some(1));
+    assert_eq!(skin_state_number(360, &state), Some(5));
+    assert_eq!(skin_state_number(361, &state), Some(2));
     assert_eq!(skin_image_index_number(308, &state), Some(2));
+    assert_eq!(skin_image_index_number(360, &state), Some(5));
+    assert_eq!(skin_image_index_number(361, &state), Some(2));
+    assert_eq!(skin_state_event_index(360, &state), 5);
+    assert_eq!(skin_state_event_index(361, &state), 2);
     assert_eq!(skin_state_event_index(308, &state), 2);
 
     assert!(test_skin_op(SKIN_OPTION_BMZ_KEY_MODE_BASE + 2, &[], &state));

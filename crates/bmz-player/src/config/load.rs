@@ -41,6 +41,7 @@ pub fn load_profile_config(path: &Path) -> Result<ProfileConfig> {
 
 fn parse_profile_config(text: &str) -> Result<ProfileConfig> {
     let mut config: ProfileConfig = toml::from_str(text)?;
+    config.migrate_legacy_key_mode_conversion();
     config.normalize_play_mode_configs();
     config.skin.migrate_legacy_offsets();
     config.ir.normalize_builtin_providers();

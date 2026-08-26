@@ -325,7 +325,9 @@ impl WinitApp {
             arrange_seed_2p: option_seeds.p2.map(|seed| i64::from(seed.value())),
             random_trainer_seed,
             bms_random_seed: Some(crate::random_option_seed::fresh_bms_random_seed()),
-            seven_to_six: self.boot.profile_config.play.seven_to_six,
+            key_mode_conversion: self.boot.profile_config.play.key_mode_conversion,
+            seven_to_nine_pattern: self.boot.profile_config.play.seven_to_nine_pattern,
+            seven_to_nine_type: self.boot.profile_config.play.seven_to_nine_type,
             ..Default::default()
         }
     }

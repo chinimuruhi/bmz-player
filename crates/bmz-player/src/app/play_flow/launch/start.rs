@@ -11,7 +11,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
-        self.normalize_seven_to_six_options(chart_id, &mut options);
+        self.normalize_key_mode_conversion_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
@@ -52,7 +52,7 @@ impl WinitApp {
         chart_id: i64,
         mut options: PlayStartOptions,
     ) {
-        self.normalize_seven_to_six_options(chart_id, &mut options);
+        self.normalize_key_mode_conversion_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
@@ -200,7 +200,7 @@ impl WinitApp {
         mut options: PlayStartOptions,
         mut snapshot: RenderSnapshot,
     ) {
-        self.normalize_seven_to_six_options(chart_id, &mut options);
+        self.normalize_key_mode_conversion_options(chart_id, &mut options);
         if let Some(score_key) = self.play_skin_score_key_for_chart_id(chart_id, &options) {
             snapshot.rule_mode_index = crate::skin_extension::rule_mode_index(score_key.rule_mode);
             snapshot.ln_score_policy_index =
@@ -267,7 +267,7 @@ impl WinitApp {
         // 初期ゲージや緑数字が空表示にならないようセッション開始時相当の値を埋める。
         let key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
         let play_config_key_mode =
-            effective_play_key_mode(self.key_mode_for_chart(chart_id), options.seven_to_six);
+            effective_play_key_mode(self.key_mode_for_chart(chart_id), options.key_mode_conversion);
         self.boot.profile_config.activate_play_mode(play_config_key_mode);
         self.select.hs_fix_option =
             hs_fix_option_from_profile(self.boot.profile_config.play.hs_fix);

@@ -97,7 +97,9 @@ pub(in crate::app) fn preloaded_matches_start(
     preloaded.chart_id == chart_id
         && preloaded.session_options.session_mode == options.session_mode
         && preloaded.session_options.autoplay == options.autoplay
-        && preloaded.session_options.seven_to_six == options.seven_to_six
+        && preloaded.session_options.key_mode_conversion == options.key_mode_conversion
+        && preloaded.session_options.seven_to_nine_pattern == options.seven_to_nine_pattern
+        && preloaded.session_options.seven_to_nine_type == options.seven_to_nine_type
         && preloaded.session_options.score_save_disabled == options.score_save_disabled
         && preloaded.session_options.arrange == options.arrange
         && preloaded.session_options.arrange_2p == options.arrange_2p

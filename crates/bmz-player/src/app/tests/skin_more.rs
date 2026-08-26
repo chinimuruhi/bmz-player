@@ -31,6 +31,8 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         source_key_mode: Some(KeyMode::K7),
         effective_key_mode: Some(KeyMode::K6),
         seven_to_six: true,
+        seven_to_nine_pattern: 5,
+        seven_to_nine_type: 2,
         source_ln_profile_bits: Some(source_ln_bits),
         session_mode_index: Some(3),
         ln_mode_index: Some(2),
@@ -62,6 +64,8 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         extended.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_SEVEN_TO_SIX),
         Some(&true)
     );
+    assert_eq!(extended.event_index_values.get(&360), Some(&5));
+    assert_eq!(extended.event_index_values.get(&361), Some(&2));
     assert_eq!(extended.option_values.get(&170), Some(&true));
     assert_eq!(extended.option_values.get(&179), Some(&true));
 
@@ -557,7 +561,17 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Battle,
             SessionMode::Normal,
+            KeyModeConversionConfig::Off,
             false,
+        ),
+        KeyMode::K14
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Battle,
+            SessionMode::Normal,
+            KeyModeConversionConfig::SevenToNine,
             false,
         ),
         KeyMode::K14
@@ -567,7 +581,7 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::BattleAutoScratch,
             SessionMode::Normal,
-            false,
+            KeyModeConversionConfig::Off,
             false,
         ),
         KeyMode::K14
@@ -577,7 +591,7 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K5,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false,
+            KeyModeConversionConfig::Off,
             false,
         ),
         KeyMode::K10
@@ -587,7 +601,7 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Flip,
             SessionMode::Normal,
-            false,
+            KeyModeConversionConfig::Off,
             false,
         ),
         KeyMode::K7
@@ -597,7 +611,7 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K14,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false,
+            KeyModeConversionConfig::Off,
             false,
         ),
         KeyMode::K14
@@ -607,7 +621,7 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Off,
             SessionMode::AutoplayBattle,
-            false,
+            KeyModeConversionConfig::Off,
             false,
         ),
         KeyMode::K7
@@ -617,19 +631,39 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Battle,
             SessionMode::AutoplayBattle,
-            true,
+            KeyModeConversionConfig::SevenToSix,
             false,
         ),
-        KeyMode::K6
+        KeyMode::K7
     );
     assert_eq!(
         play_skin_key_mode_for_options(
             KeyMode::K7,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false,
+            KeyModeConversionConfig::Off,
             true,
         ),
         KeyMode::K7
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Off,
+            SessionMode::Normal,
+            KeyModeConversionConfig::SevenToNine,
+            false,
+        ),
+        KeyMode::K9
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K5,
+            DoubleOption::Off,
+            SessionMode::Normal,
+            KeyModeConversionConfig::SpToDp,
+            false,
+        ),
+        KeyMode::K10
     );
 }

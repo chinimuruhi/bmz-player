@@ -17,7 +17,8 @@ use crate::config::play::{
     bottom_shiftable_gauge_from_config, gauge_auto_shift_from_config, gauge_type_from_config,
 };
 use crate::config::profile_config::{
-    AssistOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, ProfileConfig,
+    AssistOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, KeyModeConversionConfig,
+    ProfileConfig, SevenToNinePattern, SevenToNineType,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::input::shared::SharedInputBackend;
@@ -146,7 +147,9 @@ pub(crate) fn normalize_battle_replay_for_key_mode(
 pub struct PlayStartOptions {
     pub session_mode: SessionMode,
     pub autoplay: bool,
-    pub seven_to_six: bool,
+    pub key_mode_conversion: KeyModeConversionConfig,
+    pub seven_to_nine_pattern: SevenToNinePattern,
+    pub seven_to_nine_type: SevenToNineType,
     pub score_save_disabled: bool,
     pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
@@ -279,7 +282,9 @@ pub fn play_session_options_from_start(
         play_config_key_mode: None,
         session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
-        seven_to_six: start_options.seven_to_six,
+        key_mode_conversion: start_options.key_mode_conversion,
+        seven_to_nine_pattern: start_options.seven_to_nine_pattern,
+        seven_to_nine_type: start_options.seven_to_nine_type,
         score_save_disabled: start_options.score_save_disabled,
         playback_rate_percent: bmz_audio::clock::clamp_playback_rate_percent(
             if start_options.playback_rate_percent == 0 {
@@ -616,8 +621,10 @@ pub fn apply_arrange_override(
     options.h_random_threshold_ms = arrange.h_random_threshold_ms;
     options.bms_random_choices = Some(arrange.bms_random_choices.clone());
     options.arrange_pattern = arrange.pattern.clone();
-    options.seven_to_six = arrange.seven_to_six;
-    options.score_save_disabled |= arrange.seven_to_six;
+    options.key_mode_conversion = arrange.key_mode_conversion;
+    options.seven_to_nine_pattern = arrange.seven_to_nine_pattern;
+    options.seven_to_nine_type = arrange.seven_to_nine_type;
+    options.score_save_disabled |= arrange.key_mode_converted();
 }
 
 pub fn apply_queued_replay(
@@ -639,7 +646,7 @@ pub fn apply_queued_replay(
     options.replay_gauge_override = replay.replay.recorded_gauge_type();
     options.bms_random_choices = replay.replay.bms_random_choices.clone();
     options.arrange_pattern = replay.replay.lane_shuffle_pattern.clone();
-    options.seven_to_six = false;
+    options.key_mode_conversion = KeyModeConversionConfig::Off;
     // Replays of past plays were recorded by a human; never autoplay them.
     options.autoplay = false;
     Ok(())
@@ -672,7 +679,9 @@ mod tests {
             h_random_threshold_ms: Some(125),
             bms_random_choices: vec![2],
             pattern: Some(vec![3, 1, 2, 0]),
-            seven_to_six: true,
+            key_mode_conversion: KeyModeConversionConfig::SevenToSix,
+            seven_to_nine_pattern: SevenToNinePattern::default(),
+            seven_to_nine_type: SevenToNineType::default(),
         };
         apply_arrange_override(&mut options, &arrange);
 
@@ -683,7 +692,7 @@ mod tests {
         assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
         assert_eq!(options.s_random_scheme_2p, Some(SRandomScheme::Lm120HzV1));
         assert_eq!(options.arrange_pattern, Some(vec![3, 1, 2, 0]));
-        assert!(options.seven_to_six);
+        assert_eq!(options.key_mode_conversion, KeyModeConversionConfig::SevenToSix);
         assert!(options.score_save_disabled);
         // Unlike a replay, no playback player is attached: the chart is played.
         assert!(options.replay_player.is_none());

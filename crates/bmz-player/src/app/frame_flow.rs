@@ -621,7 +621,11 @@ impl WinitApp {
         }
         self.sync_changed_select_play_options_from_profile(&before.play);
         self.sync_changed_select_score_context(SelectScoreContext::from_play(&before.play));
-        if before.play.seven_to_six != self.boot.profile_config.play.seven_to_six {
+        if before.play.key_mode_conversion != self.boot.profile_config.play.key_mode_conversion
+            || before.play.seven_to_nine_pattern
+                != self.boot.profile_config.play.seven_to_nine_pattern
+            || before.play.seven_to_nine_type != self.boot.profile_config.play.seven_to_nine_type
+        {
             self.invalidate_play_preload();
             self.play.play_media_cache = None;
         }

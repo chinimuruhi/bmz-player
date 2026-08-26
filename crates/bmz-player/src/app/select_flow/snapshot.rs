@@ -108,24 +108,44 @@ impl WinitApp {
             _ => None,
         };
         let source_key_mode = selected_play_mode;
-        let seven_to_six =
-            source_key_mode == Some(KeyMode::K7) && self.boot.profile_config.play.seven_to_six;
+        let conversion = source_key_mode
+            .filter(|_| {
+                !session_mode.is_battle()
+                    && !matches!(
+                        self.select.double_option,
+                        DoubleOption::Battle | DoubleOption::BattleAutoScratch
+                    )
+            })
+            .filter(|mode| self.boot.profile_config.play.key_mode_conversion.applies_to(*mode))
+            .map(|_| self.boot.profile_config.play.key_mode_conversion)
+            .unwrap_or(KeyModeConversionConfig::Off);
+        let applied_double_option = if conversion == KeyModeConversionConfig::Off {
+            self.select.double_option
+        } else {
+            DoubleOption::Off
+        };
         let skin_attempt = bmz_render::snapshot::SkinAttemptState {
             source_key_mode,
             effective_key_mode: source_key_mode.map(|mode| {
                 crate::skin_extension::select_effective_key_mode(
                     mode,
-                    self.select.double_option,
+                    applied_double_option,
                     session_mode,
-                    seven_to_six,
+                    conversion,
                 )
             }),
-            seven_to_six,
+            seven_to_six: conversion == KeyModeConversionConfig::SevenToSix,
+            seven_to_nine_pattern: if conversion == KeyModeConversionConfig::SevenToNine {
+                self.boot.profile_config.play.seven_to_nine_pattern.value()
+            } else {
+                0
+            },
+            seven_to_nine_type: self.boot.profile_config.play.seven_to_nine_type.value(),
             source_ln_profile_bits: source_ln_profile
                 .map(crate::skin_extension::source_ln_profile_bits),
             session_mode_index: Some(crate::skin_extension::session_mode_index(session_mode)),
             double_option_index: Some(crate::skin_extension::double_option_index(
-                self.select.double_option,
+                applied_double_option,
             )),
             hsfix_index: mode_config.as_ref().map(|config| {
                 crate::skin_extension::hsfix_index(hs_fix_option_from_profile(config.hs_fix))

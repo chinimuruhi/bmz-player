@@ -617,6 +617,17 @@ impl WinitApp {
             true
         } else if self.select.select_keys.is_ui_key6(control) {
             self.select.double_option = self.select.double_option.cycle();
+            if matches!(
+                self.select.double_option,
+                DoubleOption::Battle | DoubleOption::BattleAutoScratch
+            ) && self.boot.profile_config.play.key_mode_conversion
+                != KeyModeConversionConfig::Off
+            {
+                self.boot.profile_config.play.key_mode_conversion = KeyModeConversionConfig::Off;
+                self.boot.profile_config.updated_at = now_unix_seconds();
+                self.invalidate_play_preload();
+                self.play.play_media_cache = None;
+            }
             tracing::info!(
                 double_option = self.select.double_option.as_str(),
                 "double option changed"

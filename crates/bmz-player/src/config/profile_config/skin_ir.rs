@@ -457,6 +457,9 @@ impl ProfileConfig {
             play: PlayDefaultsConfig {
                 rule_mode: RuleMode::Beatoraja,
                 ln_mode_policy: LnPolicySetting::AutoLn,
+                key_mode_conversion: KeyModeConversionConfig::Off,
+                seven_to_nine_pattern: SevenToNinePattern::default(),
+                seven_to_nine_type: SevenToNineType::default(),
                 seven_to_six: false,
                 gauge: GaugeTypeConfig::Normal,
                 gauge_auto_shift: GaugeAutoShiftConfig::Off,

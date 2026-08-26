@@ -128,8 +128,7 @@ impl WinitApp {
             }
         };
         let metadata_elapsed = metadata_started_at.elapsed();
-        let score_save_disabled = library_snapshot.has_seven_key
-            && entry_start_options.iter().any(|options| options.seven_to_six);
+        let score_save_disabled = library_snapshot.has_key_mode_conversion;
         if score_save_disabled {
             for options in &mut entry_start_options {
                 options.score_save_disabled = true;
@@ -340,7 +339,7 @@ impl WinitApp {
         let mut entry_start_options = Vec::with_capacity(definition.entries.len());
         for index in 0..definition.entries.len() {
             let mut options = self.play_start_options();
-            options.seven_to_six = false;
+            options.key_mode_conversion = KeyModeConversionConfig::Off;
             options.score_save_disabled = false;
             options.session_mode = SessionMode::Normal;
             options.autoplay = false;

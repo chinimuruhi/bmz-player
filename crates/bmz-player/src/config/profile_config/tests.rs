@@ -58,6 +58,9 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
     assert_eq!(play.target, TargetOptionConfig::None);
     assert_eq!(play.rule_mode, RuleMode::Beatoraja);
     assert_eq!(play.ln_mode_policy, LnPolicySetting::AutoLn);
+    assert_eq!(play.key_mode_conversion, KeyModeConversionConfig::Off);
+    assert_eq!(play.seven_to_nine_pattern, SevenToNinePattern::Sc9Key1To7);
+    assert_eq!(play.seven_to_nine_type, SevenToNineType::Fixed);
     assert!(!play.seven_to_six);
     assert_eq!(play.bga, BgaModeConfig::On);
     assert_eq!(play.bga_expand, BgaExpandConfig::KeepAspect);
@@ -67,14 +70,37 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
 }
 
 #[test]
-fn seven_to_six_roundtrips_in_play_defaults() {
+fn key_mode_conversion_roundtrips_in_play_defaults() {
     let mut play = ProfileConfig::new_default("default", "Default", 0).play;
-    play.seven_to_six = true;
+    play.key_mode_conversion = KeyModeConversionConfig::SevenToNine;
+    play.seven_to_nine_pattern = SevenToNinePattern::Sc1Key3To9;
+    play.seven_to_nine_type = SevenToNineType::Alternation;
 
     let encoded = toml::to_string(&play).unwrap();
     let decoded: PlayDefaultsConfig = toml::from_str(&encoded).unwrap();
 
-    assert!(decoded.seven_to_six);
+    assert_eq!(decoded.key_mode_conversion, KeyModeConversionConfig::SevenToNine);
+    assert_eq!(decoded.seven_to_nine_pattern, SevenToNinePattern::Sc1Key3To9);
+    assert_eq!(decoded.seven_to_nine_type, SevenToNineType::Alternation);
+}
+
+#[test]
+fn legacy_seven_to_six_migrates_to_key_mode_conversion() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    profile.play.seven_to_six = true;
+
+    profile.migrate_legacy_key_mode_conversion();
+
+    assert_eq!(profile.play.key_mode_conversion, KeyModeConversionConfig::SevenToSix);
+    assert!(!profile.play.seven_to_six);
+}
+
+#[test]
+fn seven_to_nine_type_cycles_in_beatoraja_order() {
+    assert_eq!(SevenToNineType::Fixed.next(true), SevenToNineType::NoMashing);
+    assert_eq!(SevenToNineType::NoMashing.next(true), SevenToNineType::Alternation);
+    assert_eq!(SevenToNineType::Alternation.next(true), SevenToNineType::Fixed);
+    assert_eq!(SevenToNineType::Fixed.next(false), SevenToNineType::Alternation);
 }
 
 #[test]

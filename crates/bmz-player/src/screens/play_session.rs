@@ -50,8 +50,9 @@ use crate::config::play::{
     lane_unit_to_f32, play_offsets_from_profile_for_mode,
 };
 use crate::config::profile_config::{
-    AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig, LaneEffectConfig,
-    PlayModeConfig, ProfileConfig,
+    AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig,
+    KeyModeConversionConfig, LaneEffectConfig, PlayModeConfig, ProfileConfig, SevenToNinePattern,
+    SevenToNineType,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::ln_policy::{
@@ -106,9 +107,11 @@ pub struct PlaySessionOptions {
     /// derived from this value instead of being configured independently.
     pub session_mode: SessionMode,
     pub autoplay: bool,
-    /// Convert a source 7K chart into BMZ's scratch-less 6K mode before
-    /// applying the normal arrange option.
-    pub seven_to_six: bool,
+    /// Requested key-mode conversion. It becomes effective only for a
+    /// compatible source chart and is mutually exclusive with battle modes.
+    pub key_mode_conversion: KeyModeConversionConfig,
+    pub seven_to_nine_pattern: SevenToNinePattern,
+    pub seven_to_nine_type: SevenToNineType,
     /// Explicitly disables score/lamp/replay/IR persistence without presenting
     /// the session as practice or autoplay.
     pub score_save_disabled: bool,
@@ -225,8 +228,20 @@ pub struct AppliedArrange {
     /// BMS `#RANDOM` decisions applied before the arrange modifier.
     pub bms_random_choices: Vec<i32>,
     pub pattern: Option<Vec<u8>>,
-    /// The source chart was converted from 7K to 6K before this arrangement.
-    pub seven_to_six: bool,
+    /// Key-mode conversion actually applied to the source chart.
+    pub key_mode_conversion: KeyModeConversionConfig,
+    pub seven_to_nine_pattern: SevenToNinePattern,
+    pub seven_to_nine_type: SevenToNineType,
+}
+
+impl AppliedArrange {
+    pub const fn key_mode_converted(&self) -> bool {
+        !matches!(self.key_mode_conversion, KeyModeConversionConfig::Off)
+    }
+
+    pub const fn seven_to_six(&self) -> bool {
+        matches!(self.key_mode_conversion, KeyModeConversionConfig::SevenToSix)
+    }
 }
 
 impl AppliedArrange {
@@ -353,7 +368,9 @@ impl Default for PlaySessionOptions {
             play_config_key_mode: None,
             session_mode: SessionMode::Normal,
             autoplay: false,
-            seven_to_six: false,
+            key_mode_conversion: KeyModeConversionConfig::Off,
+            seven_to_nine_pattern: SevenToNinePattern::default(),
+            seven_to_nine_type: SevenToNineType::default(),
             score_save_disabled: false,
             playback_rate_percent: 100,
             assist: AssistOptionConfig::default(),
@@ -406,8 +423,12 @@ mod arrange_pipeline;
 mod arrange_rng;
 mod build;
 mod preload;
+#[path = "play_session/seven_to_nine.rs"]
+mod seven_to_nine;
 #[path = "play_session/seven_to_six.rs"]
 mod seven_to_six;
+#[path = "play_session/sp_to_dp.rs"]
+mod sp_to_dp;
 
 pub(crate) use arrange_pipeline::second_player_lane_mask;
 pub use arrange_pipeline::{apply_arrange, apply_arrange_pair, generate_arrange_seed};
@@ -425,7 +446,9 @@ pub use preload::{
     preload_play_session_reloading_audio_with_progress, scored_chart_metrics_for_chart,
     scored_chart_metrics_from_prepared, scored_note_count_for_chart,
 };
+pub use seven_to_nine::apply_seven_to_nine;
 pub use seven_to_six::{apply_seven_to_six, normalize_arrange_for_seven_to_six};
+pub use sp_to_dp::apply_sp_to_dp;
 
 use arrange_algorithm::*;
 use arrange_permutation::*;

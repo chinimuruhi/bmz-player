@@ -99,6 +99,8 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         354 if state.select_screen => Some(state.select_chart_mine_notes as i64),
         360 if state.select_screen => Some(state.select_chart_peak_density.floor() as i64),
         361 if state.select_screen => Some(decimal_afterdot(state.select_chart_peak_density)),
+        360 => Some(i64::from(state.skin_attempt.seven_to_nine_pattern)),
+        361 => Some(i64::from(state.skin_attempt.seven_to_nine_type)),
         362 if state.select_screen => Some(state.select_chart_end_density.floor() as i64),
         363 if state.select_screen => Some(decimal_afterdot(state.select_chart_end_density)),
         364 if state.select_screen => Some(state.select_chart_density.floor() as i64),

@@ -163,7 +163,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         let mut opponent_options = options.clone();
         opponent_options.session_mode = SessionMode::Normal;
         opponent_options.autoplay = false;
-        opponent_options.seven_to_six = false;
+        opponent_options.key_mode_conversion = KeyModeConversionConfig::Off;
         opponent_options.score_save_disabled = true;
         opponent_options.assist = AssistOptionConfig::default();
         opponent_options.assist_runtime = Default::default();
@@ -200,7 +200,15 @@ pub fn preload_play_session_for_chart_with_callbacks(
     let skin_attempt = bmz_render::snapshot::SkinAttemptState {
         source_key_mode: Some(imported.source_key_mode),
         effective_key_mode: Some(imported.chart.metadata.key_mode),
-        seven_to_six: imported.applied_arrange.seven_to_six,
+        seven_to_six: imported.applied_arrange.seven_to_six(),
+        seven_to_nine_pattern: if imported.applied_arrange.key_mode_conversion
+            == KeyModeConversionConfig::SevenToNine
+        {
+            imported.applied_arrange.seven_to_nine_pattern.value()
+        } else {
+            0
+        },
+        seven_to_nine_type: imported.applied_arrange.seven_to_nine_type.value(),
         source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
             imported.source_ln_profile,
         )),
@@ -403,17 +411,32 @@ pub(super) fn load_transformed_chart_for_play(
     // LN / arrange より前に適用し、practice 切出しもシフト後時刻を使う。
     apply_start_note_margin(&mut chart);
     let source_key_mode = chart.metadata.key_mode;
-    let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
     let battle_presentation = (options.session_mode.is_battle()
         || options.battle_opponent.is_some())
         && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
+    let battle_option =
+        matches!(options.double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch);
+    let requested_conversion = if battle_presentation || battle_option {
+        KeyModeConversionConfig::Off
+    } else {
+        options.key_mode_conversion
+    };
+    let key_mode_conversion = if requested_conversion.applies_to(source_key_mode) {
+        requested_conversion
+    } else {
+        KeyModeConversionConfig::Off
+    };
+    let seven_to_six = key_mode_conversion == KeyModeConversionConfig::SevenToSix;
+    let seven_to_nine = key_mode_conversion == KeyModeConversionConfig::SevenToNine;
+    let sp_to_dp = key_mode_conversion == KeyModeConversionConfig::SpToDp;
     // SessionMode のbattle、または明示したbattle targetは表示用に2P側を作るが、
     // 通常のBATTLE譜面オプションとは異なり、1P側のスコアキーと保存可否を維持する。
-    let applied_double_option = if seven_to_six || battle_presentation {
-        DoubleOption::Off
-    } else {
-        options.double_option.normalize_for_key_mode(source_key_mode)
-    };
+    let applied_double_option =
+        if key_mode_conversion != KeyModeConversionConfig::Off || battle_presentation {
+            DoubleOption::Off
+        } else {
+            options.double_option.normalize_for_key_mode(source_key_mode)
+        };
     let ln_policy = course_score_ln_policy(
         options.ln_policy_setting,
         options.ln_mode_override,
@@ -450,15 +473,28 @@ pub(super) fn load_transformed_chart_for_play(
             arrange_seed.expect("7K to 6K seed"),
             options.legacy_arrange_seed,
         );
+    } else if sp_to_dp {
+        apply_sp_to_dp(&mut chart);
     }
     apply_double_option(&mut chart, applied_double_option);
-    if !seven_to_six && battle_presentation && options.battle_opponent.is_none() {
+    if key_mode_conversion == KeyModeConversionConfig::Off
+        && battle_presentation
+        && options.battle_opponent.is_none()
+    {
         apply_battle_double_option(&mut chart);
     }
+    let second_arrange = if matches!(
+        key_mode_conversion,
+        KeyModeConversionConfig::SevenToNine | KeyModeConversionConfig::SevenToSix
+    ) {
+        ArrangeOption::Normal
+    } else {
+        options.arrange_2p
+    };
     let mut applied_arrange = apply_arrange_pair(
         &mut chart,
         arrange,
-        if seven_to_six { ArrangeOption::Normal } else { options.arrange_2p },
+        second_arrange,
         arrange_seed,
         options.arrange_seed_2p,
         options.legacy_arrange_seed,
@@ -467,9 +503,19 @@ pub(super) fn load_transformed_chart_for_play(
         options.h_random_threshold_ms,
         options.arrange_pattern.as_deref(),
     );
+    if seven_to_nine {
+        apply_seven_to_nine(
+            &mut chart,
+            options.seven_to_nine_pattern,
+            options.seven_to_nine_type,
+            options.h_random_threshold_ms.unwrap_or(125),
+        );
+    }
     applied_arrange.double_option = applied_double_option;
     applied_arrange.bms_random_choices = import.bms_random_choices;
-    applied_arrange.seven_to_six = seven_to_six;
+    applied_arrange.key_mode_conversion = key_mode_conversion;
+    applied_arrange.seven_to_nine_pattern = options.seven_to_nine_pattern;
+    applied_arrange.seven_to_nine_type = options.seven_to_nine_type;
 
     Ok(TransformedPlayChart {
         chart,
@@ -477,7 +523,8 @@ pub(super) fn load_transformed_chart_for_play(
         applied_arrange,
         score_key,
         assist_runtime,
-        score_save_disabled: options.score_save_disabled || seven_to_six,
+        score_save_disabled: options.score_save_disabled
+            || key_mode_conversion != KeyModeConversionConfig::Off,
         source_key_mode,
     })
 }
@@ -556,7 +603,9 @@ pub fn build_practice_prepared_from_preloaded(
         None,
     );
     applied_arrange.double_option = double_option;
-    applied_arrange.seven_to_six = preloaded.applied_arrange.seven_to_six;
+    applied_arrange.key_mode_conversion = preloaded.applied_arrange.key_mode_conversion;
+    applied_arrange.seven_to_nine_pattern = preloaded.applied_arrange.seven_to_nine_pattern;
+    applied_arrange.seven_to_nine_type = preloaded.applied_arrange.seven_to_nine_type;
     options.session_mode = SessionMode::Practice;
     options.assist_runtime = preloaded.assist_runtime;
     options.autoplay = false;

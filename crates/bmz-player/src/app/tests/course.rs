@@ -450,7 +450,10 @@ fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
         release: true,
     };
     let options = vec![
-        PlayStartOptions::default(),
+        PlayStartOptions {
+            key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+            ..Default::default()
+        },
         PlayStartOptions { double_option: DoubleOption::Battle, ..Default::default() },
     ];
 
@@ -463,7 +466,7 @@ fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
     .unwrap();
 
     assert_eq!(snapshot.first_chart.chart_id, 10);
-    assert!(snapshot.has_seven_key);
+    assert!(snapshot.has_key_mode_conversion);
     assert_eq!(snapshot.titles.get(&20).map(String::as_str), Some("Second"));
     assert_eq!(snapshot.metrics.total_notes, 505);
     assert_eq!(snapshot.metrics.ln_mode, Some(bmz_chart::model::LongNoteMode::Cn));

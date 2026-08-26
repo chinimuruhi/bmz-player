@@ -9,6 +9,7 @@ use bmz_render::snapshot::{
     SKIN_SOURCE_LN_UNDEFINED_BIT,
 };
 
+use crate::config::profile_config::KeyModeConversionConfig;
 use crate::ln_policy::{ChartLnProfile, LnPolicySetting, LnScorePolicy, played_ln_mode};
 use crate::select_options::{DoubleOption, HsFixOption, SessionMode};
 
@@ -128,11 +129,8 @@ pub(crate) const fn effective_key_mode(
     source: KeyMode,
     double_option: DoubleOption,
     session_mode: SessionMode,
-    seven_to_six: bool,
+    key_mode_conversion: KeyModeConversionConfig,
 ) -> KeyMode {
-    if seven_to_six && matches!(source, KeyMode::K7) {
-        return KeyMode::K6;
-    }
     if session_mode.is_battle()
         || matches!(double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch)
     {
@@ -142,7 +140,7 @@ pub(crate) const fn effective_key_mode(
             _ => source,
         };
     }
-    source
+    key_mode_conversion.effective_key_mode(source)
 }
 
 /// Select に公開する実効 key mode。
@@ -154,14 +152,12 @@ pub(crate) const fn select_effective_key_mode(
     source: KeyMode,
     double_option: DoubleOption,
     session_mode: SessionMode,
-    seven_to_six: bool,
+    key_mode_conversion: KeyModeConversionConfig,
 ) -> KeyMode {
-    effective_key_mode(
-        source,
-        if session_mode.uses_battle_skin() { DoubleOption::Off } else { double_option },
-        SessionMode::Normal,
-        seven_to_six,
-    )
+    if session_mode.uses_battle_skin() {
+        return source;
+    }
+    effective_key_mode(source, double_option, SessionMode::Normal, key_mode_conversion)
 }
 
 #[cfg(test)]
@@ -202,7 +198,7 @@ mod tests {
                 KeyMode::K5,
                 DoubleOption::Battle,
                 SessionMode::AutoplayBattle,
-                false,
+                KeyModeConversionConfig::Off,
             ),
             KeyMode::K5
         );
@@ -211,7 +207,7 @@ mod tests {
                 KeyMode::K7,
                 DoubleOption::BattleAutoScratch,
                 SessionMode::GBattle,
-                false,
+                KeyModeConversionConfig::Off,
             ),
             KeyMode::K7
         );
@@ -220,7 +216,7 @@ mod tests {
                 KeyMode::K7,
                 DoubleOption::Battle,
                 SessionMode::Normal,
-                false,
+                KeyModeConversionConfig::Off,
             ),
             KeyMode::K14
         );
@@ -229,7 +225,16 @@ mod tests {
                 KeyMode::K7,
                 DoubleOption::Off,
                 SessionMode::AutoplayBattle,
-                true,
+                KeyModeConversionConfig::SevenToSix,
+            ),
+            KeyMode::K7
+        );
+        assert_eq!(
+            select_effective_key_mode(
+                KeyMode::K7,
+                DoubleOption::Off,
+                SessionMode::Normal,
+                KeyModeConversionConfig::SevenToSix,
             ),
             KeyMode::K6
         );

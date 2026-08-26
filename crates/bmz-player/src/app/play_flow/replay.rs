@@ -133,7 +133,9 @@ impl WinitApp {
         let options = PlayStartOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
-            seven_to_six: false,
+            key_mode_conversion: KeyModeConversionConfig::Off,
+            seven_to_nine_pattern: Default::default(),
+            seven_to_nine_type: Default::default(),
             score_save_disabled: false,
             playback_rate_percent: 100,
             assist: Default::default(),
@@ -252,7 +254,9 @@ impl WinitApp {
         let options = PlayStartOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
-            seven_to_six: false,
+            key_mode_conversion: KeyModeConversionConfig::Off,
+            seven_to_nine_pattern: Default::default(),
+            seven_to_nine_type: Default::default(),
             score_save_disabled: false,
             playback_rate_percent: 100,
             assist: Default::default(),

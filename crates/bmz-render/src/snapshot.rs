@@ -25,11 +25,15 @@ pub const SKIN_SOURCE_LN_DEFINED_HCN_BIT: u8 = 1 << 3;
 /// Selectでは開始予定、Decide/Play/Resultでは試行開始時に固定されたskin公開状態。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SkinAttemptState {
-    /// BATTLE / 7K-to-6K変換前の譜面キーモード。
+    /// BATTLE / キーモード変換前の譜面キーモード。
     pub source_key_mode: Option<KeyMode>,
     /// skinが描画する変換後のキーモード。Selectでは開始予定値。
     pub effective_key_mode: Option<KeyMode>,
     pub seven_to_six: bool,
+    /// beatoraja ref 360互換。7K TO 9K無効時は0、有効時は1..=6。
+    pub seven_to_nine_pattern: u8,
+    /// beatoraja ref 361互換。0=FIXED, 1=NO MASHING, 2=ALTERNATION。
+    pub seven_to_nine_type: u8,
     /// [`SKIN_SOURCE_LN_UNDEFINED_BIT`] などのbit mask。Noneは譜面未確定。
     pub source_ln_profile_bits: Option<u8>,
     /// 0=NORMAL, 1=PRACTICE, 2=AUTOPLAY, 3=AUTO BATTLE, 4=G-BATTLE。
@@ -52,6 +56,8 @@ impl SkinAttemptState {
         self.source_key_mode = newer.source_key_mode.or(self.source_key_mode);
         self.effective_key_mode = newer.effective_key_mode.or(self.effective_key_mode);
         self.seven_to_six = newer.seven_to_six;
+        self.seven_to_nine_pattern = newer.seven_to_nine_pattern;
+        self.seven_to_nine_type = newer.seven_to_nine_type;
         self.source_ln_profile_bits = newer.source_ln_profile_bits.or(self.source_ln_profile_bits);
         self.session_mode_index = newer.session_mode_index.or(self.session_mode_index);
         self.double_option_index = newer.double_option_index.or(self.double_option_index);

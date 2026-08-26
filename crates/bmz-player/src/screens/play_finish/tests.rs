@@ -18,6 +18,7 @@ use bmz_gameplay::session::{BgmScheduler, GameSession, PlayAudioMix, PlayOffsets
 use rusqlite::Connection;
 
 use super::*;
+use crate::config::profile_config::{SevenToNinePattern, SevenToNineType};
 
 #[test]
 fn pending_finished_play_waits_for_worker_completion() {
@@ -256,7 +257,9 @@ fn finish_session_result_returns_summary() {
         h_random_threshold_ms: None,
         bms_random_choices: vec![1, 2],
         pattern: Some(lane_shuffle_pattern.clone()),
-        seven_to_six: false,
+        key_mode_conversion: KeyModeConversionConfig::Off,
+        seven_to_nine_pattern: Default::default(),
+        seven_to_nine_type: Default::default(),
     };
 
     let finished = finish_session_result(
@@ -617,6 +620,65 @@ fn finish_session_result_skips_storage_for_autoplay() {
     assert_eq!(finished.stored.score_history_id, 0);
     assert!(finished.stored.replay_path.is_empty());
     assert!(finished.stored.slot_paths.iter().all(Option::is_none));
+    assert_eq!(score_db.recent_history(10, 0).unwrap().len(), 0);
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn finish_session_result_skips_all_storage_for_key_mode_conversion() {
+    let root = make_temp_dir("finish-key-mode-conversion");
+    let paths = ProfilePaths {
+        root_dir: root.clone(),
+        profile_toml: root.join("profile.toml"),
+        collection_db: root.join("collection.db"),
+        score_db: root.join("score.db"),
+        network_db: root.join("network.db"),
+        replay_dir: root.join("replay"),
+    };
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
+    let mut score_db = ScoreDatabase::from_connection(conn);
+    let mut network_db = open_network_db();
+    let replay_config = ReplayConfig {
+        auto_save: true,
+        compress: false,
+        slot_rules: crate::config::profile_config::default_slot_rules(),
+    };
+    let session = session();
+    let applied_arrange = AppliedArrange {
+        key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+        seven_to_nine_pattern: SevenToNinePattern::Sc9Key1To7,
+        seven_to_nine_type: SevenToNineType::Alternation,
+        ..Default::default()
+    };
+
+    let finished = finish_session_result(
+        &mut score_db,
+        &mut network_db,
+        FinishSessionResultRequest {
+            profile_paths: &paths,
+            replay_config: &replay_config,
+            ir_config: &crate::config::profile_config::IrConfig::default(),
+            session: &session,
+            source_ln_profile: ChartLnProfile::from_chart(&session.chart),
+            chart_length_ms: None,
+            play_duration_ms: None,
+            played_at: 1_700_000_105,
+            applied_arrange: &applied_arrange,
+            target_ex_score: None,
+            score_key: score_key(&session),
+            practice_mode: false,
+            finish_mode: FinishResultMode::Normal,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(finished.stored.score_history_id, 0);
+    assert!(finished.stored.replay_path.is_empty());
+    assert!(finished.stored.slot_paths.iter().all(Option::is_none));
+    assert!(!finished.score_data_changed);
     assert_eq!(score_db.recent_history(10, 0).unwrap().len(), 0);
 
     std::fs::remove_dir_all(root).unwrap();

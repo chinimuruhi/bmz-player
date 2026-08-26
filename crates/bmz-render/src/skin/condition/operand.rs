@@ -158,6 +158,8 @@ pub(in crate::skin) fn skin_state_event_index(event_id: i32, state: &SkinDrawSta
         351 => state.assist_mine_mode as i32,
         352 => state.assist_scroll_mode as i32,
         353 => state.assist_long_note_mode as i32,
+        360 => i32::from(state.skin_attempt.seven_to_nine_pattern),
+        361 => i32::from(state.skin_attempt.seven_to_nine_type),
         400 => i32::from(state.constant_enabled),
         340 => {
             state.skin_attempt.judge_algorithm_index.unwrap_or(state.select_judge_algorithm_index)

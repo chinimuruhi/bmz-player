@@ -21,7 +21,9 @@ pub(super) fn normal_applied_arrange(
         h_random_threshold_ms: None,
         bms_random_choices: Vec::new(),
         pattern: None,
-        seven_to_six: false,
+        key_mode_conversion: KeyModeConversionConfig::Off,
+        seven_to_nine_pattern: SevenToNinePattern::default(),
+        seven_to_nine_type: SevenToNineType::default(),
     }
 }
 
@@ -64,7 +66,9 @@ pub(super) fn apply_arrange_internal(
             h_random_threshold_ms,
             bms_random_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
-            seven_to_six: false,
+            key_mode_conversion: KeyModeConversionConfig::Off,
+            seven_to_nine_pattern: SevenToNinePattern::default(),
+            seven_to_nine_type: SevenToNineType::default(),
         };
     }
 
@@ -85,7 +89,9 @@ pub(super) fn apply_arrange_internal(
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
-                seven_to_six: false,
+                key_mode_conversion: KeyModeConversionConfig::Off,
+                seven_to_nine_pattern: SevenToNinePattern::default(),
+                seven_to_nine_type: SevenToNineType::default(),
             }
         }
         ArrangeOption::Random => {
@@ -103,7 +109,9 @@ pub(super) fn apply_arrange_internal(
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
-                seven_to_six: false,
+                key_mode_conversion: KeyModeConversionConfig::Off,
+                seven_to_nine_pattern: SevenToNinePattern::default(),
+                seven_to_nine_type: SevenToNineType::default(),
             }
         }
         ArrangeOption::RRandom => {
@@ -121,7 +129,9 @@ pub(super) fn apply_arrange_internal(
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
-                seven_to_six: false,
+                key_mode_conversion: KeyModeConversionConfig::Off,
+                seven_to_nine_pattern: SevenToNinePattern::default(),
+                seven_to_nine_type: SevenToNineType::default(),
             }
         }
         ArrangeOption::RandomEx => {
@@ -139,7 +149,9 @@ pub(super) fn apply_arrange_internal(
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
-                seven_to_six: false,
+                key_mode_conversion: KeyModeConversionConfig::Off,
+                seven_to_nine_pattern: SevenToNinePattern::default(),
+                seven_to_nine_type: SevenToNineType::default(),
             }
         }
         ArrangeOption::FRandom | ArrangeOption::MFRandom => {
@@ -157,7 +169,9 @@ pub(super) fn apply_arrange_internal(
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
-                seven_to_six: false,
+                key_mode_conversion: KeyModeConversionConfig::Off,
+                seven_to_nine_pattern: SevenToNinePattern::default(),
+                seven_to_nine_type: SevenToNineType::default(),
             }
         }
         ArrangeOption::SRandom
@@ -185,7 +199,9 @@ pub(super) fn apply_arrange_internal(
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
                 pattern: None,
-                seven_to_six: false,
+                key_mode_conversion: KeyModeConversionConfig::Off,
+                seven_to_nine_pattern: SevenToNinePattern::default(),
+                seven_to_nine_type: SevenToNineType::default(),
             }
         }
     }
@@ -249,7 +265,9 @@ pub fn apply_arrange_pair(
             h_random_threshold_ms,
             bms_random_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
-            seven_to_six: false,
+            key_mode_conversion: KeyModeConversionConfig::Off,
+            seven_to_nine_pattern: SevenToNinePattern::default(),
+            seven_to_nine_type: SevenToNineType::default(),
         };
     }
 
@@ -293,7 +311,9 @@ pub fn apply_arrange_pair(
         h_random_threshold_ms,
         bms_random_choices: Vec::new(),
         pattern: has_perm.then(|| combined_perm.iter().map(|&i| i as u8).collect()),
-        seven_to_six: false,
+        key_mode_conversion: KeyModeConversionConfig::Off,
+        seven_to_nine_pattern: SevenToNinePattern::default(),
+        seven_to_nine_type: SevenToNineType::default(),
     }
 }
 
