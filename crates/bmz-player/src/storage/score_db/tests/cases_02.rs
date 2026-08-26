@@ -29,19 +29,24 @@ fn score_best_keeps_independent_bp_cb_and_max_combo_records() {
 }
 
 #[test]
-fn clear_only_update_changes_lamp_and_counts_without_numeric_score_or_history() {
+fn clear_only_updates_lamp_counts_and_player_stats_without_numeric_score_or_history() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();
     run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
     let mut db = ScoreDatabase { conn };
 
     let mut baseline = record(20, ClearType::NoPlay);
+    baseline.played_at = 10;
+    baseline.playtime_seconds = 30;
     baseline.score.max_combo = 30;
     baseline.score.judges.fast_bad = 4;
     db.insert_score(&baseline).unwrap();
 
     let mut assisted = record(200, ClearType::LightAssistEasy);
+    assisted.played_at = 20;
+    assisted.playtime_seconds = 120;
     assisted.score.max_combo = 100;
+    assisted.score.judges.slow_good = 7;
     db.update_score_clear_only(&assisted).unwrap();
 
     let best = db.best_scores_for_charts(&[key([7; 32])]).unwrap().pop().unwrap();
@@ -54,6 +59,15 @@ fn clear_only_update_changes_lamp_and_counts_without_numeric_score_or_history() 
     assert_eq!(best.clear_count, 1);
     assert_eq!(db.recent_history(10, 0).unwrap().len(), 1);
 
+    let stats = db.player_stats().unwrap();
+    assert_eq!(stats.play_count, 2);
+    assert_eq!(stats.clear_count, 1);
+    assert_eq!(stats.playtime_seconds, 150);
+    assert_eq!(stats.max_combo, 100);
+    assert_eq!(stats.fast_bad, 4);
+    assert_eq!(stats.slow_good, 7);
+    assert_eq!(stats.updated_at, 20);
+
     let mut lower_lamp = record(400, ClearType::AssistEasy);
     lower_lamp.score.max_combo = 200;
     db.update_score_clear_only(&lower_lamp).unwrap();
@@ -63,6 +77,11 @@ fn clear_only_update_changes_lamp_and_counts_without_numeric_score_or_history() 
     assert_eq!(best.max_combo, 30);
     assert_eq!(best.play_count, 3);
     assert_eq!(best.clear_count, 2);
+
+    let stats = db.player_stats().unwrap();
+    assert_eq!(stats.play_count, 3);
+    assert_eq!(stats.clear_count, 2);
+    assert_eq!(stats.max_combo, 200);
 }
 
 #[test]

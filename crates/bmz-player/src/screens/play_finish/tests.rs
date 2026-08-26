@@ -115,7 +115,7 @@ fn play_result_uses_assist_clear_lamp_for_successful_play() {
 }
 
 #[test]
-fn effective_assist_persists_only_clear_lamp_and_counts() {
+fn effective_assist_persists_clear_lamp_counts_and_player_stats() {
     let root = make_temp_dir("finish-assist");
     let paths = ProfilePaths {
         root_dir: root.clone(),
@@ -162,6 +162,9 @@ fn effective_assist_persists_only_clear_lamp_and_counts() {
     assert_eq!(best.play_count, 1);
     assert_eq!(best.clear_count, 1);
     assert!(score_db.recent_history(10, 0).unwrap().is_empty());
+    let stats = score_db.player_stats().unwrap();
+    assert_eq!(stats.play_count, 1);
+    assert_eq!(stats.clear_count, 1);
     let job_count: i64 = network_db
         .conn()
         .query_row("SELECT COUNT(*) FROM ir_score_jobs", [], |row| row.get(0))

@@ -665,6 +665,66 @@ fn load_transformed_chart_applies_start_note_margin() {
 }
 
 #[test]
+fn load_transformed_chart_marks_beatoraja_arrange_assists() {
+    let path = write_temp_bms(
+        "\
+#TITLE Arrange Assist
+#BPM 120
+#00011:01
+#00016:01
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+
+    for arrange in [
+        ArrangeOption::Spiral,
+        ArrangeOption::HRandom,
+        ArrangeOption::AllScratch,
+        ArrangeOption::RandomEx,
+        ArrangeOption::SRandomEx,
+    ] {
+        let options = PlaySessionOptions { arrange, arrange_seed: Some(1), ..Default::default() };
+        let transformed = load_transformed_chart_for_play(&library_db, chart_id, &options).unwrap();
+        assert_eq!(transformed.applied_arrange.arrange, arrange);
+        assert_eq!(
+            transformed.assist_runtime.level,
+            bmz_gameplay::session::AssistLevel::LightAssist,
+            "{arrange:?}"
+        );
+        assert!(!transformed.assist_runtime.score_update_enabled(), "{arrange:?}");
+    }
+
+    let scoreable = load_transformed_chart_for_play(
+        &library_db,
+        chart_id,
+        &PlaySessionOptions {
+            arrange: ArrangeOption::SRandom,
+            arrange_seed: Some(1),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(scoreable.assist_runtime.level, bmz_gameplay::session::AssistLevel::None);
+    assert!(scoreable.assist_runtime.score_update_enabled());
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn load_transformed_chart_applies_only_compatible_key_mode_conversions() {
     let seven_key_path = write_temp_bms(
         "\

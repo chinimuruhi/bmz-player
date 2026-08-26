@@ -3,6 +3,8 @@
 Codex に最終レビューと実装を引き継ぐための設計まとめ。
 本ドキュメントでは、BMZ 新BMSプレイヤー向けの IR API、クライアント側 Provider trait、認証、ランキング取得、リザルト画面連携、replay 拡張、NuxtHub / Drizzle 実装方針を整理する。
 beatoraja向け既存サービスrianIRとの互換adapterは `docs/rian-ir.md` を参照する。
+アシスト、特殊モード、ランプ・履歴・replay・IRの保存条件は
+`docs/score-persistence.md` を参照する。
 
 ---
 
@@ -479,18 +481,19 @@ pub enum IrSendPolicy {
 
 ```txt
 Always:
-  リザルト確定時に常に送る
+  共通の保存・送信 eligibility を満たすリザルトを常に送る
 
 CompleteSong:
   最終ゲージが 0 より大きい場合だけ送る
 
 UpdateScore:
-  EX score、clear、combo、minbp のいずれかが改善した場合だけ送る
+  初プレイ、または EX score、clear、max combo、BP、CB のいずれかが改善した場合だけ送る
 ```
 
 ### 注意
 
 - 送信ポリシーはクライアント側 UX の制御。
+- 実効アシスト、autoplay、replay、Practice、key mode 変換は送信ポリシーより前に除外する。
 - サーバー側はサーバー側で best 更新判定を行う。
 - クライアントが送ってきたからといって必ず best として採用しない。
 

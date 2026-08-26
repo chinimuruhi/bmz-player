@@ -101,7 +101,7 @@ impl AssistRuntime {
     /// EX SCORE・BP・コンボ等の通常スコアを更新できるか。
     ///
     /// beatoraja の `updateScore=false` は結果全体を破棄する指定ではなく、
-    /// クリアランプだけを更新する指定として扱われる。
+    /// 数値ベストを更新せず、クリアランプ・回数・統計だけを更新する指定として扱われる。
     pub const fn score_update_enabled(self) -> bool {
         matches!(self.level, AssistLevel::None)
     }

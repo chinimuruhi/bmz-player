@@ -51,11 +51,12 @@ impl ScoreDatabase {
 
     /// beatoraja の `updateScore=false` 相当。
     ///
-    /// score history、数値ベスト、プレイヤー統計は更新せず、曲別の
-    /// プレイ回数・クリア回数とクリアランプだけを更新する。
+    /// score history と数値ベストは更新せず、曲別のプレイ回数・クリア回数・
+    /// クリアランプ、および profile 全体のプレイヤー統計を更新する。
     pub fn update_score_clear_only(&mut self, record: &ScoreRecord) -> Result<()> {
         let tx = self.conn.transaction()?;
         upsert_score_best_clear_only(&tx, record)?;
+        update_player_stats(&tx, record)?;
         tx.commit()?;
         Ok(())
     }

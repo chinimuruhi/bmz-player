@@ -54,7 +54,7 @@ pub struct StorePlayResultRequest {
     pub h_random_threshold_ms: Option<u32>,
     pub arrange_pattern: Option<Vec<u8>>,
     /// false の場合は beatoraja の `updateScore=false` と同様に、
-    /// クリアランプとプレイ回数だけを更新する。
+    /// クリアランプ・回数・profile 全体統計だけを更新する。
     pub update_score: bool,
     pub mode: StorePlayResultMode,
 }

@@ -449,7 +449,7 @@ pub(super) fn load_transformed_chart_for_play(
         options.rule_mode,
     );
     apply_score_ln_policy_to_chart(ln_policy, &mut chart);
-    let assist_runtime = crate::assist::apply_chart_assists(
+    let mut assist_runtime = crate::assist::apply_chart_assists(
         &mut chart,
         options.assist,
         options.arrange_seed.unwrap_or(0),
@@ -502,6 +502,11 @@ pub(super) fn load_transformed_chart_for_play(
         options.s_random_scheme_2p,
         options.h_random_threshold_ms,
         options.arrange_pattern.as_deref(),
+    );
+    crate::assist::merge_arrange_assist_level(
+        &mut assist_runtime,
+        applied_arrange.arrange,
+        applied_arrange.arrange_2p,
     );
     if seven_to_nine {
         apply_seven_to_nine(
@@ -607,7 +612,13 @@ pub fn build_practice_prepared_from_preloaded(
     applied_arrange.seven_to_nine_pattern = preloaded.applied_arrange.seven_to_nine_pattern;
     applied_arrange.seven_to_nine_type = preloaded.applied_arrange.seven_to_nine_type;
     options.session_mode = SessionMode::Practice;
-    options.assist_runtime = preloaded.assist_runtime;
+    let mut assist_runtime = preloaded.assist_runtime;
+    crate::assist::merge_arrange_assist_level(
+        &mut assist_runtime,
+        applied_arrange.arrange,
+        applied_arrange.arrange_2p,
+    );
+    options.assist_runtime = assist_runtime;
     options.autoplay = false;
     options.replay_player = None;
     let (practice_gauge, gauge_auto_shift, bottom_shiftable_gauge) =
