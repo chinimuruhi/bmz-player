@@ -693,6 +693,15 @@ fn maps_peacefulplay_keylogger_graph_ids_to_builtin_expressions() {
 }
 
 #[test]
+fn maps_peacefulplay_chattering_destination_ids_to_lanes() {
+    assert_eq!(parse_keylogger_chattering_destination_id("keylogger-chattering-alert-1"), Some(1));
+    assert_eq!(parse_keylogger_chattering_destination_id("keylogger-chattering-alert-9"), Some(9));
+    assert!(parse_keylogger_chattering_destination_id("keylogger-chattering-alert-0").is_none());
+    assert!(parse_keylogger_chattering_destination_id("keylogger-chattering-alert-10").is_none());
+    assert!(parse_keylogger_chattering_destination_id("keylogger-note-1").is_none());
+}
+
+#[test]
 fn maps_milliondollar_fast_slow_graph_ids_to_runtime_expressions() {
     assert_eq!(
         milliondollar_fast_slow_graph_value_expr_from_id("Graph_Totalfastslow_Fast").as_deref(),

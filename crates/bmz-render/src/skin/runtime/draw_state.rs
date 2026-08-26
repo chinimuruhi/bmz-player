@@ -324,6 +324,8 @@ pub struct SkinDrawState {
     pub keylogger_event_ms: [[Option<i32>; 16]; LANE_COUNT],
     pub keylogger_event_judge: [[u8; 16]; LANE_COUNT],
     pub keylogger_event_fast_slow: [[u8; 16]; LANE_COUNT],
+    /// display lane別のチャタリング警告開始時刻からの経過ms。
+    pub keylogger_chattering_ms: [Option<i32>; LANE_COUNT],
     pub keylogger_exclude_cool: bool,
     /// 過去ベスト max combo (ref 172)。
     pub best_max_combo: Option<u32>,
@@ -618,6 +620,7 @@ impl Default for SkinDrawState {
             keylogger_event_ms: [[None; 16]; LANE_COUNT],
             keylogger_event_judge: [[0; 16]; LANE_COUNT],
             keylogger_event_fast_slow: [[0; 16]; LANE_COUNT],
+            keylogger_chattering_ms: [None; LANE_COUNT],
             keylogger_exclude_cool: false,
             best_max_combo: None,
             target_max_combo: None,

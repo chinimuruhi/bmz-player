@@ -4,6 +4,7 @@ pub(super) struct ObjectFunctionMetadata {
     object_id: Option<String>,
     gauge_lead_glow: Option<(String, bool, usize)>,
     keylogger: Option<KeyloggerMetadata>,
+    keylogger_chattering_lane: Option<usize>,
 }
 
 struct KeyloggerMetadata {
@@ -51,7 +52,9 @@ impl ObjectFunctionMetadata {
                 KeyloggerMetadata { graph_kind, lane, kind: kind.map(str::to_string), slot }
             },
         );
-        Self { object_id, gauge_lead_glow, keylogger }
+        let keylogger_chattering_lane =
+            object_id.as_deref().and_then(parse_keylogger_chattering_destination_id);
+        Self { object_id, gauge_lead_glow, keylogger, keylogger_chattering_lane }
     }
 }
 
@@ -379,6 +382,10 @@ fn infer_timer_field(
     warnings: &mut Vec<String>,
     main_state_probe: &Arc<Mutex<MainStateProbe>>,
 ) -> Result<bool> {
+    if let Some(lane) = metadata.keylogger_chattering_lane {
+        insert_expr(object, "timer_expr", format!("bmz:keylogger_chattering:{lane}"));
+        return Ok(true);
+    }
     if let Some(keylogger) = &metadata.keylogger
         && let Some(slot) = keylogger.slot
     {

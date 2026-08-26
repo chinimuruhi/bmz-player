@@ -41,7 +41,12 @@ pub(super) fn plan_play(
         play_elapsed_ms,
         skin.document().map_or(0, |document| document.input),
     );
-    dynamic_timers.ingest_skin_events(&snapshot.skin_events, key_mode, snapshot.time.0);
+    dynamic_timers.ingest_skin_events(
+        skin.document(),
+        &snapshot.skin_events,
+        key_mode,
+        snapshot.time.0,
+    );
     let judge_region_count =
         skin.document().map(|document| document.judge_region_count()).unwrap_or(1);
     dynamic_timers.ingest_judge_lane_state(

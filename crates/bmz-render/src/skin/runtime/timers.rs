@@ -25,14 +25,35 @@ pub(in crate::skin) struct KeyLoggerRuntime {
     last_sequence: Option<u64>,
     last_now_us: Option<i64>,
     press_history_us: VecDeque<i64>,
+    cached_nps: u32,
+    last_nps_update_us: Option<i64>,
+    last_press_us: [Option<i64>; LANE_COUNT],
+    chattering_started_us: [Option<i64>; LANE_COUNT],
     judge_counts: [[u32; 4]; LANE_COUNT],
     fast_slow_counts: [[u32; 3]; LANE_COUNT],
     event_started_ms: [[Option<i32>; 16]; LANE_COUNT],
-    event_started_us: [[Option<i64>; 16]; LANE_COUNT],
     event_judge: [[u8; 16]; LANE_COUNT],
     event_fast_slow: [[u8; 16]; LANE_COUNT],
     next_event_slot: [usize; LANE_COUNT],
 }
+
+#[derive(Debug, Clone, Copy)]
+struct PendingKeyLoggerPress {
+    lane: usize,
+    time_us: i64,
+    slot: usize,
+    classification: Option<KeyLoggerClassification>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KeyLoggerClassification {
+    judge: usize,
+    side: Option<usize>,
+}
+
+const KEYLOGGER_NPS_UPDATE_INTERVAL_US: i64 = 1_000_000;
+const KEYLOGGER_CHATTERING_DEFAULT_THRESHOLD_MS: i64 = 50;
+const KEYLOGGER_CHATTERING_DURATION_US: i64 = 2_000_000;
 
 /// BMZ拡張の判定領域×Scratch/鍵盤別の最新判定。
 ///
@@ -217,11 +238,17 @@ impl DynamicTimerRuntime {
 
     pub fn ingest_skin_events(
         &mut self,
+        document: Option<&SkinDocument>,
         events: &[SkinRuntimeEvent],
         key_mode: KeyMode,
         now_us: i64,
     ) {
-        self.key_logger.ingest(events, key_mode, now_us);
+        self.key_logger.ingest(
+            events,
+            key_mode,
+            now_us,
+            keylogger_chattering_threshold_us(document),
+        );
     }
 
     pub(crate) fn ingest_judge_lane_state(
@@ -341,12 +368,16 @@ impl KeyLoggerRuntime {
         events: &[SkinRuntimeEvent],
         key_mode: KeyMode,
         now_us: i64,
+        chattering_threshold_us: i64,
     ) {
         if self.last_now_us.is_some_and(|last| now_us < last) {
             *self = Self::default();
         }
         self.last_now_us = Some(now_us);
         let active_lanes = key_mode.active_lanes();
+        // GameSession は各 Input の直後へ、その入力で生じた Judgement を順序付きで
+        // 格納する。この境界ごとに確定して event_index 相当を1回だけ集計する。
+        let mut pending_press = None;
         for event in events {
             if self.last_sequence.is_some_and(|last| event.sequence <= last) {
                 continue;
@@ -354,66 +385,86 @@ impl KeyLoggerRuntime {
             self.last_sequence = Some(event.sequence);
             match &event.kind {
                 SkinRuntimeEventKind::Input(input) if input.kind == InputKind::Press => {
+                    self.commit_pending_press(pending_press.take());
                     let Some(lane) =
                         active_lanes.iter().position(|candidate| *candidate == input.lane)
                     else {
                         continue;
                     };
+                    if self.last_press_us[lane].is_some_and(|last| {
+                        let interval = input.time.0.saturating_sub(last);
+                        interval >= 0 && interval < chattering_threshold_us
+                    }) {
+                        self.chattering_started_us[lane] = Some(input.time.0);
+                    }
+                    self.last_press_us[lane] = Some(input.time.0);
                     self.press_history_us.push_back(input.time.0);
                     let slot = self.next_event_slot[lane];
                     self.event_started_ms[lane][slot] =
                         Some((input.time.0 / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32);
-                    self.event_started_us[lane][slot] = Some(input.time.0);
                     self.event_judge[lane][slot] = 0;
                     self.event_fast_slow[lane][slot] = 0;
                     self.next_event_slot[lane] = (slot + 1) % 16;
+                    pending_press = Some(PendingKeyLoggerPress {
+                        lane,
+                        time_us: input.time.0,
+                        slot,
+                        classification: None,
+                    });
                 }
                 SkinRuntimeEventKind::Judgement(judgement) => {
-                    let Some(lane) =
-                        active_lanes.iter().position(|candidate| *candidate == judgement.lane)
-                    else {
+                    let Some(pending) = pending_press.as_mut() else {
                         continue;
                     };
-                    let judge = match judgement.judge {
-                        Judge::PGreat => 0,
-                        Judge::Great => 1,
-                        Judge::Good => 2,
-                        Judge::Bad | Judge::Poor | Judge::EmptyPoor => 3,
-                    };
-                    self.judge_counts[lane][judge] =
-                        self.judge_counts[lane][judge].saturating_add(1);
-                    let side = match judgement.judge {
-                        Judge::PGreat => Some(0),
-                        _ => match judgement.side {
-                            TimingSide::Fast => Some(1),
-                            TimingSide::Slow => Some(2),
-                        },
-                    };
-                    if let Some(side) = side {
-                        self.fast_slow_counts[lane][side] =
-                            self.fast_slow_counts[lane][side].saturating_add(1);
+                    if active_lanes.get(pending.lane) != Some(&judgement.lane)
+                        || pending.time_us != judgement.time.0
+                    {
+                        continue;
                     }
-                    let slot = (self.next_event_slot[lane] + 15) % 16;
-                    if self.event_started_us[lane][slot] == Some(judgement.time.0) {
-                        self.event_judge[lane][slot] = (judge + 1) as u8;
-                        self.event_fast_slow[lane][slot] = side.map_or(0, |side| (side + 1) as u8);
+                    if !judgement.affects_score {
+                        // Traditional LN の押下開始は beatoraja の event_index=8 に相当し、
+                        // キーロガーの判定数には含めない。
+                        pending.classification = None;
+                    } else if judgement.judge != Judge::Poor {
+                        // 同一押下で複数判定が発生した場合は、Gameplay が最後に出す
+                        // 主判定で上書きし、1押下を1回だけ集計する。
+                        pending.classification =
+                            Some(keylogger_classification(judgement.judge, judgement.side));
                     }
                 }
-                _ => {}
+                SkinRuntimeEventKind::Input(_) => {
+                    self.commit_pending_press(pending_press.take());
+                }
             }
         }
-        let keep_from = now_us.saturating_sub(1_000_000);
+        self.commit_pending_press(pending_press);
+
+        let keep_from = now_us.saturating_sub(KEYLOGGER_NPS_UPDATE_INTERVAL_US);
         while self.press_history_us.front().is_some_and(|time| *time < keep_from) {
             self.press_history_us.pop_front();
+        }
+        match self.last_nps_update_us {
+            None => self.last_nps_update_us = Some(now_us),
+            Some(last) if now_us.saturating_sub(last) >= KEYLOGGER_NPS_UPDATE_INTERVAL_US => {
+                self.cached_nps = self.press_history_us.len().min(999) as u32;
+                self.last_nps_update_us = Some(now_us);
+            }
+            Some(_) => {}
         }
     }
 
     pub(in crate::skin) fn write_state(&self, state: &mut SkinDrawState, now_ms: i32) {
-        state.keylogger_nps = self.press_history_us.len().min(999) as u32;
+        state.keylogger_nps = self.cached_nps;
         state.keylogger_judge_counts = self.judge_counts;
         state.keylogger_fast_slow_counts = self.fast_slow_counts;
         state.keylogger_event_judge = self.event_judge;
         state.keylogger_event_fast_slow = self.event_fast_slow;
+        state.keylogger_chattering_ms = self.chattering_started_us.map(|started| {
+            let elapsed_us = self.last_now_us?.saturating_sub(started?);
+            (0..=KEYLOGGER_CHATTERING_DURATION_US)
+                .contains(&elapsed_us)
+                .then_some((elapsed_us / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+        });
         for lane in 0..LANE_COUNT {
             for slot in 0..16 {
                 state.keylogger_event_ms[lane][slot] =
@@ -421,6 +472,66 @@ impl KeyLoggerRuntime {
             }
         }
     }
+
+    fn commit_pending_press(&mut self, pending: Option<PendingKeyLoggerPress>) {
+        let Some(pending) = pending else {
+            return;
+        };
+        let Some(classification) = pending.classification else {
+            return;
+        };
+        self.judge_counts[pending.lane][classification.judge] =
+            self.judge_counts[pending.lane][classification.judge].saturating_add(1);
+        if let Some(side) = classification.side {
+            self.fast_slow_counts[pending.lane][side] =
+                self.fast_slow_counts[pending.lane][side].saturating_add(1);
+        }
+        self.event_judge[pending.lane][pending.slot] = (classification.judge + 1) as u8;
+        self.event_fast_slow[pending.lane][pending.slot] =
+            classification.side.map_or(0, |side| (side + 1) as u8);
+    }
+}
+
+fn keylogger_classification(judge: Judge, side: TimingSide) -> KeyLoggerClassification {
+    let judge = match judge {
+        Judge::PGreat => 0,
+        Judge::Great => 1,
+        Judge::Good => 2,
+        Judge::Bad | Judge::Poor | Judge::EmptyPoor => 3,
+    };
+    let side = match judge {
+        0 => Some(0),
+        _ => Some(match side {
+            TimingSide::Fast => 1,
+            TimingSide::Slow => 2,
+        }),
+    };
+    KeyLoggerClassification { judge, side }
+}
+
+pub(in crate::skin) fn keylogger_chattering_threshold_us(document: Option<&SkinDocument>) -> i64 {
+    let threshold_ms = document
+        .and_then(|document| {
+            let property = document
+                .property
+                .iter()
+                .find(|property| property.category == "key_logger_threshold")?;
+            let selected = document
+                .user_selected_options
+                .as_deref()
+                .and_then(|options| property.item.iter().find(|item| options.contains(&item.op)))
+                .or_else(|| property.item.iter().find(|item| item.name == property.def))
+                .or_else(|| property.item.first())?;
+            selected.name.strip_suffix("ms").and_then(|value| value.parse::<i64>().ok()).or_else(
+                || {
+                    (11640..=11649)
+                        .contains(&selected.op)
+                        .then_some(i64::from(selected.op - 11639) * 10)
+                },
+            )
+        })
+        .unwrap_or(KEYLOGGER_CHATTERING_DEFAULT_THRESHOLD_MS);
+    threshold_ms.saturating_mul(1_000)
 }
 
 #[derive(Clone, Copy)]

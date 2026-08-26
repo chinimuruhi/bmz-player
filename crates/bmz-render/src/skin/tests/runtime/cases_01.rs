@@ -1,37 +1,54 @@
 use super::*;
 
-#[test]
-fn keylogger_runtime_consumes_sequences_and_builds_nps_and_lane_counts() {
-    let input = SkinRuntimeEvent {
-        sequence: 10,
+fn keylogger_input(sequence: u64, lane: Lane, kind: InputKind, time_us: i64) -> SkinRuntimeEvent {
+    SkinRuntimeEvent {
+        sequence,
         kind: SkinRuntimeEventKind::Input(InputEvent {
-            lane: Lane::Key1,
-            kind: InputKind::Press,
-            time: TimeUs(500_000),
+            lane,
+            kind,
+            time: TimeUs(time_us),
             source: InputSource::Human,
             device_kind: InputDeviceKind::Keyboard,
             scratch_direction: None,
         }),
-    };
-    let judgement = SkinRuntimeEvent {
-        sequence: 11,
+    }
+}
+
+fn keylogger_judgement(
+    sequence: u64,
+    lane: Lane,
+    judge: Judge,
+    side: TimingSide,
+    time_us: i64,
+    affects_score: bool,
+) -> SkinRuntimeEvent {
+    SkinRuntimeEvent {
+        sequence,
         kind: SkinRuntimeEventKind::Judgement(bmz_gameplay::judge::model::JudgementEvent {
-            note_id: Some(NoteId(1)),
-            lane: Lane::Key1,
-            judge: Judge::Great,
-            side: TimingSide::Fast,
-            delta: TimeUs(-1_000),
-            time: TimeUs(500_000),
-            affects_score: true,
+            note_id: Some(NoteId(sequence as u32)),
+            lane,
+            judge,
+            side,
+            delta: TimeUs(0),
+            time: TimeUs(time_us),
+            affects_score,
         }),
-    };
+    }
+}
+
+#[test]
+fn keylogger_runtime_consumes_sequences_and_builds_nps_and_lane_counts() {
+    let input = keylogger_input(10, Lane::Key1, InputKind::Press, 500_000);
+    let judgement =
+        keylogger_judgement(11, Lane::Key1, Judge::Great, TimingSide::Fast, 500_000, true);
     let mut runtime = KeyLoggerRuntime::default();
-    runtime.ingest(&[input.clone(), judgement.clone()], KeyMode::K9, 500_000);
-    runtime.ingest(&[input, judgement], KeyMode::K9, 500_000);
+    runtime.ingest(&[input.clone(), judgement.clone()], KeyMode::K9, 500_000, 50_000);
+    runtime.ingest(&[input, judgement], KeyMode::K9, 500_000, 50_000);
     let mut state = SkinDrawState::default();
     runtime.write_state(&mut state, 500);
 
-    assert_eq!(state.keylogger_nps, 1);
+    // PeacefulPlay は初回更新では計測開始時刻だけを記録し、表示値はまだ0。
+    assert_eq!(state.keylogger_nps, 0);
     assert_eq!(state.keylogger_judge_counts[0], [0, 1, 0, 0]);
     assert_eq!(state.keylogger_fast_slow_counts[0], [0, 1, 0]);
     assert_eq!(state.keylogger_event_ms[0][0], Some(0));
@@ -48,28 +65,144 @@ fn keylogger_runtime_consumes_sequences_and_builds_nps_and_lane_counts() {
             < f32::EPSILON
     );
 
-    runtime.ingest(&[], KeyMode::K9, 1_500_001);
-    runtime.write_state(&mut state, 1_500);
+    runtime.ingest(&[], KeyMode::K9, 1_499_999, 50_000);
+    runtime.write_state(&mut state, 1_499);
     assert_eq!(state.keylogger_nps, 0);
 
-    let next_session_input = SkinRuntimeEvent {
-        sequence: 0,
-        kind: SkinRuntimeEventKind::Input(InputEvent {
-            lane: Lane::Key2,
-            kind: InputKind::Press,
-            time: TimeUs(0),
-            source: InputSource::Human,
-            device_kind: InputDeviceKind::Keyboard,
-            scratch_direction: None,
-        }),
-    };
-    runtime.ingest(&[next_session_input], KeyMode::K9, 0);
+    runtime.ingest(&[], KeyMode::K9, 1_500_000, 50_000);
+    runtime.write_state(&mut state, 1_500);
+    assert_eq!(state.keylogger_nps, 1);
+
+    // 1秒窓の内容は毎フレーム変わっても、表示は次の1秒更新まで保持する。
+    runtime.ingest(&[], KeyMode::K9, 2_000_001, 50_000);
+    runtime.write_state(&mut state, 2_000);
+    assert_eq!(state.keylogger_nps, 1);
+    runtime.ingest(&[], KeyMode::K9, 2_500_000, 50_000);
+    runtime.write_state(&mut state, 2_500);
+    assert_eq!(state.keylogger_nps, 0);
+
+    let next_session_input = keylogger_input(0, Lane::Key2, InputKind::Press, 0);
+    runtime.ingest(&[next_session_input], KeyMode::K9, 0, 50_000);
     runtime.write_state(&mut state, 0);
 
-    assert_eq!(state.keylogger_nps, 1);
+    assert_eq!(state.keylogger_nps, 0);
     assert_eq!(state.keylogger_judge_counts, [[0; 4]; LANE_COUNT]);
     assert_eq!(state.keylogger_event_ms[0], [None; 16]);
     assert_eq!(state.keylogger_event_ms[1][0], Some(0));
+}
+
+#[test]
+fn keylogger_count_graph_counts_once_per_press_and_ignores_non_press_judgements() {
+    let events = vec![
+        keylogger_input(1, Lane::Key1, InputKind::Press, 1_000),
+        keylogger_judgement(2, Lane::Key1, Judge::Bad, TimingSide::Fast, 1_000, true),
+        keylogger_judgement(3, Lane::Key1, Judge::Bad, TimingSide::Slow, 1_000, true),
+        keylogger_judgement(4, Lane::Key1, Judge::Great, TimingSide::Fast, 1_000, true),
+        // 見逃し Poor は押下トランザクション外なので集計しない。
+        keylogger_judgement(5, Lane::Key1, Judge::Poor, TimingSide::Slow, 2_000, true),
+        keylogger_input(6, Lane::Key1, InputKind::Release, 3_000),
+        // LN 解放判定も Release 後なので集計しない。
+        keylogger_judgement(7, Lane::Key1, Judge::Bad, TimingSide::Slow, 3_000, true),
+        keylogger_input(8, Lane::Key1, InputKind::Press, 4_000),
+        keylogger_judgement(9, Lane::Key1, Judge::Bad, TimingSide::Fast, 4_000, true),
+        // Traditional LN 開始判定は event_index=8 相当で、直前の候補も無効化する。
+        keylogger_judgement(10, Lane::Key1, Judge::Great, TimingSide::Fast, 4_000, false),
+        keylogger_input(11, Lane::Key2, InputKind::Press, 5_000),
+        keylogger_judgement(12, Lane::Key2, Judge::EmptyPoor, TimingSide::Slow, 5_000, true),
+    ];
+    let mut runtime = KeyLoggerRuntime::default();
+    runtime.ingest(&events, KeyMode::K9, 5_000, 50_000);
+    let mut state = SkinDrawState::default();
+    runtime.write_state(&mut state, 5);
+
+    assert_eq!(state.keylogger_judge_counts[0], [0, 1, 0, 0]);
+    assert_eq!(state.keylogger_fast_slow_counts[0], [0, 1, 0]);
+    assert_eq!(state.keylogger_judge_counts[1], [0, 0, 0, 1]);
+    assert_eq!(state.keylogger_fast_slow_counts[1], [0, 0, 1]);
+    assert_eq!(state.keylogger_event_judge[0][0], 2);
+    assert_eq!(state.keylogger_event_judge[0][1], 0);
+    assert_eq!(state.keylogger_event_judge[1][0], 4);
+}
+
+#[test]
+fn keylogger_chattering_uses_selected_threshold_and_two_second_timer() {
+    let mut document: SkinDocument = serde_json::from_str(
+        r#"{
+            "property": [{
+                "category": "key_logger_threshold",
+                "name": "Threshold",
+                "item": [
+                    {"name":"10ms","op":11640},
+                    {"name":"50ms","op":11644}
+                ],
+                "def": "50ms"
+            }]
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(keylogger_chattering_threshold_us(Some(&document)), 50_000);
+    document.user_selected_options = Some(vec![11640]);
+    assert_eq!(keylogger_chattering_threshold_us(Some(&document)), 10_000);
+    assert_eq!(keylogger_chattering_threshold_us(None), 50_000);
+
+    let mut runtime = KeyLoggerRuntime::default();
+    runtime.ingest(
+        &[
+            keylogger_input(1, Lane::Key1, InputKind::Press, 100_000),
+            keylogger_input(2, Lane::Key1, InputKind::Press, 109_999),
+        ],
+        KeyMode::K9,
+        109_999,
+        10_000,
+    );
+    let mut state = SkinDrawState::default();
+    runtime.write_state(&mut state, 109);
+    assert_eq!(state.keylogger_chattering_ms[0], Some(0));
+    assert_eq!(state.keylogger_chattering_ms[1], None);
+
+    // 通常間隔の次押下では、発火中の警告を途中解除しない。
+    runtime.ingest(
+        &[keylogger_input(3, Lane::Key1, InputKind::Press, 200_000)],
+        KeyMode::K9,
+        200_000,
+        10_000,
+    );
+    runtime.write_state(&mut state, 200);
+    assert_eq!(state.keylogger_chattering_ms[0], Some(90));
+
+    // 再び短時間で押すと2秒タイマーを再始動する。
+    runtime.ingest(
+        &[keylogger_input(4, Lane::Key1, InputKind::Press, 205_000)],
+        KeyMode::K9,
+        205_000,
+        10_000,
+    );
+    runtime.write_state(&mut state, 205);
+    let destination: SkinDestinationDef = serde_json::from_str(
+        r#"{"id":"keylogger-chattering-alert-1","timer_expr":"bmz:keylogger_chattering:1","dst":[]}"#,
+    )
+    .unwrap();
+    assert_eq!(destination_timer_elapsed_ms(&destination, &state), Some(0));
+
+    runtime.ingest(&[], KeyMode::K9, 2_205_000, 10_000);
+    runtime.write_state(&mut state, 2_205);
+    assert_eq!(destination_timer_elapsed_ms(&destination, &state), Some(2_000));
+    runtime.ingest(&[], KeyMode::K9, 2_205_001, 10_000);
+    runtime.write_state(&mut state, 2_205);
+    assert_eq!(destination_timer_elapsed_ms(&destination, &state), None);
+
+    let mut boundary = KeyLoggerRuntime::default();
+    boundary.ingest(
+        &[
+            keylogger_input(1, Lane::Key1, InputKind::Press, 100_000),
+            keylogger_input(2, Lane::Key1, InputKind::Press, 110_000),
+        ],
+        KeyMode::K9,
+        110_000,
+        10_000,
+    );
+    boundary.write_state(&mut state, 110);
+    assert_eq!(state.keylogger_chattering_ms[0], None);
 }
 
 #[test]

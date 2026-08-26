@@ -317,6 +317,39 @@ fn peaceful_play_integral_property_ops_are_selectable_when_available() {
         destination.timer_expr.starts_with("bmz:keylogger_event:")
             && destination.draw.starts_with("keylogger_judge(")
     }));
+    let chattering = load_lua_skin(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::from([("下部表示情報 Bottom Info".to_string(), "CHATTERING ALERT".to_string())]),
+        &BTreeMap::new(),
+    )
+    .expect("PeacefulPlay chattering alert should decode");
+    let chattering_destinations = chattering
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id.starts_with("keylogger-chattering-alert-") =>
+            {
+                Some(destination)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(chattering_destinations.len(), 9);
+    for (lane, destination) in chattering_destinations.iter().enumerate() {
+        assert_eq!(destination.timer_expr, format!("bmz:keylogger_chattering:{}", lane + 1));
+        assert!(destination.timer.is_none());
+    }
+    assert!(
+        chattering
+            .warnings
+            .iter()
+            .all(|warning| !warning.message.contains("unsupported field `timer`")),
+        "chattering timer warnings: {:?}",
+        chattering.warnings
+    );
     let keybeams = loaded
         .document
         .destination
