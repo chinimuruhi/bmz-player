@@ -112,17 +112,20 @@ pub(in crate::app) fn egui_blocks_raw_play_keyboard(
     practice_overlay && !e1_held && !e2_held
 }
 
+/// Window keyboard を app 側の画面操作へ伝播させず、egui に留めるか。
+///
+/// Practice 設定は未消費キーも含めて排他的に扱う。通常プレイは egui の消費状態に
+/// かかわらずプレイへ渡し、Select 等の非プレイ画面は egui が実際に消費した入力だけを止める。
 pub(in crate::app) fn egui_blocks_window_keyboard_route(
     has_play_context: bool,
     practice_overlay: bool,
     play_owns_keyboard_input: bool,
-    egui_blocks_game_input: bool,
     egui_consumed: bool,
 ) -> bool {
     if play_owns_keyboard_input || (has_play_context && !practice_overlay) {
         return false;
     }
-    egui_blocks_game_input || egui_consumed
+    practice_overlay || egui_consumed
 }
 
 pub(in crate::app) fn visual_offset_delta_control(

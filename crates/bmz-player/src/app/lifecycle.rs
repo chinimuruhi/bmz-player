@@ -55,9 +55,6 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
         let select_course_builder = self.select.course_builder.is_some();
-        let egui_blocks_game_input =
-            self.ui.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay))
-                || select_course_builder;
         let has_play_context =
             self.play.active_play.is_some() || self.play.pending_play_start.is_some();
         let play_owns_keyboard_input = match &event {
@@ -123,7 +120,6 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     has_play_context,
                     practice_overlay,
                     play_owns_keyboard_input,
-                    egui_blocks_game_input,
                     egui_consumed,
                 ) {
                     return;
@@ -185,7 +181,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_mouse_input(state, button);
             }
             WindowEvent::Ime(ime) => {
-                if play_owns_keyboard_input || egui_blocks_game_input || egui_consumed {
+                if play_owns_keyboard_input || practice_overlay || egui_consumed {
                     return;
                 }
                 self.route_ime_event(&ime);

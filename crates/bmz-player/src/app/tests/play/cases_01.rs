@@ -312,13 +312,17 @@ fn raw_keyboard_is_blocked_only_by_practice_overlay_without_e1_e2_hold() {
 }
 
 #[test]
-fn window_keyboard_blocking_is_limited_to_practice_during_play() {
-    assert!(!egui_blocks_window_keyboard_route(true, false, false, true, true));
-    assert!(egui_blocks_window_keyboard_route(true, true, false, true, true));
-    assert!(!egui_blocks_window_keyboard_route(true, true, true, true, true));
-    assert!(egui_blocks_window_keyboard_route(false, false, false, true, false));
-    assert!(egui_blocks_window_keyboard_route(false, false, false, false, true));
-    assert!(!egui_blocks_window_keyboard_route(false, false, false, false, false));
+fn window_keyboard_capture_is_exclusive_only_in_practice() {
+    assert!(!egui_blocks_window_keyboard_route(true, false, false, true));
+    assert!(egui_blocks_window_keyboard_route(true, true, false, false));
+    assert!(egui_blocks_window_keyboard_route(true, true, false, true));
+    assert!(!egui_blocks_window_keyboard_route(true, true, true, true));
+}
+
+#[test]
+fn non_play_keyboard_is_blocked_only_when_egui_consumes_it() {
+    assert!(!egui_blocks_window_keyboard_route(false, false, false, false));
+    assert!(egui_blocks_window_keyboard_route(false, false, false, true));
 }
 
 #[test]
