@@ -143,7 +143,13 @@ pub fn process_human_inputs(session: &mut GameSession) -> Vec<JudgementEvent> {
     let mut judgements = Vec::new();
     for input in inputs {
         if !session.display_only_lane_mask[input.lane.index()] {
-            session.replay_recorder.record(input);
+            if let Some(projection) = &session.replay_lane_projection {
+                if let Some(source_lane) = projection.record_to_source[input.lane.index()] {
+                    session.replay_recorder.record(InputEvent { lane: source_lane, ..input });
+                }
+            } else {
+                session.replay_recorder.record(input);
+            }
         }
         let events = process_session_input(session, input);
         apply_input_offset_auto_adjust(session, &events);
@@ -276,12 +282,66 @@ pub fn process_replay_inputs(session: &mut GameSession, audio_now: TimeUs) -> Ve
     if let Some(replay_lane_mask) = &session.replay_lane_mask {
         inputs.retain(|input| replay_lane_mask[input.lane.index()]);
     }
+    let inputs =
+        inputs.into_iter().map(|input| project_replay_input(session, input)).collect::<Vec<_>>();
     update_lane_key_states(session, &inputs);
     let mut judgements = Vec::new();
     for input in inputs {
         judgements.extend(process_session_input(session, input));
     }
     judgements
+}
+
+fn project_replay_input(session: &mut GameSession, mut input: InputEvent) -> InputEvent {
+    let Some(projection) = session.replay_lane_projection.as_ref() else {
+        return input;
+    };
+    if input.lane != Lane::Scratch {
+        input.lane = projection.playback_to_chart[input.lane.index()];
+        return input;
+    }
+
+    let fallback = projection.playback_to_chart[Lane::Scratch.index()];
+    let scratch_lane_mask = projection.playback_scratch_lane_mask;
+    let active_lane = projection.active_playback_scratch_lane;
+    let projected_lane = match input.kind {
+        InputKind::Press => closest_pending_scratch_lane(
+            &session.chart,
+            &session.judge,
+            input.time,
+            &scratch_lane_mask,
+        )
+        .unwrap_or(fallback),
+        InputKind::Release => active_lane.unwrap_or(fallback),
+    };
+    if let Some(projection) = &mut session.replay_lane_projection {
+        projection.active_playback_scratch_lane = match input.kind {
+            InputKind::Press => Some(projected_lane),
+            InputKind::Release => None,
+        };
+    }
+    input.lane = projected_lane;
+    input
+}
+
+fn closest_pending_scratch_lane(
+    chart: &PlayableChart,
+    judge: &JudgeEngine,
+    time: TimeUs,
+    scratch_lane_mask: &[bool; LANE_COUNT],
+) -> Option<Lane> {
+    Lane::ALL
+        .iter()
+        .copied()
+        .filter(|lane| scratch_lane_mask[lane.index()])
+        .flat_map(|lane| chart.notes_for_lane(lane))
+        .filter(|note| matches!(note.kind, NoteKind::Tap | NoteKind::LongStart | NoteKind::Mine))
+        .filter(|note| match note.kind {
+            NoteKind::Mine => judge.lanes[note.lane.index()].last_mine_hit_time != Some(note.time),
+            _ => !judge.judged_notes.contains_key(&note.id),
+        })
+        .min_by_key(|note| note.time.0.abs_diff(time.0))
+        .map(|note| note.lane)
 }
 
 pub fn process_autoplay_inputs(

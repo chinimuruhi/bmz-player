@@ -199,8 +199,19 @@ impl FinishSessionSnapshot {
             KeyModeConversionConfig::Off => session.primary_key_mode,
         };
         let session_mode_index = usize::from(session.session_mode_index);
+        let chart = if applied_arrange.key_mode_conversion == KeyModeConversionConfig::SevenToNine
+            && matches!(
+                applied_arrange.seven_to_nine_rule_mode,
+                crate::config::profile_config::SevenToNineRuleMode::Keys7
+            ) {
+            let mut source_rule_chart = (*session.chart).clone();
+            source_rule_chart.metadata.key_mode = KeyMode::K7;
+            Arc::new(source_rule_chart)
+        } else {
+            Arc::clone(&session.chart)
+        };
         Self {
-            chart: Arc::clone(&session.chart),
+            chart,
             skin_attempt: bmz_render::snapshot::SkinAttemptState {
                 source_key_mode: Some(source_key_mode),
                 effective_key_mode: Some(session.chart.metadata.key_mode),
@@ -345,8 +356,8 @@ fn finish_session_snapshot_result(
     let result = snapshot.result.clone();
     let summary_clear_type = finish_mode.summary_clear_type(result.clear_type);
     let replay_playback = snapshot.replay_playback;
-    let key_mode_converted = applied_arrange.key_mode_converted();
-    let previous_best = (!key_mode_converted)
+    let conversion_persistence_disabled = applied_arrange.score_persistence_disabled();
+    let previous_best = (!conversion_persistence_disabled)
         .then(|| score_db.best_scores_for_charts(&[score_key]).ok())
         .flatten()
         .and_then(|mut bests| bests.pop());
@@ -354,56 +365,57 @@ fn finish_session_snapshot_result(
     // （リザルト画面の表示のみ行う）。
     let full_autoplay = result.autoplay;
     let score_data_changed =
-        !full_autoplay && !replay_playback && !practice_mode && !key_mode_converted;
-    let stored = if full_autoplay || replay_playback || practice_mode || key_mode_converted {
-        StoredPlayResult {
-            score_history_id: 0,
-            played_at,
-            replay_path: String::new(),
-            replay_sha256: None,
-            slot_paths: [None, None, None, None],
-            device_type: InputDeviceKind::Keyboard,
-        }
-    } else {
-        let arrange = applied_arrange.arrange;
-        let arrange_seed = applied_arrange.seed;
-        let random_seed = applied_arrange.packed_beatoraja_seed(snapshot.primary_key_mode);
-        let arrange_pattern = applied_arrange.pattern.clone();
-        store_play_result(
-            score_db,
-            profile_paths,
-            replay_config,
-            &result,
-            StorePlayResultRequest {
+        !full_autoplay && !replay_playback && !practice_mode && !conversion_persistence_disabled;
+    let stored =
+        if full_autoplay || replay_playback || practice_mode || conversion_persistence_disabled {
+            StoredPlayResult {
+                score_history_id: 0,
                 played_at,
-                playtime_seconds: chart_playtime_seconds(&snapshot.chart),
-                ln_policy: score_key.ln_policy,
-                double_option: score_key.double_option,
-                applied_double_option: applied_arrange.double_option,
-                random_seed,
-                gauge_option: String::new(),
-                rule_mode: snapshot.rule_mode.as_str().to_string(),
-                assist_mask: snapshot.assist.configured_mask,
-                replay_events: snapshot.replay_events.clone(),
-                arrange,
-                arrange_2p: applied_arrange.arrange_2p,
-                arrange_seed,
-                arrange_seed_2p: applied_arrange.seed_2p,
-                bms_random_choices: applied_arrange.bms_random_choices.clone(),
-                seed_scheme: if applied_arrange.legacy_seed {
-                    crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3.to_string()
-                } else {
-                    crate::storage::replay::SEED_SCHEME_BEATORAJA_24BIT_V1.to_string()
+                replay_path: String::new(),
+                replay_sha256: None,
+                slot_paths: [None, None, None, None],
+                device_type: InputDeviceKind::Keyboard,
+            }
+        } else {
+            let arrange = applied_arrange.arrange;
+            let arrange_seed = applied_arrange.seed;
+            let random_seed = applied_arrange.packed_beatoraja_seed(snapshot.primary_key_mode);
+            let arrange_pattern = applied_arrange.pattern.clone();
+            store_play_result(
+                score_db,
+                profile_paths,
+                replay_config,
+                &result,
+                StorePlayResultRequest {
+                    played_at,
+                    playtime_seconds: chart_playtime_seconds(&snapshot.chart),
+                    ln_policy: score_key.ln_policy,
+                    double_option: score_key.double_option,
+                    applied_double_option: applied_arrange.double_option,
+                    random_seed,
+                    gauge_option: String::new(),
+                    rule_mode: snapshot.rule_mode.as_str().to_string(),
+                    assist_mask: snapshot.assist.configured_mask,
+                    replay_events: snapshot.replay_events.clone(),
+                    arrange,
+                    arrange_2p: applied_arrange.arrange_2p,
+                    arrange_seed,
+                    arrange_seed_2p: applied_arrange.seed_2p,
+                    bms_random_choices: applied_arrange.bms_random_choices.clone(),
+                    seed_scheme: if applied_arrange.legacy_seed {
+                        crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3.to_string()
+                    } else {
+                        crate::storage::replay::SEED_SCHEME_BEATORAJA_24BIT_V1.to_string()
+                    },
+                    s_random_scheme: applied_arrange.s_random_scheme,
+                    s_random_scheme_2p: applied_arrange.s_random_scheme_2p,
+                    h_random_threshold_ms: applied_arrange.h_random_threshold_ms,
+                    arrange_pattern,
+                    update_score: snapshot.assist.score_update_enabled(),
+                    mode: finish_mode.store_mode(),
                 },
-                s_random_scheme: applied_arrange.s_random_scheme,
-                s_random_scheme_2p: applied_arrange.s_random_scheme_2p,
-                h_random_threshold_ms: applied_arrange.h_random_threshold_ms,
-                arrange_pattern,
-                update_score: snapshot.assist.score_update_enabled(),
-                mode: finish_mode.store_mode(),
-            },
-        )?
-    };
+            )?
+        };
     let mut summary = ResultSummary::from_play_result(&result, &stored, &snapshot.chart);
     summary.skin_attempt = snapshot.skin_attempt;
     summary.key_mode = snapshot.primary_key_mode;
@@ -422,7 +434,7 @@ fn finish_session_snapshot_result(
     // 過去ベストスコア・ベストコンボを ResultSummary にフィルする。
     // 今回のスコアが直前に upsert_score_best されているので、`best_*` は
     // 「現在の最高記録」を返す。差分表示は `current - best` として 0 になり得る。
-    if !key_mode_converted
+    if !conversion_persistence_disabled
         && let Ok(bests) = score_db.best_scores_for_charts(&[score_key])
         && let Some(best) = bests.into_iter().next()
     {
@@ -431,7 +443,9 @@ fn finish_session_snapshot_result(
         summary.best_max_combo = Some(best.max_combo);
         summary.best_bp = Some(best.bp);
     }
-    if !key_mode_converted && let Ok(slots) = score_db.replay_slots_for_chart(score_key) {
+    if !conversion_persistence_disabled
+        && let Ok(slots) = score_db.replay_slots_for_chart(score_key)
+    {
         summary.replay_slots = slots.each_ref().map(Option::is_some);
         for (index, saved) in summary.saved_replay_slots.iter().enumerate() {
             if *saved {
@@ -441,7 +455,7 @@ fn finish_session_snapshot_result(
     }
     if finish_mode.enqueue_score_ir()
         && snapshot.assist.score_update_enabled()
-        && !key_mode_converted
+        && !conversion_persistence_disabled
     {
         let mut ir_result = result.clone();
         ir_result.clear_type = summary_clear_type;

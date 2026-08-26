@@ -100,13 +100,18 @@ BMZ 固有 bucket として維持するかは、配置アシストの修正と�
 
 ## Key mode 変換
 
-BMZ は `SpToDp`、`SevenToNine`、`SevenToSix` のいずれも `score_save_disabled` とし、
-ランプ・回数を含めて何も保存しない。
+BMZ は `SpToDp` と `SevenToSix` を `score_save_disabled` とし、ランプ・回数を含めて
+何も保存しない。`SevenToNine` は `seven_to_nine_rule_mode` で規則を選ぶ。
+
+- `7K`（既定）: 表示と入力は9Kへ変換するが、判定窓・ゲージ・スコアidentityは元の
+  7Kを使う。通常7Kとしてランプ・スコア・replayを保存し、IR送信候補にできる。
+  replayの入力レーンも通常7K形式で保存し、再生時は現在の7K→9K設定へ投影する。
+- `9K`: 9Kの判定窓・ゲージを使い、ランプ・回数・スコア・replay・IRをすべて
+  保存しない。Light Assistのclear-only保存にはしない。
 
 beatoraja の 7K→9K `ModeModifier` は Light Assist であり、数値・replay・IRは更新しないが
-`LightAssistEasy` ランプと play / clear count は更新する。このため `SevenToNine` は
-BMZ のほうが厳しく、ランプすら残らない互換差分がある。`SpToDp` と `SevenToSix` は
-BMZ 固有拡張を含むため、同じ基準を適用するかは別途決める。
+`LightAssistEasy` ランプと play / clear count は更新する。BMZの `9K` 規則はそれより
+厳しい完全非保存、`7K` 規則は元譜面のルールとidentityを維持するBMZ独自仕様である。
 
 ## 通常プレイのベスト更新条件
 
@@ -127,8 +132,9 @@ BP / CB / combo だけが改善した場合の代表判定内訳・ghost・optio
 ## IR送信条件
 
 単曲 IR は、通常の履歴保存が成功して `score_history_id > 0` になった後でだけ enqueue
-される。実効アシスト、autoplay、replay、Practice、key mode 変換はこの時点より前に
-除外されるため、`send_policy=Always` でも送信されない。
+される。実効アシスト、autoplay、replay、Practice、保存禁止のkey mode変換はこの時点より
+前に除外されるため、`send_policy=Always` でも送信されない。7K規則の`SevenToNine`だけは
+元の7K譜面として送信候補になる。
 
 | `send_policy` | BMZ の単曲条件 | beatoraja の単曲条件 |
 | --- | --- | --- |
@@ -188,11 +194,9 @@ assist course も数値 0 の attempt 行として残し、best score と best l
 1. **BATTLE の仕様選択**: beatoraja 準拠の Light Assist に戻すか、BMZ 固有の専用
    score bucket として維持するかを明示する。後者なら BMZ公式IRのランキングも
    DOUBLE bucket で必ず分離する。
-2. **7K→9K のランプ**: 現状の完全非保存を維持するか、beatoraja と同じ
-   LightAssistEasy clear-only にするか決める。
-3. **アシスト履歴・日次統計**: beatoraja の scoredatalog 相当を必要とするか決める。
+2. **アシスト履歴・日次統計**: beatoraja の scoredatalog 相当を必要とするか決める。
    profile 全体統計とは分離した assist attempt log を追加する余地がある。
-4. **通常 best と `UpdateScore`**: CB と同 EX score の tie-break を BMZ 固有仕様として
+3. **通常 best と `UpdateScore`**: CB と同 EX score の tie-break を BMZ 固有仕様として
    維持するなら、その差を IR server / UI と共有する。
 
 ## 実装参照

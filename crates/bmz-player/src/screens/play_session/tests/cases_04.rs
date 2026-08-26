@@ -786,8 +786,21 @@ fn load_transformed_chart_applies_only_compatible_key_mode_conversions() {
             load_transformed_chart_for_play(&library_db, seven_key_id, &options).unwrap();
         assert_eq!(transformed.chart.metadata.key_mode, target);
         assert_eq!(transformed.applied_arrange.key_mode_conversion, conversion);
-        assert!(transformed.score_save_disabled);
+        assert_eq!(
+            transformed.score_save_disabled,
+            conversion != KeyModeConversionConfig::SevenToNine
+        );
     }
+
+    let nine_key_rules = PlaySessionOptions {
+        key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+        seven_to_nine_rule_mode: SevenToNineRuleMode::Keys9,
+        ..Default::default()
+    };
+    let transformed =
+        load_transformed_chart_for_play(&library_db, seven_key_id, &nine_key_rules).unwrap();
+    assert_eq!(transformed.chart.metadata.key_mode, KeyMode::K9);
+    assert!(transformed.score_save_disabled);
 
     let incompatible = PlaySessionOptions {
         key_mode_conversion: KeyModeConversionConfig::SevenToNine,

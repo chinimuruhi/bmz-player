@@ -328,6 +328,7 @@ impl WinitApp {
             key_mode_conversion: self.boot.profile_config.play.key_mode_conversion,
             seven_to_nine_pattern: self.boot.profile_config.play.seven_to_nine_pattern,
             seven_to_nine_type: self.boot.profile_config.play.seven_to_nine_type,
+            seven_to_nine_rule_mode: self.boot.profile_config.play.seven_to_nine_rule_mode,
             ..Default::default()
         }
     }

@@ -180,6 +180,7 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         opponent_gauge: None,
         replay_recorder: ReplayRecorder::default(),
         replay_player: None,
+        replay_lane_projection: None,
         replay_lane_mask: None,
         display_only_lane_mask: [false; LANE_COUNT],
         autoplay: Some(AutoplayController::default()),

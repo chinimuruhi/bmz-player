@@ -558,7 +558,14 @@ impl WinitApp {
         if !options.key_mode_conversion.applies_to(source_key_mode) {
             return;
         }
-        options.score_save_disabled = true;
+        options.score_save_disabled |= match options.key_mode_conversion {
+            KeyModeConversionConfig::SevenToNine => matches!(
+                options.seven_to_nine_rule_mode,
+                crate::config::profile_config::SevenToNineRuleMode::Keys9
+            ),
+            KeyModeConversionConfig::SpToDp | KeyModeConversionConfig::SevenToSix => true,
+            KeyModeConversionConfig::Off => false,
+        };
         if options.key_mode_conversion == KeyModeConversionConfig::SevenToSix {
             options.arrange =
                 crate::screens::play_session::normalize_arrange_for_seven_to_six(options.arrange);

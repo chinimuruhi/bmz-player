@@ -1,5 +1,7 @@
 use super::*;
-use crate::config::profile_config::{KeyModeConversionConfig, SevenToNinePattern, SevenToNineType};
+use crate::config::profile_config::{
+    KeyModeConversionConfig, SevenToNinePattern, SevenToNineRuleMode, SevenToNineType,
+};
 
 pub(in crate::ui::profile_panel) fn build_profile_play_section(
     ui: &mut egui::Ui,
@@ -242,6 +244,25 @@ pub(in crate::ui::profile_panel) fn build_profile_play_section(
                             value,
                             value.label(),
                         );
+                    }
+                });
+                egui::ComboBox::new("profile_seven_to_nine_rule_mode", "7K TO 9K RULE")
+                    .selected_text(profile.play.seven_to_nine_rule_mode.as_str())
+                    .show_ui(ui, |ui| {
+                        for value in SevenToNineRuleMode::VALUES {
+                            ui.selectable_value(
+                                &mut profile.play.seven_to_nine_rule_mode,
+                                value,
+                                value.as_str(),
+                            );
+                        }
+                    });
+                ui.label(match profile.play.seven_to_nine_rule_mode {
+                    SevenToNineRuleMode::Keys7 => {
+                        "7K judging/gauge; score, lamp, replay and IR can be saved"
+                    }
+                    SevenToNineRuleMode::Keys9 => {
+                        "9K judging/gauge; score, lamp, replay and IR are not saved"
                     }
                 });
             }

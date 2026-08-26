@@ -112,6 +112,41 @@ fn battle_target_uses_battle_presentation_while_session_mode_stays_normal() {
 }
 
 #[test]
+fn seven_to_nine_7k_rule_uses_7k_judgement_and_projects_7k_replay() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut converted = chart();
+    converted.metadata.key_mode = KeyMode::K9;
+    converted.lane_notes[Lane::Key9.index()].push(note(1, Lane::Key9, 1_000_000));
+    converted.total_notes = 1;
+    let replay = bmz_core::replay::ReplayEvent {
+        lane: Lane::Scratch,
+        kind: InputKind::Press,
+        time: TimeUs(1_025_000),
+        device_kind: bmz_core::input::InputDeviceKind::Keyboard,
+        scratch_direction: None,
+    };
+    let mut session = build_game_session(
+        Arc::new(converted),
+        &profile,
+        PlaySessionOptions {
+            key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+            seven_to_nine_pattern: SevenToNinePattern::Sc9Key1To7,
+            seven_to_nine_rule_mode: SevenToNineRuleMode::Keys7,
+            replay_player: Some(ReplayPlayer { events: vec![replay], next_index: 0 }),
+            ..PlaySessionOptions::default()
+        },
+    );
+
+    assert_eq!(session.play_config_key_mode, KeyMode::K9);
+    assert_eq!(session.primary_key_mode, KeyMode::K7);
+    assert!(session.replay_lane_projection.is_some());
+    let judgements = bmz_gameplay::session::process_replay_inputs(&mut session, TimeUs(1_025_000));
+    assert_eq!(judgements.len(), 1);
+    assert_eq!(judgements[0].lane, Lane::Key9);
+    assert_eq!(judgements[0].judge, bmz_core::judge::Judge::PGreat);
+}
+
+#[test]
 fn session_uses_source_mode_presentation_settings_for_battle_layout() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.normalize_play_mode_configs();

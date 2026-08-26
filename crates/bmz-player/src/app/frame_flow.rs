@@ -625,6 +625,8 @@ impl WinitApp {
             || before.play.seven_to_nine_pattern
                 != self.boot.profile_config.play.seven_to_nine_pattern
             || before.play.seven_to_nine_type != self.boot.profile_config.play.seven_to_nine_type
+            || before.play.seven_to_nine_rule_mode
+                != self.boot.profile_config.play.seven_to_nine_rule_mode
         {
             self.invalidate_play_preload();
             self.play.play_media_cache = None;

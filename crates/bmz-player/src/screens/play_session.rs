@@ -52,7 +52,7 @@ use crate::config::play::{
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig,
     KeyModeConversionConfig, LaneEffectConfig, PlayModeConfig, ProfileConfig, SevenToNinePattern,
-    SevenToNineType,
+    SevenToNineRuleMode, SevenToNineType,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::ln_policy::{
@@ -112,6 +112,7 @@ pub struct PlaySessionOptions {
     pub key_mode_conversion: KeyModeConversionConfig,
     pub seven_to_nine_pattern: SevenToNinePattern,
     pub seven_to_nine_type: SevenToNineType,
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
     /// Explicitly disables score/lamp/replay/IR persistence without presenting
     /// the session as practice or autoplay.
     pub score_save_disabled: bool,
@@ -232,11 +233,22 @@ pub struct AppliedArrange {
     pub key_mode_conversion: KeyModeConversionConfig,
     pub seven_to_nine_pattern: SevenToNinePattern,
     pub seven_to_nine_type: SevenToNineType,
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
 }
 
 impl AppliedArrange {
     pub const fn key_mode_converted(&self) -> bool {
         !matches!(self.key_mode_conversion, KeyModeConversionConfig::Off)
+    }
+
+    pub const fn score_persistence_disabled(&self) -> bool {
+        match self.key_mode_conversion {
+            KeyModeConversionConfig::Off => false,
+            KeyModeConversionConfig::SevenToNine => {
+                matches!(self.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys9)
+            }
+            KeyModeConversionConfig::SpToDp | KeyModeConversionConfig::SevenToSix => true,
+        }
     }
 
     pub const fn seven_to_six(&self) -> bool {
@@ -371,6 +383,7 @@ impl Default for PlaySessionOptions {
             key_mode_conversion: KeyModeConversionConfig::Off,
             seven_to_nine_pattern: SevenToNinePattern::default(),
             seven_to_nine_type: SevenToNineType::default(),
+            seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             score_save_disabled: false,
             playback_rate_percent: 100,
             assist: AssistOptionConfig::default(),
@@ -446,7 +459,7 @@ pub use preload::{
     preload_play_session_reloading_audio_with_progress, scored_chart_metrics_for_chart,
     scored_chart_metrics_from_prepared, scored_note_count_for_chart,
 };
-pub use seven_to_nine::apply_seven_to_nine;
+pub use seven_to_nine::{apply_seven_to_nine, seven_to_nine_replay_lane_projection};
 pub use seven_to_six::{apply_seven_to_six, normalize_arrange_for_seven_to_six};
 pub use sp_to_dp::apply_sp_to_dp;
 

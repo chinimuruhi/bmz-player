@@ -26,7 +26,7 @@ pub(super) struct CourseLibrarySnapshot {
     pub(super) metrics: CoursePlayMetrics,
     pub(super) first_chart: ChartListItem,
     pub(super) titles: HashMap<i64, String>,
-    pub(super) has_key_mode_conversion: bool,
+    pub(super) has_score_disabling_key_mode_conversion: bool,
 }
 
 fn finish_course_play_metrics(
@@ -103,7 +103,7 @@ pub(super) fn course_play_metrics_from_chart_metadata(
     let mut total_notes = 0u32;
     let mut ln_mode = None;
     let mut source_ln_profile = crate::ln_policy::ChartLnProfile::default();
-    let mut has_key_mode_conversion = false;
+    let mut has_score_disabling_key_mode_conversion = false;
     for (index, (chart_id, start_options)) in chart_ids.iter().zip(entry_start_options).enumerate()
     {
         let chart = charts_by_id.get(chart_id).with_context(|| {
@@ -122,7 +122,15 @@ pub(super) fn course_play_metrics_from_chart_metadata(
                 DoubleOption::Battle | DoubleOption::BattleAutoScratch
             )
             && start_options.key_mode_conversion.applies_to(key_mode);
-        has_key_mode_conversion |= conversion_applies;
+        has_score_disabling_key_mode_conversion |= conversion_applies
+            && match start_options.key_mode_conversion {
+                KeyModeConversionConfig::SevenToNine => matches!(
+                    start_options.seven_to_nine_rule_mode,
+                    crate::config::profile_config::SevenToNineRuleMode::Keys9
+                ),
+                KeyModeConversionConfig::SpToDp | KeyModeConversionConfig::SevenToSix => true,
+                KeyModeConversionConfig::Off => false,
+            };
         let double_option = if conversion_applies {
             DoubleOption::Off
         } else {
@@ -152,7 +160,12 @@ pub(super) fn course_play_metrics_from_chart_metadata(
     );
     let titles =
         charts_by_id.into_iter().map(|(chart_id, chart)| (chart_id, chart.title)).collect();
-    Ok(CourseLibrarySnapshot { metrics, first_chart, titles, has_key_mode_conversion })
+    Ok(CourseLibrarySnapshot {
+        metrics,
+        first_chart,
+        titles,
+        has_score_disabling_key_mode_conversion,
+    })
 }
 
 /// 先頭譜面はPlay preload workerが既に変換した値を再利用し、残りの譜面だけを

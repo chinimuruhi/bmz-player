@@ -13,6 +13,22 @@ use super::model::{
 };
 use crate::rule::RuleMode;
 
+fn press_window(window_set: JudgeWindows, scratch: bool) -> JudgeWindow {
+    if scratch { window_set.scratch } else { window_set.note }
+}
+
+fn long_end_window(window_set: JudgeWindows, scratch: bool) -> JudgeWindow {
+    if scratch { window_set.long_scratch_end } else { window_set.long_note_end }
+}
+
+fn long_release_margin_us(window_set: JudgeWindows, scratch: bool) -> i64 {
+    if scratch {
+        window_set.long_scratch_release_margin_us
+    } else {
+        window_set.long_note_release_margin_us
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct JudgeEngine {
     pub windows: JudgeWindow,
@@ -21,6 +37,7 @@ pub struct JudgeEngine {
     pub algorithm: JudgeAlgorithm,
     pub lanes: [LaneJudgeState; LANE_COUNT],
     pub judged_notes: HashMap<NoteId, Judge>,
+    scratch_lane_mask: [bool; LANE_COUNT],
     bad_attempted_notes: HashSet<NoteId>,
     bad_judge_vanish: bool,
 }
@@ -57,6 +74,9 @@ impl JudgeEngine {
         algorithm: JudgeAlgorithm,
         key_mode: KeyMode,
     ) -> Self {
+        let mut scratch_lane_mask = [false; LANE_COUNT];
+        scratch_lane_mask[Lane::Scratch.index()] = true;
+        scratch_lane_mask[Lane::Scratch2.index()] = true;
         Self {
             windows: window_set.note,
             window_set,
@@ -64,6 +84,7 @@ impl JudgeEngine {
             algorithm,
             lanes: [LaneJudgeState::default(); LANE_COUNT],
             judged_notes: HashMap::new(),
+            scratch_lane_mask,
             bad_attempted_notes: HashSet::new(),
             bad_judge_vanish: bad_judge_vanish_for_keymode_and_rule_mode(key_mode, rule_mode),
         }
@@ -72,6 +93,12 @@ impl JudgeEngine {
     pub fn set_window_set(&mut self, window_set: JudgeWindows) {
         self.windows = window_set.note;
         self.window_set = window_set;
+    }
+
+    /// Overrides which chart lanes use the scratch press/LN windows. This is
+    /// used when a source scratch is projected onto key lanes for 7K-to-9K.
+    pub fn set_scratch_lane_mask(&mut self, scratch_lane_mask: [bool; LANE_COUNT]) {
+        self.scratch_lane_mask = scratch_lane_mask;
     }
 
     pub fn process_input(&mut self, chart: &PlayableChart, input: InputEvent) -> JudgeOutcome {
@@ -93,7 +120,7 @@ impl JudgeEngine {
                 lane_state.next_note_index,
                 &self.judged_notes,
             ) {
-                let windows = self.window_set.press_window(lane);
+                let windows = press_window(self.window_set, self.scratch_lane_mask[lane.index()]);
                 if now.0 <= note.time.0 + windows.bad_slow_us {
                     break;
                 }
@@ -133,7 +160,8 @@ impl JudgeEngine {
             advance_press_cursor(chart, lane, &mut lane_state.next_note_index, &self.judged_notes);
 
             if let Some(active) = lane_state.active_long {
-                let release_margin_us = self.window_set.long_release_margin_us(lane);
+                let release_margin_us =
+                    long_release_margin_us(self.window_set, self.scratch_lane_mask[lane.index()]);
                 if let Some(pending) = active.pending_release
                     && now.0 >= pending.released_at.0 + release_margin_us
                 {
@@ -175,7 +203,8 @@ impl JudgeEngine {
                         // beatoraja uses the normal note BAD-late boundary for
                         // an unreleased CN/HCN tail. The long-end window is only
                         // used when an actual Release input occurs.
-                        let windows = self.window_set.press_window(lane);
+                        let windows =
+                            press_window(self.window_set, self.scratch_lane_mask[lane.index()]);
                         if now.0 > active.end.end_time.0 + windows.bad_slow_us {
                             lane_state.active_long = None;
                             self.judged_notes.insert(active.end.end_note_id, Judge::Poor);
@@ -260,7 +289,7 @@ impl JudgeEngine {
             chart,
             input.lane,
             input.time,
-            self.window_set.press_window(input.lane).mine_hit_us,
+            press_window(self.window_set, self.scratch_lane_mask[input.lane.index()]).mine_hit_us,
             &self.lanes[input.lane.index()],
         ) {
             self.lanes[input.lane.index()].last_mine_hit_time = Some(hit.time);
@@ -275,7 +304,8 @@ impl JudgeEngine {
                 && input.scratch_direction != active.scratch_direction
             {
                 let delta = input.time.0 - active.end.end_time.0;
-                let windows = self.window_set.long_end_window(input.lane);
+                let windows =
+                    long_end_window(self.window_set, self.scratch_lane_mask[input.lane.index()]);
                 let judge = classify_normal_delta(delta, windows).unwrap_or(Judge::Poor);
                 self.lanes[input.lane.index()].active_long = None;
                 self.judged_notes.insert(active.end.end_note_id, judge);
@@ -299,7 +329,7 @@ impl JudgeEngine {
         }
 
         let rule_mode = self.rule_mode;
-        let windows = self.window_set.press_window(input.lane);
+        let windows = press_window(self.window_set, self.scratch_lane_mask[input.lane.index()]);
         let candidate = select_press_candidate(
             chart,
             input.lane,
@@ -426,7 +456,8 @@ impl JudgeEngine {
             lane_state.active_long = Some(active);
             return JudgeOutcome::default();
         }
-        let release_margin_us = self.window_set.long_release_margin_us(input.lane);
+        let release_margin_us =
+            long_release_margin_us(self.window_set, self.scratch_lane_mask[input.lane.index()]);
 
         match active.mode {
             LongNoteMode::Ln => {
@@ -434,7 +465,10 @@ impl JudgeEngine {
                 let (judge, delta) = if end_delta.0 >= 0 {
                     (active.start_judge, active.start_delta)
                 } else {
-                    let windows = self.window_set.long_end_window(input.lane);
+                    let windows = long_end_window(
+                        self.window_set,
+                        self.scratch_lane_mask[input.lane.index()],
+                    );
                     let end_judge =
                         classify_normal_delta(end_delta.0, windows).unwrap_or(Judge::Poor);
                     combine_ln_judgement(active, end_judge, end_delta)
@@ -454,7 +488,8 @@ impl JudgeEngine {
             }
             LongNoteMode::Cn | LongNoteMode::Hcn => {
                 let delta = input.time.0 - active.end.end_time.0;
-                let windows = self.window_set.long_end_window(input.lane);
+                let windows =
+                    long_end_window(self.window_set, self.scratch_lane_mask[input.lane.index()]);
                 let judge = classify_normal_delta(delta, windows).unwrap_or(Judge::Poor);
                 if release_margin_us > 0 && delta < 0 && matches!(judge, Judge::Bad | Judge::Poor) {
                     active.pending_release = Some(PendingLongRelease {

@@ -18,7 +18,7 @@ use bmz_gameplay::session::{BgmScheduler, GameSession, PlayAudioMix, PlayOffsets
 use rusqlite::Connection;
 
 use super::*;
-use crate::config::profile_config::{SevenToNinePattern, SevenToNineType};
+use crate::config::profile_config::{SevenToNinePattern, SevenToNineRuleMode, SevenToNineType};
 
 #[test]
 fn pending_finished_play_waits_for_worker_completion() {
@@ -174,7 +174,7 @@ fn effective_assist_persists_clear_lamp_counts_and_player_stats() {
 }
 
 #[test]
-fn store_session_result_writes_replay_events() {
+fn seven_to_nine_7k_rule_saves_normal_source_mode_replay() {
     let root = make_temp_dir("finish-session");
     let paths = ProfilePaths {
         root_dir: root.clone(),
@@ -204,6 +204,13 @@ fn store_session_result_writes_replay_events() {
         scratch_direction: None,
     });
 
+    let applied = AppliedArrange {
+        key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+        seven_to_nine_pattern: SevenToNinePattern::Sc9Key1To7,
+        seven_to_nine_type: SevenToNineType::Fixed,
+        seven_to_nine_rule_mode: SevenToNineRuleMode::Keys7,
+        ..Default::default()
+    };
     let stored = store_session_result(
         &mut score_db,
         &mut network_db,
@@ -212,7 +219,7 @@ fn store_session_result_writes_replay_events() {
         &crate::config::profile_config::IrConfig::default(),
         &session,
         1_700_000_100,
-        &AppliedArrange::default(),
+        &applied,
         score_key(&session),
         false,
     )
@@ -221,6 +228,9 @@ fn store_session_result_writes_replay_events() {
     assert!(stored.score_history_id > 0);
     assert!(!stored.replay_path.is_empty());
     assert!(root.join(&stored.replay_path).exists());
+    let replay = crate::storage::replay::load_replay(&root.join(&stored.replay_path)).unwrap();
+    assert_eq!(replay.events.len(), 1);
+    assert_eq!(replay.events[0].lane, Lane::Key1);
 
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -263,6 +273,7 @@ fn finish_session_result_returns_summary() {
         key_mode_conversion: KeyModeConversionConfig::Off,
         seven_to_nine_pattern: Default::default(),
         seven_to_nine_type: Default::default(),
+        seven_to_nine_rule_mode: Default::default(),
     };
 
     let finished = finish_session_result(
@@ -428,7 +439,7 @@ fn finish_session_result_course_stage_enqueues_ir_with_rounded_clear_type() {
 }
 
 #[test]
-fn finish_session_result_enqueues_ir_jobs_for_enabled_providers() {
+fn seven_to_nine_7k_rule_enqueues_ir_as_source_7k() {
     let root = make_temp_dir("finish-ir");
     let paths = ProfilePaths {
         root_dir: root.clone(),
@@ -466,6 +477,13 @@ fn finish_session_result_enqueues_ir_jobs_for_enabled_providers() {
     };
     let mut session = session();
     Arc::get_mut(&mut session.chart).unwrap().end_time = TimeUs(123_456_789);
+    Arc::get_mut(&mut session.chart).unwrap().metadata.key_mode = bmz_core::lane::KeyMode::K9;
+    session.primary_key_mode = bmz_core::lane::KeyMode::K7;
+    let applied = AppliedArrange {
+        key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+        seven_to_nine_rule_mode: SevenToNineRuleMode::Keys7,
+        ..Default::default()
+    };
 
     let finished = finish_session_result(
         &mut score_db,
@@ -479,7 +497,7 @@ fn finish_session_result_enqueues_ir_jobs_for_enabled_providers() {
             chart_length_ms: Some(123_456),
             play_duration_ms: Some(120_000),
             played_at: 1_700_000_108,
-            applied_arrange: &AppliedArrange::default(),
+            applied_arrange: &applied,
             target_ex_score: None,
             score_key: score_key(&session),
             practice_mode: false,
@@ -493,6 +511,8 @@ fn finish_session_result_enqueues_ir_jobs_for_enabled_providers() {
     assert_eq!(jobs.len(), 1);
     let payload: serde_json::Value = serde_json::from_str(&jobs[0].payload_json).unwrap();
     assert_eq!(payload["chart"]["length_ms"], 123_456);
+    assert_eq!(payload["chart"]["mode"], "7K");
+    assert_eq!(payload["rule"]["key_mode"], "7K");
     assert_eq!(payload["result"]["duration_ms"], 120_000);
 
     std::fs::remove_dir_all(root).unwrap();
@@ -654,6 +674,7 @@ fn finish_session_result_skips_all_storage_for_key_mode_conversion() {
         key_mode_conversion: KeyModeConversionConfig::SevenToNine,
         seven_to_nine_pattern: SevenToNinePattern::Sc9Key1To7,
         seven_to_nine_type: SevenToNineType::Alternation,
+        seven_to_nine_rule_mode: SevenToNineRuleMode::Keys9,
         ..Default::default()
     };
 
@@ -938,6 +959,29 @@ fn finish_snapshot_preserves_the_started_session_mode() {
     assert_eq!(snapshot.skin_attempt.session_mode_index, Some(1));
 }
 
+#[test]
+fn seven_to_nine_7k_rule_keeps_source_mode_for_result_and_ir() {
+    let mut session = session();
+    Arc::make_mut(&mut session.chart).metadata.key_mode = bmz_core::lane::KeyMode::K9;
+    session.primary_key_mode = bmz_core::lane::KeyMode::K7;
+    let applied = AppliedArrange {
+        key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+        seven_to_nine_rule_mode: SevenToNineRuleMode::Keys7,
+        ..Default::default()
+    };
+
+    let snapshot =
+        FinishSessionSnapshot::from_session(&session, ChartLnProfile::default(), &applied);
+
+    assert_eq!(snapshot.primary_key_mode, bmz_core::lane::KeyMode::K7);
+    assert_eq!(snapshot.chart.metadata.key_mode, bmz_core::lane::KeyMode::K7);
+    assert!(!applied.score_persistence_disabled());
+    assert!(
+        AppliedArrange { seven_to_nine_rule_mode: SevenToNineRuleMode::Keys9, ..applied }
+            .score_persistence_disabled()
+    );
+}
+
 fn session() -> GameSession {
     let chart = Arc::new(chart());
     let timing_map = bmz_chart::timing::TimingMap::from_chart_timing_events(
@@ -978,6 +1022,7 @@ fn session() -> GameSession {
         opponent_gauge: None,
         replay_recorder: ReplayRecorder::default(),
         replay_player: None,
+        replay_lane_projection: None,
         replay_lane_mask: None,
         display_only_lane_mask: [false; bmz_core::lane::LANE_COUNT],
         autoplay: None,

@@ -158,6 +158,11 @@ pub struct PlayDefaultsConfig {
     /// beatoraja `sevenToNineType` (0..=2).
     #[serde(default)]
     pub seven_to_nine_type: SevenToNineType,
+    /// 7K to 9K conversion scoring rules. `7K` keeps the source chart's
+    /// judgement/gauge rules and remains score eligible; `9K` uses PMS rules
+    /// and disables every persistence path.
+    #[serde(default)]
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
     /// Legacy BMZ profile migration field. New profiles use
     /// `key_mode_conversion = "SevenToSix"` and omit this field.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -313,6 +318,26 @@ pub enum SevenToNineType {
     Fixed = 0,
     NoMashing = 1,
     Alternation = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SevenToNineRuleMode {
+    #[default]
+    #[serde(rename = "7K")]
+    Keys7,
+    #[serde(rename = "9K")]
+    Keys9,
+}
+
+impl SevenToNineRuleMode {
+    pub const VALUES: [Self; 2] = [Self::Keys7, Self::Keys9];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Keys7 => "7K",
+            Self::Keys9 => "9K (NO SAVE)",
+        }
+    }
 }
 
 impl SevenToNineType {

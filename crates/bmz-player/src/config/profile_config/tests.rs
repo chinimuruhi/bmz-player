@@ -61,6 +61,7 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
     assert_eq!(play.key_mode_conversion, KeyModeConversionConfig::Off);
     assert_eq!(play.seven_to_nine_pattern, SevenToNinePattern::Sc9Key1To7);
     assert_eq!(play.seven_to_nine_type, SevenToNineType::Fixed);
+    assert_eq!(play.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys7);
     assert!(!play.seven_to_six);
     assert_eq!(play.bga, BgaModeConfig::On);
     assert_eq!(play.bga_expand, BgaExpandConfig::KeepAspect);
@@ -75,6 +76,7 @@ fn key_mode_conversion_roundtrips_in_play_defaults() {
     play.key_mode_conversion = KeyModeConversionConfig::SevenToNine;
     play.seven_to_nine_pattern = SevenToNinePattern::Sc1Key3To9;
     play.seven_to_nine_type = SevenToNineType::Alternation;
+    play.seven_to_nine_rule_mode = SevenToNineRuleMode::Keys9;
 
     let encoded = toml::to_string(&play).unwrap();
     let decoded: PlayDefaultsConfig = toml::from_str(&encoded).unwrap();
@@ -82,6 +84,7 @@ fn key_mode_conversion_roundtrips_in_play_defaults() {
     assert_eq!(decoded.key_mode_conversion, KeyModeConversionConfig::SevenToNine);
     assert_eq!(decoded.seven_to_nine_pattern, SevenToNinePattern::Sc1Key3To9);
     assert_eq!(decoded.seven_to_nine_type, SevenToNineType::Alternation);
+    assert_eq!(decoded.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys9);
 }
 
 #[test]

@@ -100,6 +100,7 @@ pub(in crate::app) fn preloaded_matches_start(
         && preloaded.session_options.key_mode_conversion == options.key_mode_conversion
         && preloaded.session_options.seven_to_nine_pattern == options.seven_to_nine_pattern
         && preloaded.session_options.seven_to_nine_type == options.seven_to_nine_type
+        && preloaded.session_options.seven_to_nine_rule_mode == options.seven_to_nine_rule_mode
         && preloaded.session_options.score_save_disabled == options.score_save_disabled
         && preloaded.session_options.arrange == options.arrange
         && preloaded.session_options.arrange_2p == options.arrange_2p

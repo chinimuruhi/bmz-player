@@ -457,6 +457,18 @@ fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
         PlayStartOptions { double_option: DoubleOption::Battle, ..Default::default() },
     ];
 
+    let score_enabled_snapshot = course_play_metrics_from_chart_metadata(
+        &definition,
+        crate::ln_policy::LnPolicySetting::ForceCn,
+        &options,
+        vec![first.clone(), second.clone()],
+    )
+    .unwrap();
+    assert!(!score_enabled_snapshot.has_score_disabling_key_mode_conversion);
+
+    let mut options = options;
+    options[0].seven_to_nine_rule_mode = crate::config::profile_config::SevenToNineRuleMode::Keys9;
+
     let snapshot = course_play_metrics_from_chart_metadata(
         &definition,
         crate::ln_policy::LnPolicySetting::ForceCn,
@@ -466,7 +478,7 @@ fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
     .unwrap();
 
     assert_eq!(snapshot.first_chart.chart_id, 10);
-    assert!(snapshot.has_key_mode_conversion);
+    assert!(snapshot.has_score_disabling_key_mode_conversion);
     assert_eq!(snapshot.titles.get(&20).map(String::as_str), Some("Second"));
     assert_eq!(snapshot.metrics.total_notes, 505);
     assert_eq!(snapshot.metrics.ln_mode, Some(bmz_chart::model::LongNoteMode::Cn));

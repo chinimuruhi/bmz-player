@@ -1,4 +1,5 @@
 use super::*;
+use bmz_gameplay::session::ReplayLaneProjection;
 use std::collections::HashMap;
 
 /// Converts a 7K beat chart to PMS 9K using beatoraja's six placement
@@ -111,6 +112,42 @@ pub fn apply_seven_to_nine(
         "converted 7K chart to 9K"
     );
     true
+}
+
+pub fn seven_to_nine_replay_lane_projection(
+    pattern: SevenToNinePattern,
+    conversion_type: SevenToNineType,
+) -> ReplayLaneProjection {
+    let (key_start, scratch_key, rest_key) = placement(pattern);
+    let key_destinations: [Lane; 7] = std::array::from_fn(|index| {
+        Lane::from_pms_key(key_start + index as u8).expect("7-to-9 key placement")
+    });
+    let scratch_lane = Lane::from_pms_key(scratch_key).expect("7-to-9 scratch placement");
+    let rest_lane = Lane::from_pms_key(rest_key).expect("7-to-9 rest placement");
+    let mut record_to_source = [None; LANE_COUNT];
+    let mut playback_to_chart = std::array::from_fn(|index| Lane::ALL[index]);
+    for (source, destination) in
+        [Lane::Key1, Lane::Key2, Lane::Key3, Lane::Key4, Lane::Key5, Lane::Key6, Lane::Key7]
+            .into_iter()
+            .zip(key_destinations)
+    {
+        record_to_source[destination.index()] = Some(source);
+        playback_to_chart[source.index()] = destination;
+    }
+    record_to_source[scratch_lane.index()] = Some(Lane::Scratch);
+    playback_to_chart[Lane::Scratch.index()] = scratch_lane;
+    let mut playback_scratch_lane_mask = [false; LANE_COUNT];
+    playback_scratch_lane_mask[scratch_lane.index()] = true;
+    if conversion_type != SevenToNineType::Fixed {
+        record_to_source[rest_lane.index()] = Some(Lane::Scratch);
+        playback_scratch_lane_mask[rest_lane.index()] = true;
+    }
+    ReplayLaneProjection {
+        record_to_source,
+        playback_to_chart,
+        playback_scratch_lane_mask,
+        active_playback_scratch_lane: None,
+    }
 }
 
 fn placement(pattern: SevenToNinePattern) -> (u8, u8, u8) {
@@ -269,5 +306,26 @@ mod tests {
         assert_eq!(pair.lane, Lane::Key9);
         assert!(chart.lane_notes[Lane::Key9.index()].iter().any(|note| note.id == NoteId(2)));
         assert!(chart.lane_notes[Lane::Key8.index()].iter().any(|note| note.id == NoteId(3)));
+    }
+
+    #[test]
+    fn replay_projection_uses_normal_7k_lanes() {
+        let fixed = seven_to_nine_replay_lane_projection(
+            SevenToNinePattern::Sc9Key1To7,
+            SevenToNineType::Fixed,
+        );
+        assert_eq!(fixed.record_to_source[Lane::Key1.index()], Some(Lane::Key1));
+        assert_eq!(fixed.record_to_source[Lane::Key7.index()], Some(Lane::Key7));
+        assert_eq!(fixed.record_to_source[Lane::Key9.index()], Some(Lane::Scratch));
+        assert_eq!(fixed.record_to_source[Lane::Key8.index()], None);
+        assert_eq!(fixed.playback_to_chart[Lane::Scratch.index()], Lane::Key9);
+
+        let alternating = seven_to_nine_replay_lane_projection(
+            SevenToNinePattern::Sc9Key1To7,
+            SevenToNineType::Alternation,
+        );
+        assert_eq!(alternating.record_to_source[Lane::Key8.index()], Some(Lane::Scratch));
+        assert!(alternating.playback_scratch_lane_mask[Lane::Key8.index()]);
+        assert!(alternating.playback_scratch_lane_mask[Lane::Key9.index()]);
     }
 }

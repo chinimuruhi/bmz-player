@@ -18,7 +18,7 @@ use crate::config::play::{
 };
 use crate::config::profile_config::{
     AssistOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, KeyModeConversionConfig,
-    ProfileConfig, SevenToNinePattern, SevenToNineType,
+    ProfileConfig, SevenToNinePattern, SevenToNineRuleMode, SevenToNineType,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::input::shared::SharedInputBackend;
@@ -150,6 +150,7 @@ pub struct PlayStartOptions {
     pub key_mode_conversion: KeyModeConversionConfig,
     pub seven_to_nine_pattern: SevenToNinePattern,
     pub seven_to_nine_type: SevenToNineType,
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
     pub score_save_disabled: bool,
     pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
@@ -285,6 +286,7 @@ pub fn play_session_options_from_start(
         key_mode_conversion: start_options.key_mode_conversion,
         seven_to_nine_pattern: start_options.seven_to_nine_pattern,
         seven_to_nine_type: start_options.seven_to_nine_type,
+        seven_to_nine_rule_mode: start_options.seven_to_nine_rule_mode,
         score_save_disabled: start_options.score_save_disabled,
         playback_rate_percent: bmz_audio::clock::clamp_playback_rate_percent(
             if start_options.playback_rate_percent == 0 {
@@ -624,7 +626,8 @@ pub fn apply_arrange_override(
     options.key_mode_conversion = arrange.key_mode_conversion;
     options.seven_to_nine_pattern = arrange.seven_to_nine_pattern;
     options.seven_to_nine_type = arrange.seven_to_nine_type;
-    options.score_save_disabled |= arrange.key_mode_converted();
+    options.seven_to_nine_rule_mode = arrange.seven_to_nine_rule_mode;
+    options.score_save_disabled |= arrange.score_persistence_disabled();
 }
 
 pub fn apply_queued_replay(
@@ -646,7 +649,6 @@ pub fn apply_queued_replay(
     options.replay_gauge_override = replay.replay.recorded_gauge_type();
     options.bms_random_choices = replay.replay.bms_random_choices.clone();
     options.arrange_pattern = replay.replay.lane_shuffle_pattern.clone();
-    options.key_mode_conversion = KeyModeConversionConfig::Off;
     // Replays of past plays were recorded by a human; never autoplay them.
     options.autoplay = false;
     Ok(())
@@ -682,6 +684,7 @@ mod tests {
             key_mode_conversion: KeyModeConversionConfig::SevenToSix,
             seven_to_nine_pattern: SevenToNinePattern::default(),
             seven_to_nine_type: SevenToNineType::default(),
+            seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
         };
         apply_arrange_override(&mut options, &arrange);
 
@@ -824,7 +827,11 @@ mod tests {
             chart_sha256: [1; 32],
             replay,
         };
-        let mut options = PlayStartOptions::default();
+        let mut options = PlayStartOptions {
+            key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+            seven_to_nine_rule_mode: SevenToNineRuleMode::Keys7,
+            ..Default::default()
+        };
 
         apply_queued_replay(&mut options, &queued).unwrap();
 
@@ -832,6 +839,8 @@ mod tests {
         assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
         assert_eq!(options.s_random_scheme_2p, Some(SRandomScheme::Legacy40MsV1));
         assert!(options.replay_player.is_some());
+        assert_eq!(options.key_mode_conversion, KeyModeConversionConfig::SevenToNine);
+        assert_eq!(options.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys7);
     }
 
     fn default_constraints() -> CourseConstraints {

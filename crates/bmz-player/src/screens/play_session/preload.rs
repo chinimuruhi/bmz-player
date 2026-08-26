@@ -521,6 +521,8 @@ pub(super) fn load_transformed_chart_for_play(
     applied_arrange.key_mode_conversion = key_mode_conversion;
     applied_arrange.seven_to_nine_pattern = options.seven_to_nine_pattern;
     applied_arrange.seven_to_nine_type = options.seven_to_nine_type;
+    applied_arrange.seven_to_nine_rule_mode = options.seven_to_nine_rule_mode;
+    let conversion_persistence_disabled = applied_arrange.score_persistence_disabled();
 
     Ok(TransformedPlayChart {
         chart,
@@ -528,8 +530,7 @@ pub(super) fn load_transformed_chart_for_play(
         applied_arrange,
         score_key,
         assist_runtime,
-        score_save_disabled: options.score_save_disabled
-            || key_mode_conversion != KeyModeConversionConfig::Off,
+        score_save_disabled: options.score_save_disabled || conversion_persistence_disabled,
         source_key_mode,
     })
 }
@@ -611,6 +612,7 @@ pub fn build_practice_prepared_from_preloaded(
     applied_arrange.key_mode_conversion = preloaded.applied_arrange.key_mode_conversion;
     applied_arrange.seven_to_nine_pattern = preloaded.applied_arrange.seven_to_nine_pattern;
     applied_arrange.seven_to_nine_type = preloaded.applied_arrange.seven_to_nine_type;
+    applied_arrange.seven_to_nine_rule_mode = preloaded.applied_arrange.seven_to_nine_rule_mode;
     options.session_mode = SessionMode::Practice;
     let mut assist_runtime = preloaded.assist_runtime;
     crate::assist::merge_arrange_assist_level(

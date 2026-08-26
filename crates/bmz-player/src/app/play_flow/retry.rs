@@ -77,7 +77,8 @@ impl WinitApp {
             options.key_mode_conversion = applied.key_mode_conversion;
             options.seven_to_nine_pattern = applied.seven_to_nine_pattern;
             options.seven_to_nine_type = applied.seven_to_nine_type;
-            options.score_save_disabled |= applied.key_mode_converted();
+            options.seven_to_nine_rule_mode = applied.seven_to_nine_rule_mode;
+            options.score_save_disabled |= applied.score_persistence_disabled();
             options.arrange = applied.arrange;
             options.arrange_2p = applied.arrange_2p;
             options.double_option = applied.double_option;
@@ -101,7 +102,8 @@ impl WinitApp {
             options.key_mode_conversion = applied.key_mode_conversion;
             options.seven_to_nine_pattern = applied.seven_to_nine_pattern;
             options.seven_to_nine_type = applied.seven_to_nine_type;
-            options.score_save_disabled |= applied.key_mode_converted();
+            options.seven_to_nine_rule_mode = applied.seven_to_nine_rule_mode;
+            options.score_save_disabled |= applied.score_persistence_disabled();
             options.arrange = applied.arrange;
             options.arrange_pattern = None;
         }
@@ -116,7 +118,8 @@ impl WinitApp {
             options.key_mode_conversion = applied.key_mode_conversion;
             options.seven_to_nine_pattern = applied.seven_to_nine_pattern;
             options.seven_to_nine_type = applied.seven_to_nine_type;
-            options.score_save_disabled |= applied.key_mode_converted();
+            options.seven_to_nine_rule_mode = applied.seven_to_nine_rule_mode;
+            options.score_save_disabled |= applied.score_persistence_disabled();
             options.arrange = applied.arrange;
             options.arrange_2p = applied.arrange_2p;
             options.double_option = applied.double_option;

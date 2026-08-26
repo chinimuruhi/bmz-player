@@ -24,6 +24,7 @@ pub(super) fn normal_applied_arrange(
         key_mode_conversion: KeyModeConversionConfig::Off,
         seven_to_nine_pattern: SevenToNinePattern::default(),
         seven_to_nine_type: SevenToNineType::default(),
+        seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
     }
 }
 
@@ -69,6 +70,7 @@ pub(super) fn apply_arrange_internal(
             key_mode_conversion: KeyModeConversionConfig::Off,
             seven_to_nine_pattern: SevenToNinePattern::default(),
             seven_to_nine_type: SevenToNineType::default(),
+            seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
         };
     }
 
@@ -92,6 +94,7 @@ pub(super) fn apply_arrange_internal(
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
                 seven_to_nine_type: SevenToNineType::default(),
+                seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             }
         }
         ArrangeOption::Random => {
@@ -112,6 +115,7 @@ pub(super) fn apply_arrange_internal(
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
                 seven_to_nine_type: SevenToNineType::default(),
+                seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             }
         }
         ArrangeOption::RRandom => {
@@ -132,6 +136,7 @@ pub(super) fn apply_arrange_internal(
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
                 seven_to_nine_type: SevenToNineType::default(),
+                seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             }
         }
         ArrangeOption::RandomEx => {
@@ -152,6 +157,7 @@ pub(super) fn apply_arrange_internal(
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
                 seven_to_nine_type: SevenToNineType::default(),
+                seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             }
         }
         ArrangeOption::FRandom | ArrangeOption::MFRandom => {
@@ -172,6 +178,7 @@ pub(super) fn apply_arrange_internal(
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
                 seven_to_nine_type: SevenToNineType::default(),
+                seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             }
         }
         ArrangeOption::SRandom
@@ -202,6 +209,7 @@ pub(super) fn apply_arrange_internal(
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
                 seven_to_nine_type: SevenToNineType::default(),
+                seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             }
         }
     }
@@ -268,6 +276,7 @@ pub fn apply_arrange_pair(
             key_mode_conversion: KeyModeConversionConfig::Off,
             seven_to_nine_pattern: SevenToNinePattern::default(),
             seven_to_nine_type: SevenToNineType::default(),
+            seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
         };
     }
 
@@ -314,6 +323,7 @@ pub fn apply_arrange_pair(
         key_mode_conversion: KeyModeConversionConfig::Off,
         seven_to_nine_pattern: SevenToNinePattern::default(),
         seven_to_nine_type: SevenToNineType::default(),
+        seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
     }
 }
 

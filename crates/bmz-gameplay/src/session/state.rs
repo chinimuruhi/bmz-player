@@ -97,6 +97,19 @@ pub struct AssistRuntime {
     pub long_note_mode: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReplayLaneProjection {
+    /// Physical/chart lane to the source replay lane. `None` omits inputs on
+    /// presentation-only lanes from the saved source-mode replay.
+    pub record_to_source: [Option<Lane>; LANE_COUNT],
+    /// Source replay lane to the physical/chart lane for fixed mappings.
+    pub playback_to_chart: [Lane; LANE_COUNT],
+    /// Candidate chart lanes for a projected source scratch. Dynamic 7K-to-9K
+    /// modes select the closest pending scratch note from this set.
+    pub playback_scratch_lane_mask: [bool; LANE_COUNT],
+    pub active_playback_scratch_lane: Option<Lane>,
+}
+
 impl AssistRuntime {
     /// EX SCORE・BP・コンボ等の通常スコアを更新できるか。
     ///
@@ -148,6 +161,9 @@ pub struct GameSession {
     pub opponent_gauge: Option<GaugeState>,
     pub replay_recorder: ReplayRecorder,
     pub replay_player: Option<ReplayPlayer>,
+    /// Optional source-mode replay normalization used by presentation-only
+    /// key-mode conversions such as score-eligible 7K-to-9K.
+    pub replay_lane_projection: Option<ReplayLaneProjection>,
     /// Some の場合、リプレイが担当するレーンだけ true。
     /// 通常リプレイの None は従来通り全レーンをリプレイが占有する。
     pub replay_lane_mask: Option<[bool; LANE_COUNT]>,
