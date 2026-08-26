@@ -323,3 +323,39 @@ fn select_item_key_uses_typed_settings_identity() {
         }
     );
 }
+
+#[test]
+fn select_skin_key_config_preserves_folder_history_for_return() {
+    let original_folders = vec!["songs".to_string(), "songs/genre".to_string()];
+    let original_indices = vec![3, 5];
+    let mut folders = original_folders.clone();
+    let mut indices = original_indices.clone();
+
+    assert!(crate::app::select_flow_navigation::push_key_config_folder_history(
+        &mut folders,
+        &mut indices,
+        7,
+    ));
+    assert_eq!(folders.last().map(String::as_str), Some(CONFIG_KEYS_PATH));
+    assert_eq!(indices.last(), Some(&7));
+
+    folders.pop();
+    let restored = indices.pop();
+    assert_eq!(folders, original_folders);
+    assert_eq!(indices, original_indices);
+    assert_eq!(restored, Some(7));
+}
+
+#[test]
+fn select_skin_key_config_does_not_duplicate_current_key_config_folder() {
+    let mut folders = vec!["songs".to_string(), CONFIG_KEYS_PATH.to_string()];
+    let mut indices = vec![3, 5];
+
+    assert!(!crate::app::select_flow_navigation::push_key_config_folder_history(
+        &mut folders,
+        &mut indices,
+        7,
+    ));
+    assert_eq!(folders, ["songs", CONFIG_KEYS_PATH]);
+    assert_eq!(indices, [3, 5]);
+}

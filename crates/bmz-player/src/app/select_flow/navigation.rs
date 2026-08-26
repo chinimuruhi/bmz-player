@@ -92,6 +92,23 @@ impl WinitApp {
         tracing::info!("opened egui advanced settings from select");
     }
 
+    pub(super) fn open_key_config_from_select(&mut self) {
+        self.set_search_mode(false);
+        if !push_key_config_folder_history(
+            &mut self.select.folder_stack,
+            &mut self.select.selected_index_stack,
+            self.select.selected_index,
+        ) {
+            return;
+        }
+        self.reload_select_items();
+        self.select.selected_index = 0;
+        self.reset_selected_replay_slot();
+        self.restart_select_bar_timer_without_scroll(Instant::now());
+        self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
+        tracing::info!("opened key config from select skin");
+    }
+
     pub(super) fn selected_chart_row(
         &self,
     ) -> Option<&crate::screens::select_model::SelectChartRow> {
@@ -917,4 +934,17 @@ impl WinitApp {
             self.cancel_select_course_builder();
         }
     }
+}
+
+pub(in crate::app) fn push_key_config_folder_history(
+    folder_stack: &mut Vec<String>,
+    selected_index_stack: &mut Vec<usize>,
+    selected_index: usize,
+) -> bool {
+    if folder_stack.last().is_some_and(|path| path == CONFIG_KEYS_PATH) {
+        return false;
+    }
+    selected_index_stack.push(selected_index);
+    folder_stack.push(CONFIG_KEYS_PATH.to_string());
+    true
 }

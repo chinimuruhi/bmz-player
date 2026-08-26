@@ -365,6 +365,10 @@ destination に `act` / `click` を置くと、text や panel も image / images
 独立した `SelectRowKind` として skin へ渡す。設定ルートの一覧先頭は `閉じる`、
 設定カテゴリ内の一覧先頭は `戻る` になる。
 
+beatoraja互換の選曲イベント `13` (`KEY CONFIG`) は、現在の選曲フォルダ履歴を維持したまま
+`設定 > キー設定` を直接開く。キー設定ルートの `戻る` を実行すると、イベントを実行する
+直前のフォルダとカーソル位置へ復帰する。
+
 BMZ 対応 select skin は `songlist` の配列末尾へ次の専用 slot を追加できる。
 index は 0 始まり。`image` は songlist 用 imageset の `images`、
 `text` は `songlist.text` の destination index を表す。
