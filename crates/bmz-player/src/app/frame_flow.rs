@@ -534,6 +534,9 @@ impl WinitApp {
         self.apply_egui_profile_changes(&profile_before);
         self.apply_egui_input_config(window, &profile_before.app_input);
         self.renderer.set_egui_frame(output.frame);
+        if let Some(action) = output.key_config_action {
+            self.apply_egui_key_config_action(action);
+        }
         if output.practice_leave {
             self.stop_play_like_escape("practice egui leave requested");
             return;

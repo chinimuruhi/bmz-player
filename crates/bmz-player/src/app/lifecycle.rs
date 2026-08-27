@@ -47,6 +47,12 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             return;
         }
 
+        if let WindowEvent::KeyboardInput { event, .. } = &event
+            && self.capture_egui_key_config_keyboard(event)
+        {
+            return;
+        }
+
         // すべてのウィンドウイベントを egui へ供給する。RedrawRequested など
         // egui が関知しないイベントは egui_winit 側で無視される。
         let practice_overlay = self
@@ -224,6 +230,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     );
                 }
                 if focus_update.focus_lost {
+                    if let Some(egui) = self.ui.egui.as_mut() {
+                        egui.cancel_key_config_listening();
+                    }
                     let releases = self.input.handle_focus_lost();
                     for event in releases.raw_keyboard {
                         self.route_play_device_input(event);

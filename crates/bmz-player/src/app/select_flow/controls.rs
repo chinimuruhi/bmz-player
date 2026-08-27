@@ -378,20 +378,11 @@ impl WinitApp {
             return;
         };
         let target = session.target;
-        self.suppress_select_analog_until_idle();
-        self.boot.profile_config.updated_at = now_unix_seconds();
-        match save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
-        {
-            Ok(()) => {
-                self.select.select_keys =
-                    SelectKeyBindings::from_profile(&self.boot.profile_config.input);
-                self.play_system_sound(crate::system_sound::SoundType::OptionChange);
-                tracing::info!(?target, "key config saved");
-            }
-            Err(error) => {
-                tracing::error!(%error, ?target, "failed to save key config");
-                session.cancel(&mut self.boot.profile_config);
-            }
+        if self.persist_key_config_edit_session(&session) {
+            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+            tracing::info!(?target, "key config saved");
+        } else {
+            self.suppress_select_analog_until_idle();
         }
     }
 

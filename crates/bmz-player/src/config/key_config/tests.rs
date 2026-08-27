@@ -42,6 +42,20 @@ fn lane_entries_follow_active_lanes() {
 }
 
 #[test]
+fn shared_key_config_target_catalog_matches_mode_lanes_and_dp_devices() {
+    assert_eq!(
+        common_key_binding_targets(KeyBindingSlot::KeyboardPrimary).len(),
+        COMMON_ACTIONS.len()
+    );
+    assert_eq!(key_mode_binding_targets(KeyMode::K7, KeyBindingSlot::KeyboardPrimary).len(), 9);
+
+    let dp = key_mode_binding_targets(KeyMode::K14, KeyBindingSlot::Controller);
+    assert_eq!(dp.len(), 18);
+    assert!(dp.iter().any(|target| target.slot() == KeyBindingSlot::Controller1P));
+    assert!(dp.iter().any(|target| target.slot() == KeyBindingSlot::Controller2P));
+}
+
+#[test]
 fn apply_play_binding_keeps_primary_and_secondary_separate() {
     let mut profile = ProfileConfig::new_default("default", "Default", 0);
     apply_play_binding(

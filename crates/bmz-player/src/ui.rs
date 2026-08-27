@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use bmz_core::input::InputDeviceKind;
+use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
 use bmz_render::skin::{SkinDocument, SkinFilepathDef, SkinOffsetDef, SkinPropertyDef};
 use bmz_render::skin_offset::SKIN_OFFSET_BAR_LINE;
@@ -24,6 +25,7 @@ use crate::config::app_config::{
     InternalResolutionModeConfig, LogLevel, ObsActionConfig, ObsRecordingMode, PathEntry,
     RendererBackend, UpdateChannelConfig, VsyncModeConfig, WindowMode,
 };
+use crate::config::key_config::{KeyBindingSlot, KeyBindingTarget};
 use crate::config::play::{TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN};
 use crate::config::profile_config::{
     AssistLongNoteMode, AssistMineMode, AssistScrollMode, BUILTIN_IR_PROVIDER_COUNT,
@@ -36,6 +38,7 @@ use crate::config::profile_config::{
     TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
     normalized_ir_base_url,
 };
+use crate::config::settings_registry::SettingsEntryId;
 use crate::i18n::{AppLocale, FluentArgs, Localizer};
 use crate::ln_policy::LnPolicySetting;
 use crate::logging::{LogBuffer, LogEntry, LogLevel as TracingLogLevel};
@@ -111,10 +114,11 @@ use ir_state::*;
 use menu::*;
 use model::*;
 pub use model::{
-    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiLayer, EguiOutput,
-    EguiRunContext, SceneSkinDefs, SelectCourseBuilderAction, SelectCourseBuilderData,
-    SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta, SkinReloadRequest,
-    SongScanRequest, UpdateDialog, UpdateDialogAction,
+    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiKeyConfigAction,
+    EguiKeyConfigInput, EguiLayer, EguiOutput, EguiRunContext, SceneSkinDefs,
+    SelectCourseBuilderAction, SelectCourseBuilderData, SkinCandidate, SkinCandidateOrigin,
+    SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest, UpdateDialog,
+    UpdateDialogAction,
 };
 use runtime::AudioDevicePickerState;
 #[cfg(test)]

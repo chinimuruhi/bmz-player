@@ -57,8 +57,11 @@ impl WinitApp {
         for tick in &output.axis_ticks {
             // キーコンフィグ待ち受け中は合成 Press を待たず、生 tick から直接捕捉する。
             // 軸が active のままでも (押しっぱなし扱いで Press が出なくても) 確実に拾える。
+            let control = format!("{}{}", tick.name, if tick.ticks > 0 { "+" } else { "-" });
+            if self.capture_egui_key_config_axis(&control) {
+                continue;
+            }
             if self.select.key_config_edit.as_ref().is_some_and(|session| session.listening) {
-                let control = format!("{}{}", tick.name, if tick.ticks > 0 { "+" } else { "-" });
                 self.apply_key_config_gamepad(&control);
                 continue;
             }
@@ -75,6 +78,9 @@ impl WinitApp {
         // holdは物理状態を正とする。2回押しなどの単発操作はこの後のフィルターを通す。
         self.sync_select_holds_from_pressed_controls();
         self.sync_play_control_holds_from_pressed_controls();
+        if self.capture_egui_key_config_gamepad(&event.name, event.pressed) {
+            return;
+        }
         let mut device_event = crate::input::gamepad::to_device_input_event(event);
         if should_bypass_analog_scratch_bounce(
             event,
@@ -115,6 +121,11 @@ impl WinitApp {
             .key_config_edit
             .as_ref()
             .is_some_and(|session| session.listening && session.target.slot().is_controller())
+            || self
+                .ui
+                .egui
+                .as_ref()
+                .is_some_and(crate::ui::EguiLayer::key_config_controller_listening)
     }
 
     pub(super) fn route_gamepad_axis_ticks(&mut self, device: DeviceId, axis: &str, ticks: i32) {

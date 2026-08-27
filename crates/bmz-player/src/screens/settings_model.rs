@@ -4,9 +4,9 @@ use bmz_render::scene::SelectRowKind;
 use crate::config::app_config::{AppConfig, AudioBackend, AudioBufferSizeMode};
 use crate::config::app_settings_registry::{AppSettingsEntryId, format_app_settings_value};
 use crate::config::key_config::{
-    COMMON_ACTIONS, KEY_BINDING_SLOTS, KEY_CONFIG_MODES, KeyBindingTarget, ScratchDirection,
-    binding_row_label, format_play_binding, key_lanes_for_key_mode, key_mode_settings_path,
-    resolve_binding_slot, scratch_lanes_for_key_mode,
+    KEY_BINDING_SLOTS, KEY_CONFIG_MODES, KeyBindingTarget, binding_row_label,
+    common_key_binding_targets, format_play_binding, key_mode_binding_targets,
+    key_mode_settings_path,
 };
 use crate::config::profile_config::ProfileConfig;
 use crate::config::settings_registry::{SettingsEntryId, format_settings_value};
@@ -420,19 +420,14 @@ fn common_key_binding_items() -> Vec<SelectItem> {
         .iter()
         .copied()
         .flat_map(|slot| {
-            COMMON_ACTIONS.iter().copied().map(move |action| {
-                SelectItem::KeyBinding(KeyBindingSelectRow {
-                    key_mode: KeyMode::K7,
-                    target: KeyBindingTarget::Action { action, slot },
-                })
+            common_key_binding_targets(slot).into_iter().map(|target| {
+                SelectItem::KeyBinding(KeyBindingSelectRow { key_mode: KeyMode::K7, target })
             })
         })
         .collect()
 }
 
 fn key_binding_items(key_mode: KeyMode) -> Vec<SelectItem> {
-    let scratch_lanes = scratch_lanes_for_key_mode(key_mode);
-    let key_lanes = key_lanes_for_key_mode(key_mode);
     let hispeed_rows = (key_mode == KeyMode::K8)
         .then_some(SettingsEntryId::HISPEED_8K_ENTRIES)
         .into_iter()
@@ -440,23 +435,9 @@ fn key_binding_items(key_mode: KeyMode) -> Vec<SelectItem> {
         .copied()
         .map(|entry_id| SelectItem::Config(ConfigSelectRow { entry_id }));
     let binding_rows = KEY_BINDING_SLOTS.iter().copied().flat_map(|slot| {
-        let scratch_rows = scratch_lanes.iter().copied().flat_map(move |lane| {
-            let resolved = resolve_binding_slot(slot, key_mode, lane);
-            [ScratchDirection::Up, ScratchDirection::Down].into_iter().map(move |direction| {
-                SelectItem::KeyBinding(KeyBindingSelectRow {
-                    key_mode,
-                    target: KeyBindingTarget::Scratch { lane, direction, slot: resolved },
-                })
-            })
-        });
-        let key_rows = key_lanes.iter().copied().map(move |lane| {
-            let resolved = resolve_binding_slot(slot, key_mode, lane);
-            SelectItem::KeyBinding(KeyBindingSelectRow {
-                key_mode,
-                target: KeyBindingTarget::Key { lane, slot: resolved },
-            })
-        });
-        scratch_rows.chain(key_rows)
+        key_mode_binding_targets(key_mode, slot)
+            .into_iter()
+            .map(move |target| SelectItem::KeyBinding(KeyBindingSelectRow { key_mode, target }))
     });
     hispeed_rows.chain(binding_rows).collect()
 }
@@ -480,7 +461,7 @@ fn app_config_items(entries: &[AppSettingsEntryId]) -> Vec<SelectItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::key_config::KeyBindingSlot;
+    use crate::config::key_config::{COMMON_ACTIONS, KeyBindingSlot, ScratchDirection};
     use crate::config::profile_config::{InputActionConfig, LaneConfig};
 
     #[test]

@@ -179,10 +179,10 @@ use crate::storage::score_db::{DailyPlayerStats, PlayerStats, ScoreDatabase, Sco
 use crate::storage::score_import::{ScoreImportRequest, import_scores};
 use crate::table_cmd::{TableFetchOutcome, TableFetchReport};
 use crate::ui::{
-    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiLayer, EguiRunContext,
-    SceneSkinDefs, SelectCourseBuilderAction, SelectCourseBuilderData, SkinCandidate,
-    SkinCandidateOrigin, SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest,
-    UpdateDialog, UpdateDialogAction,
+    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiKeyConfigAction,
+    EguiKeyConfigInput, EguiLayer, EguiRunContext, SceneSkinDefs, SelectCourseBuilderAction,
+    SelectCourseBuilderData, SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta,
+    SkinReloadRequest, SongScanRequest, UpdateDialog, UpdateDialogAction,
 };
 use crate::update::{DownloadedUpdate, UpdateAssetKind, UpdateCandidate};
 use crate::window_config::{monitor_config_name, select_monitor};
@@ -614,6 +614,7 @@ mod audio_helpers;
 mod constructor;
 #[path = "app/input_lifecycle.rs"]
 mod input_lifecycle;
+mod key_config_flow;
 #[path = "app/lifecycle.rs"]
 mod lifecycle;
 #[path = "app/platform.rs"]

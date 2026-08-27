@@ -274,6 +274,8 @@ pub struct EguiOutput {
     pub save_app_config: bool,
     /// プロファイル設定 (`ProfileConfig`) の保存が要求されたか。
     pub save_profile_config: bool,
+    /// eguiキー設定から要求された割り当て変更。
+    pub key_config_action: Option<EguiKeyConfigAction>,
     /// profile.toml からスキン設定を再読込して未保存変更を戻す要求。
     pub reset_skin_config: bool,
     /// スキン設定値のうち、再読込や即時反映が必要な対象。
@@ -392,6 +394,8 @@ pub struct EguiLayer {
     pub(super) show_settings: bool,
     /// プロファイル設定パネルの開閉状態。
     pub(super) show_profile_settings: bool,
+    /// プロファイル設定内のキー設定UIと入力待受状態。
+    pub(super) key_config: EguiKeyConfigUiState,
     /// スキン設定パネルの開閉状態。
     pub(super) show_skin: bool,
     /// ローカルのコース/段位作成・編集パネル。
@@ -433,6 +437,58 @@ pub struct EguiLayer {
     pub(super) profile_manager: ProfileManagerUiState,
     /// BMZ メニュー: OS のファイルマネージャでディレクトリを開いた直近結果。
     pub(super) directory_open_status: Option<DirectoryOpenStatus>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum EguiKeyConfigSection {
+    #[default]
+    Common,
+    KeyMode(KeyMode),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct EguiKeyConfigListenTarget {
+    pub(super) key_mode: KeyMode,
+    pub(super) target: KeyBindingTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct EguiKeyConfigStatus {
+    pub(super) message: String,
+    pub(super) error: bool,
+}
+
+#[derive(Debug)]
+pub(super) struct EguiKeyConfigUiState {
+    pub(super) section: EguiKeyConfigSection,
+    pub(super) slot: KeyBindingSlot,
+    pub(super) listening: Option<EguiKeyConfigListenTarget>,
+    pub(super) status: Option<EguiKeyConfigStatus>,
+}
+
+impl Default for EguiKeyConfigUiState {
+    fn default() -> Self {
+        Self {
+            section: EguiKeyConfigSection::Common,
+            slot: KeyBindingSlot::KeyboardPrimary,
+            listening: None,
+            status: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EguiKeyConfigAction {
+    Bind { key_mode: KeyMode, target: KeyBindingTarget, control: String },
+    Clear { key_mode: KeyMode, target: KeyBindingTarget },
+    ToggleEightKeyHispeed { entry_id: SettingsEntryId },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EguiKeyConfigInput {
+    NotHandled,
+    Consumed,
+    Action(EguiKeyConfigAction),
 }
 
 #[derive(Debug, Clone)]
