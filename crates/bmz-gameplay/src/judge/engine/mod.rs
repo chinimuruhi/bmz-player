@@ -456,6 +456,21 @@ impl JudgeEngine {
             lane_state.active_long = Some(active);
             return JudgeOutcome::default();
         }
+        if matches!(input.lane, Lane::Scratch | Lane::Scratch2)
+            && matches!(active.mode, LongNoteMode::Cn | LongNoteMode::Hcn)
+            && input.scratch_direction.is_some()
+            && input.scratch_direction == active.scratch_direction
+        {
+            let delta = input.time.0 - active.end.end_time.0;
+            let windows =
+                long_end_window(self.window_set, self.scratch_lane_mask[input.lane.index()]);
+            if classify_normal_delta(delta, windows).is_some() {
+                // beatorajaのBSSは終点判定幅内の元方向Releaseでは終了せず、
+                // 逆方向Pressを終点入力として消費する。
+                lane_state.active_long = Some(active);
+                return JudgeOutcome::default();
+            }
+        }
         let release_margin_us =
             long_release_margin_us(self.window_set, self.scratch_lane_mask[input.lane.index()]);
 
