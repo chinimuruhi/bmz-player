@@ -176,6 +176,14 @@ pub(in crate::app) fn play_ready_blocked_by_recent_control_hold(
     })
 }
 
+pub(in crate::app) fn should_route_quick_retry_input(
+    pressed: bool,
+    repeat: bool,
+    play_ending_active: bool,
+) -> bool {
+    pressed && !repeat && play_ending_active
+}
+
 pub(in crate::app) fn play_exit_should_leave_practice(
     practice_phase: Option<PracticePhase>,
 ) -> bool {

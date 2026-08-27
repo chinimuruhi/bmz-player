@@ -19,10 +19,11 @@ impl WinitApp {
         let play_physical_control = control_event.physical.as_ref();
         let has_play_control_context =
             self.play.active_play.is_some() || self.play.pending_play_start.is_some();
-        if control_event.pressed
-            && !control_event.repeat
-            && self.play.play_ending.is_none()
-            && let Some(control) = play_control
+        if should_route_quick_retry_input(
+            control_event.pressed,
+            control_event.repeat,
+            self.play.play_ending.is_some(),
+        ) && let Some(control) = play_control
             && self.handle_quick_retry_control(control)
         {
             return;

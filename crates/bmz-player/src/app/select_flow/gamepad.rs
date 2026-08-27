@@ -427,7 +427,9 @@ impl WinitApp {
         if self.route_practice_gamepad_control(device, button, pressed, synthesized_analog_axis) {
             return;
         }
-        if pressed && self.play.play_ending.is_none() && self.handle_quick_retry_control(button) {
+        if should_route_quick_retry_input(pressed, false, self.play.play_ending.is_some())
+            && self.handle_quick_retry_control(button)
+        {
             return;
         }
         if pressed && self.begin_play_fadeout_after_final_notes_control(button) {

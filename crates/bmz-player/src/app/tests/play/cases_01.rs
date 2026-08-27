@@ -361,6 +361,14 @@ fn play_ready_is_blocked_while_e1_or_e2_is_held() {
 }
 
 #[test]
+fn quick_retry_input_is_routed_only_during_play_ending() {
+    assert!(should_route_quick_retry_input(true, false, true));
+    assert!(!should_route_quick_retry_input(true, false, false));
+    assert!(!should_route_quick_retry_input(false, false, true));
+    assert!(!should_route_quick_retry_input(true, true, true));
+}
+
+#[test]
 fn play_ready_waits_one_second_after_last_e1_or_e2_hold() {
     let last_control_hold_at = Instant::now();
 
