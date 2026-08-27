@@ -109,6 +109,10 @@ impl ConfigSelectRow {
     pub fn value_text(self, profile: &ProfileConfig) -> String {
         format_settings_value(profile, self.entry_id)
     }
+
+    pub fn description_text(self, profile: &ProfileConfig) -> String {
+        Localizer::new(profile.ui.locale()).text(self.entry_id.description_key())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +128,10 @@ impl KeyBindingSelectRow {
 
     pub fn value_text(self, profile: &ProfileConfig) -> String {
         format_play_binding(profile, self.key_mode, self.target)
+    }
+
+    pub fn description_text(self, profile: &ProfileConfig) -> String {
+        Localizer::new(profile.ui.locale()).text("settings-key-binding-description")
     }
 }
 
@@ -627,5 +635,35 @@ mod tests {
             item,
             SelectItem::Config(row) if row.entry_id == SettingsEntryId::ReplaySlot4Rule
         )));
+    }
+
+    #[test]
+    fn every_setting_entry_has_a_localized_item_description() {
+        let entry_sets = [
+            SettingsEntryId::VOLUME_ENTRIES,
+            SettingsEntryId::JUDGE_ENTRIES,
+            SettingsEntryId::PLAY_ENTRIES,
+            SettingsEntryId::DISPLAY_ENTRIES,
+            SettingsEntryId::INPUT_ENTRIES,
+            SettingsEntryId::SELECT_ENTRIES,
+            SettingsEntryId::HISPEED_8K_ENTRIES,
+            SettingsEntryId::REPLAY_ENTRIES,
+        ];
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+        for locale in AppLocale::SUPPORTED {
+            profile.ui.language = locale.code().to_string();
+            for entry_id in entry_sets
+                .into_iter()
+                .flatten()
+                .copied()
+                .chain(std::iter::once(SettingsEntryId::Assist))
+            {
+                let key = entry_id.description_key();
+                let description = ConfigSelectRow { entry_id }.description_text(&profile);
+                assert_ne!(description, key, "{}: {entry_id:?}", locale.code());
+                assert!(!description.is_empty(), "{}: {entry_id:?}", locale.code());
+            }
+        }
     }
 }

@@ -268,6 +268,93 @@ impl SettingsEntryId {
             Self::ReplaySlot4Rule => "REPLAY 4",
         }
     }
+
+    /// 選曲スキンの詳細欄へ表示する、設定項目自体の説明文キー。
+    pub const fn description_key(self) -> &'static str {
+        match self {
+            Self::NormalizeChartVolume => "settings-entry-description-normalize-chart-volume",
+            Self::NormalizeSystemBgmVolume => {
+                "settings-entry-description-normalize-system-bgm-volume"
+            }
+            Self::MasterVolume => "settings-entry-description-master-volume",
+            Self::KeyVolume => "settings-entry-description-key-volume",
+            Self::BgmVolume => "settings-entry-description-bgm-volume",
+            Self::PreviewVolume => "settings-entry-description-preview-volume",
+            Self::SystemBgmVolume => "settings-entry-description-system-bgm-volume",
+            Self::SystemSeVolume => "settings-entry-description-system-se-volume",
+            Self::InputOffsetMs => "settings-entry-description-input-offset",
+            Self::VisualOffsetMs => "settings-entry-description-visual-offset",
+            Self::VisualOffsetAutoAdjust => "settings-entry-description-visual-offset-auto-adjust",
+            Self::JudgeAlgorithm => "settings-entry-description-judge-algorithm",
+            Self::RuleMode => "settings-entry-description-rule-mode",
+            Self::LnModePolicy => "settings-entry-description-ln-mode-policy",
+            Self::Gauge => "settings-entry-description-gauge",
+            Self::GaugeAutoShift => "settings-entry-description-gauge-auto-shift",
+            Self::BottomShiftableGauge => "settings-entry-description-bottom-shiftable-gauge",
+            Self::Random | Self::Random2 => "settings-entry-description-random",
+            Self::DoubleOption => "settings-entry-description-double-option",
+            Self::HsFix => "settings-entry-description-hs-fix",
+            Self::Target => "settings-entry-description-target",
+            Self::LaneEffect => "settings-entry-description-lane-effect",
+            Self::Assist => "settings-entry-description-assist",
+            Self::BgaMode => "settings-entry-description-bga-mode",
+            Self::BgaExpand => "settings-entry-description-bga-expand",
+            Self::AutoPlay => "settings-entry-description-auto-play",
+            Self::MisslayerDurationMs => "settings-entry-description-misslayer-duration",
+            Self::ShowLnTailCap => "settings-entry-description-show-ln-tail-cap",
+            Self::GuideSe => "settings-entry-description-guide-se",
+            Self::Hispeed => "settings-entry-description-hispeed",
+            Self::HispeedMode => "settings-entry-description-hispeed-mode",
+            Self::HispeedStepNhs => "settings-entry-description-hispeed-step-nhs",
+            Self::HispeedStepFhs => "settings-entry-description-hispeed-step-fhs",
+            Self::Sudden => "settings-entry-description-sudden",
+            Self::Lift => "settings-entry-description-lift",
+            Self::Hidden => "settings-entry-description-hidden",
+            Self::TargetGreenNumber => "settings-entry-description-target-green-number",
+            Self::NoteDisplayDurationMs => "settings-entry-description-note-display-duration",
+            Self::Constant => "settings-entry-description-constant",
+            Self::ConstantFadeMs => "settings-entry-description-constant-fade",
+            Self::SelectInputMode => "settings-entry-description-select-input-mode",
+            Self::AnalogScratch1P | Self::AnalogScratch2P => {
+                "settings-entry-description-analog-scratch"
+            }
+            Self::AnalogScratchSensitivity1P | Self::AnalogScratchSensitivity2P => {
+                "settings-entry-description-analog-scratch-sensitivity"
+            }
+            Self::AnalogScratchThreshold1P | Self::AnalogScratchThreshold2P => {
+                "settings-entry-description-analog-scratch-threshold"
+            }
+            Self::AnalogTicksPerScroll => "settings-entry-description-analog-ticks-per-scroll",
+            Self::KeyboardReleaseBounceMs => "settings-entry-description-keyboard-release-bounce",
+            Self::ControllerReleaseBounceMs => {
+                "settings-entry-description-controller-release-bounce"
+            }
+            Self::Hispeed8Key1
+            | Self::Hispeed8Key2
+            | Self::Hispeed8Key3
+            | Self::Hispeed8Key4
+            | Self::Hispeed8Key5
+            | Self::Hispeed8Key6
+            | Self::Hispeed8Key7
+            | Self::Hispeed8Key8 => "settings-entry-description-hispeed-direction",
+            Self::DifficultyTableLevelDisplay => {
+                "settings-entry-description-difficulty-table-level-display"
+            }
+            Self::SelectRandomSelect => "settings-entry-description-random-select",
+            Self::RandomMixTargetLevel => "settings-entry-description-random-mix-target-level",
+            Self::RandomMixMaxLevel => "settings-entry-description-random-mix-max-level",
+            Self::RandomMixMinLevel => "settings-entry-description-random-mix-min-level",
+            Self::RandomMixBpmRange => "settings-entry-description-random-mix-bpm-range",
+            Self::RandomMixMaxBpm => "settings-entry-description-random-mix-max-bpm",
+            Self::RandomMixMinBpm => "settings-entry-description-random-mix-min-bpm",
+            Self::RandomMixStages => "settings-entry-description-random-mix-stages",
+            Self::ReplayAutoSave => "settings-entry-description-replay-auto-save",
+            Self::ReplaySlot1Rule
+            | Self::ReplaySlot2Rule
+            | Self::ReplaySlot3Rule
+            | Self::ReplaySlot4Rule => "settings-entry-description-replay-slot-rule",
+        }
+    }
 }
 
 /// 設定値 1 ステップの増減量。

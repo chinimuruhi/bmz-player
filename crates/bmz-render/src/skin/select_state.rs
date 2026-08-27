@@ -409,6 +409,11 @@ pub(super) fn select_detail_genre<'a>(
     selected_row: Option<&'a SelectRowSnapshot>,
 ) -> &'a str {
     if snapshot.in_settings {
+        if snapshot.settings_editing
+            && selected_row.is_some_and(|row| row.kind == SelectRowKind::Config)
+        {
+            return "[編集中]";
+        }
         return selected_row.map(|row| row.genre.as_str()).unwrap_or_default();
     }
     selected_row
@@ -422,12 +427,10 @@ pub(super) fn select_detail_subtitle<'a>(
     selected_row: Option<&'a SelectRowSnapshot>,
 ) -> &'a str {
     if snapshot.in_settings {
-        if snapshot.settings_editing
-            && selected_row.is_some_and(|row| row.kind == SelectRowKind::Config)
-        {
-            return "[編集中]";
-        }
-        return "";
+        return selected_row
+            .filter(|row| row.kind == SelectRowKind::Config)
+            .map(|row| row.subtitle.as_str())
+            .unwrap_or_default();
     }
     selected_row
         .filter(|row| row.kind == SelectRowKind::Song)

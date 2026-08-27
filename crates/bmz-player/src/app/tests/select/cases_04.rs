@@ -282,11 +282,20 @@ fn select_snapshot_rows_append_values_only_to_config_bar_text() {
     assert_eq!(config.title, "MASTER");
     assert_eq!(config.display_bar_text(), "MASTER [37]");
     assert_eq!(config.artist, "37");
+    assert_eq!(config.subtitle, "ゲーム全体の音量を調整します。");
     assert_eq!(config.play_level, "37");
     assert_eq!(binding.title, "E1 (KEYBOARD)");
     assert_eq!(binding.display_bar_text(), "E1 (KEYBOARD) [Q]");
     assert_eq!(binding.artist, "Q");
+    assert_eq!(binding.subtitle, "操作またはレーンに使用する入力を割り当てます。");
     assert_eq!(binding.play_level, "Q");
+
+    profile.audio_mix.master_volume = 38;
+    let updated = select_snapshot_rows(&rows, 0, 2, &profile, None, &HashMap::new());
+    let updated_config = updated.iter().find(|row| row.index == 0).unwrap();
+    assert_eq!(updated_config.display_bar_text(), "MASTER [38]");
+    assert_eq!(updated_config.artist, "38");
+    assert_eq!(updated_config.subtitle, config.subtitle);
 }
 
 #[test]

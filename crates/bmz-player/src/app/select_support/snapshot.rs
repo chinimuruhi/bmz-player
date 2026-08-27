@@ -157,7 +157,8 @@ fn select_snapshot_row(
         },
         SelectItem::Config(row) => {
             let value = row.value_text(context.profile);
-            select_config_snapshot(index, row.label().to_string(), value)
+            let description = row.description_text(context.profile);
+            select_config_snapshot(index, row.label().to_string(), value, description)
         }
         SelectItem::KeyBinding(row) => {
             let value = context
@@ -165,7 +166,8 @@ fn select_snapshot_row(
                 .filter(|session| session.key_mode == row.key_mode && session.target == row.target)
                 .map(|session| session.preview_value(context.profile))
                 .unwrap_or_else(|| row.value_text(context.profile));
-            select_config_snapshot(index, row.label(), value)
+            let description = row.description_text(context.profile);
+            select_config_snapshot(index, row.label(), value, description)
         }
         SelectItem::SettingsBack => select_navigation_snapshot(
             index,
@@ -353,12 +355,18 @@ fn select_course_snapshot(index: usize, row: &SelectCourseRow) -> SelectRowSnaps
     }
 }
 
-fn select_config_snapshot(index: usize, title: String, value: String) -> SelectRowSnapshot {
+fn select_config_snapshot(
+    index: usize,
+    title: String,
+    value: String,
+    description: String,
+) -> SelectRowSnapshot {
     let bar_text = format!("{title} [{value}]");
     SelectRowSnapshot {
         index: index as u32,
         title,
         bar_text,
+        subtitle: description,
         artist: value.clone(),
         play_level: value,
         kind: bmz_render::scene::SelectRowKind::Config,

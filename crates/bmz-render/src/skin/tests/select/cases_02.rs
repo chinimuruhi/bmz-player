@@ -76,7 +76,7 @@ fn select_rank_and_judge_ops_are_hidden_in_settings() {
 }
 
 #[test]
-fn select_detail_artist_shows_config_value_in_settings() {
+fn select_detail_uses_beatoraja_fields_for_setting_description_and_editing_state() {
     let snapshot = SelectSnapshot {
         in_settings: true,
         settings_editing: true,
@@ -85,6 +85,7 @@ fn select_detail_artist_shows_config_value_in_settings() {
             index: 0,
             title: "MASTER".to_string(),
             bar_text: "MASTER [25]".to_string(),
+            subtitle: "MASTER is currently set to 25".to_string(),
             artist: "25".to_string(),
             kind: SelectRowKind::Config,
             ..SelectRowSnapshot::default()
@@ -95,7 +96,27 @@ fn select_detail_artist_shows_config_value_in_settings() {
     assert_eq!(row.display_bar_text(), "MASTER [25]");
     assert_eq!(select_detail_title(&snapshot, Some(row)), "MASTER");
     assert_eq!(select_detail_artist(&snapshot, Some(row)), "25");
-    assert_eq!(select_detail_subtitle(&snapshot, Some(row)), "[編集中]");
+    assert_eq!(select_detail_genre(&snapshot, Some(row)), "[編集中]");
+    assert_eq!(select_detail_subtitle(&snapshot, Some(row)), "MASTER is currently set to 25");
+
+    let song_snapshot = SelectSnapshot {
+        selected_index: 0,
+        rows: vec![SelectRowSnapshot {
+            index: 0,
+            title: "Song".to_string(),
+            subtitle: "Subtitle".to_string(),
+            artist: "Artist".to_string(),
+            genre: "Genre".to_string(),
+            kind: SelectRowKind::Song,
+            ..SelectRowSnapshot::default()
+        }],
+        ..SelectSnapshot::default()
+    };
+    let song = &song_snapshot.rows[0];
+    assert_eq!(select_detail_artist(&song_snapshot, Some(song)), "Artist");
+    assert_eq!(select_detail_genre(&song_snapshot, Some(song)), "Genre");
+    assert_eq!(select_detail_subtitle(&song_snapshot, Some(song)), "Subtitle");
+
     assert_eq!(
         skin_state_text(
             &SkinTextDef { id: "t".to_string(), ref_id: 3, ..SkinTextDef::default() },
