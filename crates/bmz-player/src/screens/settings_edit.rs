@@ -6,10 +6,11 @@ use bmz_gameplay::rule::RuleMode;
 use crate::config::play_input::resolve_play_bindings;
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
-    DifficultyTableLevelDisplay, DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig,
-    HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, InputActionConfig,
-    JudgeAlgorithmConfig, LaneConfig, LaneEffectConfig, ProfileConfig, ProfileInputConfig,
-    RandomOptionConfig, ReplaySlotRule, ScratchDirectionConfig, SelectInputModeConfig,
+    DifficultyTableLevelDisplay, DoubleOptionConfig, FastSlowDisplayScope, GaugeAutoShiftConfig,
+    GaugeTypeConfig, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, InputActionConfig,
+    JudgeAlgorithmConfig, KeyModeConversionConfig, LaneConfig, LaneEffectConfig, ProfileConfig,
+    ProfileInputConfig, RandomOptionConfig, ReplaySlotRule, ScratchDirectionConfig,
+    SelectInputModeConfig, SevenToNinePattern, SevenToNineRuleMode, SevenToNineType,
     TargetOptionConfig,
 };
 use crate::config::settings_registry::{
@@ -17,6 +18,7 @@ use crate::config::settings_registry::{
 };
 
 use crate::ln_policy::LnPolicySetting;
+use crate::select_options::SessionMode;
 
 /// 7KEY / 14KEY + スクラッチ向けの設定画面入力マッピング。
 #[derive(Debug, Clone)]
@@ -225,6 +227,7 @@ enum SettingsBaseline {
     I32(i32),
     Bool(bool),
     JudgeAlgorithm(JudgeAlgorithmConfig),
+    FastSlowDisplayScope(FastSlowDisplayScope),
     RuleMode(RuleMode),
     LnModePolicy(LnPolicySetting),
     Gauge(GaugeTypeConfig),
@@ -238,11 +241,17 @@ enum SettingsBaseline {
     Assist(AssistOptionConfig),
     BgaMode(BgaModeConfig),
     BgaExpand(BgaExpandConfig),
+    SessionMode { value: Option<SessionMode>, auto_play: bool },
+    KeyModeConversion { value: KeyModeConversionConfig, double_option: DoubleOptionConfig },
+    SevenToNinePattern(SevenToNinePattern),
+    SevenToNineType(SevenToNineType),
+    SevenToNineRuleMode(SevenToNineRuleMode),
     HispeedMode(HispeedModeConfig),
     HispeedDirection(HispeedDirectionConfig),
     SelectInputMode(SelectInputModeConfig),
     DifficultyTableLevelDisplay(DifficultyTableLevelDisplay),
     ReplaySlotRule(ReplaySlotRule),
+    Language(String),
 }
 
 /// 編集開始時点の値。キャンセル時に profile へ戻す。
@@ -287,6 +296,12 @@ impl SettingsEditSession {
             SettingsEntryId::JudgeAlgorithm => {
                 SettingsBaseline::JudgeAlgorithm(profile.judge.judge_algorithm)
             }
+            SettingsEntryId::FastSlowDisplayScope => {
+                SettingsBaseline::FastSlowDisplayScope(profile.judge.fast_slow_display_scope)
+            }
+            SettingsEntryId::FastSlowDisplayThresholdMs => {
+                SettingsBaseline::U32(profile.judge.fast_slow_display_threshold_ms)
+            }
             SettingsEntryId::RuleMode => SettingsBaseline::RuleMode(profile.play.rule_mode),
             SettingsEntryId::LnModePolicy => {
                 SettingsBaseline::LnModePolicy(profile.play.ln_mode_policy)
@@ -309,7 +324,48 @@ impl SettingsEditSession {
             SettingsEntryId::Assist => SettingsBaseline::Assist(profile.play.assist),
             SettingsEntryId::BgaMode => SettingsBaseline::BgaMode(profile.play.bga),
             SettingsEntryId::BgaExpand => SettingsBaseline::BgaExpand(profile.play.bga_expand),
-            SettingsEntryId::AutoPlay => SettingsBaseline::Bool(profile.play.auto_play),
+            SettingsEntryId::SessionMode => SettingsBaseline::SessionMode {
+                value: profile.play.session_mode,
+                auto_play: profile.play.auto_play,
+            },
+            SettingsEntryId::KeyModeConversion => SettingsBaseline::KeyModeConversion {
+                value: profile.play.key_mode_conversion,
+                double_option: profile.play.double_option,
+            },
+            SettingsEntryId::SevenToNinePattern => {
+                SettingsBaseline::SevenToNinePattern(profile.play.seven_to_nine_pattern)
+            }
+            SettingsEntryId::SevenToNineType => {
+                SettingsBaseline::SevenToNineType(profile.play.seven_to_nine_type)
+            }
+            SettingsEntryId::SevenToNineRuleMode => {
+                SettingsBaseline::SevenToNineRuleMode(profile.play.seven_to_nine_rule_mode)
+            }
+            SettingsEntryId::PlayExitHoldMs => {
+                SettingsBaseline::U32(profile.play.play_exit_hold_ms)
+            }
+            SettingsEntryId::AssistExpandJudge
+            | SettingsEntryId::AssistJudgeArea
+            | SettingsEntryId::AssistMarkNote
+            | SettingsEntryId::AssistBpmGuide
+            | SettingsEntryId::AssistScrollMode
+            | SettingsEntryId::AssistLongNoteMode
+            | SettingsEntryId::AssistMineMode
+            | SettingsEntryId::AssistScrollSection
+            | SettingsEntryId::AssistScrollRate
+            | SettingsEntryId::AssistLongNoteRate
+            | SettingsEntryId::AssistExtraNoteDepth
+            | SettingsEntryId::AssistExtraNoteScratch
+            | SettingsEntryId::AssistExtraNoteType
+            | SettingsEntryId::AssistKeyPgreatRate
+            | SettingsEntryId::AssistKeyGreatRate
+            | SettingsEntryId::AssistKeyGoodRate
+            | SettingsEntryId::AssistScratchPgreatRate
+            | SettingsEntryId::AssistScratchGreatRate
+            | SettingsEntryId::AssistScratchGoodRate
+            | SettingsEntryId::AssistLongNoteMarginRate => {
+                SettingsBaseline::Assist(profile.play.assist)
+            }
             SettingsEntryId::MisslayerDurationMs => {
                 SettingsBaseline::U32(profile.play.misslayer_duration_ms)
             }
@@ -322,7 +378,11 @@ impl SettingsEditSession {
             SettingsEntryId::HispeedStepNhs => SettingsBaseline::F32(profile.lane.hispeed_step_nhs),
             SettingsEntryId::HispeedStepFhs => SettingsBaseline::F32(profile.lane.hispeed_step_fhs),
             SettingsEntryId::Sudden => SettingsBaseline::U32(profile.lane.sudden),
+            SettingsEntryId::LiftEnabled => SettingsBaseline::Bool(profile.lane.lift_enabled),
             SettingsEntryId::Lift => SettingsBaseline::U32(profile.lane.lift),
+            SettingsEntryId::HispeedAutoAdjust => {
+                SettingsBaseline::Bool(profile.lane.hispeed_auto_adjust)
+            }
             SettingsEntryId::Hidden => SettingsBaseline::U32(profile.lane.hidden),
             SettingsEntryId::TargetGreenNumber => {
                 SettingsBaseline::U32(profile.lane.target_green_number)
@@ -410,6 +470,7 @@ impl SettingsEditSession {
                 )
             }
             SettingsEntryId::ReplayAutoSave => SettingsBaseline::Bool(profile.replay.auto_save),
+            SettingsEntryId::ReplayCompress => SettingsBaseline::Bool(profile.replay.compress),
             SettingsEntryId::ReplaySlot1Rule => {
                 SettingsBaseline::ReplaySlotRule(profile.replay.slot_rules[0])
             }
@@ -422,6 +483,8 @@ impl SettingsEditSession {
             SettingsEntryId::ReplaySlot4Rule => {
                 SettingsBaseline::ReplaySlotRule(profile.replay.slot_rules[3])
             }
+            SettingsEntryId::Language => SettingsBaseline::Language(profile.ui.language.clone()),
+            SettingsEntryId::ShowFps => SettingsBaseline::Bool(profile.ui.show_fps),
         };
         Self { entry_id, baseline }
     }
@@ -463,6 +526,15 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::JudgeAlgorithm, SettingsBaseline::JudgeAlgorithm(value)) => {
                 profile.judge.judge_algorithm = *value;
+            }
+            (
+                SettingsEntryId::FastSlowDisplayScope,
+                SettingsBaseline::FastSlowDisplayScope(value),
+            ) => {
+                profile.judge.fast_slow_display_scope = *value;
+            }
+            (SettingsEntryId::FastSlowDisplayThresholdMs, SettingsBaseline::U32(value)) => {
+                profile.judge.fast_slow_display_threshold_ms = *value;
             }
             (SettingsEntryId::RuleMode, SettingsBaseline::RuleMode(value)) => {
                 profile.play.rule_mode = *value;
@@ -509,8 +581,56 @@ impl SettingsEditSession {
             (SettingsEntryId::BgaExpand, SettingsBaseline::BgaExpand(value)) => {
                 profile.play.bga_expand = *value;
             }
-            (SettingsEntryId::AutoPlay, SettingsBaseline::Bool(value)) => {
-                profile.play.auto_play = *value;
+            (SettingsEntryId::SessionMode, SettingsBaseline::SessionMode { value, auto_play }) => {
+                profile.play.session_mode = *value;
+                profile.play.auto_play = *auto_play;
+            }
+            (
+                SettingsEntryId::KeyModeConversion,
+                SettingsBaseline::KeyModeConversion { value, double_option },
+            ) => {
+                profile.play.key_mode_conversion = *value;
+                profile.play.double_option = *double_option;
+            }
+            (SettingsEntryId::SevenToNinePattern, SettingsBaseline::SevenToNinePattern(value)) => {
+                profile.play.seven_to_nine_pattern = *value;
+            }
+            (SettingsEntryId::SevenToNineType, SettingsBaseline::SevenToNineType(value)) => {
+                profile.play.seven_to_nine_type = *value;
+            }
+            (
+                SettingsEntryId::SevenToNineRuleMode,
+                SettingsBaseline::SevenToNineRuleMode(value),
+            ) => {
+                profile.play.seven_to_nine_rule_mode = *value;
+            }
+            (SettingsEntryId::PlayExitHoldMs, SettingsBaseline::U32(value)) => {
+                profile.play.play_exit_hold_ms = *value;
+            }
+            (
+                SettingsEntryId::AssistExpandJudge
+                | SettingsEntryId::AssistJudgeArea
+                | SettingsEntryId::AssistMarkNote
+                | SettingsEntryId::AssistBpmGuide
+                | SettingsEntryId::AssistScrollMode
+                | SettingsEntryId::AssistLongNoteMode
+                | SettingsEntryId::AssistMineMode
+                | SettingsEntryId::AssistScrollSection
+                | SettingsEntryId::AssistScrollRate
+                | SettingsEntryId::AssistLongNoteRate
+                | SettingsEntryId::AssistExtraNoteDepth
+                | SettingsEntryId::AssistExtraNoteScratch
+                | SettingsEntryId::AssistExtraNoteType
+                | SettingsEntryId::AssistKeyPgreatRate
+                | SettingsEntryId::AssistKeyGreatRate
+                | SettingsEntryId::AssistKeyGoodRate
+                | SettingsEntryId::AssistScratchPgreatRate
+                | SettingsEntryId::AssistScratchGreatRate
+                | SettingsEntryId::AssistScratchGoodRate
+                | SettingsEntryId::AssistLongNoteMarginRate,
+                SettingsBaseline::Assist(value),
+            ) => {
+                profile.play.assist = *value;
             }
             (SettingsEntryId::MisslayerDurationMs, SettingsBaseline::U32(value)) => {
                 profile.play.misslayer_duration_ms = *value;
@@ -536,8 +656,14 @@ impl SettingsEditSession {
             (SettingsEntryId::Sudden, SettingsBaseline::U32(value)) => {
                 profile.lane.sudden = *value;
             }
+            (SettingsEntryId::LiftEnabled, SettingsBaseline::Bool(value)) => {
+                profile.lane.lift_enabled = *value;
+            }
             (SettingsEntryId::Lift, SettingsBaseline::U32(value)) => {
                 profile.lane.lift = *value;
+            }
+            (SettingsEntryId::HispeedAutoAdjust, SettingsBaseline::Bool(value)) => {
+                profile.lane.hispeed_auto_adjust = *value;
             }
             (SettingsEntryId::Hidden, SettingsBaseline::U32(value)) => {
                 profile.lane.hidden = *value;
@@ -635,6 +761,9 @@ impl SettingsEditSession {
             (SettingsEntryId::ReplayAutoSave, SettingsBaseline::Bool(value)) => {
                 profile.replay.auto_save = *value;
             }
+            (SettingsEntryId::ReplayCompress, SettingsBaseline::Bool(value)) => {
+                profile.replay.compress = *value;
+            }
             (SettingsEntryId::ReplaySlot1Rule, SettingsBaseline::ReplaySlotRule(value)) => {
                 profile.replay.slot_rules[0] = *value;
             }
@@ -646,6 +775,12 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::ReplaySlot4Rule, SettingsBaseline::ReplaySlotRule(value)) => {
                 profile.replay.slot_rules[3] = *value;
+            }
+            (SettingsEntryId::Language, SettingsBaseline::Language(value)) => {
+                profile.ui.language.clone_from(value);
+            }
+            (SettingsEntryId::ShowFps, SettingsBaseline::Bool(value)) => {
+                profile.ui.show_fps = *value;
             }
             _ => {}
         }
@@ -781,5 +916,37 @@ mod tests {
         profile.replay.slot_rules[1] = ReplaySlotRule::ClearUpdate;
         replay_session.restore(&mut profile);
         assert_eq!(profile.replay.slot_rules[1], ReplaySlotRule::ScoreUpdate);
+    }
+
+    #[test]
+    fn edit_session_restore_reverts_new_dependent_settings() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+        let session_mode = SettingsEditSession::capture(&profile, SettingsEntryId::SessionMode);
+        assert!(adjust_settings_draft(&mut profile, &session_mode, 1));
+        assert!(adjust_settings_draft(&mut profile, &session_mode, 1));
+        assert_eq!(profile.play.session_mode, Some(SessionMode::Autoplay));
+        assert!(profile.play.auto_play);
+        session_mode.restore(&mut profile);
+        assert_eq!(profile.play.session_mode, Some(SessionMode::Normal));
+        assert!(!profile.play.auto_play);
+
+        profile.play.double_option = DoubleOptionConfig::Battle;
+        let conversion = SettingsEditSession::capture(&profile, SettingsEntryId::KeyModeConversion);
+        assert!(adjust_settings_draft(&mut profile, &conversion, 1));
+        assert_eq!(profile.play.double_option, DoubleOptionConfig::Off);
+        conversion.restore(&mut profile);
+        assert_eq!(profile.play.key_mode_conversion, KeyModeConversionConfig::Off);
+        assert_eq!(profile.play.double_option, DoubleOptionConfig::Battle);
+
+        let assist = SettingsEditSession::capture(&profile, SettingsEntryId::AssistScrollRate);
+        assert!(adjust_settings_draft(&mut profile, &assist, 5));
+        assist.restore(&mut profile);
+        assert!((profile.play.assist.scroll_rate - 0.5).abs() < f64::EPSILON);
+
+        let language = SettingsEditSession::capture(&profile, SettingsEntryId::Language);
+        assert!(adjust_settings_draft(&mut profile, &language, 1));
+        language.restore(&mut profile);
+        assert_eq!(profile.ui.language, "ja");
     }
 }

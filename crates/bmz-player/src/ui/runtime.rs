@@ -85,6 +85,11 @@ impl EguiLayer {
         tracing::info!("egui skin settings opened from select");
     }
 
+    /// profile側からFPS表示設定が変更されたとき、eguiのcheckbox状態も揃える。
+    pub fn set_show_fps(&mut self, show_fps: bool) {
+        self.show_fps = show_fps;
+    }
+
     pub fn set_score_import_status(&mut self, status: String, error: bool) {
         if error {
             self.score_import_error = status;

@@ -363,6 +363,14 @@ impl WinitApp {
         if SettingsEntryId::VOLUME_ENTRIES.contains(&entry_id) {
             self.sync_realtime_profile_settings();
         }
+        if entry_id == SettingsEntryId::Language {
+            self.reload_select_items();
+        }
+        if entry_id == SettingsEntryId::ShowFps
+            && let Some(egui) = self.ui.egui.as_mut()
+        {
+            egui.set_show_fps(self.boot.profile_config.ui.show_fps);
+        }
     }
 
     pub(super) fn sync_changed_gamepad_analog_config_from_profile(
@@ -395,10 +403,12 @@ impl WinitApp {
         &mut self,
         entry_id: SettingsEntryId,
     ) {
-        if !SettingsEntryId::PLAY_ENTRIES.contains(&entry_id) {
+        if !entry_id.is_play_setting() {
             return;
         }
         self.sync_select_play_options_from_profile();
+        self.invalidate_play_preload();
+        self.play.play_media_cache = None;
     }
 
     pub(super) fn sync_select_play_options_from_profile(&mut self) {
