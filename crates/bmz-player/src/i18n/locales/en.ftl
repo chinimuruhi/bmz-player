@@ -32,8 +32,8 @@ settings-entry-description-input-offset = Shifts input judgement timing relative
 settings-entry-description-visual-offset = Shifts note display timing relative to the audio.
 settings-entry-description-visual-offset-auto-adjust = Automatically adjusts the visual offset from recent judgement timing.
 settings-entry-description-judge-algorithm = Chooses which note takes priority when judgement candidates overlap in one lane.
-settings-entry-description-fast-slow-display-scope = Chooses whether FAST/SLOW follows judgement type or a timing-difference threshold.
-settings-entry-description-fast-slow-display-threshold = Sets the minimum timing difference shown as FAST/SLOW in THRESHOLD mode.
+settings-entry-description-fast-slow-display-scope = Chooses whether FAST/SLOW follows judgement type or a PGREAT timing-difference threshold.
+settings-entry-description-fast-slow-display-threshold = Sets the minimum PGREAT timing difference shown as FAST/SLOW in THRESHOLD mode.
 settings-entry-description-rule-mode = Chooses the rules used for judgement, gauges, and score calculation.
 settings-entry-description-ln-mode-policy = Chooses how LN, CN, and HCN objects are interpreted.
 settings-entry-description-gauge = Chooses the gauge used at the start of play.
@@ -462,9 +462,9 @@ profile-judge-auto-adjust = Automatic timing adjustment
 profile-judge-algorithm = Judgement algorithm
 profile-fast-slow-mode = FAST/SLOW display mode
 profile-fast-slow-auto = Auto (beatoraja compatible)
-profile-fast-slow-threshold-mode = Threshold in ms (all judgements, including PGREAT)
+profile-fast-slow-threshold-mode = PGREAT threshold in ms (GREAT or lower always shown)
 profile-fast-slow-threshold = FAST/SLOW display threshold (ms)
-profile-fast-slow-threshold-help = 0 = always show. FAST/SLOW is hidden when the absolute difference is below this value.
+profile-fast-slow-threshold-help = 0 = always show all judgements. PGREAT FAST/SLOW is hidden when the absolute difference is below this value.
 profile-play-title = Play
 profile-play-rule = Rule
 profile-play-ln-mode = LN mode

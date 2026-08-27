@@ -80,8 +80,8 @@ settings-category-assist = 輔助 / 譜面修改
 settings-category-assist-note = 音符生成
 settings-category-assist-judge = 判定範圍
 settings-category-ui = UI
-settings-entry-description-fast-slow-display-scope = Chooses judgement-based or threshold-based FAST/SLOW display.
-settings-entry-description-fast-slow-display-threshold = Sets the FAST/SLOW threshold in THRESHOLD mode.
+settings-entry-description-fast-slow-display-scope = Chooses judgement-based FAST/SLOW display or a PGREAT timing threshold.
+settings-entry-description-fast-slow-display-threshold = Sets the PGREAT FAST/SLOW threshold in THRESHOLD mode.
 settings-entry-description-session-mode = Chooses normal, practice, autoplay, or battle play.
 settings-entry-description-key-mode-conversion = Converts compatible charts to DP, 9K, or 6K.
 settings-entry-description-seven-to-nine-pattern = Chooses the scratch and key layout for 7K-to-9K conversion.
@@ -460,9 +460,9 @@ profile-judge-auto-adjust = 自動判定調整
 profile-judge-algorithm = 判定演算法
 profile-fast-slow-mode = FAST/SLOW 顯示模式
 profile-fast-slow-auto = 自動（兼容 beatoraja）
-profile-fast-slow-threshold-mode = 臨界值 ms（包括 PGREAT 在內的所有判定）
+profile-fast-slow-threshold-mode = PGREAT 臨界值 ms（GREAT 以下判定永遠顯示）
 profile-fast-slow-threshold = FAST/SLOW 顯示臨界值 (ms)
-profile-fast-slow-threshold-help = 0 = 永遠顯示。當絕對差值小於此值時不顯示 FAST/SLOW。
+profile-fast-slow-threshold-help = 0 = 所有判定永遠顯示。PGREAT 的絕對差值小於此值時不顯示 FAST/SLOW。
 profile-play-title = 遊玩
 profile-play-rule = 規則
 profile-play-ln-mode = LN 模式

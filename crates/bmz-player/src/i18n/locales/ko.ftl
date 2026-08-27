@@ -80,8 +80,8 @@ settings-category-assist = 어시스트 / 변형
 settings-category-assist-note = 노트 생성
 settings-category-assist-judge = 판정 범위
 settings-category-ui = UI
-settings-entry-description-fast-slow-display-scope = Chooses judgement-based or threshold-based FAST/SLOW display.
-settings-entry-description-fast-slow-display-threshold = Sets the FAST/SLOW threshold in THRESHOLD mode.
+settings-entry-description-fast-slow-display-scope = Chooses judgement-based FAST/SLOW display or a PGREAT timing threshold.
+settings-entry-description-fast-slow-display-threshold = Sets the PGREAT FAST/SLOW threshold in THRESHOLD mode.
 settings-entry-description-session-mode = Chooses normal, practice, autoplay, or battle play.
 settings-entry-description-key-mode-conversion = Converts compatible charts to DP, 9K, or 6K.
 settings-entry-description-seven-to-nine-pattern = Chooses the scratch and key layout for 7K-to-9K conversion.
@@ -459,9 +459,9 @@ profile-judge-auto-adjust = 자동 판정 조정
 profile-judge-algorithm = 판정 알고리즘
 profile-fast-slow-mode = FAST/SLOW 표시 모드
 profile-fast-slow-auto = 자동 (beatoraja 호환)
-profile-fast-slow-threshold-mode = 임계값 ms (PGREAT를 포함한 모든 판정)
+profile-fast-slow-threshold-mode = PGREAT 임계값 ms (GREAT 이하 판정은 항상 표시)
 profile-fast-slow-threshold = FAST/SLOW 표시 임계값 (ms)
-profile-fast-slow-threshold-help = 0 = 항상 표시. 절대 차이가 이 값보다 작으면 FAST/SLOW를 표시하지 않습니다.
+profile-fast-slow-threshold-help = 0 = 모든 판정을 항상 표시. PGREAT는 절대 차이가 이 값보다 작으면 FAST/SLOW를 표시하지 않습니다.
 profile-play-title = 플레이
 profile-play-rule = 규칙
 profile-play-ln-mode = LN 모드

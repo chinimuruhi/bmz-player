@@ -531,7 +531,7 @@ pub struct VisibleLongNote {
 pub struct DisplayJudgement {
     pub lane: Lane,
     pub judge: Judge,
-    /// `None` = FAST/SLOW 表示なし（閾値以内の JUST 判定）。
+    /// `None` = FAST/SLOW 表示なし（Auto または閾値以内の PGREAT）。
     pub side: Option<TimingSide>,
     pub text: String,
     pub combo: u32,
@@ -540,7 +540,7 @@ pub struct DisplayJudgement {
     /// ノートを押さずに通過した見逃し判定（Poor）。
     /// このとき「打鍵」は発生していないのでキービームやボム演出は不要。
     pub is_miss: bool,
-    /// 閾値 ms フィルタ（bmz 独自拡張）で ±ms 表示 (ref 525) も非表示にする。
+    /// PGREAT の閾値 ms フィルタ（bmz 独自拡張）で ±ms 表示 (ref 525) も非表示にする。
     /// Auto (beatoraja 準拠) では常に false（beatoraja は 525 を常に供給する）。
     pub timing_ms_suppressed: bool,
 }

@@ -586,7 +586,8 @@ skin runtimeのresetでは全チャンネルを未開始へ戻す。
 FAST/SLOW optionとタイミング差refには、既存の判定表示設定と同じフィルタを適用する。
 
 - `Auto`: PGREATのFAST/SLOW optionだけfalse。タイミング差refは返す。
-- `ThresholdMs`: 閾値未満ではFAST/SLOW optionをfalseにし、タイミング差refも値なしにする。
+- `ThresholdMs`: PGREATは閾値未満でFAST/SLOW optionをfalseにし、タイミング差refも値なしにする。
+  GREAT / GOOD / BAD / POOR / EMPTY POORは閾値内でも常にFAST/SLOW optionとタイミング差refを返す。
 - タイミング差refの符号は既存ref `525..527` と同じで、正がFAST、負がSLOW。
 
 判定前はtimerがOFF、各optionがfalse、タイミング差refが値なしとなる。PGREAT optionは

@@ -900,8 +900,8 @@ pub enum FastSlowDisplayScope {
     /// fast_slow_display_threshold_ms は無視される。
     #[default]
     Auto,
-    /// 判定種別を問わず、|delta| >= fast_slow_display_threshold_ms のときのみ表示。
-    /// PGREAT も対象になる。threshold_ms = 0 なら全判定で常時表示。
+    /// PGREAT は |delta| >= fast_slow_display_threshold_ms のときのみ表示。
+    /// GREAT 以下は常時表示し、threshold_ms = 0 なら PGREAT も常時表示。
     ThresholdMs,
 }
 

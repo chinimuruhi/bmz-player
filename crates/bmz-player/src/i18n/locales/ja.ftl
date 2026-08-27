@@ -32,8 +32,8 @@ settings-entry-description-input-offset = 入力判定の基準時刻を音声�
 settings-entry-description-visual-offset = ノート表示の基準時刻を音声に対して前後にずらします。
 settings-entry-description-visual-offset-auto-adjust = 直近の判定タイミングに合わせて表示オフセットを自動調整します。
 settings-entry-description-judge-algorithm = 同じレーンで判定候補が重なったときの優先方法を選びます。
-settings-entry-description-fast-slow-display-scope = FAST/SLOWを判定種別に応じて表示するか、時間差の閾値で表示するかを選びます。
-settings-entry-description-fast-slow-display-threshold = THRESHOLDモードでFAST/SLOWを表示する最小タイミング差を設定します。
+settings-entry-description-fast-slow-display-scope = FAST/SLOWを判定種別に応じて表示するか、PGREATの時間差の閾値で表示するかを選びます。
+settings-entry-description-fast-slow-display-threshold = THRESHOLDモードでPGREATのFAST/SLOWを表示する最小タイミング差を設定します。
 settings-entry-description-rule-mode = 判定・ゲージ・スコア計算に使用するルールセットを選びます。
 settings-entry-description-ln-mode-policy = LN・CN・HCNをどのモードとして扱うかを選びます。
 settings-entry-description-gauge = プレイ開始時に使用するゲージを選びます。
@@ -459,9 +459,9 @@ profile-judge-auto-adjust = 自動判定調整
 profile-judge-algorithm = 判定アルゴリズム
 profile-fast-slow-mode = FAST/SLOW 表示モード
 profile-fast-slow-auto = Auto (beatoraja 準拠)
-profile-fast-slow-threshold-mode = 閾値 ms (PGREAT 含む全判定)
+profile-fast-slow-threshold-mode = PGREAT 閾値 ms (GREAT 以下は常時表示)
 profile-fast-slow-threshold = FAST/SLOW 表示閾値 (ms)
-profile-fast-slow-threshold-help = 0 = 常時表示。|差分| がこれ未満の判定は FAST/SLOW を表示しません。
+profile-fast-slow-threshold-help = 0 = 全判定で常時表示。PGREAT は |差分| がこれ未満なら FAST/SLOW を表示しません。
 profile-play-title = プレイ
 profile-play-rule = ルール
 profile-play-ln-mode = LN モード
