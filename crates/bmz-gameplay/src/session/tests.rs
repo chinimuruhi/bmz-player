@@ -13,7 +13,7 @@ use crate::input::backend::NullInputBackend;
 use crate::input::binding::LaneBinding;
 use crate::input::system::InputSystem;
 use crate::input::translator::DefaultInputTranslator;
-use crate::judge::model::JudgeWindow;
+use crate::judge::model::{JudgeWindow, ScratchPressSuppression};
 
 use super::*;
 use crate::score::scored_note_count;

@@ -342,6 +342,36 @@ fn unjudged_press_after_empty_poor_window_uses_previous_playable_keysound() {
 }
 
 #[test]
+fn suppressed_bss_reverse_press_does_not_play_fallback_keysound() {
+    let mut chart = chart_with_keysound();
+    let mut note = chart.lane_notes[Lane::Key1.index()].remove(0);
+    note.lane = Lane::Scratch;
+    note.time = TimeUs(20_000);
+    chart.lane_notes[Lane::Scratch.index()].push(note);
+    let mut session = session_with_autoplay(chart);
+    session.autoplay = None;
+    session.judge.lanes[Lane::Scratch.index()].scratch_press_suppression =
+        Some(ScratchPressSuppression {
+            direction: ScratchDirection::Up,
+            started_at: TimeUs(0),
+            expires_at: TimeUs(30_000),
+        });
+    let input = InputEvent {
+        lane: Lane::Scratch,
+        kind: InputKind::Press,
+        time: TimeUs(1_000),
+        source: InputSource::Human,
+        device_kind: InputDeviceKind::Controller,
+        scratch_direction: Some(ScratchDirection::Up),
+    };
+
+    let judgements = process_session_input(&mut session, input);
+
+    assert!(judgements.is_empty());
+    assert!(session.pending_keysounds.is_empty());
+}
+
+#[test]
 fn unjudged_press_after_empty_poor_window_prefers_previous_invisible_keysound() {
     let mut session = session_with_autoplay(chart_with_invisible_keysound());
     session.autoplay = None;

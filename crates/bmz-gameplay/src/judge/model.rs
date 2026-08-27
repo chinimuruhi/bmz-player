@@ -240,10 +240,18 @@ pub struct PendingLongRelease {
     pub delta: TimeUs,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ScratchPressSuppression {
+    pub direction: bmz_core::input::ScratchDirection,
+    pub started_at: TimeUs,
+    pub expires_at: TimeUs,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LaneJudgeState {
     pub next_note_index: usize,
     pub active_long: Option<ActiveLongNote>,
+    pub scratch_press_suppression: Option<ScratchPressSuppression>,
     pub last_press_time: Option<TimeUs>,
     pub next_mine_index: usize,
     /// 直近にヒットした Mine の time。同一 Mine への二重ヒットを防ぐ簡易ガード。

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use bmz_chart::model::{LongNoteMode, NoteEvent, NoteKind, PlayableChart};
 use bmz_core::ids::NoteId;
-use bmz_core::input::{InputEvent, InputKind};
+use bmz_core::input::{InputEvent, InputKind, ScratchDirection};
 use bmz_core::judge::{Judge, TimingSide};
 use bmz_core::lane::{KeyMode, LANE_COUNT, Lane};
 use bmz_core::time::TimeUs;
@@ -10,8 +10,11 @@ use bmz_core::time::TimeUs;
 use super::model::{
     ActiveLongNote, JudgeAlgorithm, JudgeOutcome, JudgeWindow, JudgeWindows, JudgementEvent,
     KeySoundEvent, LaneJudgeState, LongNoteEndRef, MineHitEvent, PendingLongRelease,
+    ScratchPressSuppression,
 };
 use crate::rule::RuleMode;
+
+const BSS_REVERSE_PRESS_SUPPRESSION_US: i64 = 30_000;
 
 fn press_window(window_set: JudgeWindows, scratch: bool) -> JudgeWindow {
     if scratch { window_set.scratch } else { window_set.note }
@@ -282,6 +285,16 @@ impl JudgeEngine {
     }
 
     fn process_press(&mut self, chart: &PlayableChart, input: InputEvent) -> JudgeOutcome {
+        // A release-judged BSS still produces the reverse Press used by physical scratch
+        // controllers. Consume only that first matching edge before it can reach a note or Mine.
+        if let Some(suppression) = self.lanes[input.lane.index()].scratch_press_suppression.take()
+            && input.time.0 >= suppression.started_at.0
+            && input.time.0 <= suppression.expires_at.0
+            && input.scratch_direction == Some(suppression.direction)
+        {
+            return JudgeOutcome { consumed_input: true, ..Default::default() };
+        }
+
         // Mine ヒット判定は通常ノーツの判定に先んじて、もしくは並走して行う。
         // 入力は通常ノーツの判定を妨げないので、ここでは別ベクタに積むだけ。
         let mut mine_hits = Vec::new();
@@ -458,17 +471,36 @@ impl JudgeEngine {
         }
         if matches!(input.lane, Lane::Scratch | Lane::Scratch2)
             && matches!(active.mode, LongNoteMode::Cn | LongNoteMode::Hcn)
-            && input.scratch_direction.is_some()
-            && input.scratch_direction == active.scratch_direction
+            && let Some(start_direction) = active.scratch_direction
+            && input.scratch_direction == Some(start_direction)
         {
+            // BMZ accepts stopping the scratch as a BSS tail input. Arm a short one-shot
+            // suppression so the customary reverse edge cannot BAD a following scratch note.
             let delta = input.time.0 - active.end.end_time.0;
             let windows =
                 long_end_window(self.window_set, self.scratch_lane_mask[input.lane.index()]);
-            if classify_normal_delta(delta, windows).is_some() {
-                // beatorajaのBSSは終点判定幅内の元方向Releaseでは終了せず、
-                // 逆方向Pressを終点入力として消費する。
-                lane_state.active_long = Some(active);
-                return JudgeOutcome::default();
+            if let Some(judge) = classify_normal_delta(delta, windows) {
+                let reverse_direction = match start_direction {
+                    ScratchDirection::Up => ScratchDirection::Down,
+                    ScratchDirection::Down => ScratchDirection::Up,
+                };
+                lane_state.active_long = None;
+                lane_state.scratch_press_suppression = Some(ScratchPressSuppression {
+                    direction: reverse_direction,
+                    started_at: input.time,
+                    expires_at: TimeUs(
+                        input.time.0.saturating_add(BSS_REVERSE_PRESS_SUPPRESSION_US),
+                    ),
+                });
+                self.judged_notes.insert(active.end.end_note_id, judge);
+                return finalize_long_release(
+                    chart,
+                    input.lane,
+                    active,
+                    judge,
+                    TimeUs(delta),
+                    input.time,
+                );
             }
         }
         let release_margin_us =

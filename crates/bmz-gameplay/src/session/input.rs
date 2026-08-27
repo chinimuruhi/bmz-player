@@ -379,6 +379,7 @@ pub(super) fn process_session_input(
         }
         if outcome.events.is_empty()
             && outcome.keysounds.is_empty()
+            && !outcome.consumed_input
             && !hcn_passing
             && let Some(note_id) = fallback_keysound_note_id(session, input.lane, input.time)
         {
