@@ -3,11 +3,15 @@ use std::path::Path;
 use ffmpeg_next::format::Sample as FfmpegSample;
 use ffmpeg_next::{codec, format, frame, media};
 
-use crate::loader::{SampleLoadError, SampleLoader};
+use crate::loader::{SampleLoadError, SampleLoader, WavSampleLoader};
 use crate::sample::DecodedSample;
 
-/// ffmpeg-next を使って wav/ogg/flac/mp3 等の音声ファイルをデコードするローダー。
+/// wav/ogg/flac/mp3 等の音声ファイルをデコードするローダー。
 /// `bmz-video` の動画デコードと同じく ffmpeg-next を利用する。
+///
+/// 対応済みの単純な WAV は専用ローダーで直接デコードし、それ以外を ffmpeg へ
+/// フォールバックする。細かく分割された BMS keysound ごとに ffmpeg の demuxer と
+/// decoder を初期化するコストを避けるためである。
 ///
 /// 出力はインターリーブ済み f32。サンプルレート変換はミキサー側で行うため、
 /// ここではフォーマット変換（整数 PCM / planar → f32 packed）のみ行う。
@@ -28,6 +32,9 @@ impl FfmpegSampleLoader {
 
 impl SampleLoader for FfmpegSampleLoader {
     fn load(&mut self, path: &Path) -> Result<DecodedSample, SampleLoadError> {
+        if let Some(sample) = try_load_native_wav(path)? {
+            return Ok(sample);
+        }
         if let Err(message) = bmz_ffmpeg::ensure_init() {
             return Err(decode_error(path, message));
         }
@@ -38,6 +45,36 @@ impl SampleLoader for FfmpegSampleLoader {
     fn duration_ms_hint(&mut self, path: &Path) -> Option<i64> {
         bmz_ffmpeg::ensure_init().ok()?;
         probe_audio_duration_ms(path).ok()
+    }
+}
+
+fn try_load_native_wav(path: &Path) -> Result<Option<DecodedSample>, SampleLoadError> {
+    let is_wav = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("wav"));
+    if !is_wav {
+        return Ok(None);
+    }
+
+    match WavSampleLoader.load(path) {
+        Ok(sample)
+            if sample.channels != 0
+                && sample.frames.len().is_multiple_of(sample.channels as usize) =>
+        {
+            Ok(Some(sample))
+        }
+        Ok(_) => {
+            tracing::debug!(path = %path.display(), "native WAV decode found an incomplete sample frame; falling back to ffmpeg");
+            Ok(None)
+        }
+        // WAVEFORMATEXTENSIBLE や圧縮 WAV、壊れた PCM packet の補正などは
+        // 対応範囲の広い ffmpeg に任せる。
+        Err(SampleLoadError::Decode { message, .. }) => {
+            tracing::debug!(path = %path.display(), %message, "native WAV decode unavailable; falling back to ffmpeg");
+            Ok(None)
+        }
+        Err(error @ SampleLoadError::Io { .. }) => Err(error),
     }
 }
 
@@ -300,6 +337,10 @@ mod tests {
 
     /// 指定バイト列を PCM16 mono WAV の data chunk として書き出す。
     fn write_pcm16_wav_data(data: &[u8]) -> std::path::PathBuf {
+        write_pcm16_wav_data_with_channels(data, 1)
+    }
+
+    fn write_pcm16_wav_data_with_channels(data: &[u8], channels: u16) -> std::path::PathBuf {
         let sample_rate = 44_100_u32;
         let padding = data.len() % 2;
         let mut bytes = Vec::new();
@@ -308,10 +349,10 @@ mod tests {
         bytes.extend_from_slice(b"WAVEfmt ");
         bytes.extend_from_slice(&16_u32.to_le_bytes());
         bytes.extend_from_slice(&1_u16.to_le_bytes()); // PCM
-        bytes.extend_from_slice(&1_u16.to_le_bytes()); // mono
+        bytes.extend_from_slice(&channels.to_le_bytes());
         bytes.extend_from_slice(&sample_rate.to_le_bytes());
-        bytes.extend_from_slice(&(sample_rate * 2).to_le_bytes());
-        bytes.extend_from_slice(&2_u16.to_le_bytes());
+        bytes.extend_from_slice(&(sample_rate * u32::from(channels) * 2).to_le_bytes());
+        bytes.extend_from_slice(&(channels * 2).to_le_bytes());
         bytes.extend_from_slice(&16_u16.to_le_bytes());
         bytes.extend_from_slice(b"data");
         bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
@@ -367,10 +408,41 @@ mod tests {
     }
 
     #[test]
+    fn native_wav_fast_path_decodes_supported_pcm() {
+        let path = write_pcm16_wav(&[0, 16_384, -16_384, i16::MAX]);
+
+        let sample = try_load_native_wav(&path).unwrap().unwrap();
+
+        assert_eq!(sample.channels, 1);
+        assert_eq!(sample.sample_rate, 44_100);
+        assert_eq!(sample.frames.len(), 4);
+        assert!((sample.frames[1] - 0.5).abs() < 1e-3);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn native_wav_fast_path_matches_ffmpeg_pcm_output() {
+        let path = write_pcm16_wav(&[0, 16_384, -16_384, i16::MAX]);
+
+        let native = try_load_native_wav(&path).unwrap().unwrap();
+        bmz_ffmpeg::ensure_init().unwrap();
+        let ffmpeg = decode_audio(&path, None).unwrap();
+
+        assert_eq!(native.channels, ffmpeg.channels);
+        assert_eq!(native.sample_rate, ffmpeg.sample_rate);
+        assert_eq!(native.frames.len(), ffmpeg.frames.len());
+        for (native, ffmpeg) in native.frames.iter().zip(&ffmpeg.frames) {
+            assert!((native - ffmpeg).abs() < 1e-6);
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn ffmpeg_loader_discards_incomplete_pcm16_sample_byte() {
         let path = write_pcm16_wav_data(&[0, 0, 0xff, 0x7f, 0x12]);
         let mut loader = FfmpegSampleLoader::default();
 
+        assert!(try_load_native_wav(&path).unwrap().is_none());
         let sample = loader.load(&path).unwrap();
 
         assert_eq!(sample.channels, 1);
@@ -378,6 +450,21 @@ mod tests {
         assert!((sample.frames[0]).abs() < 1e-4);
         assert!((sample.frames[1] - 1.0).abs() < 1e-3);
 
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn ffmpeg_loader_discards_incomplete_pcm16_stereo_frame() {
+        let path = write_pcm16_wav_data_with_channels(&[0, 0, 0xff, 0x7f, 0x12, 0x34], 2);
+        let mut loader = FfmpegSampleLoader::default();
+
+        assert!(try_load_native_wav(&path).unwrap().is_none());
+        let sample = loader.load(&path).unwrap();
+
+        assert_eq!(sample.channels, 2);
+        assert_eq!(sample.frames.len(), 2);
+        assert!((sample.frames[0]).abs() < 1e-4);
+        assert!((sample.frames[1] - 1.0).abs() < 1e-3);
         std::fs::remove_file(path).unwrap();
     }
 
