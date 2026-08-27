@@ -275,6 +275,37 @@ fn normalize_filepath_selection_maps_legacy_basename_to_relative_candidate() {
 }
 
 #[test]
+fn filepath_selection_neighbors_include_random_before_glob_candidates() {
+    let candidates = vec!["parts/light.png".to_string(), "parts/dark.png".to_string()];
+
+    assert_eq!(
+        next_filepath_selection(RANDOM_FILE_SELECTION, &candidates).as_deref(),
+        Some("parts/light.png")
+    );
+    assert_eq!(
+        previous_filepath_selection("parts/light.png", &candidates).as_deref(),
+        Some(RANDOM_FILE_SELECTION)
+    );
+    assert_eq!(
+        next_filepath_selection("parts/light.png", &candidates).as_deref(),
+        Some("parts/dark.png")
+    );
+    assert_eq!(previous_filepath_selection(RANDOM_FILE_SELECTION, &candidates), None);
+    assert_eq!(next_filepath_selection("parts/dark.png", &candidates), None);
+}
+
+#[test]
+fn filepath_selection_neighbors_accept_legacy_basename() {
+    let candidates = vec!["parts/light.png".to_string(), "parts/dark.png".to_string()];
+
+    assert_eq!(
+        previous_filepath_selection("dark.png", &candidates).as_deref(),
+        Some("parts/light.png")
+    );
+    assert_eq!(next_filepath_selection("unknown.png", &candidates), None);
+}
+
+#[test]
 fn property_default_uses_matching_def_name_or_first_item() {
     let prop = SkinPropertyDef {
         category: String::new(),
