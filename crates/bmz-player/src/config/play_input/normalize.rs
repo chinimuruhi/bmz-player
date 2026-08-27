@@ -22,7 +22,7 @@ pub fn normalize_profile_input(input: &mut ProfileInputConfig) {
 
 fn migrate_configurable_shortcut_bindings(ui: &mut crate::config::profile_config::UiInputConfig) {
     use crate::config::profile_config::{
-        CONFIGURABLE_SHORTCUT_ACTIONS, UI_INPUT_BINDING_VERSION,
+        CONFIGURABLE_SHORTCUT_MIGRATIONS, UI_INPUT_BINDING_VERSION,
         default_configurable_shortcut_bindings,
     };
 
@@ -30,11 +30,17 @@ fn migrate_configurable_shortcut_bindings(ui: &mut crate::config::profile_config
         return;
     }
     let defaults = default_configurable_shortcut_bindings();
-    for &action in CONFIGURABLE_SHORTCUT_ACTIONS {
-        if ui.bindings.iter().any(|entry| entry.action == Some(action)) {
+    for &(version, actions) in CONFIGURABLE_SHORTCUT_MIGRATIONS {
+        if ui.version >= version {
             continue;
         }
-        ui.bindings.extend(defaults.iter().filter(|entry| entry.action == Some(action)).cloned());
+        for &action in actions {
+            if ui.bindings.iter().any(|entry| entry.action == Some(action)) {
+                continue;
+            }
+            ui.bindings
+                .extend(defaults.iter().filter(|entry| entry.action == Some(action)).cloned());
+        }
     }
     ui.version = UI_INPUT_BINDING_VERSION;
 }

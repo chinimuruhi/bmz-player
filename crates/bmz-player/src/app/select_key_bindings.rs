@@ -48,6 +48,7 @@ pub(super) struct SelectKeyBindings {
     reload_controls: Vec<String>,
     autoplay_folder_controls: Vec<String>,
     open_ir_controls: Vec<String>,
+    open_key_config_controls: Vec<String>,
     screenshot_controls: Vec<String>,
     rival_cycle_controls: Vec<String>,
     open_documents_controls: Vec<String>,
@@ -180,6 +181,7 @@ impl SelectKeyBindings {
         let reload_controls = actions_for(InputActionConfig::SelectReload);
         let autoplay_folder_controls = actions_for(InputActionConfig::SelectAutoplayFolder);
         let open_ir_controls = actions_for(InputActionConfig::SelectOpenIr);
+        let open_key_config_controls = actions_for(InputActionConfig::SelectOpenKeyConfig);
         let screenshot_controls = actions_for(InputActionConfig::Screenshot);
         let rival_cycle_controls = actions_for(InputActionConfig::SelectRivalCycle);
         let open_documents_controls = actions_for(InputActionConfig::SelectOpenDocuments);
@@ -254,12 +256,14 @@ impl SelectKeyBindings {
         let reload_str = shortcut_hint(InputActionConfig::SelectReload);
         let autoplay_folder_str = shortcut_hint(InputActionConfig::SelectAutoplayFolder);
         let open_ir_str = shortcut_hint(InputActionConfig::SelectOpenIr);
+        let key_config_str = shortcut_hint(InputActionConfig::SelectOpenKeyConfig);
         let screenshot_str = shortcut_hint(InputActionConfig::Screenshot);
         let rival_str = shortcut_hint(InputActionConfig::SelectRivalCycle);
         let documents_str = shortcut_hint(InputActionConfig::SelectOpenDocuments);
         let option_hint = format!(
             "F1 MENU  {open_folder_str}:FOLDER/HASH  {reload_str}:RELOAD  \
-             {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {screenshot_str}:SHOT  \
+             {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {key_config_str}:KEY CONFIG  \
+             {screenshot_str}:SHOT  \
              {rival_str}:RIVAL  {documents_str}:TEXT   \
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+2P K1/K2:2P ARR  {start_str}+K3/K4:GAUGE  \
@@ -307,6 +311,7 @@ impl SelectKeyBindings {
             reload_controls,
             autoplay_folder_controls,
             open_ir_controls,
+            open_key_config_controls,
             screenshot_controls,
             rival_cycle_controls,
             open_documents_controls,
@@ -402,6 +407,7 @@ impl SelectKeyBindings {
         let reload_controls = actions_for(InputActionConfig::SelectReload);
         let autoplay_folder_controls = actions_for(InputActionConfig::SelectAutoplayFolder);
         let open_ir_controls = actions_for(InputActionConfig::SelectOpenIr);
+        let open_key_config_controls = actions_for(InputActionConfig::SelectOpenKeyConfig);
         let screenshot_controls = actions_for(InputActionConfig::Screenshot);
         let rival_cycle_controls = actions_for(InputActionConfig::SelectRivalCycle);
         let open_documents_controls = actions_for(InputActionConfig::SelectOpenDocuments);
@@ -446,12 +452,14 @@ impl SelectKeyBindings {
         let reload_str = shortcut_hint(InputActionConfig::SelectReload);
         let autoplay_folder_str = shortcut_hint(InputActionConfig::SelectAutoplayFolder);
         let open_ir_str = shortcut_hint(InputActionConfig::SelectOpenIr);
+        let key_config_str = shortcut_hint(InputActionConfig::SelectOpenKeyConfig);
         let screenshot_str = shortcut_hint(InputActionConfig::Screenshot);
         let rival_str = shortcut_hint(InputActionConfig::SelectRivalCycle);
         let documents_str = shortcut_hint(InputActionConfig::SelectOpenDocuments);
         let option_hint = format!(
             "F1 MENU  {open_folder_str}:FOLDER/HASH  {reload_str}:RELOAD  \
-             {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {screenshot_str}:SHOT  \
+             {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {key_config_str}:KEY CONFIG  \
+             {screenshot_str}:SHOT  \
              {rival_str}:RIVAL  {documents_str}:TEXT   \
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+K3:GAUGE  {start_str}+K5:HS-FIX  \
@@ -498,6 +506,7 @@ impl SelectKeyBindings {
             reload_controls,
             autoplay_folder_controls,
             open_ir_controls,
+            open_key_config_controls,
             screenshot_controls,
             rival_cycle_controls,
             open_documents_controls,
@@ -717,6 +726,10 @@ impl SelectKeyBindings {
 
     pub(super) fn is_open_ir(&self, control: &str) -> bool {
         contains(&self.open_ir_controls, control)
+    }
+
+    pub(super) fn is_open_key_config(&self, control: &str) -> bool {
+        contains(&self.open_key_config_controls, control)
     }
 
     pub(super) fn is_screenshot(&self, control: &str) -> bool {

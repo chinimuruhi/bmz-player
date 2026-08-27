@@ -664,6 +664,7 @@ fn default_gamepad_ui_bindings_use_thumb_buttons_without_dpad_enter_back() {
         ("F5", InputActionConfig::SelectReload),
         ("F10", InputActionConfig::SelectAutoplayFolder),
         ("F11", InputActionConfig::SelectOpenIr),
+        ("6", InputActionConfig::SelectOpenKeyConfig),
         ("F12", InputActionConfig::Screenshot),
         ("7", InputActionConfig::SelectRivalCycle),
         ("Numpad7", InputActionConfig::SelectRivalCycle),
@@ -698,6 +699,30 @@ fn input_normalization_migrates_shortcuts_once_and_preserves_later_clears() {
             .bindings
             .iter()
             .any(|entry| { entry.action == Some(InputActionConfig::Screenshot) })
+    );
+}
+
+#[test]
+fn input_normalization_adds_only_the_new_key_config_shortcut_to_v1_profiles() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 1;
+    input.ui.bindings.retain(|entry| {
+        !matches!(
+            entry.action,
+            Some(InputActionConfig::SelectOpenKeyConfig | InputActionConfig::Screenshot)
+        )
+    });
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    assert_eq!(input.ui.version, UI_INPUT_BINDING_VERSION);
+    assert!(input.ui.bindings.iter().any(|entry| {
+        entry.device == "keyboard"
+            && entry.control == "6"
+            && entry.action == Some(InputActionConfig::SelectOpenKeyConfig)
+    }));
+    assert!(
+        !input.ui.bindings.iter().any(|entry| entry.action == Some(InputActionConfig::Screenshot))
     );
 }
 

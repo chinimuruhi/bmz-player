@@ -843,6 +843,7 @@ impl WinitApp {
                 SelectAction::Reload => self.reload_from_select_context(),
                 SelectAction::AutoplayFolder => self.start_autoplay_folder_selected(),
                 SelectAction::OpenPrimaryIr => self.open_primary_ir_for_selected(),
+                SelectAction::OpenKeyConfig => self.execute_select_skin_event(13, 0),
                 SelectAction::CycleRival => self.cycle_active_rival(1),
                 SelectAction::OpenDocuments => self.open_selected_chart_documents(),
                 SelectAction::Move(select_move) => {
@@ -874,6 +875,7 @@ impl WinitApp {
             SelectAction::Reload => self.reload_from_select_context(),
             SelectAction::AutoplayFolder => self.start_autoplay_folder_selected(),
             SelectAction::OpenPrimaryIr => self.open_primary_ir_for_selected(),
+            SelectAction::OpenKeyConfig => self.execute_select_skin_event(13, 0),
             SelectAction::CycleRival => self.cycle_active_rival(1),
             SelectAction::OpenDocuments => self.open_selected_chart_documents(),
             SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),

@@ -124,7 +124,7 @@ impl WinitApp {
         self.reset_selected_replay_slot();
         self.restart_select_bar_timer_without_scroll(Instant::now());
         self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
-        tracing::info!("opened key config from select skin");
+        tracing::info!("opened key config from select");
     }
 
     pub(super) fn selected_chart_row(

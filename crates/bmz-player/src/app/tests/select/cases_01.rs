@@ -339,6 +339,7 @@ fn select_action_maps_configurable_shortcuts() {
         (KeyCode::F5, SelectAction::Reload),
         (KeyCode::F10, SelectAction::AutoplayFolder),
         (KeyCode::F11, SelectAction::OpenPrimaryIr),
+        (KeyCode::Digit6, SelectAction::OpenKeyConfig),
         (KeyCode::Digit7, SelectAction::CycleRival),
         (KeyCode::Numpad7, SelectAction::CycleRival),
         (KeyCode::Numpad9, SelectAction::OpenDocuments),
@@ -349,6 +350,31 @@ fn select_action_maps_configurable_shortcuts() {
         );
     }
     assert!(keys.is_screenshot("F12"));
+}
+
+#[test]
+fn configurable_key_config_shortcut_replaces_digit_six() {
+    let mut input = crate::config::play_input::default_profile_input();
+    apply_play_binding(
+        &mut input,
+        KeyMode::K7,
+        KeyBindingTarget::Action {
+            action: InputActionConfig::SelectOpenKeyConfig,
+            slot: KeyBindingSlot::KeyboardPrimary,
+        },
+        "A",
+    )
+    .unwrap();
+    let keys = SelectKeyBindings::from_profile(&input);
+
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::KeyA), ElementState::Pressed, false, &keys),
+        Some(SelectAction::OpenKeyConfig),
+    );
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::Digit6), ElementState::Pressed, false, &keys),
+        None,
+    );
 }
 
 #[test]

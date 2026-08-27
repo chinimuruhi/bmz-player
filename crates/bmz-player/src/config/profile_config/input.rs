@@ -183,6 +183,8 @@ pub enum InputActionConfig {
     SelectAutoplayFolder,
     #[serde(rename = "OpenIr")]
     SelectOpenIr,
+    #[serde(rename = "OpenKeyConfig")]
+    SelectOpenKeyConfig,
     Screenshot,
     #[serde(rename = "RivalCycle")]
     SelectRivalCycle,

@@ -11,6 +11,7 @@ pub(super) enum SelectAction {
     Reload,
     AutoplayFolder,
     OpenPrimaryIr,
+    OpenKeyConfig,
     CycleRival,
     OpenDocuments,
     FavoriteSong,
@@ -168,6 +169,8 @@ pub(super) fn configurable_select_shortcut_action(
         Some(SelectAction::AutoplayFolder)
     } else if bindings.is_open_ir(control) {
         Some(SelectAction::OpenPrimaryIr)
+    } else if bindings.is_open_key_config(control) {
+        Some(SelectAction::OpenKeyConfig)
     } else if bindings.is_rival_cycle(control) {
         Some(SelectAction::CycleRival)
     } else if bindings.is_open_documents(control) {

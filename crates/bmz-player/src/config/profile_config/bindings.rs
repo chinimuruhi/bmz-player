@@ -1,12 +1,29 @@
 use super::*;
 
-pub const UI_INPUT_BINDING_VERSION: u32 = 1;
+pub const UI_INPUT_BINDING_VERSION: u32 = 2;
+
+pub const CONFIGURABLE_SHORTCUT_MIGRATIONS: &[(u32, &[InputActionConfig])] = &[
+    (
+        1,
+        &[
+            InputActionConfig::SelectOpenFolder,
+            InputActionConfig::SelectReload,
+            InputActionConfig::SelectAutoplayFolder,
+            InputActionConfig::SelectOpenIr,
+            InputActionConfig::Screenshot,
+            InputActionConfig::SelectRivalCycle,
+            InputActionConfig::SelectOpenDocuments,
+        ],
+    ),
+    (2, &[InputActionConfig::SelectOpenKeyConfig]),
+];
 
 pub const CONFIGURABLE_SHORTCUT_ACTIONS: &[InputActionConfig] = &[
     InputActionConfig::SelectOpenFolder,
     InputActionConfig::SelectReload,
     InputActionConfig::SelectAutoplayFolder,
     InputActionConfig::SelectOpenIr,
+    InputActionConfig::SelectOpenKeyConfig,
     InputActionConfig::Screenshot,
     InputActionConfig::SelectRivalCycle,
     InputActionConfig::SelectOpenDocuments,
@@ -56,6 +73,7 @@ pub fn default_keyboard_bindings() -> Vec<BindingConfigEntry> {
         action_binding("F5", InputActionConfig::SelectReload),
         action_binding("F10", InputActionConfig::SelectAutoplayFolder),
         action_binding("F11", InputActionConfig::SelectOpenIr),
+        action_binding("6", InputActionConfig::SelectOpenKeyConfig),
         action_binding("F12", InputActionConfig::Screenshot),
         action_binding("7", InputActionConfig::SelectRivalCycle),
         action_binding("Numpad7", InputActionConfig::SelectRivalCycle),
