@@ -354,9 +354,11 @@ fn select_course_snapshot(index: usize, row: &SelectCourseRow) -> SelectRowSnaps
 }
 
 fn select_config_snapshot(index: usize, title: String, value: String) -> SelectRowSnapshot {
+    let bar_text = format!("{title} [{value}]");
     SelectRowSnapshot {
         index: index as u32,
         title,
+        bar_text,
         artist: value.clone(),
         play_level: value,
         kind: bmz_render::scene::SelectRowKind::Config,

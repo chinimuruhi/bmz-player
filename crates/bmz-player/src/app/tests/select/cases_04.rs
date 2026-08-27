@@ -252,8 +252,41 @@ fn select_snapshot_rows_preserves_settings_action_kinds() {
         .unwrap();
     assert_eq!(back.title, "戻る");
     assert_eq!(close.title, "閉じる");
+    assert_eq!(back.display_bar_text(), "戻る");
+    assert_eq!(close.display_bar_text(), "閉じる");
     assert!(back.is_folder);
     assert!(close.is_folder);
+}
+
+#[test]
+fn select_snapshot_rows_append_values_only_to_config_bar_text() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    profile.audio_mix.master_volume = 37;
+    let rows = vec![
+        SelectItem::Config(crate::screens::settings_model::ConfigSelectRow {
+            entry_id: SettingsEntryId::MasterVolume,
+        }),
+        SelectItem::KeyBinding(crate::screens::settings_model::KeyBindingSelectRow {
+            key_mode: KeyMode::K7,
+            target: KeyBindingTarget::Action {
+                action: InputActionConfig::E1,
+                slot: KeyBindingSlot::KeyboardPrimary,
+            },
+        }),
+    ];
+
+    let snapshot_rows = select_snapshot_rows(&rows, 0, 2, &profile, None, &HashMap::new());
+
+    let config = snapshot_rows.iter().find(|row| row.index == 0).unwrap();
+    let binding = snapshot_rows.iter().find(|row| row.index == 1).unwrap();
+    assert_eq!(config.title, "MASTER");
+    assert_eq!(config.display_bar_text(), "MASTER [37]");
+    assert_eq!(config.artist, "37");
+    assert_eq!(config.play_level, "37");
+    assert_eq!(binding.title, "E1 (KEYBOARD)");
+    assert_eq!(binding.display_bar_text(), "E1 (KEYBOARD) [Q]");
+    assert_eq!(binding.artist, "Q");
+    assert_eq!(binding.play_level, "Q");
 }
 
 #[test]

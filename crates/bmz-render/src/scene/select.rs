@@ -258,6 +258,8 @@ impl Default for SelectSnapshot {
 pub struct SelectRowSnapshot {
     pub index: u32,
     pub title: String,
+    /// 選曲一覧のバー内だけに表示する文字列。空の場合は `title` を使う。
+    pub bar_text: String,
     pub subtitle: String,
     pub artist: String,
     pub genre: String,
@@ -337,11 +339,18 @@ pub struct SelectRowSnapshot {
     pub chart_key_mode: Option<bmz_core::lane::KeyMode>,
 }
 
+impl SelectRowSnapshot {
+    pub fn display_bar_text(&self) -> &str {
+        if self.bar_text.is_empty() { &self.title } else { &self.bar_text }
+    }
+}
+
 impl Default for SelectRowSnapshot {
     fn default() -> Self {
         Self {
             index: 0,
             title: String::new(),
+            bar_text: String::new(),
             subtitle: String::new(),
             artist: String::new(),
             genre: String::new(),

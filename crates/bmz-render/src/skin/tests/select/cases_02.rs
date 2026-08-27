@@ -84,6 +84,7 @@ fn select_detail_artist_shows_config_value_in_settings() {
         rows: vec![SelectRowSnapshot {
             index: 0,
             title: "MASTER".to_string(),
+            bar_text: "MASTER [25]".to_string(),
             artist: "25".to_string(),
             kind: SelectRowKind::Config,
             ..SelectRowSnapshot::default()
@@ -91,6 +92,8 @@ fn select_detail_artist_shows_config_value_in_settings() {
         ..SelectSnapshot::default()
     };
     let row = &snapshot.rows[0];
+    assert_eq!(row.display_bar_text(), "MASTER [25]");
+    assert_eq!(select_detail_title(&snapshot, Some(row)), "MASTER");
     assert_eq!(select_detail_artist(&snapshot, Some(row)), "25");
     assert_eq!(select_detail_subtitle(&snapshot, Some(row)), "[編集中]");
     assert_eq!(

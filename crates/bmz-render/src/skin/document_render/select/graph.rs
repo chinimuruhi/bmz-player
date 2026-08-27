@@ -156,7 +156,7 @@ macro_rules! skin_document_render_select_graph_methods {
             };
             let mut items = Vec::new();
             let text_state = SkinTextState {
-                bar_text: &row.title,
+                bar_text: row.display_bar_text(),
                 table_level: if row.table_text_secondary.is_empty() {
                     &row.table_level
                 } else {
