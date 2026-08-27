@@ -496,21 +496,15 @@ impl WinitApp {
         if !self.begin_selected_play_mode_edit() {
             return;
         }
-        let current = self.boot.profile_config.lane.note_display_duration_ms.max(1);
-        let delta = if arg >= 0 { 1_i64 } else { -1_i64 };
-        let next = (i64::from(current) + delta).clamp(
-            i64::from(crate::config::play::NOTE_DISPLAY_DURATION_MIN_MS),
-            i64::from(crate::config::play::NOTE_DISPLAY_DURATION_MAX_MS),
-        ) as u32;
+        let current = self.boot.profile_config.lane.target_green_number;
+        let next = crate::config::play::adjust_green_number_by_duration_ms(
+            current,
+            if arg >= 0 { 1 } else { -1 },
+        );
         if next == current {
             return;
         }
-        self.boot.profile_config.lane.note_display_duration_ms = next;
-        self.boot.profile_config.lane.target_green_number =
-            crate::config::play::green_number_from_duration_ms(next).clamp(
-                crate::config::play::TARGET_GREEN_NUMBER_MIN,
-                crate::config::play::TARGET_GREEN_NUMBER_MAX,
-            );
+        self.boot.profile_config.lane.target_green_number = next;
         self.finish_selected_play_mode_edit();
         self.sync_realtime_profile_settings();
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);

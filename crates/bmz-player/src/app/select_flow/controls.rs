@@ -961,11 +961,6 @@ impl WinitApp {
             return false;
         }
         self.boot.profile_config.lane.target_green_number = next;
-        self.boot.profile_config.lane.note_display_duration_ms =
-            crate::config::play::duration_ms_from_green_number(next).clamp(
-                crate::config::play::NOTE_DISPLAY_DURATION_MIN_MS,
-                crate::config::play::NOTE_DISPLAY_DURATION_MAX_MS,
-            );
         self.finish_selected_play_mode_edit();
         self.sync_realtime_profile_settings();
         tracing::info!(target_green_number = next, "select green number changed");

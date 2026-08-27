@@ -47,6 +47,26 @@ pub const fn green_number_from_duration_ms(duration_ms: u32) -> u32 {
     duration_ms.saturating_mul(3).saturating_add(2) / 5
 }
 
+pub fn adjust_green_number_by_duration_ms(green_number: u32, delta_ms: i32) -> u32 {
+    let current = green_number.clamp(TARGET_GREEN_NUMBER_MIN, TARGET_GREEN_NUMBER_MAX);
+    if delta_ms == 0 {
+        return current;
+    }
+    let current_duration = duration_ms_from_green_number(current);
+    let requested_duration = (i64::from(current_duration) + i64::from(delta_ms))
+        .clamp(i64::from(NOTE_DISPLAY_DURATION_MIN_MS), i64::from(NOTE_DISPLAY_DURATION_MAX_MS))
+        as u32;
+    let converted = green_number_from_duration_ms(requested_duration)
+        .clamp(TARGET_GREEN_NUMBER_MIN, TARGET_GREEN_NUMBER_MAX);
+    if converted != current || requested_duration == current_duration {
+        converted
+    } else if delta_ms > 0 {
+        current.saturating_add(1).min(TARGET_GREEN_NUMBER_MAX)
+    } else {
+        current.saturating_sub(1).max(TARGET_GREEN_NUMBER_MIN)
+    }
+}
+
 pub fn play_offsets_from_profile(profile: &ProfileConfig) -> PlayOffsets {
     play_offsets_from_profile_for_mode(profile, profile.active_play_mode)
 }
@@ -241,6 +261,25 @@ mod tests {
 
         assert_eq!(offsets.input_offset_us, -1_000);
         assert_eq!(offsets.visual_offset_us, 2_000);
+    }
+
+    #[test]
+    fn green_number_is_the_canonical_note_duration_value() {
+        for green_number in TARGET_GREEN_NUMBER_MIN..=TARGET_GREEN_NUMBER_MAX {
+            assert_eq!(
+                green_number_from_duration_ms(duration_ms_from_green_number(green_number)),
+                green_number
+            );
+        }
+    }
+
+    #[test]
+    fn duration_adjustment_moves_to_the_next_representable_green_number() {
+        assert_eq!(adjust_green_number_by_duration_ms(2, 1), 3);
+        assert_eq!(adjust_green_number_by_duration_ms(2, -1), 1);
+        assert_eq!(adjust_green_number_by_duration_ms(300, 10), 306);
+        assert_eq!(adjust_green_number_by_duration_ms(TARGET_GREEN_NUMBER_MAX, 1), 6_000);
+        assert_eq!(adjust_green_number_by_duration_ms(TARGET_GREEN_NUMBER_MIN, -1), 1);
     }
 
     #[test]

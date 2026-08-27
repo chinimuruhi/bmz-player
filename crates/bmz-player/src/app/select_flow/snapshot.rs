@@ -92,9 +92,10 @@ impl WinitApp {
         let selected_play_mode = self.selected_play_mode();
         let mode_config =
             selected_play_mode.map(|mode| self.boot.profile_config.play_mode_config(mode));
-        let note_display_duration_ms = mode_config
-            .as_ref()
-            .map(|config| config.note_display_duration_ms.max(1).min(i32::MAX as u32) as i32);
+        let note_display_duration_ms = mode_config.as_ref().map(|config| {
+            crate::config::play::duration_ms_from_green_number(config.target_green_number.max(1))
+                as i32
+        });
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let ln_score_policy = match selected {
             Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| {
@@ -468,11 +469,9 @@ impl WinitApp {
     }
 
     pub(super) fn select_note_display_duration_ms_for_skin(profile: &ProfileConfig) -> i32 {
-        profile
-            .play_mode_config(profile.active_play_mode)
-            .note_display_duration_ms
-            .max(1)
-            .min(i32::MAX as u32) as i32
+        crate::config::play::duration_ms_from_green_number(
+            profile.play_mode_config(profile.active_play_mode).target_green_number.max(1),
+        ) as i32
     }
 
     pub(super) fn ensure_visible_select_chart_distributions(&self, visible_limit: usize) {

@@ -166,7 +166,12 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::Hidden => format_lane_unit(profile.lane.hidden),
         SettingsEntryId::TargetGreenNumber => format!("{}", profile.lane.target_green_number),
         SettingsEntryId::NoteDisplayDurationMs => {
-            format!("{} ms", profile.lane.note_display_duration_ms)
+            format!(
+                "{} ms",
+                crate::config::play::duration_ms_from_green_number(
+                    profile.lane.target_green_number.max(1),
+                )
+            )
         }
         SettingsEntryId::Constant => format_bool_on_off(profile.lane.constant_enabled),
         SettingsEntryId::ConstantFadeMs => format!("{} ms", profile.lane.constant_fade_ms),

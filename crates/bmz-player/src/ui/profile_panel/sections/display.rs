@@ -68,29 +68,20 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
                 tr!(text, "profile-display-auto-adjust-hispeed"),
             );
             lane_unit_slider(ui, &mut profile.lane.hidden, "HIDDEN");
-            let green_changed = ui
-                .add(
-                    egui::Slider::new(
-                        &mut profile.lane.target_green_number,
-                        TARGET_GREEN_NUMBER_MIN..=TARGET_GREEN_NUMBER_MAX,
-                    )
-                    .text(tr!(text, "profile-display-green-number")),
+            ui.add(
+                egui::Slider::new(
+                    &mut profile.lane.target_green_number,
+                    TARGET_GREEN_NUMBER_MIN..=TARGET_GREEN_NUMBER_MAX,
                 )
-                .changed();
-            if green_changed {
-                profile.lane.note_display_duration_ms =
-                    crate::config::play::duration_ms_from_green_number(
-                        profile.lane.target_green_number,
-                    )
-                    .clamp(
-                        crate::config::play::NOTE_DISPLAY_DURATION_MIN_MS,
-                        crate::config::play::NOTE_DISPLAY_DURATION_MAX_MS,
-                    );
-            }
+                .text(tr!(text, "profile-display-green-number")),
+            );
+            let mut note_display_duration_ms = crate::config::play::duration_ms_from_green_number(
+                profile.lane.target_green_number,
+            );
             let duration_changed = ui
                 .add(
                     egui::Slider::new(
-                        &mut profile.lane.note_display_duration_ms,
+                        &mut note_display_duration_ms,
                         crate::config::play::NOTE_DISPLAY_DURATION_MIN_MS
                             ..=crate::config::play::NOTE_DISPLAY_DURATION_MAX_MS,
                     )
@@ -99,10 +90,8 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
                 .changed();
             if duration_changed {
                 profile.lane.target_green_number =
-                    crate::config::play::green_number_from_duration_ms(
-                        profile.lane.note_display_duration_ms,
-                    )
-                    .clamp(TARGET_GREEN_NUMBER_MIN, TARGET_GREEN_NUMBER_MAX);
+                    crate::config::play::green_number_from_duration_ms(note_display_duration_ms)
+                        .clamp(TARGET_GREEN_NUMBER_MIN, TARGET_GREEN_NUMBER_MAX);
             }
             ui.checkbox(&mut profile.lane.constant_enabled, tr!(text, "profile-display-constant"));
             ui.add_enabled(

@@ -1,6 +1,6 @@
 use super::play::{
-    CONSTANT_FADE_MAX_MS, CONSTANT_FADE_MIN_MS, NOTE_DISPLAY_DURATION_MAX_MS,
-    NOTE_DISPLAY_DURATION_MIN_MS, TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN, clamp_hispeed,
+    CONSTANT_FADE_MAX_MS, CONSTANT_FADE_MIN_MS, TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN,
+    clamp_hispeed,
 };
 use super::profile_config::{
     AssistLongNoteMode, AssistMineMode, AssistOptionConfig, AssistScrollMode, BgaExpandConfig,
@@ -758,11 +758,17 @@ mod tests {
         profile.lane.target_green_number = 5_995;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::TargetGreenNumber, 10));
         assert_eq!(profile.lane.target_green_number, 6_000);
-        assert_eq!(profile.lane.note_display_duration_ms, 10_000);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::NoteDisplayDurationMs),
+            "10000 ms"
+        );
 
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::NoteDisplayDurationMs, -10,));
-        assert_eq!(profile.lane.note_display_duration_ms, 9_990);
         assert_eq!(profile.lane.target_green_number, 5_994);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::NoteDisplayDurationMs),
+            "9990 ms"
+        );
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::Constant, 1));
         assert!(profile.lane.constant_enabled);
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::GuideSe, 1));

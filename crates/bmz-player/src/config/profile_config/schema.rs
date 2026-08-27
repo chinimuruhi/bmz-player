@@ -951,9 +951,6 @@ pub struct LaneViewConfig {
     /// HIDDEN レーンカバー量。0..=1000 の整数で持ち、ランタイムでは /1000 して扱う。
     pub hidden: u32,
     pub target_green_number: u32,
-    /// beatoraja `PlayConfig.duration`。0 は旧profile読込時だけの移行用sentinel。
-    #[serde(default)]
-    pub note_display_duration_ms: u32,
     #[serde(default)]
     pub constant_enabled: bool,
     #[serde(default = "default_constant_fade_ms")]
@@ -984,9 +981,6 @@ pub struct PlayModeConfig {
     pub hidden: u32,
     #[serde(default = "default_target_green_number")]
     pub target_green_number: u32,
-    /// beatoraja `PlayConfig.duration`。ref 312 と CONSTANT の正規値。
-    #[serde(default)]
-    pub note_display_duration_ms: u32,
     #[serde(default)]
     pub constant_enabled: bool,
     #[serde(default = "default_constant_fade_ms")]
@@ -1008,7 +1002,6 @@ impl Default for PlayModeConfig {
             hispeed_auto_adjust: true,
             hidden: 0,
             target_green_number: default_target_green_number(),
-            note_display_duration_ms: default_note_display_duration_ms(),
             constant_enabled: false,
             constant_fade_ms: default_constant_fade_ms(),
             visual_offset_us: 0,
@@ -1022,10 +1015,6 @@ pub const fn default_mode_hispeed() -> f32 {
 
 pub const fn default_target_green_number() -> u32 {
     300
-}
-
-pub const fn default_note_display_duration_ms() -> u32 {
-    crate::config::play::duration_ms_from_green_number(default_target_green_number())
 }
 
 pub const fn default_constant_fade_ms() -> i32 {

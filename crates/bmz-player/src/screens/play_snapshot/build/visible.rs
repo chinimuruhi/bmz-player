@@ -266,9 +266,9 @@ pub(super) fn constant_object_alpha(
     if !session.constant_enabled {
         return Some(1.0);
     }
-    let target = render_now.0.saturating_add(
-        i64::from(session.configured_note_display_duration_ms).saturating_mul(1_000),
-    );
+    let duration_ms =
+        crate::config::play::duration_ms_from_green_number(session.target_green_number.max(1));
+    let target = render_now.0.saturating_add(i64::from(duration_ms).saturating_mul(1_000));
     let difference = object_time.0.saturating_sub(target);
     let fade_us = i64::from(session.constant_fade_ms).saturating_mul(1_000);
     if fade_us >= 0 {
@@ -331,7 +331,7 @@ mod constant_tests {
             PlaySessionOptions::default(),
         );
         session.constant_enabled = true;
-        session.configured_note_display_duration_ms = 500;
+        session.target_green_number = 300;
 
         session.constant_fade_ms = 100;
         assert_eq!(constant_object_alpha(&session, TimeUs(0), TimeUs(499_000)), Some(1.0));

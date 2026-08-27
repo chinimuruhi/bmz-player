@@ -188,24 +188,22 @@ fn play_option_control_uses_chart_mode_instead_of_select_input_mode() {
 }
 
 #[test]
-fn select_skin_duration_uses_exact_profile_duration_for_nhs() {
+fn select_skin_duration_is_derived_from_green_number_for_nhs() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.lane.hispeed = 2.0;
     profile.lane.hispeed_mode = HispeedModeConfig::Normal;
-    profile.lane.target_green_number = 300;
-    profile.lane.note_display_duration_ms = 497;
+    profile.lane.target_green_number = 299;
 
-    assert_eq!(WinitApp::select_note_display_duration_ms_for_skin(&profile), 497);
+    assert_eq!(WinitApp::select_note_display_duration_ms_for_skin(&profile), 498);
 }
 
 #[test]
-fn select_skin_duration_is_not_rederived_from_fhs_green_number() {
+fn select_skin_duration_is_derived_from_green_number_for_fhs() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.lane.hispeed_mode = HispeedModeConfig::Floating;
     profile.lane.target_green_number = 280;
-    profile.lane.note_display_duration_ms = 450;
 
-    assert_eq!(WinitApp::select_note_display_duration_ms_for_skin(&profile), 450);
+    assert_eq!(WinitApp::select_note_display_duration_ms_for_skin(&profile), 467);
 }
 
 #[test]

@@ -217,7 +217,6 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         hispeed: 2.0,
         hispeed_mode: HispeedMode::Normal,
         target_green_number: 300,
-        configured_note_display_duration_ms: 500,
         constant_enabled: false,
         constant_fade_ms: 100,
         guide_se_enabled: false,

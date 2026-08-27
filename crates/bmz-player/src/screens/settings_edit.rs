@@ -439,7 +439,7 @@ impl SettingsEditSession {
                 SettingsBaseline::U32(profile.lane.target_green_number)
             }
             SettingsEntryId::NoteDisplayDurationMs => {
-                SettingsBaseline::U32(profile.lane.note_display_duration_ms)
+                SettingsBaseline::U32(profile.lane.target_green_number)
             }
             SettingsEntryId::Constant => SettingsBaseline::Bool(profile.lane.constant_enabled),
             SettingsEntryId::ConstantFadeMs => SettingsBaseline::I32(profile.lane.constant_fade_ms),
@@ -723,7 +723,7 @@ impl SettingsEditSession {
                 profile.lane.target_green_number = *value;
             }
             (SettingsEntryId::NoteDisplayDurationMs, SettingsBaseline::U32(value)) => {
-                profile.lane.note_display_duration_ms = *value;
+                profile.lane.target_green_number = *value;
             }
             (SettingsEntryId::Constant, SettingsBaseline::Bool(value)) => {
                 profile.lane.constant_enabled = *value;
@@ -1017,6 +1017,13 @@ mod tests {
         assert!(adjust_settings_draft(&mut profile, &assist, 5));
         assist.restore(&mut profile);
         assert!((profile.play.assist.scroll_rate - 0.5).abs() < f64::EPSILON);
+
+        let duration =
+            SettingsEditSession::capture(&profile, SettingsEntryId::NoteDisplayDurationMs);
+        assert!(adjust_settings_draft(&mut profile, &duration, 10));
+        assert_eq!(profile.lane.target_green_number, 306);
+        duration.restore(&mut profile);
+        assert_eq!(profile.lane.target_green_number, 300);
 
         let language = SettingsEditSession::capture(&profile, SettingsEntryId::Language);
         assert!(adjust_settings_draft(&mut profile, &language, 1));

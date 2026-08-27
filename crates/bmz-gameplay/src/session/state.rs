@@ -219,8 +219,6 @@ pub struct GameSession {
     pub hispeed: f32,
     pub hispeed_mode: HispeedMode,
     pub target_green_number: u32,
-    /// Selectで設定した beatoraja `PlayConfig.duration`。CONSTANTの時間窓に使う。
-    pub configured_note_display_duration_ms: u32,
     pub constant_enabled: bool,
     pub constant_fade_ms: i32,
     pub guide_se_enabled: bool,

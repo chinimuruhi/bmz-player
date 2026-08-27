@@ -47,12 +47,13 @@ duration_ms = 240000 / bpm / hispeed / scroll_multiplier * visible
 green_number = round(duration_ms * 0.6)
 ```
 
-`profile.lane.note_display_duration_ms` は beatoraja `PlayConfig.duration` と同じ
-`1..=10000ms` の設定値を保持する。緑数字を変更したときは表示時間を、表示時間を変更した
-ときは緑数字を相互変換する。skin の `NUMBER_DURATION` (312) には丸め直す前の表示時間、
-`NUMBER_DURATION_GREEN` (313) には表示時間から導出した緑数字を渡す。
+BMZ は `profile.lane.target_green_number` を正規値として保存し、ノーツ表示時間は
+`duration_ms = round(target_green_number / 0.6)` で必要時に導出する。設定画面やskinの
+表示時間操作は入力値を緑数字へ変換し、独立した表示時間をprofileには保存しない。
+skin の `NUMBER_DURATION` (312) には導出した表示時間、`NUMBER_DURATION_GREEN` (313)
+には正規値の緑数字を渡す。
 
-`CONSTANT` を有効にすると、現在時刻から `note_display_duration_ms` 先を表示境界として、
+`CONSTANT` を有効にすると、現在時刻から緑数字より導出した表示時間先を表示境界として、
 それより遠いノーツ・LN・地雷・小節線・BPM/STOP/秒線を隠す。`constant_fade_ms` は
 `-1000..=1000ms` で、正値は境界の奥側、負値は境界の手前側をフェードさせる。
 Practice の区間プレビュー／プレイでは CONSTANT を無効にする。

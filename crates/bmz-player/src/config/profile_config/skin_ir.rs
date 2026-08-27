@@ -500,7 +500,6 @@ impl ProfileConfig {
                 hispeed_auto_adjust: true,
                 hidden: 0,
                 target_green_number: 300,
-                note_display_duration_ms: default_note_display_duration_ms(),
                 constant_enabled: false,
                 constant_fade_ms: default_constant_fade_ms(),
             },

@@ -274,37 +274,17 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             true
         }
         SettingsEntryId::Hidden => adjust_u32(&mut profile.lane.hidden, delta, 0, 1000),
-        SettingsEntryId::TargetGreenNumber => {
-            let changed = adjust_u32(
-                &mut profile.lane.target_green_number,
-                delta,
-                TARGET_GREEN_NUMBER_MIN,
-                TARGET_GREEN_NUMBER_MAX,
-            );
-            if changed {
-                profile.lane.note_display_duration_ms =
-                    crate::config::play::duration_ms_from_green_number(
-                        profile.lane.target_green_number,
-                    )
-                    .clamp(NOTE_DISPLAY_DURATION_MIN_MS, NOTE_DISPLAY_DURATION_MAX_MS);
-            }
-            changed
-        }
+        SettingsEntryId::TargetGreenNumber => adjust_u32(
+            &mut profile.lane.target_green_number,
+            delta,
+            TARGET_GREEN_NUMBER_MIN,
+            TARGET_GREEN_NUMBER_MAX,
+        ),
         SettingsEntryId::NoteDisplayDurationMs => {
-            let changed = adjust_u32(
-                &mut profile.lane.note_display_duration_ms,
-                delta,
-                NOTE_DISPLAY_DURATION_MIN_MS,
-                NOTE_DISPLAY_DURATION_MAX_MS,
-            );
-            if changed {
-                profile.lane.target_green_number =
-                    crate::config::play::green_number_from_duration_ms(
-                        profile.lane.note_display_duration_ms,
-                    )
-                    .clamp(TARGET_GREEN_NUMBER_MIN, TARGET_GREEN_NUMBER_MAX);
-            }
-            changed
+            let current = profile.lane.target_green_number;
+            let next = crate::config::play::adjust_green_number_by_duration_ms(current, delta);
+            profile.lane.target_green_number = next;
+            next != current
         }
         SettingsEntryId::Constant => {
             profile.lane.constant_enabled = !profile.lane.constant_enabled;
