@@ -664,11 +664,19 @@ fn default_gamepad_ui_bindings_use_thumb_buttons_without_dpad_enter_back() {
         ("F5", InputActionConfig::SelectReload),
         ("F10", InputActionConfig::SelectAutoplayFolder),
         ("F11", InputActionConfig::SelectOpenIr),
+        ("1", InputActionConfig::SelectModeFilter),
+        ("2", InputActionConfig::SelectSort),
+        ("3", InputActionConfig::SelectLnMode),
+        ("4", InputActionConfig::SelectReplayCycle),
         ("6", InputActionConfig::SelectOpenKeyConfig),
         ("F12", InputActionConfig::Screenshot),
         ("7", InputActionConfig::SelectRivalCycle),
         ("Numpad7", InputActionConfig::SelectRivalCycle),
+        ("8", InputActionConfig::SelectSameFolder),
+        ("Numpad8", InputActionConfig::SelectSameFolder),
+        ("9", InputActionConfig::SelectOpenDocuments),
         ("Numpad9", InputActionConfig::SelectOpenDocuments),
+        ("Numpad4", InputActionConfig::SelectReplayCycle),
     ] {
         assert!(bindings.iter().any(|entry| {
             entry.device == "keyboard" && entry.control == control && entry.action == Some(action)
@@ -703,7 +711,7 @@ fn input_normalization_migrates_shortcuts_once_and_preserves_later_clears() {
 }
 
 #[test]
-fn input_normalization_adds_only_the_new_key_config_shortcut_to_v1_profiles() {
+fn input_normalization_adds_later_shortcuts_without_restoring_v1_clears() {
     let mut input = crate::config::play_input::default_profile_input();
     input.ui.version = 1;
     input.ui.bindings.retain(|entry| {
@@ -721,9 +729,95 @@ fn input_normalization_adds_only_the_new_key_config_shortcut_to_v1_profiles() {
             && entry.control == "6"
             && entry.action == Some(InputActionConfig::SelectOpenKeyConfig)
     }));
+    for action in [
+        InputActionConfig::SelectModeFilter,
+        InputActionConfig::SelectSort,
+        InputActionConfig::SelectLnMode,
+        InputActionConfig::SelectReplayCycle,
+        InputActionConfig::SelectSameFolder,
+    ] {
+        assert!(input.ui.bindings.iter().any(|entry| entry.action == Some(action)));
+    }
     assert!(
         !input.ui.bindings.iter().any(|entry| entry.action == Some(InputActionConfig::Screenshot))
     );
+}
+
+#[test]
+fn input_normalization_adds_top_row_companions_to_v2_numpad_defaults() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 2;
+    input.ui.bindings.retain(|entry| {
+        !matches!(
+            entry.action,
+            Some(
+                InputActionConfig::SelectModeFilter
+                    | InputActionConfig::SelectSort
+                    | InputActionConfig::SelectLnMode
+            )
+        ) && !matches!(
+            (entry.control.as_str(), entry.action),
+            ("4", Some(InputActionConfig::SelectReplayCycle))
+                | ("8", Some(InputActionConfig::SelectSameFolder))
+                | ("9", Some(InputActionConfig::SelectOpenDocuments))
+        )
+    });
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    for (control, action) in [
+        ("1", InputActionConfig::SelectModeFilter),
+        ("2", InputActionConfig::SelectSort),
+        ("3", InputActionConfig::SelectLnMode),
+        ("4", InputActionConfig::SelectReplayCycle),
+        ("Numpad4", InputActionConfig::SelectReplayCycle),
+        ("8", InputActionConfig::SelectSameFolder),
+        ("Numpad8", InputActionConfig::SelectSameFolder),
+        ("9", InputActionConfig::SelectOpenDocuments),
+        ("Numpad9", InputActionConfig::SelectOpenDocuments),
+    ] {
+        assert!(input.ui.bindings.iter().any(|entry| {
+            entry.device == "keyboard" && entry.control == control && entry.action == Some(action)
+        }));
+    }
+}
+
+#[test]
+fn input_normalization_preserves_v2_custom_digit_shortcuts() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 2;
+    for (action, control) in [
+        (InputActionConfig::SelectReplayCycle, "A"),
+        (InputActionConfig::SelectSameFolder, "B"),
+        (InputActionConfig::SelectOpenDocuments, "G"),
+    ] {
+        input.ui.bindings.retain(|entry| entry.action != Some(action));
+        input.ui.bindings.push(BindingConfigEntry {
+            device: "keyboard".to_string(),
+            control: control.to_string(),
+            keyboard_slot: None,
+            lane: None,
+            action: Some(action),
+            scratch: None,
+        });
+    }
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    for (action, control) in [
+        (InputActionConfig::SelectReplayCycle, "A"),
+        (InputActionConfig::SelectSameFolder, "B"),
+        (InputActionConfig::SelectOpenDocuments, "G"),
+    ] {
+        let controls = input
+            .ui
+            .bindings
+            .iter()
+            .filter(|entry| entry.action == Some(action))
+            .map(|entry| entry.control.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(controls, vec![control]);
+    }
 }
 
 #[test]

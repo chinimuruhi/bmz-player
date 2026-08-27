@@ -69,6 +69,42 @@ pub(super) fn digit_to_replay_slot(physical_key: PhysicalKey) -> Option<u8> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum PrimaryIrPageIdentity {
+    Chart { sha256: String },
+    Course { canonical_hash: Option<String>, rian_hash_v1: Option<String> },
+}
+
+pub(super) fn primary_ir_page_url(
+    provider: &crate::config::profile_config::IrProviderConfig,
+    identity: &PrimaryIrPageIdentity,
+) -> Result<String> {
+    match identity {
+        PrimaryIrPageIdentity::Chart { sha256 } => {
+            if crate::ir::rian_ir::is_rian_ir_config(provider) {
+                crate::ir::rian_ir::chart_page_url(&provider.base_url, sha256)
+            } else {
+                Ok(format!("{}/charts/{sha256}", provider.base_url.trim_end_matches('/')))
+            }
+        }
+        PrimaryIrPageIdentity::Course { canonical_hash, rian_hash_v1 } => {
+            let hash = if crate::ir::rian_ir::is_rian_ir_config(provider) {
+                rian_hash_v1.as_deref()
+            } else {
+                canonical_hash.as_deref()
+            };
+            let Some(hash) = hash else {
+                anyhow::bail!("course hash is unavailable for the primary IR provider");
+            };
+            if crate::ir::rian_ir::is_rian_ir_config(provider) {
+                crate::ir::rian_ir::course_page_url(&provider.base_url, hash)
+            } else {
+                Ok(format!("{}/courses/{hash}", provider.base_url.trim_end_matches('/')))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TargetCycle {
     Previous,

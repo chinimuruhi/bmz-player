@@ -2,6 +2,7 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn advance_active_play(&mut self) {
+        self.sync_autoplay_replay_playback_rate();
         self.poll_pending_finished_play();
         if self.play.play_ending.is_some() {
             self.update_play_ending_snapshot();
@@ -699,6 +700,29 @@ impl WinitApp {
         self.play.play_exit_hold_started_at = None;
         self.reset_play_analog_scroll();
         self.refresh_play_lane_value_changing();
+    }
+
+    pub(super) fn active_play_uses_playback_rate_keys(&self) -> bool {
+        self.play.active_play.as_ref().is_some_and(|active_play| {
+            active_play.running.session.autoplay.is_some()
+                || active_play.running.session.replay_player.is_some()
+        })
+    }
+
+    pub(super) fn sync_autoplay_replay_playback_rate(&mut self) {
+        let rate =
+            autoplay_replay_playback_rate_from_pressed_inputs(&self.input.pressed_play_inputs);
+        let Some(active_play) = &mut self.play.active_play else {
+            return;
+        };
+        if active_play.running.session.autoplay.is_none()
+            && active_play.running.session.replay_player.is_none()
+        {
+            return;
+        }
+        if active_play.running.playback_rate_percent != rate {
+            active_play.running.set_playback_rate_percent(rate);
+        }
     }
 
     pub(super) fn sync_play_control_holds_from_pressed_controls(&mut self) {

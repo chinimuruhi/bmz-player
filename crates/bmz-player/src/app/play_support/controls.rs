@@ -139,6 +139,30 @@ pub(in crate::app) fn play_control_hold_state_from_pressed_inputs(
     (e1_held, e2_held, e3_held)
 }
 
+pub(in crate::app) fn autoplay_replay_playback_rate_from_pressed_inputs(
+    pressed_inputs: &HashSet<(DeviceId, PhysicalControl)>,
+) -> u16 {
+    const SPEED_KEYS: [(&str, u16); 4] = [("1", 25), ("2", 50), ("3", 200), ("4", 300)];
+    SPEED_KEYS
+        .into_iter()
+        .find_map(|(control, rate)| {
+            pressed_inputs
+                .contains(&(
+                    W_KEYBOARD_DEVICE_ID,
+                    PhysicalControl::KeyboardKey(control.to_string()),
+                ))
+                .then_some(rate)
+        })
+        .unwrap_or(100)
+}
+
+pub(in crate::app) fn is_autoplay_replay_playback_rate_key(physical_key: PhysicalKey) -> bool {
+    matches!(
+        physical_key,
+        PhysicalKey::Code(KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 | KeyCode::Digit4)
+    )
+}
+
 pub(in crate::app) fn play_ready_blocked_by_control_holds(e1_held: bool, e2_held: bool) -> bool {
     e1_held || e2_held
 }

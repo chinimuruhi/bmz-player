@@ -1,6 +1,6 @@
 use super::*;
 
-pub const UI_INPUT_BINDING_VERSION: u32 = 2;
+pub const UI_INPUT_BINDING_VERSION: u32 = 3;
 
 pub const CONFIGURABLE_SHORTCUT_MIGRATIONS: &[(u32, &[InputActionConfig])] = &[
     (
@@ -16,6 +16,16 @@ pub const CONFIGURABLE_SHORTCUT_MIGRATIONS: &[(u32, &[InputActionConfig])] = &[
         ],
     ),
     (2, &[InputActionConfig::SelectOpenKeyConfig]),
+    (
+        3,
+        &[
+            InputActionConfig::SelectModeFilter,
+            InputActionConfig::SelectSort,
+            InputActionConfig::SelectLnMode,
+            InputActionConfig::SelectReplayCycle,
+            InputActionConfig::SelectSameFolder,
+        ],
+    ),
 ];
 
 pub const CONFIGURABLE_SHORTCUT_ACTIONS: &[InputActionConfig] = &[
@@ -24,6 +34,11 @@ pub const CONFIGURABLE_SHORTCUT_ACTIONS: &[InputActionConfig] = &[
     InputActionConfig::SelectAutoplayFolder,
     InputActionConfig::SelectOpenIr,
     InputActionConfig::SelectOpenKeyConfig,
+    InputActionConfig::SelectModeFilter,
+    InputActionConfig::SelectSort,
+    InputActionConfig::SelectLnMode,
+    InputActionConfig::SelectReplayCycle,
+    InputActionConfig::SelectSameFolder,
     InputActionConfig::Screenshot,
     InputActionConfig::SelectRivalCycle,
     InputActionConfig::SelectOpenDocuments,
@@ -73,10 +88,16 @@ pub fn default_keyboard_bindings() -> Vec<BindingConfigEntry> {
         action_binding("F5", InputActionConfig::SelectReload),
         action_binding("F10", InputActionConfig::SelectAutoplayFolder),
         action_binding("F11", InputActionConfig::SelectOpenIr),
+        action_binding("1", InputActionConfig::SelectModeFilter),
+        action_binding("2", InputActionConfig::SelectSort),
+        action_binding("3", InputActionConfig::SelectLnMode),
+        action_binding("4", InputActionConfig::SelectReplayCycle),
         action_binding("6", InputActionConfig::SelectOpenKeyConfig),
         action_binding("F12", InputActionConfig::Screenshot),
         action_binding("7", InputActionConfig::SelectRivalCycle),
         action_binding("Numpad7", InputActionConfig::SelectRivalCycle),
+        action_binding("8", InputActionConfig::SelectSameFolder),
+        action_binding("9", InputActionConfig::SelectOpenDocuments),
         action_binding("Numpad9", InputActionConfig::SelectOpenDocuments),
         action_binding("F8", InputActionConfig::SelectFavoriteSong),
         action_binding("F9", InputActionConfig::SelectFavoriteChart),

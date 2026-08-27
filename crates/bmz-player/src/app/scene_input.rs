@@ -17,6 +17,9 @@ pub(super) enum SelectAction {
     FavoriteSong,
     FavoriteChart,
     SameFolder,
+    ModeFilter,
+    Sort,
+    LnMode,
     DifficultyFilter,
     ReplayCycle,
     ReplayPlay,
@@ -90,6 +93,12 @@ fn keyboard_select_action(control: &str, bindings: &SelectKeyBindings) -> Option
         Some(SelectAction::FavoriteChart)
     } else if bindings.is_same_folder(control) {
         Some(SelectAction::SameFolder)
+    } else if bindings.is_mode_filter(control) {
+        Some(SelectAction::ModeFilter)
+    } else if bindings.is_sort(control) {
+        Some(SelectAction::Sort)
+    } else if bindings.is_ln_mode(control) {
+        Some(SelectAction::LnMode)
     } else if bindings.is_difficulty_filter(control) {
         Some(SelectAction::DifficultyFilter)
     } else if bindings.is_replay_cycle(control) {
@@ -146,6 +155,12 @@ fn gamepad_select_action(control: &str, bindings: &SelectKeyBindings) -> Option<
         Some(SelectAction::FavoriteChart)
     } else if bindings.is_same_folder(control) {
         Some(SelectAction::SameFolder)
+    } else if bindings.is_mode_filter(control) {
+        Some(SelectAction::ModeFilter)
+    } else if bindings.is_sort(control) {
+        Some(SelectAction::Sort)
+    } else if bindings.is_ln_mode(control) {
+        Some(SelectAction::LnMode)
     } else if bindings.is_difficulty_filter(control) {
         Some(SelectAction::DifficultyFilter)
     } else if bindings.is_replay_cycle(control) {

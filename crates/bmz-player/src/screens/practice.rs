@@ -19,6 +19,8 @@ use crate::paths::ProfilePaths;
 use crate::select_options::ArrangeOption;
 
 const PRACTICE_PROPERTY_FORMAT_VERSION: u32 = 1;
+const PRACTICE_PLAYBACK_RATE_MIN: u16 = 50;
+const PRACTICE_PLAYBACK_RATE_MAX: u16 = 200;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -312,8 +314,9 @@ pub fn clamp_practice_property(property: &mut PracticeProperty, chart: &Playable
         property.end_time_ms.clamp(property.start_time_ms.saturating_add(1000), max_end);
     property.judgerank = property.judgerank.clamp(1, 400);
     property.start_gauge = property.start_gauge.clamp(1, 100);
-    property.playback_rate_percent =
-        bmz_audio::clock::clamp_playback_rate_percent(property.playback_rate_percent);
+    property.playback_rate_percent = property
+        .playback_rate_percent
+        .clamp(PRACTICE_PLAYBACK_RATE_MIN, PRACTICE_PLAYBACK_RATE_MAX);
     if let Some(total) = property.total.as_mut() {
         *total = total.clamp(10.0, 5000.0);
     }
@@ -423,7 +426,9 @@ pub fn adjust_practice_selected_field(
         }
         7 => {
             let value = i32::from(property.playback_rate_percent) + direction * 5;
-            property.playback_rate_percent = value.clamp(50, 200) as u16;
+            property.playback_rate_percent = value
+                .clamp(i32::from(PRACTICE_PLAYBACK_RATE_MIN), i32::from(PRACTICE_PLAYBACK_RATE_MAX))
+                as u16;
         }
         8 => cycle_graph_type(&mut property.graph_type, increment),
         9 => cycle_arrange(&mut property.arrange, increment),
@@ -657,5 +662,17 @@ mod tests {
             apply_practice_cursor_horizontal(&mut property, leave, false, false, 120_000),
             PracticeCursorAction::None
         );
+    }
+
+    #[test]
+    fn practice_playback_rate_remains_limited_to_fifty_through_two_hundred_percent() {
+        let chart = empty_chart(120_000);
+        let mut slow = PracticeProperty { playback_rate_percent: 25, ..Default::default() };
+        clamp_practice_property(&mut slow, &chart);
+        assert_eq!(slow.playback_rate_percent, 50);
+
+        let mut fast = PracticeProperty { playback_rate_percent: 300, ..Default::default() };
+        clamp_practice_property(&mut fast, &chart);
+        assert_eq!(fast.playback_rate_percent, 200);
     }
 }

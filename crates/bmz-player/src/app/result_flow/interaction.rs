@@ -17,6 +17,9 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if self.handle_result_open_ir_control(control, pressed, repeat, false) {
+            return true;
+        }
         if self.handle_result_ir_scroll_control(control, pressed, repeat) {
             return true;
         }
@@ -74,6 +77,9 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if self.handle_result_open_ir_control(control, pressed, repeat, true) {
+            return true;
+        }
         if self.handle_result_ir_scroll_control(control, pressed, repeat) {
             return true;
         }
@@ -120,6 +126,37 @@ impl WinitApp {
             }
             _ => false,
         }
+    }
+
+    pub(super) fn handle_result_open_ir_control(
+        &mut self,
+        control: &PhysicalControl,
+        pressed: bool,
+        repeat: bool,
+        course_result: bool,
+    ) -> bool {
+        let Some(control_name) = physical_control_name(control) else {
+            return false;
+        };
+        if !self.select.select_keys.is_open_ir(control_name) {
+            return false;
+        }
+        if !pressed || repeat || !self.result_input_ready() {
+            return true;
+        }
+        let identity = if course_result {
+            PrimaryIrPageIdentity::Course {
+                canonical_hash: self.result.finished_course_hash.clone(),
+                rian_hash_v1: self.result.finished_course_rian_hash_v1.clone(),
+            }
+        } else {
+            let Some(finished) = &self.result.finished_play else {
+                return true;
+            };
+            PrimaryIrPageIdentity::Chart { sha256: hash_to_hex(&finished.result.chart_sha256) }
+        };
+        self.open_primary_ir_page(identity);
+        true
     }
 
     pub(super) fn handle_result_ir_scroll_control(

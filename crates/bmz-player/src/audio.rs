@@ -148,8 +148,15 @@ impl AppAudioOutput {
     }
 
     pub fn set_playback_rate_percent(&mut self, rate: u16) {
-        self.source.set_playback_rate_percent(rate);
-        self.engine.set_playback_rate_percent(rate);
+        if let Some(change) = self.source.set_playback_rate_percent(rate)
+            && !self.engine.apply_playback_rate_change(change)
+        {
+            tracing::warn!(
+                requested_rate_percent = change.new_rate_percent,
+                "playback rate change was dropped by the audio command queue"
+            );
+            let _ = self.source.set_playback_rate_percent(change.old_rate_percent);
+        }
     }
 
     pub fn pause(&mut self) -> Result<()> {
@@ -169,6 +176,12 @@ impl AppAudioOutput {
 }
 
 impl RunningPlaySession {
+    pub fn set_playback_rate_percent(&mut self, rate: u16) {
+        self.audio.set_playback_rate_percent(rate);
+        self.session.audio_clock = self.audio.clock();
+        self.playback_rate_percent = self.session.audio_clock.playback_rate_percent();
+    }
+
     pub fn start(&mut self, chart_zero_time: TimeUs) -> Result<()> {
         self.audio.play(chart_zero_time)?;
         self.session.audio_clock = self.audio.clock();

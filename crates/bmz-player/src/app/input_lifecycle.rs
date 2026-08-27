@@ -189,6 +189,12 @@ impl WinitApp {
             self.input.discard_raw_keyboard_transition(physical_key, state);
             return;
         }
+        if self.active_play_uses_playback_rate_keys()
+            && is_autoplay_replay_playback_rate_key(physical_key)
+        {
+            self.input.discard_raw_keyboard_transition(physical_key, state);
+            return;
+        }
         let config = input_bounce_config_from_profile(&self.boot.profile_config.input);
         let gameplay_blocked = self.raw_input_gameplay_blocked();
         if let Some(event) =

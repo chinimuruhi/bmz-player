@@ -196,6 +196,12 @@ pub enum InputActionConfig {
     SelectFavoriteChart,
     #[serde(rename = "SameFolder")]
     SelectSameFolder,
+    #[serde(rename = "ModeFilter")]
+    SelectModeFilter,
+    #[serde(rename = "Sort")]
+    SelectSort,
+    #[serde(rename = "LnMode")]
+    SelectLnMode,
     #[serde(rename = "DifficultyFilter")]
     SelectDifficultyFilter,
     #[serde(rename = "ReplayCycle")]

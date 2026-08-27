@@ -150,7 +150,7 @@ mod tests {
             (200, TimeUs(14_000), TimeUs(6_000)),
         ] {
             let mut clock = AudioClock::stopped(48_000);
-            clock.set_playback_rate_percent(rate);
+            let _ = clock.set_playback_rate_percent(rate);
             let ctx = InputTimingContext {
                 audio_clock: &clock,
                 offsets: PlayOffsets { input_offset_us: 0, visual_offset_us: 0 },

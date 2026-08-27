@@ -202,6 +202,33 @@ fn play_control_hold_state_rebuilds_from_pressed_controls() {
 }
 
 #[test]
+fn autoplay_replay_speed_keys_use_top_row_hold_priority() {
+    let keyboard =
+        |control: &str| (W_KEYBOARD_DEVICE_ID, PhysicalControl::KeyboardKey(control.to_string()));
+    assert_eq!(autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::new()), 100);
+    for (control, expected) in [("1", 25), ("2", 50), ("3", 200), ("4", 300)] {
+        assert_eq!(
+            autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([keyboard(control)])),
+            expected
+        );
+    }
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([
+            keyboard("4"),
+            keyboard("2"),
+        ])),
+        50
+    );
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([(
+            DeviceId(7),
+            PhysicalControl::GamepadButton("1".to_string()),
+        )])),
+        100
+    );
+}
+
+#[test]
 fn play_control_hold_state_keeps_legacy_and_default_e1_fallbacks() {
     let mut legacy_input = crate::config::play_input::default_profile_input();
     legacy_input.ui.bindings.retain(|entry| entry.action != Some(InputActionConfig::E1));

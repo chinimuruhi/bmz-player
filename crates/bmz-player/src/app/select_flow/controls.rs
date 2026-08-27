@@ -1022,6 +1022,9 @@ impl WinitApp {
                 SelectAction::FavoriteSong
                 | SelectAction::FavoriteChart
                 | SelectAction::SameFolder
+                | SelectAction::ModeFilter
+                | SelectAction::Sort
+                | SelectAction::LnMode
                 | SelectAction::DifficultyFilter
                 | SelectAction::ReplayCycle
                 | SelectAction::ReplayPlay => {}
@@ -1041,6 +1044,9 @@ impl WinitApp {
             SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
             SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
             SelectAction::SameFolder => self.open_same_folder_for_selected(),
+            SelectAction::ModeFilter => self.cycle_select_mode_filter(1),
+            SelectAction::Sort => self.cycle_select_sort(1),
+            SelectAction::LnMode => self.cycle_select_ln_mode(1),
             SelectAction::DifficultyFilter => self.cycle_select_difficulty_filter(1),
             SelectAction::ReplayCycle => {
                 self.cycle_selected_replay_slot(1);

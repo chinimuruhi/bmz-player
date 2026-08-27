@@ -202,6 +202,9 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if self.handle_result_open_ir_control(control, pressed, repeat, false) {
+            return true;
+        }
         if self.handle_result_ir_scroll_control(control, pressed, repeat) {
             return true;
         }

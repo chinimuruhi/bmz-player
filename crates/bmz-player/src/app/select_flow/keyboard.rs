@@ -54,6 +54,12 @@ impl WinitApp {
         {
             return;
         }
+        if self.active_play_uses_playback_rate_keys()
+            && is_autoplay_replay_playback_rate_key(event.physical_key)
+        {
+            self.sync_autoplay_replay_playback_rate();
+            return;
+        }
         let window_keyboard_gameplay_enabled = self.window_keyboard_gameplay_enabled();
         self.input.track_window_keyboard(
             event.physical_key,

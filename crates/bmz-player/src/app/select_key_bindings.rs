@@ -41,6 +41,9 @@ pub(super) struct SelectKeyBindings {
     favorite_song_controls: Vec<String>,
     favorite_chart_controls: Vec<String>,
     same_folder_controls: Vec<String>,
+    mode_filter_controls: Vec<String>,
+    sort_controls: Vec<String>,
+    ln_mode_controls: Vec<String>,
     difficulty_filter_controls: Vec<String>,
     replay_cycle_controls: Vec<String>,
     replay_play_controls: Vec<String>,
@@ -161,18 +164,15 @@ impl SelectKeyBindings {
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteSong), "F8");
         let favorite_chart_controls =
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteChart), "F9");
-        let same_folder_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectSameFolder),
-            "Numpad8",
-        );
+        let same_folder_controls = actions_for(InputActionConfig::SelectSameFolder);
+        let mode_filter_controls = actions_for(InputActionConfig::SelectModeFilter);
+        let sort_controls = actions_for(InputActionConfig::SelectSort);
+        let ln_mode_controls = actions_for(InputActionConfig::SelectLnMode);
         let difficulty_filter_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectDifficultyFilter),
             "Numpad0",
         );
-        let replay_cycle_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectReplayCycle),
-            "Numpad4",
-        );
+        let replay_cycle_controls = actions_for(InputActionConfig::SelectReplayCycle);
         let replay_play_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectReplayPlay),
             "Numpad5",
@@ -260,16 +260,22 @@ impl SelectKeyBindings {
         let screenshot_str = shortcut_hint(InputActionConfig::Screenshot);
         let rival_str = shortcut_hint(InputActionConfig::SelectRivalCycle);
         let documents_str = shortcut_hint(InputActionConfig::SelectOpenDocuments);
+        let mode_filter_str = shortcut_hint(InputActionConfig::SelectModeFilter);
+        let sort_str = shortcut_hint(InputActionConfig::SelectSort);
+        let ln_mode_str = shortcut_hint(InputActionConfig::SelectLnMode);
+        let replay_cycle_str = shortcut_hint(InputActionConfig::SelectReplayCycle);
+        let same_folder_str = shortcut_hint(InputActionConfig::SelectSameFolder);
         let option_hint = format!(
             "F1 MENU  {open_folder_str}:FOLDER/HASH  {reload_str}:RELOAD  \
              {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {key_config_str}:KEY CONFIG  \
              {screenshot_str}:SHOT  \
-             {rival_str}:RIVAL  {documents_str}:TEXT   \
+             {mode_filter_str}:MODE  {sort_str}:SORT  {ln_mode_str}:LN  \
+             {replay_cycle_str}:CYCLE  {same_folder_str}:SAME  {rival_str}:RIVAL  {documents_str}:TEXT   \
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+2P K1/K2:2P ARR  {start_str}+K3/K4:GAUGE  \
              {start_str}+K5:HS-FIX  {start_str}+K6:DP OPT  {start_str}+K7:AUTOPLAY  \
              BACK+K1..K7:ASSIST  \
-             {start_str}+BACK+{key2_str}:GAS  {start_str}+UP/DOWN:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N4:CYCLE  N5:REPLAY"
+             {start_str}+BACK+{key2_str}:GAS  {start_str}+UP/DOWN:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N5:REPLAY"
         );
 
         Self {
@@ -304,6 +310,9 @@ impl SelectKeyBindings {
             favorite_song_controls,
             favorite_chart_controls,
             same_folder_controls,
+            mode_filter_controls,
+            sort_controls,
+            ln_mode_controls,
             difficulty_filter_controls,
             replay_cycle_controls,
             replay_play_controls,
@@ -387,18 +396,15 @@ impl SelectKeyBindings {
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteSong), "F8");
         let favorite_chart_controls =
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteChart), "F9");
-        let same_folder_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectSameFolder),
-            "Numpad8",
-        );
+        let same_folder_controls = actions_for(InputActionConfig::SelectSameFolder);
+        let mode_filter_controls = actions_for(InputActionConfig::SelectModeFilter);
+        let sort_controls = actions_for(InputActionConfig::SelectSort);
+        let ln_mode_controls = actions_for(InputActionConfig::SelectLnMode);
         let difficulty_filter_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectDifficultyFilter),
             "Numpad0",
         );
-        let replay_cycle_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectReplayCycle),
-            "Numpad4",
-        );
+        let replay_cycle_controls = actions_for(InputActionConfig::SelectReplayCycle);
         let replay_play_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectReplayPlay),
             "Numpad5",
@@ -456,15 +462,21 @@ impl SelectKeyBindings {
         let screenshot_str = shortcut_hint(InputActionConfig::Screenshot);
         let rival_str = shortcut_hint(InputActionConfig::SelectRivalCycle);
         let documents_str = shortcut_hint(InputActionConfig::SelectOpenDocuments);
+        let mode_filter_str = shortcut_hint(InputActionConfig::SelectModeFilter);
+        let sort_str = shortcut_hint(InputActionConfig::SelectSort);
+        let ln_mode_str = shortcut_hint(InputActionConfig::SelectLnMode);
+        let replay_cycle_str = shortcut_hint(InputActionConfig::SelectReplayCycle);
+        let same_folder_str = shortcut_hint(InputActionConfig::SelectSameFolder);
         let option_hint = format!(
             "F1 MENU  {open_folder_str}:FOLDER/HASH  {reload_str}:RELOAD  \
              {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {key_config_str}:KEY CONFIG  \
              {screenshot_str}:SHOT  \
-             {rival_str}:RIVAL  {documents_str}:TEXT   \
+             {mode_filter_str}:MODE  {sort_str}:SORT  {ln_mode_str}:LN  \
+             {replay_cycle_str}:CYCLE  {same_folder_str}:SAME  {rival_str}:RIVAL  {documents_str}:TEXT   \
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+K3:GAUGE  {start_str}+K5:HS-FIX  \
              BACK+K1..K7:ASSIST  \
-             {start_str}+K8/K9:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N4:CYCLE  N5:REPLAY"
+             {start_str}+K8/K9:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N5:REPLAY"
         );
 
         Self {
@@ -499,6 +511,9 @@ impl SelectKeyBindings {
             favorite_song_controls,
             favorite_chart_controls,
             same_folder_controls,
+            mode_filter_controls,
+            sort_controls,
+            ln_mode_controls,
             difficulty_filter_controls,
             replay_cycle_controls,
             replay_play_controls,
@@ -698,6 +713,18 @@ impl SelectKeyBindings {
 
     pub(super) fn is_same_folder(&self, control: &str) -> bool {
         contains(&self.same_folder_controls, control)
+    }
+
+    pub(super) fn is_mode_filter(&self, control: &str) -> bool {
+        contains(&self.mode_filter_controls, control)
+    }
+
+    pub(super) fn is_sort(&self, control: &str) -> bool {
+        contains(&self.sort_controls, control)
+    }
+
+    pub(super) fn is_ln_mode(&self, control: &str) -> bool {
+        contains(&self.ln_mode_controls, control)
     }
 
     pub(super) fn is_difficulty_filter(&self, control: &str) -> bool {

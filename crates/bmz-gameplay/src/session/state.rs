@@ -381,7 +381,25 @@ impl BgmScheduler {
 
 pub fn compute_frame_times(session: &GameSession) -> FrameTimes {
     let audio_now = session.audio_clock.now();
-    let audio_schedule_until = TimeUs(audio_now.0 + AUDIO_SCHEDULE_AHEAD_US);
+    let schedule_ahead_us = audio_schedule_ahead_us(session.audio_clock.playback_rate_percent());
+    let audio_schedule_until = TimeUs(audio_now.0.saturating_add(schedule_ahead_us));
     FrameTimes { audio_now, audio_schedule_until }
+}
+
+fn audio_schedule_ahead_us(playback_rate_percent: u16) -> i64 {
+    ((i128::from(AUDIO_SCHEDULE_AHEAD_US) * i128::from(playback_rate_percent)) / 100)
+        .clamp(0, i128::from(i64::MAX)) as i64
+}
+
+#[cfg(test)]
+mod frame_time_tests {
+    use super::*;
+
+    #[test]
+    fn audio_schedule_horizon_preserves_wall_time_across_playback_rates() {
+        assert_eq!(audio_schedule_ahead_us(25), 25_000);
+        assert_eq!(audio_schedule_ahead_us(100), 100_000);
+        assert_eq!(audio_schedule_ahead_us(300), 300_000);
+    }
 }
 use super::*;

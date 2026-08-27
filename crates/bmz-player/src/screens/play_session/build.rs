@@ -480,7 +480,7 @@ pub fn build_game_session_with_input_backend(
         });
 
     let mut audio_clock = AudioClock::stopped(options.sample_rate);
-    audio_clock.set_playback_rate_percent(options.playback_rate_percent);
+    let _ = audio_clock.set_playback_rate_percent(options.playback_rate_percent);
 
     let mut judge = JudgeEngine::new_with_window_set_algorithm_and_keymode(
         scale_judge_windows_for_playback_rate(

@@ -292,43 +292,31 @@ impl WinitApp {
     }
 
     pub(super) fn open_primary_ir_for_selected(&mut self) {
+        let identity = match self.select.select_items.get(self.select.selected_index) {
+            Some(SelectItem::Chart(row)) => {
+                let Some(sha256) = row.score_sha256() else {
+                    let text = Localizer::new(self.boot.profile_config.ui.locale());
+                    self.show_left_overlay_toast(text.text("toast-ir-chart-hash-missing"));
+                    return;
+                };
+                PrimaryIrPageIdentity::Chart { sha256: hash_to_hex(&sha256) }
+            }
+            Some(SelectItem::Course(row)) => PrimaryIrPageIdentity::Course {
+                canonical_hash: row.course_hash.clone(),
+                rian_hash_v1: row.rian_course_hash_v1.clone(),
+            },
+            _ => return,
+        };
+        self.open_primary_ir_page(identity);
+    }
+
+    pub(super) fn open_primary_ir_page(&mut self, identity: PrimaryIrPageIdentity) {
         let text = Localizer::new(self.boot.profile_config.ui.locale());
         let Some(provider) = primary_ir_provider_for_profile(&self.boot.profile_config) else {
             self.show_left_overlay_toast(text.text("toast-primary-ir-not-configured"));
             return;
         };
-        let url = match self.select.select_items.get(self.select.selected_index) {
-            Some(SelectItem::Chart(row)) => {
-                let Some(sha256) = row.score_sha256() else {
-                    self.show_left_overlay_toast(text.text("toast-ir-chart-hash-missing"));
-                    return;
-                };
-                let sha256_hex = hash_to_hex(&sha256);
-                if crate::ir::rian_ir::is_rian_ir_config(provider) {
-                    crate::ir::rian_ir::chart_page_url(&provider.base_url, &sha256_hex)
-                } else {
-                    Ok(format!("{}/charts/{sha256_hex}", provider.base_url.trim_end_matches('/')))
-                }
-            }
-            Some(SelectItem::Course(row)) => {
-                let hash = if crate::ir::rian_ir::is_rian_ir_config(provider) {
-                    row.rian_course_hash_v1.as_deref()
-                } else {
-                    row.course_hash.as_deref()
-                };
-                let Some(hash) = hash else {
-                    self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
-                    return;
-                };
-                if crate::ir::rian_ir::is_rian_ir_config(provider) {
-                    crate::ir::rian_ir::course_page_url(&provider.base_url, hash)
-                } else {
-                    Ok(format!("{}/courses/{hash}", provider.base_url.trim_end_matches('/')))
-                }
-            }
-            _ => return,
-        };
-        let url = match url {
+        let url = match primary_ir_page_url(provider, &identity) {
             Ok(url) => url,
             Err(error) => {
                 tracing::warn!(%error, "failed to build primary IR page URL");
@@ -339,10 +327,10 @@ impl WinitApp {
         match open_external_url(&url) {
             Ok(()) => {
                 self.show_left_overlay_toast(text.text("toast-primary-ir-opened"));
-                tracing::info!(%url, "opened primary IR chart page");
+                tracing::info!(%url, "opened primary IR page");
             }
             Err(error) => {
-                tracing::warn!(%error, %url, "failed to open primary IR chart page");
+                tracing::warn!(%error, %url, "failed to open primary IR page");
                 self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
             }
         }
