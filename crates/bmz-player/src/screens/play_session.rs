@@ -6,7 +6,7 @@ use bmz_audio::loader::{
     LoadedSampleReport, SampleLoader, load_chart_samples, load_chart_samples_with_progress,
 };
 use bmz_audio::loudness::{
-    LoudnessAnalysis, analyze_chart_loudness, play_normalization_gain_for_analysis,
+    LoudnessAnalysis, analyze_chart_loudness, play_normalization_gain_for_analysis_with_output_gain,
 };
 use bmz_chart::import::{
     BmsRandomSource, ImportResult, import_bms_chart, import_bms_chart_with_random_source,
@@ -45,9 +45,9 @@ use bmz_gameplay::session::{
 use std::sync::Arc;
 
 use crate::config::play::{
-    audio_mix_from_profile, bottom_shiftable_gauge_from_config, gauge_auto_shift_from_config,
-    gauge_type_from_config, input_bounce_config_from_profile, lane_binding_for_chart_with_slots,
-    lane_unit_to_f32, play_offsets_from_profile_for_mode,
+    audio_mix_from_profile, bottom_shiftable_gauge_from_config, chart_normalization_output_gain,
+    gauge_auto_shift_from_config, gauge_type_from_config, input_bounce_config_from_profile,
+    lane_binding_for_chart_with_slots, lane_unit_to_f32, play_offsets_from_profile_for_mode,
 };
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig,

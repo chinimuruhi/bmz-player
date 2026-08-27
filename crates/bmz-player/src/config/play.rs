@@ -85,6 +85,17 @@ pub fn audio_mix_from_profile_with_chart_gain(
     }
 }
 
+/// 譜面正規化の sample peak 判定より後段で掛かる最大出力倍率。
+///
+/// 解析キャッシュは BGM とキー音を unity で合成した指標を保持するため、プレイ時は
+/// 大きい方のカテゴリ音量を代表値として使い、master volume と合わせて補正する。
+pub fn chart_normalization_output_gain(profile: &ProfileConfig) -> f32 {
+    let master = volume_unit_to_f32(profile.audio_mix.master_volume);
+    let category =
+        volume_unit_to_f32(profile.audio_mix.key_volume.max(profile.audio_mix.bgm_volume));
+    master * category
+}
+
 /// profile.toml の 0..=100 整数ボリュームを 0.0..=1.0 の f32 に変換する。
 pub fn volume_unit_to_f32(value: u32) -> f32 {
     (value.min(100) as f32) / 100.0
@@ -246,6 +257,7 @@ mod tests {
         assert!(mix.normalize_chart_volume);
         assert!((mix.key_volume - 0.7).abs() < 1e-6);
         assert!((mix.bgm_volume - 0.6).abs() < 1e-6);
+        assert!((chart_normalization_output_gain(&profile) - 0.56).abs() < 1e-6);
     }
 
     #[test]

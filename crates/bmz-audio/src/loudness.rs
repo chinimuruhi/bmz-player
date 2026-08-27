@@ -276,6 +276,7 @@ pub fn analyze_preview_loudness(sample: &DecodedSample) -> Option<PreviewLoudnes
         PREVIEW_TARGET_LUFS,
         PREVIEW_TARGET_LUFS,
         PREVIEW_PEAK_CEILING_DBFS,
+        1.0,
     );
 
     Some(PreviewLoudnessAnalysis {
@@ -295,11 +296,24 @@ pub fn play_normalization_gain_for_loudness(loudness_lufs: f32) -> f32 {
 }
 
 pub fn play_normalization_gain_for_analysis(analysis: LoudnessAnalysis) -> f32 {
+    play_normalization_gain_for_analysis_with_output_gain(analysis, 1.0)
+}
+
+/// プレイ側の master / key / BGM volume が後段で掛かることを考慮して、
+/// 最終出力の sample peak が上限を超えない範囲のゲインを返す。
+///
+/// `output_gain` は正規化ゲイン以外の実効出力倍率。プレイ側では
+/// `master_volume * max(key_volume, bgm_volume)` を渡す。
+pub fn play_normalization_gain_for_analysis_with_output_gain(
+    analysis: LoudnessAnalysis,
+    output_gain: f32,
+) -> f32 {
     normalization_gain_for_analysis(
         analysis,
         PLAY_TARGET_LUFS,
         PLAY_TARGET_LUFS + LONG_FORM_SHORT_TERM_HEADROOM_LU,
         LONG_FORM_PEAK_CEILING_DBFS,
+        output_gain,
     )
 }
 
@@ -312,13 +326,19 @@ fn normalization_gain_for_analysis(
     integrated_target_lufs: f32,
     short_term_target_lufs: f32,
     peak_ceiling_dbfs: f32,
+    output_gain: f32,
 ) -> f32 {
     let integrated_gain =
         normalization_gain_for_target(analysis.loudness_lufs, integrated_target_lufs);
     let short_term_gain =
         normalization_gain_for_target(analysis.short_term_lufs, short_term_target_lufs);
     let peak_ceiling = 10.0f32.powf(peak_ceiling_dbfs / 20.0);
-    let peak_gain = (peak_ceiling / analysis.peak_abs).clamp(0.0, 1.0);
+    let output_gain = if output_gain.is_finite() && output_gain >= 0.0 { output_gain } else { 1.0 };
+    let peak_gain = if output_gain <= f32::MIN_POSITIVE {
+        1.0
+    } else {
+        (peak_ceiling / (analysis.peak_abs * output_gain)).clamp(0.0, 1.0)
+    };
     integrated_gain.min(short_term_gain).min(peak_gain).clamp(0.0, 1.0)
 }
 
@@ -425,6 +445,26 @@ mod tests {
 
         let play_gain = play_normalization_gain_for_loudness(-6.0);
         assert!((play_gain - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn play_peak_guard_accounts_for_downstream_output_gain() {
+        let analysis =
+            LoudnessAnalysis { loudness_lufs: -20.0, short_term_lufs: -20.0, peak_abs: 4.0 };
+        let peak_ceiling = 10.0f32.powf(LONG_FORM_PEAK_CEILING_DBFS / 20.0);
+
+        let full_scale = play_normalization_gain_for_analysis(analysis);
+        let quarter_scale = play_normalization_gain_for_analysis_with_output_gain(analysis, 0.25);
+
+        assert!((analysis.peak_abs * full_scale - peak_ceiling).abs() < 0.001);
+        assert!((analysis.peak_abs * quarter_scale * 0.25 - peak_ceiling).abs() < 0.001);
+        assert!(quarter_scale > full_scale);
+        assert_eq!(play_normalization_gain_for_analysis_with_output_gain(analysis, 0.0), 1.0);
+        assert_eq!(
+            play_normalization_gain_for_analysis_with_output_gain(analysis, f32::NAN),
+            full_scale
+        );
+        assert_eq!(system_bgm_normalization_gain_for_analysis(analysis), full_scale);
     }
 
     #[test]

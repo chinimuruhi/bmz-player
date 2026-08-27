@@ -608,7 +608,7 @@ fn normal_session_battle_target_preloads_an_expanded_opponent_chart() {
         ..PlaySessionOptions::default()
     };
 
-    let preloaded = preload_play_session_for_chart(&library_db, chart_id, options).unwrap();
+    let preloaded = preload_play_session_for_chart(&library_db, chart_id, options, 1.0).unwrap();
 
     assert_eq!(preloaded.chart.metadata.key_mode, KeyMode::K14);
     assert_eq!(
@@ -983,6 +983,7 @@ fn preload_reports_prepared_chart_before_audio_progress() {
             arrange_seed: Some(42),
             ..Default::default()
         },
+        1.0,
         |chart| {
             *reported_chart.borrow_mut() = Some(chart.clone());
         },
@@ -1014,4 +1015,46 @@ fn preload_reports_prepared_chart_before_audio_progress() {
 
     std::fs::remove_file(path).unwrap();
     std::fs::remove_file(wav_path).unwrap();
+}
+
+#[test]
+fn cached_chart_normalization_uses_profile_output_gain() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart = chart();
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: std::path::Path::new("/songs/cached-normalization.bms"),
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &chart,
+        })
+        .unwrap();
+    library_db
+        .write_chart_normalization_analysis(
+            chart_id,
+            ChartNormalizationAnalysis {
+                loudness_lufs: -20.0,
+                short_term_lufs: -20.0,
+                sample_peak: 4.0,
+            },
+        )
+        .unwrap();
+    let audio = AudioEngine::new(48_000);
+
+    let full_scale =
+        load_or_compute_chart_normalization_gain(&library_db, chart_id, &chart, &audio, 1.0)
+            .unwrap();
+    let profile_scale =
+        load_or_compute_chart_normalization_gain(&library_db, chart_id, &chart, &audio, 0.25)
+            .unwrap();
+    let peak_ceiling = 10.0f32.powf(-1.0 / 20.0);
+
+    assert!((4.0 * full_scale - peak_ceiling).abs() < 0.001);
+    assert!((4.0 * profile_scale * 0.25 - peak_ceiling).abs() < 0.001);
+    assert!(profile_scale > full_scale);
 }

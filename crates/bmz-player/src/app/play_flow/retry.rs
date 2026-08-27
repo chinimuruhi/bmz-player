@@ -258,6 +258,8 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
+        let normalization_output_gain =
+            crate::config::play::chart_normalization_output_gain(&self.boot.profile_config);
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
         let input = SharedInputBackend::default();
@@ -284,6 +286,7 @@ impl WinitApp {
                             &library_db,
                             chart_id,
                             session_options.clone(),
+                            normalization_output_gain,
                             |chart| {
                                 let _ = worker_prepared_chart.set(chart.clone());
                             },

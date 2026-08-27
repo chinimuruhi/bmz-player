@@ -116,6 +116,7 @@ pub fn load_prepared_play_session_for_chart_with_input_backend(
         library_db,
         chart_id,
         PlaySessionOptions { rule_mode: profile.play.rule_mode, ..options.clone() },
+        chart_normalization_output_gain(profile),
     )?;
     Ok(build_prepared_play_session_from_preloaded(preloaded, profile, options, input_backend))
 }
@@ -124,20 +125,29 @@ pub fn preload_play_session_for_chart(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
+    normalization_output_gain: f32,
 ) -> Result<PreloadedPlaySession> {
-    preload_play_session_for_chart_with_progress(library_db, chart_id, options, |_, _| {})
+    preload_play_session_for_chart_with_progress(
+        library_db,
+        chart_id,
+        options,
+        normalization_output_gain,
+        |_, _| {},
+    )
 }
 
 pub fn preload_play_session_for_chart_with_progress(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
+    normalization_output_gain: f32,
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
     preload_play_session_for_chart_with_callbacks(
         library_db,
         chart_id,
         options,
+        normalization_output_gain,
         |_| {},
         on_progress,
     )
@@ -151,6 +161,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
+    normalization_output_gain: f32,
     on_chart: impl FnOnce(&PreparedPlayChart),
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
@@ -278,6 +289,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         chart_id,
         &prepared_chart.chart,
         &audio,
+        normalization_output_gain,
     )?;
     tracing::info!(
         chart_id,
@@ -773,13 +785,17 @@ pub(super) fn load_or_compute_chart_normalization_gain(
     chart_id: i64,
     chart: &PlayableChart,
     audio: &AudioEngine,
+    normalization_output_gain: f32,
 ) -> Result<f32> {
     if let Some(analysis) = library_db.chart_normalization_analysis_by_chart_id(chart_id)? {
-        return Ok(play_normalization_gain_for_analysis(LoudnessAnalysis {
-            loudness_lufs: analysis.loudness_lufs,
-            short_term_lufs: analysis.short_term_lufs,
-            peak_abs: analysis.sample_peak,
-        }));
+        return Ok(play_normalization_gain_for_analysis_with_output_gain(
+            LoudnessAnalysis {
+                loudness_lufs: analysis.loudness_lufs,
+                short_term_lufs: analysis.short_term_lufs,
+                peak_abs: analysis.sample_peak,
+            },
+            normalization_output_gain,
+        ));
     }
 
     let Some(analysis) = analyze_chart_loudness(chart, &audio.samples, audio.output_sample_rate())
@@ -793,7 +809,8 @@ pub(super) fn load_or_compute_chart_normalization_gain(
         sample_peak: analysis.peak_abs,
     };
     library_db.write_chart_normalization_analysis(chart_id, stored)?;
-    let play_gain = play_normalization_gain_for_analysis(analysis);
+    let play_gain =
+        play_normalization_gain_for_analysis_with_output_gain(analysis, normalization_output_gain);
     tracing::info!(
         chart_id,
         loudness_lufs = stored.loudness_lufs,

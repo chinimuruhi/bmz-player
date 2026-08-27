@@ -234,6 +234,8 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
+        let normalization_output_gain =
+            crate::config::play::chart_normalization_output_gain(&self.boot.profile_config);
         let play_config_key_mode =
             effective_play_key_mode(self.key_mode_for_chart(chart_id), options.key_mode_conversion);
         options.hs_fix = hs_fix_option_from_profile(
@@ -273,6 +275,7 @@ impl WinitApp {
                             &library_db,
                             chart_id,
                             session_options.clone(),
+                            normalization_output_gain,
                             |chart| {
                                 let _ = worker_prepared_chart.set(chart.clone());
                             },

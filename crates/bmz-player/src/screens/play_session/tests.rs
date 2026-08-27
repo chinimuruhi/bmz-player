@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use super::*;
 use crate::config::profile_config::HispeedModeConfig;
 use crate::storage::common::configure_connection;
-use crate::storage::library_db::{ChartImportRecord, LibraryDatabase};
+use crate::storage::library_db::{ChartImportRecord, ChartNormalizationAnalysis, LibraryDatabase};
 use crate::storage::migration::{LIBRARY_MIGRATIONS, run_migrations};
 
 fn class_gauge_values(session: &GameSession) -> [f32; 6] {
