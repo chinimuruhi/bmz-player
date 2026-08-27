@@ -146,10 +146,29 @@ pub(in crate::ui) fn property_default(prop: &SkinPropertyDef) -> String {
 }
 
 pub(in crate::ui) fn property_selection_is_valid(prop: &SkinPropertyDef, selected: &str) -> bool {
-    if let Ok(op) = selected.parse::<i32>() {
-        return prop.item.iter().any(|item| item.op == op);
-    }
-    prop.item.iter().any(|item| item.name == selected)
+    property_selection_index(prop, selected).is_some()
+}
+
+fn property_selection_index(prop: &SkinPropertyDef, selected: &str) -> Option<usize> {
+    prop.item.iter().position(|item| item.name == selected).or_else(|| {
+        selected.parse::<i32>().ok().and_then(|op| prop.item.iter().position(|item| item.op == op))
+    })
+}
+
+pub(in crate::ui) fn previous_property_selection<'a>(
+    prop: &'a SkinPropertyDef,
+    selected: &str,
+) -> Option<&'a str> {
+    let index = property_selection_index(prop, selected)?.checked_sub(1)?;
+    Some(prop.item.get(index)?.name.as_str())
+}
+
+pub(in crate::ui) fn next_property_selection<'a>(
+    prop: &'a SkinPropertyDef,
+    selected: &str,
+) -> Option<&'a str> {
+    let index = property_selection_index(prop, selected)?.checked_add(1)?;
+    Some(prop.item.get(index)?.name.as_str())
 }
 
 pub(in crate::ui) fn filepath_default(

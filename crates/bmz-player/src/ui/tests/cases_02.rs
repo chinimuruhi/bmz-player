@@ -292,6 +292,43 @@ fn property_default_uses_matching_def_name_or_first_item() {
 }
 
 #[test]
+fn property_selection_neighbors_follow_item_order_and_stop_at_ends() {
+    let prop = SkinPropertyDef {
+        category: String::new(),
+        name: "Notes".to_string(),
+        item: vec![
+            bmz_render::skin::SkinPropertyItemDef { name: "Light".to_string(), op: 1 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Dark".to_string(), op: 2 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Color".to_string(), op: 3 },
+        ],
+        def: "Dark".to_string(),
+    };
+
+    assert_eq!(previous_property_selection(&prop, "Dark"), Some("Light"));
+    assert_eq!(next_property_selection(&prop, "Dark"), Some("Color"));
+    assert_eq!(previous_property_selection(&prop, "Light"), None);
+    assert_eq!(next_property_selection(&prop, "Color"), None);
+}
+
+#[test]
+fn property_selection_neighbors_accept_legacy_numeric_selection() {
+    let prop = SkinPropertyDef {
+        category: String::new(),
+        name: "Notes".to_string(),
+        item: vec![
+            bmz_render::skin::SkinPropertyItemDef { name: "Light".to_string(), op: 1 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Dark".to_string(), op: 2 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Color".to_string(), op: 3 },
+        ],
+        def: "Dark".to_string(),
+    };
+
+    assert_eq!(previous_property_selection(&prop, "2"), Some("Light"));
+    assert_eq!(next_property_selection(&prop, "2"), Some("Color"));
+    assert_eq!(next_property_selection(&prop, "unknown"), None);
+}
+
+#[test]
 fn filepath_default_matches_def_with_or_without_extension_case_insensitive() {
     let filepath = SkinFilepathDef {
         category: String::new(),

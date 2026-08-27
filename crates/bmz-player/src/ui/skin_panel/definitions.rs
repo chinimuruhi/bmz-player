@@ -53,17 +53,38 @@ pub(in crate::ui) fn build_scene_skin_defs(
                                 .cloned()
                                 .unwrap_or_else(|| property_default(prop));
                             let before = selected.clone();
-                            egui::ComboBox::from_label(&prop.name)
-                                .selected_text(&selected)
-                                .show_ui(ui, |ui| {
-                                    for item in &prop.item {
-                                        ui.selectable_value(
-                                            &mut selected,
-                                            item.name.clone(),
-                                            &item.name,
-                                        );
-                                    }
-                                });
+                            ui.horizontal(|ui| {
+                                ui.label(&prop.name);
+                                let previous = previous_property_selection(prop, &selected);
+                                if ui
+                                    .add_enabled(previous.is_some(), egui::Button::new("◀"))
+                                    .on_hover_text(tr!(text, "skin-option-previous"))
+                                    .clicked()
+                                    && let Some(previous) = previous
+                                {
+                                    selected = previous.to_string();
+                                }
+                                egui::ComboBox::from_id_salt("selection")
+                                    .selected_text(&selected)
+                                    .show_ui(ui, |ui| {
+                                        for item in &prop.item {
+                                            ui.selectable_value(
+                                                &mut selected,
+                                                item.name.clone(),
+                                                &item.name,
+                                            );
+                                        }
+                                    });
+                                let next = next_property_selection(prop, &selected);
+                                if ui
+                                    .add_enabled(next.is_some(), egui::Button::new("▶"))
+                                    .on_hover_text(tr!(text, "skin-option-next"))
+                                    .clicked()
+                                    && let Some(next) = next
+                                {
+                                    selected = next.to_string();
+                                }
+                            });
                             if selected != before {
                                 options.insert(prop.name.clone(), selected);
                                 changed = true;
