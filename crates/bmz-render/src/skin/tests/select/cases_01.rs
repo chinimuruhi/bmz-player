@@ -541,14 +541,34 @@ fn select_key_mode_op_160_requires_song_row_key_mode() {
     assert_eq!(skin_state_number(SKIN_REF_BMZ_KEY_MODE, &song_7k), Some(7));
     assert_eq!(skin_state_number(SKIN_REF_BMZ_ACTIVE_LANE_COUNT, &song_7k), Some(8));
 
-    let folder = SkinDrawState {
+    let table_folder = SkinDrawState {
         select_screen: true,
-        select_row_kind: SelectRowKind::Folder,
+        select_row_kind: SelectRowKind::TableFolder,
+        select_is_folder: true,
         select_chart_key_mode: Some(KeyMode::K7),
+        skin_attempt: SkinAttemptState {
+            effective_key_mode: Some(KeyMode::K7),
+            ..Default::default()
+        },
         ..SkinDrawState::default()
     };
-    assert_eq!(skin_state_number(SKIN_REF_BMZ_KEY_MODE, &folder), None);
-    assert!(!test_skin_op(SKIN_OPTION_BMZ_KEY_MODE_BASE + 3, &[], &folder));
+    assert!(test_skin_op(1, &[], &table_folder));
+    assert!(!test_skin_op(160, &[], &table_folder));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_KEY_MODE, &table_folder), None);
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_ACTIVE_LANE_COUNT, &table_folder), None);
+    assert!(!test_skin_op(SKIN_OPTION_BMZ_KEY_MODE_BASE + 3, &[], &table_folder));
+
+    let course = SkinDrawState {
+        select_screen: true,
+        select_row_kind: SelectRowKind::Course,
+        skin_attempt: SkinAttemptState {
+            effective_key_mode: Some(KeyMode::K7),
+            ..Default::default()
+        },
+        ..SkinDrawState::default()
+    };
+    assert!(test_skin_op(3, &[], &course));
+    assert!(!test_skin_op(160, &[], &course));
 }
 
 #[test]

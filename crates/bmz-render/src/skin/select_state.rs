@@ -300,15 +300,21 @@ pub(super) fn select_key_mode_option_matches(op: i32, state: &SkinDrawState) -> 
 }
 
 pub(super) fn effective_skin_key_mode(state: &SkinDrawState) -> Option<KeyMode> {
+    if state.select_screen && state.result_failed.is_none() {
+        // beatoraja MusicSelector only exposes SongData for a SongBar. DirectoryBar,
+        // GradeBar, and settings rows must not inherit the active play-mode setting.
+        if state.in_settings
+            || state.select_row_kind != SelectRowKind::Song
+            || state.select_is_folder
+        {
+            return None;
+        }
+        return state.skin_attempt.effective_key_mode.or(state.select_chart_key_mode);
+    }
     if let Some(key_mode) = state.skin_attempt.effective_key_mode {
         return Some(key_mode);
     }
-    if !state.select_screen || state.result_failed.is_some() {
-        return Some(state.key_mode);
-    }
-    (!state.in_settings && state.select_row_kind == SelectRowKind::Song && !state.select_is_folder)
-        .then_some(state.select_chart_key_mode)
-        .flatten()
+    Some(state.key_mode)
 }
 
 pub(super) fn skin_key_mode_number(mode: KeyMode) -> i32 {
