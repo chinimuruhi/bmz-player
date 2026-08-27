@@ -242,13 +242,7 @@ impl AppliedArrange {
     }
 
     pub const fn score_persistence_disabled(&self) -> bool {
-        match self.key_mode_conversion {
-            KeyModeConversionConfig::Off => false,
-            KeyModeConversionConfig::SevenToNine => {
-                matches!(self.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys9)
-            }
-            KeyModeConversionConfig::SpToDp | KeyModeConversionConfig::SevenToSix => true,
-        }
+        self.key_mode_conversion.score_persistence_disabled(self.seven_to_nine_rule_mode)
     }
 
     pub const fn seven_to_six(&self) -> bool {

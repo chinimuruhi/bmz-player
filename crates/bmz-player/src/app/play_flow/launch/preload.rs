@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::profile_config::SevenToNineRuleMode;
 
 impl WinitApp {
     pub(super) fn begin_decide_for_chart(&mut self, chart_id: i64, mut options: PlayStartOptions) {
@@ -548,6 +549,11 @@ impl WinitApp {
         options: &mut PlayStartOptions,
     ) {
         let source_key_mode = self.key_mode_for_chart(chart_id);
+        options.key_mode_conversion = key_mode_conversion_for_replay_playback(
+            options.key_mode_conversion,
+            options.seven_to_nine_rule_mode,
+            options.replay_player.is_some(),
+        );
         if options.session_mode.is_battle()
             || options.battle_target.is_some()
             || matches!(
@@ -561,14 +567,8 @@ impl WinitApp {
         if !options.key_mode_conversion.applies_to(source_key_mode) {
             return;
         }
-        options.score_save_disabled |= match options.key_mode_conversion {
-            KeyModeConversionConfig::SevenToNine => matches!(
-                options.seven_to_nine_rule_mode,
-                crate::config::profile_config::SevenToNineRuleMode::Keys9
-            ),
-            KeyModeConversionConfig::SpToDp | KeyModeConversionConfig::SevenToSix => true,
-            KeyModeConversionConfig::Off => false,
-        };
+        options.score_save_disabled |=
+            options.key_mode_conversion.score_persistence_disabled(options.seven_to_nine_rule_mode);
         if options.key_mode_conversion == KeyModeConversionConfig::SevenToSix {
             options.arrange =
                 crate::screens::play_session::normalize_arrange_for_seven_to_six(options.arrange);
@@ -827,6 +827,62 @@ pub(in crate::app) fn double_option_from_rian(value: &str) -> DoubleOption {
     match value.trim().to_ascii_lowercase().as_str() {
         "flip" => DoubleOption::Flip,
         _ => DoubleOption::Off,
+    }
+}
+
+fn key_mode_conversion_for_replay_playback(
+    conversion: KeyModeConversionConfig,
+    seven_to_nine_rule_mode: SevenToNineRuleMode,
+    replay_playback: bool,
+) -> KeyModeConversionConfig {
+    if replay_playback && conversion.score_persistence_disabled(seven_to_nine_rule_mode) {
+        KeyModeConversionConfig::Off
+    } else {
+        conversion
+    }
+}
+
+#[cfg(test)]
+mod replay_key_mode_conversion_tests {
+    use super::*;
+
+    #[test]
+    fn replay_disables_conversions_that_cannot_persist_replays() {
+        for (conversion, rule_mode) in [
+            (KeyModeConversionConfig::SpToDp, SevenToNineRuleMode::Keys7),
+            (KeyModeConversionConfig::SevenToSix, SevenToNineRuleMode::Keys7),
+            (KeyModeConversionConfig::SevenToNine, SevenToNineRuleMode::Keys9),
+        ] {
+            assert!(conversion.score_persistence_disabled(rule_mode));
+            assert_eq!(
+                key_mode_conversion_for_replay_playback(conversion, rule_mode, true),
+                KeyModeConversionConfig::Off
+            );
+        }
+    }
+
+    #[test]
+    fn replay_keeps_score_eligible_seven_to_nine_conversion() {
+        let conversion = KeyModeConversionConfig::SevenToNine;
+        let rule_mode = SevenToNineRuleMode::Keys7;
+
+        assert!(!conversion.score_persistence_disabled(rule_mode));
+        assert_eq!(
+            key_mode_conversion_for_replay_playback(conversion, rule_mode, true),
+            KeyModeConversionConfig::SevenToNine
+        );
+    }
+
+    #[test]
+    fn normal_play_keeps_score_disabling_conversion() {
+        assert_eq!(
+            key_mode_conversion_for_replay_playback(
+                KeyModeConversionConfig::SevenToSix,
+                SevenToNineRuleMode::Keys7,
+                false,
+            ),
+            KeyModeConversionConfig::SevenToSix
+        );
     }
 }
 

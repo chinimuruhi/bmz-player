@@ -254,6 +254,17 @@ impl KeyModeConversionConfig {
             _ => source,
         }
     }
+
+    pub const fn score_persistence_disabled(
+        self,
+        seven_to_nine_rule_mode: SevenToNineRuleMode,
+    ) -> bool {
+        match self {
+            Self::Off => false,
+            Self::SevenToNine => matches!(seven_to_nine_rule_mode, SevenToNineRuleMode::Keys9),
+            Self::SpToDp | Self::SevenToSix => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

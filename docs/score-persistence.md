@@ -109,6 +109,10 @@ BMZ は `SpToDp` と `SevenToSix` を `score_save_disabled` とし、ランプ�
 - `9K`: 9Kの判定窓・ゲージを使い、ランプ・回数・スコア・replay・IRをすべて
   保存しない。Light Assistのclear-only保存にはしない。
 
+replay再生時は、replayを保存しない `SpToDp`、`SevenToSix`、9K規則の`SevenToNine`を
+無効化する。7K規則の`SevenToNine`だけは変換を維持し、通常7K形式で保存された入力を
+現在の7K→9K設定へ投影する。
+
 beatoraja の 7K→9K `ModeModifier` は Light Assist であり、数値・replay・IRは更新しないが
 `LightAssistEasy` ランプと play / clear count は更新する。BMZの `9K` 規則はそれより
 厳しい完全非保存、`7K` 規則は元譜面のルールとidentityを維持するBMZ独自仕様である。

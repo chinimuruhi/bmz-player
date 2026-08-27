@@ -123,14 +123,9 @@ pub(super) fn course_play_metrics_from_chart_metadata(
             )
             && start_options.key_mode_conversion.applies_to(key_mode);
         has_score_disabling_key_mode_conversion |= conversion_applies
-            && match start_options.key_mode_conversion {
-                KeyModeConversionConfig::SevenToNine => matches!(
-                    start_options.seven_to_nine_rule_mode,
-                    crate::config::profile_config::SevenToNineRuleMode::Keys9
-                ),
-                KeyModeConversionConfig::SpToDp | KeyModeConversionConfig::SevenToSix => true,
-                KeyModeConversionConfig::Off => false,
-            };
+            && start_options
+                .key_mode_conversion
+                .score_persistence_disabled(start_options.seven_to_nine_rule_mode);
         let double_option = if conversion_applies {
             DoubleOption::Off
         } else {
