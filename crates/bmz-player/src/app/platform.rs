@@ -286,7 +286,7 @@ pub(super) fn open_file_browser_path(path: &Path) -> Result<()> {
             path.parent().unwrap_or(path).to_path_buf()
         };
         Command::new("explorer")
-            .arg(target)
+            .arg(windows_file_browser_argument(&target))
             .spawn()
             .context("failed to open path with explorer")?;
     }
@@ -311,6 +311,18 @@ pub(super) fn open_file_browser_path(path: &Path) -> Result<()> {
         anyhow::bail!("opening paths is not supported on this platform: {}", path.display());
     }
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_file_browser_argument(path: &Path) -> std::ffi::OsString {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let native = path
+        .as_os_str()
+        .encode_wide()
+        .map(|unit| if unit == u16::from(b'/') { u16::from(b'\\') } else { unit })
+        .collect::<Vec<_>>();
+    std::ffi::OsString::from_wide(&native)
 }
 
 pub(super) fn open_file_with_default_app(path: &Path) -> Result<()> {
@@ -371,6 +383,27 @@ pub(super) fn launch_update_installer(path: &Path) -> Result<()> {
         anyhow::bail!(
             "automatic installer launch is only supported on Windows: {}",
             path.display()
+        );
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_file_browser_argument_uses_native_separators() {
+        assert_eq!(
+            windows_file_browser_argument(Path::new("G:/BMS/曲フォルダ/song")),
+            std::ffi::OsString::from(r"G:\BMS\曲フォルダ\song")
+        );
+        assert_eq!(
+            windows_file_browser_argument(Path::new("//server/share/BMS/song")),
+            std::ffi::OsString::from(r"\\server\share\BMS\song")
+        );
+        assert_eq!(
+            windows_file_browser_argument(Path::new(r"C:\BMS\song")),
+            std::ffi::OsString::from(r"C:\BMS\song")
         );
     }
 }
