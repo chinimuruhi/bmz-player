@@ -299,6 +299,43 @@ fn select_snapshot_rows_append_values_only_to_config_bar_text() {
 }
 
 #[test]
+fn select_snapshot_rows_formats_app_config_values_and_audio_apply_action() {
+    let profile = ProfileConfig::new_default("default", "Default", 0);
+    let mut app_config = AppConfig::default();
+    app_config.audio.backend = crate::config::app_config::AudioBackend::Wasapi;
+    let rows = vec![
+        SelectItem::AppConfig(crate::screens::settings_model::AppConfigSelectRow {
+            entry_id: AppSettingsEntryId::AudioBackend,
+        }),
+        SelectItem::ApplyAudioSettings,
+    ];
+
+    let snapshot = select_snapshot_rows_with_rival(
+        &rows,
+        0,
+        2,
+        &profile,
+        &app_config,
+        false,
+        None,
+        &HashMap::new(),
+        None,
+    );
+
+    let backend = snapshot.iter().find(|row| row.index == 0).unwrap();
+    let apply = snapshot.iter().find(|row| row.index == 1).unwrap();
+    assert_eq!(backend.title, "AUDIO BACKEND");
+    assert_eq!(backend.display_bar_text(), "AUDIO BACKEND [WASAPI]");
+    assert_eq!(backend.artist, "WASAPI");
+    assert_eq!(backend.subtitle, "音声出力に使用するOS・ドライバのバックエンドを選びます。");
+    assert_eq!(apply.title, "適用（音声出力を開き直す）");
+    assert_eq!(
+        apply.subtitle,
+        "「適用」で現在の設定を保存し音声出力を再構築します（再生中は不可）。"
+    );
+}
+
+#[test]
 fn difficulty_table_level_display_can_use_chart_original_level() {
     let mut row = select_chart_row(12);
     row.chart.as_mut().unwrap().play_level = "9".to_string();

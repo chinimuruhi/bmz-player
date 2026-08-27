@@ -8,7 +8,7 @@ use bmz_render::scene::SelectRowKind;
 
 use crate::i18n::{AppLocale, FluentArgs, Localizer};
 use crate::ln_policy::{LnPolicySetting, LnScorePolicy, course_score_ln_policy, score_ln_policy};
-use crate::screens::settings_model::{ConfigSelectRow, KeyBindingSelectRow};
+use crate::screens::settings_model::{AppConfigSelectRow, ConfigSelectRow, KeyBindingSelectRow};
 use crate::song_download::ChartDownloadMetadata;
 use crate::storage::collection_db::{CollectionDatabase, FavoriteChartRecord, FavoriteSongRecord};
 use crate::storage::common::hash_to_hex;
@@ -369,6 +369,7 @@ pub enum SelectItem {
     Course(SelectCourseRow),
     Executable(SelectExecutableRow),
     Config(ConfigSelectRow),
+    AppConfig(AppConfigSelectRow),
     KeyBinding(KeyBindingSelectRow),
     /// 設定カテゴリから 1 階層戻るアクション行。
     SettingsBack,
@@ -376,6 +377,8 @@ pub enum SelectItem {
     SettingsClose,
     /// ゲーム内設定から egui の詳細設定ウィンドウを開くアクション行。
     AdvancedSettings,
+    /// 保存済みの音声設定で出力を開き直すアクション行。
+    ApplyAudioSettings,
 }
 
 impl SelectItem {
@@ -390,10 +393,12 @@ impl SelectItem {
             Self::Course(row) => row.title.clone(),
             Self::Executable(row) => row.title.clone(),
             Self::Config(row) => row.label().to_string(),
+            Self::AppConfig(row) => row.label().to_string(),
             Self::KeyBinding(row) => row.label(),
             Self::SettingsBack => Localizer::new(locale).text("select-back"),
             Self::SettingsClose => Localizer::new(locale).text("select-close"),
             Self::AdvancedSettings => Localizer::new(locale).text("select-advanced-settings"),
+            Self::ApplyAudioSettings => Localizer::new(locale).text("settings-audio-apply"),
         }
     }
 }

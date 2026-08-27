@@ -1,6 +1,8 @@
 use bmz_core::lane::KeyMode;
 use bmz_render::scene::SelectRowKind;
 
+use crate::config::app_config::{AppConfig, AudioBackend, AudioBufferSizeMode};
+use crate::config::app_settings_registry::{AppSettingsEntryId, format_app_settings_value};
 use crate::config::key_config::{
     COMMON_ACTIONS, KEY_BINDING_SLOTS, KEY_CONFIG_MODES, KeyBindingTarget, ScratchDirection,
     binding_row_label, format_play_binding, key_lanes_for_key_mode, key_mode_settings_path,
@@ -13,6 +15,7 @@ use crate::screens::select_model::SelectItem;
 
 pub const CONFIG_ROOT_PATH: &str = "bmz-settings:";
 const CONFIG_VOLUME_PATH: &str = "bmz-settings:volume";
+const CONFIG_AUDIO_PATH: &str = "bmz-settings:audio";
 const CONFIG_JUDGE_PATH: &str = "bmz-settings:judge";
 const CONFIG_PLAY_PATH: &str = "bmz-settings:play";
 const CONFIG_PLAY_SEVEN_TO_NINE_PATH: &str = "bmz-settings:play:seven-to-nine";
@@ -20,6 +23,7 @@ const CONFIG_PLAY_ASSIST_PATH: &str = "bmz-settings:play:assist";
 const CONFIG_PLAY_ASSIST_NOTE_PATH: &str = "bmz-settings:play:assist:note";
 const CONFIG_PLAY_ASSIST_JUDGE_PATH: &str = "bmz-settings:play:assist:judge";
 const CONFIG_DISPLAY_PATH: &str = "bmz-settings:display";
+const CONFIG_VIDEO_PATH: &str = "bmz-settings:video";
 const CONFIG_INPUT_PATH: &str = "bmz-settings:input";
 const CONFIG_SELECT_PATH: &str = "bmz-settings:select";
 const CONFIG_REPLAY_PATH: &str = "bmz-settings:replay";
@@ -31,6 +35,7 @@ const CONFIG_KEYS_COMMON_PATH: &str = "bmz-settings:keys:common";
 pub enum SettingsPath<'a> {
     Root,
     Volume,
+    Audio,
     Judge,
     Play,
     PlaySevenToNine,
@@ -38,6 +43,7 @@ pub enum SettingsPath<'a> {
     PlayAssistNote,
     PlayAssistJudge,
     Display,
+    Video,
     Input,
     Select,
     Replay,
@@ -53,6 +59,7 @@ pub fn parse_settings_path(path: &str) -> Option<SettingsPath<'_>> {
     match rest {
         "" => Some(SettingsPath::Root),
         "volume" => Some(SettingsPath::Volume),
+        "audio" => Some(SettingsPath::Audio),
         "judge" => Some(SettingsPath::Judge),
         "play" => Some(SettingsPath::Play),
         "play:seven-to-nine" => Some(SettingsPath::PlaySevenToNine),
@@ -60,6 +67,7 @@ pub fn parse_settings_path(path: &str) -> Option<SettingsPath<'_>> {
         "play:assist:note" => Some(SettingsPath::PlayAssistNote),
         "play:assist:judge" => Some(SettingsPath::PlayAssistJudge),
         "display" => Some(SettingsPath::Display),
+        "video" => Some(SettingsPath::Video),
         "input" => Some(SettingsPath::Input),
         "select" => Some(SettingsPath::Select),
         "replay" => Some(SettingsPath::Replay),
@@ -87,6 +95,7 @@ pub fn settings_breadcrumb_for_locale(path: &str, locale: AppLocale) -> String {
     match parse_settings_path(path) {
         Some(SettingsPath::Root) | None => root,
         Some(SettingsPath::Volume) => breadcrumb(&root, &text.text("settings-category-volume")),
+        Some(SettingsPath::Audio) => breadcrumb(&root, &text.text("settings-audio-title")),
         Some(SettingsPath::Judge) => breadcrumb(&root, &text.text("settings-category-judge")),
         Some(SettingsPath::Play) => breadcrumb(&root, &text.text("settings-category-play")),
         Some(SettingsPath::PlaySevenToNine) => format!(
@@ -108,6 +117,7 @@ pub fn settings_breadcrumb_for_locale(path: &str, locale: AppLocale) -> String {
             assist_breadcrumb(&root, text, "settings-category-assist-judge")
         }
         Some(SettingsPath::Display) => breadcrumb(&root, &text.text("settings-category-display")),
+        Some(SettingsPath::Video) => breadcrumb(&root, &text.text("settings-video-title")),
         Some(SettingsPath::Input) => breadcrumb(&root, &text.text("settings-category-input")),
         Some(SettingsPath::Select) => breadcrumb(&root, &text.text("settings-category-select")),
         Some(SettingsPath::Replay) => breadcrumb(&root, &text.text("settings-category-replay")),
@@ -143,6 +153,25 @@ fn assist_breadcrumb(root: &str, text: Localizer, leaf_key: &str) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConfigSelectRow {
     pub entry_id: SettingsEntryId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppConfigSelectRow {
+    pub entry_id: AppSettingsEntryId,
+}
+
+impl AppConfigSelectRow {
+    pub fn label(self) -> &'static str {
+        self.entry_id.label()
+    }
+
+    pub fn value_text(self, config: &AppConfig, locale: AppLocale) -> String {
+        format_app_settings_value(config, self.entry_id, locale)
+    }
+
+    pub fn description_text(self, profile: &ProfileConfig) -> String {
+        Localizer::new(profile.ui.locale()).text(self.entry_id.description_key())
+    }
 }
 
 impl ConfigSelectRow {
@@ -197,6 +226,14 @@ pub fn load_settings_items(path: &str) -> Vec<SelectItem> {
 }
 
 pub fn load_settings_items_for_locale(path: &str, locale: AppLocale) -> Vec<SelectItem> {
+    load_settings_items_for_config(path, locale, &AppConfig::default())
+}
+
+pub fn load_settings_items_for_config(
+    path: &str,
+    locale: AppLocale,
+    app_config: &AppConfig,
+) -> Vec<SelectItem> {
     let text = Localizer::new(locale);
     let settings_path = parse_settings_path(path);
     let mut items = match settings_path {
@@ -204,6 +241,12 @@ pub fn load_settings_items_for_locale(path: &str, locale: AppLocale) -> Vec<Sele
             SelectItem::Folder {
                 path: CONFIG_VOLUME_PATH.to_string(),
                 name: text.text("settings-category-volume"),
+                kind: SelectRowKind::SettingsFolder,
+                summary: None,
+            },
+            SelectItem::Folder {
+                path: CONFIG_AUDIO_PATH.to_string(),
+                name: text.text("settings-audio-title"),
                 kind: SelectRowKind::SettingsFolder,
                 summary: None,
             },
@@ -222,6 +265,12 @@ pub fn load_settings_items_for_locale(path: &str, locale: AppLocale) -> Vec<Sele
             SelectItem::Folder {
                 path: CONFIG_DISPLAY_PATH.to_string(),
                 name: text.text("settings-category-display"),
+                kind: SelectRowKind::SettingsFolder,
+                summary: None,
+            },
+            SelectItem::Folder {
+                path: CONFIG_VIDEO_PATH.to_string(),
+                name: text.text("settings-video-title"),
                 kind: SelectRowKind::SettingsFolder,
                 summary: None,
             },
@@ -258,6 +307,7 @@ pub fn load_settings_items_for_locale(path: &str, locale: AppLocale) -> Vec<Sele
             SelectItem::AdvancedSettings,
         ],
         Some(SettingsPath::Volume) => config_items(SettingsEntryId::VOLUME_ENTRIES),
+        Some(SettingsPath::Audio) => audio_items(app_config),
         Some(SettingsPath::Judge) => config_items(SettingsEntryId::JUDGE_ENTRIES),
         Some(SettingsPath::Play) => play_items(locale),
         Some(SettingsPath::PlaySevenToNine) => config_items(SettingsEntryId::SEVEN_TO_NINE_ENTRIES),
@@ -265,6 +315,7 @@ pub fn load_settings_items_for_locale(path: &str, locale: AppLocale) -> Vec<Sele
         Some(SettingsPath::PlayAssistNote) => config_items(SettingsEntryId::ASSIST_NOTE_ENTRIES),
         Some(SettingsPath::PlayAssistJudge) => config_items(SettingsEntryId::ASSIST_JUDGE_ENTRIES),
         Some(SettingsPath::Display) => config_items(SettingsEntryId::DISPLAY_ENTRIES),
+        Some(SettingsPath::Video) => app_config_items(AppSettingsEntryId::VIDEO_ENTRIES),
         Some(SettingsPath::Input) => config_items(SettingsEntryId::INPUT_ENTRIES),
         Some(SettingsPath::Select) => config_items(SettingsEntryId::SELECT_ENTRIES),
         Some(SettingsPath::Replay) => config_items(SettingsEntryId::REPLAY_ENTRIES),
@@ -292,6 +343,27 @@ fn settings_folder(path: &str, name: String) -> SelectItem {
         kind: SelectRowKind::SettingsFolder,
         summary: None,
     }
+}
+
+fn audio_items(app_config: &AppConfig) -> Vec<SelectItem> {
+    let mut entries = vec![AppSettingsEntryId::AudioBackend];
+    if app_config.audio.backend == AudioBackend::Wasapi {
+        entries.push(AppSettingsEntryId::AudioOutputMode);
+    }
+    entries.push(AppSettingsEntryId::AudioSampleRate);
+    entries.push(AppSettingsEntryId::AudioBufferMode);
+    if app_config.audio.buffer_size_mode == AudioBufferSizeMode::Fixed {
+        entries.push(AppSettingsEntryId::AudioBufferSize);
+    }
+    if app_config.audio.backend == AudioBackend::Asio {
+        entries.push(AppSettingsEntryId::AudioAsioDriver);
+        entries.push(AppSettingsEntryId::AudioOutputChannelPair);
+    } else {
+        entries.push(AppSettingsEntryId::AudioOutputDevice);
+    }
+    let mut items = app_config_items(&entries);
+    items.push(SelectItem::ApplyAudioSettings);
+    items
 }
 
 fn play_items(locale: AppLocale) -> Vec<SelectItem> {
@@ -397,6 +469,14 @@ fn config_items(entries: &'static [SettingsEntryId]) -> Vec<SelectItem> {
         .collect()
 }
 
+fn app_config_items(entries: &[AppSettingsEntryId]) -> Vec<SelectItem> {
+    entries
+        .iter()
+        .copied()
+        .map(|entry_id| SelectItem::AppConfig(AppConfigSelectRow { entry_id }))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +487,7 @@ mod tests {
     fn parse_settings_paths() {
         assert_eq!(parse_settings_path(CONFIG_ROOT_PATH), Some(SettingsPath::Root));
         assert_eq!(parse_settings_path(CONFIG_VOLUME_PATH), Some(SettingsPath::Volume));
+        assert_eq!(parse_settings_path(CONFIG_AUDIO_PATH), Some(SettingsPath::Audio));
         assert_eq!(parse_settings_path(CONFIG_JUDGE_PATH), Some(SettingsPath::Judge));
         assert_eq!(parse_settings_path(CONFIG_PLAY_PATH), Some(SettingsPath::Play));
         assert_eq!(
@@ -423,6 +504,7 @@ mod tests {
             Some(SettingsPath::PlayAssistJudge)
         );
         assert_eq!(parse_settings_path(CONFIG_DISPLAY_PATH), Some(SettingsPath::Display));
+        assert_eq!(parse_settings_path(CONFIG_VIDEO_PATH), Some(SettingsPath::Video));
         assert_eq!(parse_settings_path(CONFIG_INPUT_PATH), Some(SettingsPath::Input));
         assert_eq!(parse_settings_path(CONFIG_SELECT_PATH), Some(SettingsPath::Select));
         assert_eq!(parse_settings_path(CONFIG_REPLAY_PATH), Some(SettingsPath::Replay));
@@ -439,7 +521,7 @@ mod tests {
     #[test]
     fn settings_root_lists_categories() {
         let items = load_settings_items(CONFIG_ROOT_PATH);
-        assert_eq!(items.len(), 11);
+        assert_eq!(items.len(), 13);
         assert!(matches!(items.first(), Some(SelectItem::SettingsClose)));
         assert!(matches!(
             settings_root_item(),
@@ -460,6 +542,49 @@ mod tests {
             settings_breadcrumb_for_locale(CONFIG_KEYS_COMMON_PATH, AppLocale::Ko),
             "설정 > 키 설정 > 공통"
         );
+    }
+
+    #[test]
+    fn settings_audio_lists_backend_specific_entries_and_apply_action() {
+        let mut app_config = AppConfig::default();
+        app_config.audio.backend = AudioBackend::Wasapi;
+        let wasapi = load_settings_items_for_config(CONFIG_AUDIO_PATH, AppLocale::Ja, &app_config);
+        assert!(wasapi.iter().any(|item| matches!(
+            item,
+            SelectItem::AppConfig(row)
+                if row.entry_id == AppSettingsEntryId::AudioOutputMode
+        )));
+        assert!(matches!(wasapi.last(), Some(SelectItem::ApplyAudioSettings)));
+
+        app_config.audio.backend = AudioBackend::Asio;
+        let asio = load_settings_items_for_config(CONFIG_AUDIO_PATH, AppLocale::Ja, &app_config);
+        assert!(asio.iter().any(|item| matches!(
+            item,
+            SelectItem::AppConfig(row)
+                if row.entry_id == AppSettingsEntryId::AudioAsioDriver
+        )));
+        assert!(asio.iter().any(|item| matches!(
+            item,
+            SelectItem::AppConfig(row)
+                if row.entry_id == AppSettingsEntryId::AudioOutputChannelPair
+        )));
+        assert!(!asio.iter().any(|item| matches!(
+            item,
+            SelectItem::AppConfig(row)
+                if row.entry_id == AppSettingsEntryId::AudioOutputDevice
+        )));
+    }
+
+    #[test]
+    fn settings_video_lists_every_video_entry() {
+        let items = load_settings_items(CONFIG_VIDEO_PATH);
+        assert_eq!(items.len(), AppSettingsEntryId::VIDEO_ENTRIES.len() + 1);
+        for entry_id in AppSettingsEntryId::VIDEO_ENTRIES {
+            assert!(items.iter().any(|item| matches!(
+                item,
+                SelectItem::AppConfig(row) if row.entry_id == *entry_id
+            )));
+        }
     }
 
     #[test]
@@ -836,6 +961,31 @@ mod tests {
                 let description = ConfigSelectRow { entry_id }.description_text(&profile);
                 assert_ne!(description, key, "{}: {entry_id:?}", locale.code());
                 assert!(!description.is_empty(), "{}: {entry_id:?}", locale.code());
+            }
+        }
+    }
+
+    #[test]
+    fn every_app_setting_entry_has_a_localized_item_description() {
+        let profile = ProfileConfig::new_default("default", "Default", 0);
+        let mut entries = AppSettingsEntryId::VIDEO_ENTRIES.to_vec();
+        entries.extend([
+            AppSettingsEntryId::AudioBackend,
+            AppSettingsEntryId::AudioOutputMode,
+            AppSettingsEntryId::AudioSampleRate,
+            AppSettingsEntryId::AudioBufferMode,
+            AppSettingsEntryId::AudioBufferSize,
+            AppSettingsEntryId::AudioOutputDevice,
+            AppSettingsEntryId::AudioAsioDriver,
+            AppSettingsEntryId::AudioOutputChannelPair,
+        ]);
+        for locale in AppLocale::SUPPORTED {
+            let mut localized = profile.clone();
+            localized.ui.language = locale.code().to_string();
+            for entry_id in &entries {
+                let description =
+                    AppConfigSelectRow { entry_id: *entry_id }.description_text(&localized);
+                assert_ne!(description, entry_id.description_key());
             }
         }
     }

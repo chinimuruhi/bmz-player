@@ -564,6 +564,10 @@ impl WinitApp {
                 self.show_select_course_builder_chart_required();
             }
             Some(SelectItem::Config(_)) => {}
+            Some(SelectItem::AppConfig(_)) if self.select.course_builder.is_some() => {
+                self.show_select_course_builder_chart_required();
+            }
+            Some(SelectItem::AppConfig(_)) => {}
             Some(SelectItem::KeyBinding(row)) => {
                 if self.select.course_builder.is_some() {
                     self.show_select_course_builder_chart_required();
@@ -579,6 +583,13 @@ impl WinitApp {
                     self.show_select_course_builder_chart_required();
                 } else {
                     self.open_advanced_settings_from_select();
+                }
+            }
+            Some(SelectItem::ApplyAudioSettings) => {
+                if self.select.course_builder.is_some() {
+                    self.show_select_course_builder_chart_required();
+                } else {
+                    self.apply_select_audio_settings();
                 }
             }
             None => {

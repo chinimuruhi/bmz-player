@@ -79,7 +79,7 @@ pub(super) struct SelectRuntimeState {
     /// 選曲画面のメタ画像・試聴音源のキャッシュと非同期ロード状態。
     pub(super) select_assets: SelectAssetRuntime,
     /// 設定画面で編集中の項目。`None` なら一覧操作モード。
-    pub(super) settings_edit: Option<SettingsEditSession>,
+    pub(super) settings_edit: Option<SelectSettingsEditSession>,
     /// キー設定の待ち受け状態。
     pub(super) key_config_edit: Option<KeyConfigEditSession>,
     /// 選曲画面の検索文字列、IME、cursor、履歴、feedback状態。

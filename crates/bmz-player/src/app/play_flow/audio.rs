@@ -226,10 +226,10 @@ impl WinitApp {
         self.audio.system_audio = Some(system_audio);
     }
 
-    pub(super) fn reopen_audio_output(&mut self) {
+    pub(super) fn reopen_audio_output(&mut self) -> bool {
         if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             tracing::warn!("ignoring audio apply while a play session is active");
-            return;
+            return false;
         }
 
         let previous_config =
@@ -247,12 +247,13 @@ impl WinitApp {
                 self.install_system_audio(&runtime, system_engine.clone());
                 self.audio.audio_runtime = Some(runtime);
                 tracing::info!("audio output reopened with current settings");
+                true
             }
             Err(error) => {
                 tracing::error!(%error, "failed to reopen audio output with current settings");
                 let Some(previous_config) = previous_config else {
                     tracing::error!("no previous audio settings are available for recovery");
-                    return;
+                    return false;
                 };
                 self.boot.app_config.audio = previous_config.clone();
                 if let Err(save_error) =
@@ -276,6 +277,7 @@ impl WinitApp {
                         );
                     }
                 }
+                false
             }
         }
     }

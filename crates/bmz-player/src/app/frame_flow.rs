@@ -639,7 +639,7 @@ impl WinitApp {
         self.sync_discord_presence_config();
     }
 
-    fn apply_egui_video_config(&mut self, window: &Window) {
+    pub(super) fn apply_egui_video_config(&mut self, window: &Window) {
         self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
         self.renderer
             .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video));

@@ -60,6 +60,7 @@ use crate::config::app_config::{
     AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind,
     InternalResolutionModeConfig, ObsConfig, PathEntry, WindowMode,
 };
+use crate::config::app_settings_registry::{AppSettingsChoices, AppSettingsEntryId};
 use crate::config::key_config::{
     KeyBindingSlot, KeyBindingTarget, apply_play_binding, clear_play_binding,
     is_scratch_down_control, is_scratch_up_control,
@@ -138,10 +139,13 @@ use crate::screens::select_model::{
     table_folder_items_for_active_sources, table_level_folder_items, table_source_url_from_context,
     virtual_folder_breadcrumb, virtual_folder_root_items,
 };
-use crate::screens::settings_edit::{SettingsBindings, SettingsEditSession, adjust_settings_draft};
+use crate::screens::settings_edit::{
+    AppSettingsEditSession, SelectSettingsEditSession, SettingsBindings, SettingsEditSession,
+    adjust_settings_draft,
+};
 use crate::screens::settings_model::{
-    CONFIG_KEYS_PATH, in_settings_stack, load_settings_items_for_locale,
-    settings_breadcrumb_for_locale, settings_root_item_for_locale,
+    CONFIG_KEYS_PATH, in_settings_stack, settings_breadcrumb_for_locale,
+    settings_root_item_for_locale,
 };
 use crate::select_options::{
     ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
@@ -181,7 +185,7 @@ use crate::ui::{
     UpdateDialog, UpdateDialogAction,
 };
 use crate::update::{DownloadedUpdate, UpdateAssetKind, UpdateCandidate};
-use crate::window_config::select_monitor;
+use crate::window_config::{monitor_config_name, select_monitor};
 use bmz_render::skin::{
     DestinationListEntry, SKIN_EVENT_DAILY_STATISTICS_RESET, SKIN_EVENT_IR_SCOPE_GLOBAL,
     SKIN_EVENT_IR_SCOPE_RIVAL, SKIN_EVENT_IR_SCOPE_TOGGLE, SKIN_EVENT_RESULT_PANEL_GRAPH,

@@ -129,10 +129,12 @@ pub(in crate::app) enum SelectItemKey {
     Course(i64),
     Executable(String),
     Config(SettingsEntryId),
+    AppConfig(AppSettingsEntryId),
     KeyBinding { key_mode: KeyMode, target: KeyBindingTarget },
     SettingsBack,
     SettingsClose,
     AdvancedSettings,
+    ApplyAudioSettings,
 }
 
 pub(in crate::app) fn select_item_key(item: &SelectItem) -> SelectItemKey {
@@ -152,12 +154,14 @@ pub(in crate::app) fn select_item_key(item: &SelectItem) -> SelectItemKey {
         SelectItem::Course(row) => SelectItemKey::Course(row.course_id),
         SelectItem::Executable(row) => SelectItemKey::Executable(row.title.clone()),
         SelectItem::Config(row) => SelectItemKey::Config(row.entry_id),
+        SelectItem::AppConfig(row) => SelectItemKey::AppConfig(row.entry_id),
         SelectItem::KeyBinding(row) => {
             SelectItemKey::KeyBinding { key_mode: row.key_mode, target: row.target }
         }
         SelectItem::SettingsBack => SelectItemKey::SettingsBack,
         SelectItem::SettingsClose => SelectItemKey::SettingsClose,
         SelectItem::AdvancedSettings => SelectItemKey::AdvancedSettings,
+        SelectItem::ApplyAudioSettings => SelectItemKey::ApplyAudioSettings,
     }
 }
 

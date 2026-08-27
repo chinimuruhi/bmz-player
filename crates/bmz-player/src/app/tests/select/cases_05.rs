@@ -305,6 +305,14 @@ fn select_item_key_uses_typed_settings_identity() {
     });
     assert_eq!(select_item_key(&config), SelectItemKey::Config(SettingsEntryId::MasterVolume));
 
+    let app_config = SelectItem::AppConfig(crate::screens::settings_model::AppConfigSelectRow {
+        entry_id: AppSettingsEntryId::VideoVsyncMode,
+    });
+    assert_eq!(
+        select_item_key(&app_config),
+        SelectItemKey::AppConfig(AppSettingsEntryId::VideoVsyncMode)
+    );
+
     let binding = SelectItem::KeyBinding(crate::screens::settings_model::KeyBindingSelectRow {
         key_mode: KeyMode::K7,
         target: KeyBindingTarget::Action {

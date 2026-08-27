@@ -319,10 +319,12 @@ impl WinitApp {
             | SelectItem::Course(_)
             | SelectItem::Executable(_)
             | SelectItem::Config(_)
+            | SelectItem::AppConfig(_)
             | SelectItem::KeyBinding(_)
             | SelectItem::SettingsBack
             | SelectItem::SettingsClose
-            | SelectItem::AdvancedSettings => None,
+            | SelectItem::AdvancedSettings
+            | SelectItem::ApplyAudioSettings => None,
         }
     }
 
@@ -333,10 +335,12 @@ impl WinitApp {
             | SelectItem::Folder { .. }
             | SelectItem::Executable(_)
             | SelectItem::Config(_)
+            | SelectItem::AppConfig(_)
             | SelectItem::KeyBinding(_)
             | SelectItem::SettingsBack
             | SelectItem::SettingsClose
-            | SelectItem::AdvancedSettings => None,
+            | SelectItem::AdvancedSettings
+            | SelectItem::ApplyAudioSettings => None,
         }
     }
 

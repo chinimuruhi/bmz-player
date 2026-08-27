@@ -61,6 +61,7 @@ pub(in crate::app) fn select_visible_item_indices(
 
 struct SelectSnapshotRowContext<'a> {
     profile: &'a ProfileConfig,
+    app_config: &'a AppConfig,
     in_difficulty_table_level: bool,
     key_config_edit: Option<&'a KeyConfigEditSession>,
     chart_distributions: &'a HashMap<i64, Vec<ChartDistributionSecond>>,
@@ -76,11 +77,13 @@ pub(in crate::app) fn select_snapshot_rows(
     key_config_edit: Option<&KeyConfigEditSession>,
     chart_distributions: &HashMap<i64, Vec<ChartDistributionSecond>>,
 ) -> Vec<SelectRowSnapshot> {
+    let app_config = AppConfig::default();
     select_snapshot_rows_with_rival(
         items,
         selected_index,
         visible_limit,
         profile,
+        &app_config,
         false,
         key_config_edit,
         chart_distributions,
@@ -95,11 +98,13 @@ pub(in crate::app) fn select_snapshot_rows_in_difficulty_table_level(
     visible_limit: usize,
     profile: &ProfileConfig,
 ) -> Vec<SelectRowSnapshot> {
+    let app_config = AppConfig::default();
     select_snapshot_rows_with_rival(
         items,
         selected_index,
         visible_limit,
         profile,
+        &app_config,
         true,
         None,
         &HashMap::new(),
@@ -112,6 +117,7 @@ pub(in crate::app) fn select_snapshot_rows_with_rival(
     selected_index: usize,
     visible_limit: usize,
     profile: &ProfileConfig,
+    app_config: &AppConfig,
     in_difficulty_table_level: bool,
     key_config_edit: Option<&KeyConfigEditSession>,
     chart_distributions: &HashMap<i64, Vec<ChartDistributionSecond>>,
@@ -119,6 +125,7 @@ pub(in crate::app) fn select_snapshot_rows_with_rival(
 ) -> Vec<SelectRowSnapshot> {
     let context = SelectSnapshotRowContext {
         profile,
+        app_config,
         in_difficulty_table_level,
         key_config_edit,
         chart_distributions,
@@ -160,6 +167,11 @@ fn select_snapshot_row(
             let description = row.description_text(context.profile);
             select_config_snapshot(index, row.label().to_string(), value, description)
         }
+        SelectItem::AppConfig(row) => {
+            let value = row.value_text(context.app_config, context.profile.ui.locale());
+            let description = row.description_text(context.profile);
+            select_config_snapshot(index, row.label().to_string(), value, description)
+        }
         SelectItem::KeyBinding(row) => {
             let value = context
                 .key_config_edit
@@ -186,6 +198,12 @@ fn select_snapshot_row(
             context.profile,
             "select-advanced-settings",
             bmz_render::scene::SelectRowKind::SettingsFolder,
+        ),
+        SelectItem::ApplyAudioSettings => select_settings_action_snapshot(
+            index,
+            context.profile,
+            "settings-audio-apply",
+            "settings-audio-apply-help",
         ),
     }
 }
@@ -385,6 +403,22 @@ fn select_navigation_snapshot(
         title: Localizer::new(profile.ui.locale()).text(title_id),
         is_folder: true,
         kind,
+        ..SelectRowSnapshot::default()
+    }
+}
+
+fn select_settings_action_snapshot(
+    index: usize,
+    profile: &ProfileConfig,
+    title_id: &str,
+    description_id: &str,
+) -> SelectRowSnapshot {
+    let text = Localizer::new(profile.ui.locale());
+    SelectRowSnapshot {
+        index: index as u32,
+        title: text.text(title_id),
+        subtitle: text.text(description_id),
+        kind: bmz_render::scene::SelectRowKind::SettingsFolder,
         ..SelectRowSnapshot::default()
     }
 }

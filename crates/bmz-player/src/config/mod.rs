@@ -1,4 +1,5 @@
 pub mod app_config;
+pub mod app_settings_registry;
 pub mod key_config;
 pub mod load;
 pub mod play;

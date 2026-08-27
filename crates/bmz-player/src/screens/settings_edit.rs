@@ -3,6 +3,10 @@ use std::collections::HashSet;
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
 
+use crate::config::app_config::{AppConfig, AudioConfig, VideoConfig};
+use crate::config::app_settings_registry::{
+    AppSettingsChoices, AppSettingsEntryId, adjust_app_settings_value,
+};
 use crate::config::play_input::resolve_play_bindings;
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
@@ -259,6 +263,53 @@ enum SettingsBaseline {
 pub struct SettingsEditSession {
     pub entry_id: SettingsEntryId,
     baseline: SettingsBaseline,
+}
+
+#[derive(Debug, Clone)]
+enum AppSettingsBaseline {
+    Audio(AudioConfig),
+    Video(VideoConfig),
+}
+
+/// `data/config.toml` の音声・映像設定を一項目ずつ編集するセッション。
+#[derive(Debug, Clone)]
+pub struct AppSettingsEditSession {
+    pub entry_id: AppSettingsEntryId,
+    baseline: AppSettingsBaseline,
+    choices: AppSettingsChoices,
+}
+
+impl AppSettingsEditSession {
+    pub fn capture(
+        config: &AppConfig,
+        entry_id: AppSettingsEntryId,
+        choices: AppSettingsChoices,
+    ) -> Self {
+        let baseline = if entry_id.is_audio() {
+            AppSettingsBaseline::Audio(config.audio.clone())
+        } else {
+            AppSettingsBaseline::Video(config.video.clone())
+        };
+        Self { entry_id, baseline, choices }
+    }
+
+    pub fn restore(&self, config: &mut AppConfig) {
+        match &self.baseline {
+            AppSettingsBaseline::Audio(value) => config.audio = value.clone(),
+            AppSettingsBaseline::Video(value) => config.video = value.clone(),
+        }
+    }
+
+    pub fn adjust(&self, config: &mut AppConfig, direction: i32) -> bool {
+        adjust_app_settings_value(config, self.entry_id, &self.choices, direction)
+    }
+}
+
+/// 選曲設定で現在編集中の保存先を表す。
+#[derive(Debug, Clone)]
+pub enum SelectSettingsEditSession {
+    Profile(SettingsEditSession),
+    App(AppSettingsEditSession),
 }
 
 impl SettingsEditSession {
@@ -802,6 +853,7 @@ pub fn adjust_settings_draft(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::app_config::AppConfig;
     use crate::config::profile_config::ProfileConfig;
 
     #[test]
@@ -876,6 +928,28 @@ mod tests {
         profile.audio_mix.normalize_system_bgm_volume = false;
         system_bgm_session.restore(&mut profile);
         assert!(profile.audio_mix.normalize_system_bgm_volume);
+    }
+
+    #[test]
+    fn app_edit_session_restores_the_edited_config_section() {
+        let mut config = AppConfig::default();
+        let audio = AppSettingsEditSession::capture(
+            &config,
+            AppSettingsEntryId::AudioBufferSize,
+            AppSettingsChoices::None,
+        );
+        config.audio.buffer_size = 64;
+        audio.restore(&mut config);
+        assert_eq!(config.audio.buffer_size, 256);
+
+        let video = AppSettingsEditSession::capture(
+            &config,
+            AppSettingsEntryId::VideoTargetFps,
+            AppSettingsChoices::None,
+        );
+        config.video.target_fps = 0;
+        video.restore(&mut config);
+        assert_eq!(config.video.target_fps, 240);
     }
 
     #[test]
