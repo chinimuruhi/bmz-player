@@ -623,9 +623,10 @@ fn wmii_fhd_play_lua_features_when_available() {
             .collect::<Vec<_>>();
         assert_eq!(
             stages,
-            vec![("extrastage", "!option(1080)"), ("practice", "option(1080)"),],
+            vec![("extrastage", "!option(290)"), ("practice", "number(0) < 0"),],
             "stage predicates for {name}"
         );
+        assert_eq!(loaded.dependencies.option_values.get(&1080), Some(&false));
         let next_rank_draws = loaded
             .document
             .destination
@@ -642,28 +643,31 @@ fn wmii_fhd_play_lua_features_when_available() {
         assert!(
             next_rank_draws.iter().any(|(id, draw)| {
                 *id == "nextRank-0"
-                    && matches!(
-                        *draw,
-                        "wmii_next_rank_stage(0)" | "wmii_next_rank_stage_no_max_minus(0)"
-                    )
+                    && *draw == "timer(143) == timer_off and wmii_next_rank_stage(0)"
             }),
             "MAX stage predicate for {name}: {next_rank_draws:?}"
         );
         assert!(
-            next_rank_draws.contains(&("nextRank-3", "wmii_next_rank_stage(3)")),
+            next_rank_draws
+                .contains(&("nextRank-3", "timer(143) == timer_off and wmii_next_rank_stage(3)")),
             "A stage predicate for {name}: {next_rank_draws:?}"
         );
         assert!(
-            next_rank_draws.contains(&("nextRank-2", "wmii_next_rank_stage(2)")),
+            next_rank_draws
+                .contains(&("nextRank-2", "timer(143) == timer_off and wmii_next_rank_stage(2)")),
             "AA stage predicate for {name}: {next_rank_draws:?}"
         );
         assert!(
-            next_rank_draws.contains(&("nextRankMinus", "wmii_next_rank_diff_nonzero()")),
+            next_rank_draws.contains(&("nextRankMinus", "nearest_rank_sign(minus)")),
             "negative difference predicate for {name}: {next_rank_draws:?}"
         );
         assert!(
-            next_rank_draws.contains(&("nextRankPlus", "wmii_next_rank_diff_zero()")),
-            "zero difference predicate for {name}: {next_rank_draws:?}"
+            next_rank_draws.iter().any(|(id, draw)| {
+                *id == "nextRankPlus"
+                    && draw.contains("nearest_rank(AAA,plus)")
+                    && draw.contains("nearest_rank(MAX,plus)")
+            }),
+            "positive nearest-rank predicate for {name}: {next_rank_draws:?}"
         );
         let next_rank = loaded
             .document
@@ -674,7 +678,9 @@ fn wmii_fhd_play_lua_features_when_available() {
         assert!(
             matches!(
                 next_rank.value_expr.as_str(),
-                "bmz:wmii_next_rank_diff" | "bmz:wmii_next_rank_diff_no_max_minus"
+                "bmz:wmii_next_rank_diff"
+                    | "bmz:wmii_next_rank_diff_no_max_minus"
+                    | "bmz:nearest_rank_diff_abs"
             ),
             "diff_rank for {name}: {}",
             next_rank.value_expr
@@ -687,6 +693,83 @@ fn wmii_fhd_play_lua_features_when_available() {
             "unsupported WMII draw/value function for {name}: {:?}",
             loaded.warnings
         );
+    }
+}
+
+#[test]
+fn wmii_fhd_play_stage_draws_follow_scene_modes_when_available() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/skins/WMII_FHD/play");
+    let modes = [
+        ("normal", false, false, false, ["number(0) < 0", "!option(290)", "number(0) < 0"]),
+        ("practice", true, false, false, ["number(0) < 0", "number(0) < 0", "!option(290)"]),
+        ("autoplay", false, true, false, ["!option(290)", "number(0) < 0", "number(0) < 0"]),
+        ("course", false, false, true, ["number(0) < 0", "!option(290)", "number(0) < 0"]),
+    ];
+
+    for name in [
+        "play5ac.luaskin",
+        "play5wide.luaskin",
+        "play7ac.luaskin",
+        "play7wide.luaskin",
+        "play10ac.luaskin",
+        "play10wide.luaskin",
+        "play14ac.luaskin",
+        "play14wide.luaskin",
+    ] {
+        let path = root.join(name);
+        if !path.is_file() {
+            continue;
+        }
+        for (mode, practice, autoplay, course, expected) in modes {
+            let runtime_state = LuaLoadRuntimeState {
+                option_values: BTreeMap::from([
+                    (32, !autoplay),
+                    (33, autoplay),
+                    (82, !autoplay),
+                    (84, false),
+                    (290, course),
+                    (1080, practice),
+                ]),
+                ..LuaLoadRuntimeState::default()
+            };
+            let loaded = load_lua_skin_with_runtime_state(
+                &path,
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &runtime_state,
+            )
+            .unwrap();
+            let stages = loaded
+                .document
+                .destination
+                .iter()
+                .filter_map(|entry| match entry {
+                    bmz_skin_document::DestinationListEntry::Single(destination)
+                        if matches!(
+                            destination.id.as_str(),
+                            "demoplay" | "extrastage" | "practice"
+                        ) =>
+                    {
+                        Some((destination.id.as_str(), destination.draw.as_str()))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                stages,
+                vec![
+                    ("demoplay", expected[0]),
+                    ("extrastage", expected[1]),
+                    ("practice", expected[2]),
+                ],
+                "stage predicates for {name} in {mode}"
+            );
+            assert_eq!(
+                loaded.dependencies.option_values.get(&1080),
+                Some(&practice),
+                "Practice dependency for {name} in {mode}"
+            );
+        }
     }
 }
 
