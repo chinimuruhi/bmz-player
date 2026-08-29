@@ -29,16 +29,16 @@ BMZ はプレイ終了時に次の順で保存可否を決める。
 3. 実効アシストが無ければ、履歴と数値ベストを更新し、設定された replay slot を
    評価する。その後、provider と `send_policy` の条件を満たす IR job を enqueue する。
 
-| プレイ条件 | ランプ・回数・全体統計 | 数値ベスト | 履歴 | replay | BMZ公式IR | rianIR |
-| --- | --- | --- | --- | --- | --- | --- |
-| 通常手動、実効アシストなし | 更新 | 更新 | 保存 | 条件付き保存 | 送信候補 | 送信候補 |
-| 実効 `LightAssist` / `Assist` | assist lamp・回数・player statsを更新 | 更新しない | 保存しない | 保存しない | 送信しない | 送信しない |
-| full autoplay / `AUTOPLAY BATTLE` | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない |
-| replay 再生 | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない |
-| Practice | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない |
-| key mode 変換 | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない |
-| `BATTLE` / `BATTLE AS` | 専用 bucket を更新 | 更新 | 保存 | 条件付き保存 | 送信候補 | 送信しない |
-| `G-BATTLE` | 元譜面の通常 bucket を更新 | 更新 | 保存 | 条件付き保存 | 送信候補 | 送信候補 |
+| プレイ条件 | ランプ・回数・全体統計 | 数値ベスト | 履歴 | replay | BMZ公式IR | rianIR | BMS-IR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 通常手動、実効アシストなし | 更新 | 更新 | 保存 | 条件付き保存 | 送信候補 | 送信候補 | 送信候補 |
+| 実効 `LightAssist` / `Assist` | assist lamp・回数・player statsを更新 | 更新しない | 保存しない | 保存しない | 送信しない | 送信しない | 送信しない |
+| full autoplay / `AUTOPLAY BATTLE` | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない | 送信しない |
+| replay 再生 | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない | 送信しない |
+| Practice | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない | 送信しない |
+| key mode 変換 | 保存しない | 保存しない | 保存しない | 保存しない | 送信しない | 送信しない | 送信しない |
+| `BATTLE` / `BATTLE AS` | 専用 bucket を更新 | 更新 | 保存 | 条件付き保存 | 送信候補 | 送信しない | 専用bucketへ送信候補 |
+| `G-BATTLE` | 元譜面の通常 bucket を更新 | 更新 | 保存 | 条件付き保存 | 送信候補 | 送信候補 | 通常bucketへ送信候補 |
 
 アシストを有効にしていても `Failed` / `NoPlay` は assist lamp へ昇格しない。
 
@@ -90,13 +90,13 @@ clear-only 経路を使う。
 | BATTLE / BATTLE AS | 専用 bucket に通常保存。BMZ公式IR候補、rianIRは除外 | Light Assist、clear-only、IRなし | **設計差** |
 
 SPIRAL など5種は provider 判定より前に共通の実効アシストで除外されるため、
-BMZ公式IRにもrianIRにも enqueue されない。scratch のない mode で scratch 系配置が
+BMZ公式IR、rianIR、BMS-IRのいずれにも enqueue されない。scratch のない mode で scratch 系配置が
 NORMAL に fallback した場合は、適用後の配置を基準にするため Light Assist にならない。
 
 BATTLE は BMZ では `Off` / `Battle` / `BattleAutoScratch` の score bucket を分離して
 ローカル保存する設計である。BMZ公式IRもその bucket を payload に持つ。rianIR は
-BATTLE 専用ランキングを持たないため client 側で除外する。beatoraja と完全互換にするか、
-BMZ 固有 bucket として維持するかは、配置アシストの修正とは分けて判断する。
+BATTLE 専用ランキングを持たないため client 側で除外する。BMS-IR は `Battle` と
+`BattleAutoScratch` を互いに分離したnative rankingとして保存し、通常bucketへ混ぜない。
 
 ## Key mode 変換
 
@@ -150,7 +150,8 @@ BMZ の CB 改善だけでも `UpdateScore` が送信候補になる点が差で
 送信量制御であり、server の best 更新規則とは別である。
 
 その後、provider 固有条件を適用する。現行 rianIR provider は `BATTLE` / `BATTLE AS` を
-除外し、譜面時間の妥当性も検査する。BMZ公式IRは BATTLE bucket を表現できる。
+除外し、譜面時間の妥当性も検査する。BMZ公式IRとBMS-IRは BATTLE bucket を表現できる。
+BMS-IRはBeatoraja/LR2oraja ruleと実効LN/CN/HCNも分離し、DXは送らない。
 
 ## アシスト時の補助データ差
 

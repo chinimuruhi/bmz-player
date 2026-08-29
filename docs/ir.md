@@ -145,11 +145,14 @@ SHA-256 fallback でラベルを付与する。
   `ir_score_jobs.provider` / `primary_provider` の識別子として使う。
   `IrProviderConfig.provider` は表示名または実装種別として残す。
 - BMS-IR: `https://www.bms-ir.org` を3番目の固定 provider として保持する。
-  既定は無効、role は `submit_only` 固定で、BMS-IR の数値 ID と LR2 game token を
-  credential store に保存する。通常の単曲プレイだけを既存の durable queue から送り、
-  ランキング・ライバル・難易度表・コース・replay・local backfill は提供しない。
-  BMS/PMS は MD5、BMSON は BMS-IR 互換 SHA hash で照合し、Beatoraja rule、
-  LN または LN なし、非 Battle の4/5/6/7/8/9/10/14/24/48Kスコアだけを送信対象にする。
+  既定は無効で、BMS-IR の数値 ID と LR2 game token を credential store に保存する。
+  ログイン後は primary provider に選択でき、既存の durable queue から単曲・終端
+  course/Dan scoreを送る。ランキング、登録ライバルとbest同期、BMS-IR難易度表、
+  server→localの自己スコア同期をprovider別cacheで扱う。ライバル追加・解除はWebで行う。
+  BMS/PMS は MD5、BMSON は BMS-IR 互換 SHA hash で照合し、Beatoraja/LR2oraja rule、
+  実効LN/CN/HCN、Off/Flip/Battle/Battle ASの4/5/6/7/8/9/10/14/24/48Kを送信対象にする。
+  BattleとBattle ASは別bucket、G-BATTLEは通常bucketを使う。DX、full autoplay、
+  replay再生、Practice、実効assist、replay file送受信、local backfillは対象外である。
   4/6/8Kもクライアント固有枠ではなくBMS-IRの正規キーモードとして送る。
   ローカル統合確認用のビルドだけは、`BMZ_BMS_IR_BASE_URL` を `cargo build` 時に
   指定すると固定 endpoint を差し替えられる。通常ビルドでは production URL 固定で、
