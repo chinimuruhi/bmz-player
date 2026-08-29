@@ -620,6 +620,47 @@ option は論理入力の押下中、timer は直近の論理入力 press edge �
 timer を再起動しない。scene 入場時から押されている入力は press edge として扱わない。
 E1 は設定済み E1 と legacy Start、E2 は設定済み E2 と legacy Select を含む。
 
+E1/E2共通パネル向けには次の集約状態を使う。
+
+| option | press / hold timer | release timer | aggregate input |
+| ---: | ---: | ---: | --- |
+| 1928 | 19008 | 19009 | E1 または E2 |
+
+option 1928はE1/E2のどちらかを押している間true。timer 19008は最初の一方を押した
+false-to-true edgeで0msから始まり、どちらかを押している間だけ有効になる。もう一方を追加で
+押しても再起動しない。両方を離すと19008はoffになり、timer 19009が0msから始まる。
+次の共通pressで19009はoffになる。scene入場時から押されている入力ではどちらも発火しない。
+
+入場後の表示を押下中に維持し、release後に退場させる場合は、同じ見た目を別IDで定義して
+次のように組み合わせる。
+
+```json
+{
+  "destination": [
+    {
+      "id": "hs-panel-held",
+      "timer": 19008,
+      "loop": 120,
+      "op": [1928],
+      "dst": [
+        { "time": 0, "x": 80, "y": 100, "w": 400, "h": 120, "a": 0 },
+        { "time": 120, "x": 100, "a": 255 }
+      ]
+    },
+    {
+      "id": "hs-panel-release",
+      "timer": 19009,
+      "loop": -1,
+      "op": [-1928],
+      "dst": [
+        { "time": 0, "x": 100, "y": 100, "w": 400, "h": 120, "a": 255 },
+        { "time": 180, "x": 80, "a": 0 }
+      ]
+    }
+  ]
+}
+```
+
 `runtimeEvent` に `triggerAction` を指定すると、Lua で入力状態を取得せずに runtime flag を
 切り替えられる。値は `e1_press`, `e2_press`, `e3_press`, `e4_press`,
 `ui_left_press`, `ui_right_press`, `ui_up_press`, `ui_down_press`。
