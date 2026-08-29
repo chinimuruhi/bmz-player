@@ -1,6 +1,7 @@
 pub(super) struct WgpuRenderer {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
+    pub(super) adapter_info: wgpu::AdapterInfo,
     pub(super) config: wgpu::SurfaceConfiguration,
     pub(super) present_modes: Vec<wgpu::PresentMode>,
     pub(super) rect_pipeline: wgpu::RenderPipeline,

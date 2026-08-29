@@ -372,6 +372,7 @@ impl WinitApp {
                 egui: None,
                 log_buffer,
                 applied_window_mode: initial_window_mode,
+                exclusive_fullscreen_fallback_active: false,
                 device_events_reconfigure_pending: false,
                 focused: true,
                 last_cursor_action_at: now,

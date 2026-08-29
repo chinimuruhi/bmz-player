@@ -193,8 +193,17 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_ime_event(&ime);
             }
             WindowEvent::Resized(size) => {
-                self.renderer
-                    .resize_surface(SurfaceSize { width: size.width, height: size.height });
+                if let Err(error) = self
+                    .renderer
+                    .resize_surface(SurfaceSize { width: size.width, height: size.height })
+                {
+                    tracing::error!(
+                        width = size.width,
+                        height = size.height,
+                        error = %format_error_chain(&error),
+                        "failed to reconfigure renderer surface after resize"
+                    );
+                }
                 // 検索モード中はリサイズに合わせて IME 候補ウィンドウ位置を再計算する。
                 self.update_search_ime_cursor_area();
             }

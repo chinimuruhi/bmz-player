@@ -103,6 +103,14 @@ pub(super) enum VideoModeRefreshReason {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ExclusiveVideoModePolicy {
+    /// Windows / macOS: honor the configured resolution and target FPS.
+    ConfiguredResolution,
+    /// Linux compatibility: keep the historical largest-resolution behavior.
+    LegacyLargestResolution,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct VideoModeSelection {
     pub(super) index: usize,
     pub(super) resolution_reason: VideoModeResolutionReason,
@@ -159,26 +167,36 @@ pub(super) fn select_exclusive_video_mode(
     Some(VideoModeSelection { index, resolution_reason, refresh_reason })
 }
 
-/// macOS では設定解像度と target FPS を考慮する。他 platform は、このmacOS向け
-/// 修正で既存挙動を変えないよう、従来の「最大面積、その中で最高refresh rate」を保つ。
+/// platform policy に従って排他フルスクリーンの video mode を選ぶ。
 pub(super) fn select_platform_exclusive_video_mode(
     candidates: &[VideoModeSpec],
     requested_size: PhysicalSize<u32>,
     target_fps: u32,
-    is_macos: bool,
+    policy: ExclusiveVideoModePolicy,
 ) -> Option<VideoModeSelection> {
-    if is_macos {
-        return select_exclusive_video_mode(candidates, requested_size, target_fps);
+    match policy {
+        ExclusiveVideoModePolicy::ConfiguredResolution => {
+            select_exclusive_video_mode(candidates, requested_size, target_fps)
+        }
+        ExclusiveVideoModePolicy::LegacyLargestResolution => {
+            let (index, _) = candidates.iter().enumerate().max_by_key(|(_, mode)| {
+                (u64::from(mode.width) * u64::from(mode.height), mode.refresh_millihertz)
+            })?;
+            Some(VideoModeSelection {
+                index,
+                resolution_reason: VideoModeResolutionReason::LegacyLargest,
+                refresh_reason: VideoModeRefreshReason::LegacyHighestAtLargestResolution,
+            })
+        }
     }
+}
 
-    let (index, _) = candidates.iter().enumerate().max_by_key(|(_, mode)| {
-        (u64::from(mode.width) * u64::from(mode.height), mode.refresh_millihertz)
-    })?;
-    Some(VideoModeSelection {
-        index,
-        resolution_reason: VideoModeResolutionReason::LegacyLargest,
-        refresh_reason: VideoModeRefreshReason::LegacyHighestAtLargestResolution,
-    })
+pub(super) fn platform_exclusive_video_mode_policy() -> ExclusiveVideoModePolicy {
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        ExclusiveVideoModePolicy::ConfiguredResolution
+    } else {
+        ExclusiveVideoModePolicy::LegacyLargestResolution
+    }
 }
 
 fn resolution_fallback_key(
@@ -214,7 +232,7 @@ pub(super) fn pick_exclusive_video_mode(
         &specs,
         requested_size,
         target_fps,
-        cfg!(target_os = "macos"),
+        platform_exclusive_video_mode_policy(),
     )?;
     let selected = specs[selection.index];
     let monitor_size = monitor.size();
@@ -248,6 +266,27 @@ pub(super) fn pick_exclusive_video_mode(
         "selected exclusive fullscreen video mode"
     );
     modes.into_iter().nth(selection.index)
+}
+
+pub(super) fn effective_window_mode(fullscreen: &Option<Fullscreen>) -> WindowMode {
+    match fullscreen {
+        None => WindowMode::Windowed,
+        Some(Fullscreen::Borderless(_)) => WindowMode::BorderlessFullscreen,
+        Some(Fullscreen::Exclusive(_)) => WindowMode::ExclusiveFullscreen,
+    }
+}
+
+pub(super) fn surface_attach_fallback_mode(
+    requested_mode: &WindowMode,
+    effective_mode: &WindowMode,
+    fallback_attempted: bool,
+    is_windows: bool,
+) -> Option<WindowMode> {
+    (is_windows
+        && !fallback_attempted
+        && *requested_mode == WindowMode::ExclusiveFullscreen
+        && *effective_mode == WindowMode::ExclusiveFullscreen)
+        .then_some(WindowMode::BorderlessFullscreen)
 }
 
 pub(super) fn format_error_chain(error: &anyhow::Error) -> String {

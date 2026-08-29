@@ -87,7 +87,7 @@ use state::{
 use surface::resolve_maximum_frame_latency;
 #[cfg(test)]
 use surface::resolve_wgpu_present_mode;
-use surface::{configure_surface_settings, wgpu_present_mode_label};
+use surface::{configure_surface_checked, configure_surface_settings, wgpu_present_mode_label};
 
 #[cfg(test)]
 #[path = "renderer/tests.rs"]

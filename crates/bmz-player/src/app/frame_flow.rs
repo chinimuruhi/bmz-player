@@ -643,13 +643,37 @@ impl WinitApp {
     }
 
     pub(super) fn apply_egui_video_config(&mut self, window: &Window) {
-        self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
-        self.renderer
-            .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video));
+        if let Err(error) =
+            self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video))
+        {
+            tracing::error!(
+                error = %format_error_chain(&error),
+                "failed to reconfigure renderer present mode"
+            );
+        }
+        if let Err(error) = self
+            .renderer
+            .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video))
+        {
+            tracing::error!(
+                error = %format_error_chain(&error),
+                "failed to reconfigure renderer frame latency"
+            );
+        }
         self.renderer.set_internal_resolution_mode(config_internal_resolution_mode(
             &self.boot.app_config.video,
         ));
-        let desired_mode = self.boot.app_config.video.mode.clone();
+        let configured_mode = self.boot.app_config.video.mode.clone();
+        if self.ui.exclusive_fullscreen_fallback_active
+            && configured_mode != WindowMode::ExclusiveFullscreen
+        {
+            self.ui.exclusive_fullscreen_fallback_active = false;
+        }
+        let desired_mode = if self.ui.exclusive_fullscreen_fallback_active {
+            WindowMode::BorderlessFullscreen
+        } else {
+            configured_mode.clone()
+        };
         if desired_mode == self.ui.applied_window_mode {
             return;
         }
@@ -658,8 +682,14 @@ impl WinitApp {
             window.available_monitors(),
             window.primary_monitor(),
         );
-        window.set_fullscreen(fullscreen_from_config(&self.boot.app_config.video, monitor));
-        tracing::info!(mode = ?desired_mode, "window mode updated");
+        let mut effective_video = self.boot.app_config.video.clone();
+        effective_video.mode = desired_mode.clone();
+        window.set_fullscreen(fullscreen_from_config(&effective_video, monitor));
+        tracing::info!(
+            requested_window_mode = ?configured_mode,
+            effective_window_mode = ?desired_mode,
+            "window mode updated"
+        );
         self.ui.applied_window_mode = desired_mode;
     }
 

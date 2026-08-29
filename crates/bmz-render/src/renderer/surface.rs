@@ -56,6 +56,73 @@ pub(super) fn configure_surface_settings(
     config.usage |= wgpu::TextureUsages::COPY_SRC;
 }
 
+/// `Surface::configure` がdevice error sinkへ送る同期エラーを局所的に捕捉する。
+///
+/// wgpu 29のerror scopeはfilterごとに分かれているため、全種類を積み、必ず
+/// pushと逆順にpopする。scope外のGPUエラーには既定のuncaptured handlerを残す。
+pub(super) fn configure_surface_checked(
+    surface: &wgpu::Surface<'_>,
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+    adapter_info: &wgpu::AdapterInfo,
+) -> Result<()> {
+    let validation_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let internal_scope = device.push_error_scope(wgpu::ErrorFilter::Internal);
+    let out_of_memory_scope = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+
+    surface.configure(device, config);
+
+    let mut captured = Vec::new();
+    if let Some(error) = block_on(out_of_memory_scope.pop()) {
+        captured.push(("out_of_memory", error));
+    }
+    if let Some(error) = block_on(internal_scope.pop()) {
+        captured.push(("internal", error));
+    }
+    if let Some(error) = block_on(validation_scope.pop()) {
+        captured.push(("validation", error));
+    }
+    if captured.is_empty() {
+        return Ok(());
+    }
+
+    let captured_errors = captured
+        .iter()
+        .map(|(kind, error)| format!("{kind}: {error}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    tracing::error!(
+        adapter_name = %adapter_info.name,
+        adapter_backend = ?adapter_info.backend,
+        adapter_device_type = ?adapter_info.device_type,
+        driver = %adapter_info.driver,
+        driver_info = %adapter_info.driver_info,
+        surface_width = config.width,
+        surface_height = config.height,
+        surface_format = ?config.format,
+        present_mode = ?config.present_mode,
+        alpha_mode = ?config.alpha_mode,
+        desired_maximum_frame_latency = config.desired_maximum_frame_latency,
+        captured_error = %captured_errors,
+        "failed to configure renderer surface"
+    );
+    Err(anyhow!(
+        "surface configure failed: adapter_name={:?}, adapter_backend={:?}, adapter_device_type={:?}, driver={:?}, driver_info={:?}, width={}, height={}, format={:?}, present_mode={:?}, alpha_mode={:?}, desired_maximum_frame_latency={}, captured_error={}",
+        adapter_info.name,
+        adapter_info.backend,
+        adapter_info.device_type,
+        adapter_info.driver,
+        adapter_info.driver_info,
+        config.width,
+        config.height,
+        config.format,
+        config.present_mode,
+        config.alpha_mode,
+        config.desired_maximum_frame_latency,
+        captured_errors
+    ))
+}
+
 pub(super) fn resolve_maximum_frame_latency(
     mode: WgpuFrameLatencyMode,
     effective_present_mode: wgpu::PresentMode,
