@@ -94,6 +94,10 @@ skin の `NUMBER_DURATION` (312) には導出した表示時間、
 表示境界に使い、`constant_fade_ms` は `-1000..=1000ms` の範囲で境界前後を
 フェードさせる。Practice の区間プレビューと区間プレイではCONSTANTを無効にする。
 
+選曲画面の `NUMBER_DURATION` と `NUMBER_DURATION_GREEN` は、選択中のキーモードで
+有効なSUDDEN+とHIDDEN+を上下のカバーとして扱い、両者の間でノーツが見える割合を
+反映する。無効なカバーの保存値は無視し、カバーが重なる場合は表示時間を0に収める。
+
 ## HS-FIX
 
 HS-FIX の選択肢とBPM基準は次のとおり。

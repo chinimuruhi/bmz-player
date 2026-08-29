@@ -100,12 +100,7 @@ impl WinitApp {
                 FloatingPolicyConfig::Toggle => self.select.hs_fix_option != HsFixOption::Off,
             });
         let note_display_duration_ms = mode_config.as_ref().map(|config| {
-            let green = if !select_floating && config.base_hispeed == BaseHispeedConfig::Normal {
-                crate::config::play::normal_hispeed_green_number(config.normal_hispeed_level)
-            } else {
-                config.target_green_number.max(1)
-            };
-            crate::config::play::duration_ms_from_green_number(green) as i32
+            Self::select_note_display_duration_ms_for_config(config, select_floating)
         });
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let ln_score_policy = match selected {
@@ -491,6 +486,31 @@ impl WinitApp {
         crate::config::play::duration_ms_from_green_number(
             profile.play_mode_config(profile.active_play_mode).target_green_number.max(1),
         ) as i32
+    }
+
+    pub(super) fn select_note_display_duration_ms_for_config(
+        config: &PlayModeConfig,
+        select_floating: bool,
+    ) -> i32 {
+        let green = if !select_floating && config.base_hispeed == BaseHispeedConfig::Normal {
+            crate::config::play::normal_hispeed_green_number(config.normal_hispeed_level)
+        } else {
+            config.target_green_number.max(1)
+        };
+        let sudden = if config.lane_effect.sudden_enabled() {
+            crate::config::play::lane_unit_to_f32(config.sudden)
+        } else {
+            0.0
+        };
+        let hidden = if config.lane_effect.hidden_enabled() {
+            crate::config::play::lane_unit_to_f32(config.hidden)
+        } else {
+            0.0
+        };
+        let visible = (1.0 - sudden - hidden).clamp(0.0, 1.0);
+        (crate::config::play::duration_ms_from_green_number(green) as f32 * visible)
+            .round()
+            .clamp(0.0, i32::MAX as f32) as i32
     }
 
     pub(super) fn ensure_visible_select_chart_distributions(&self, visible_limit: usize) {
