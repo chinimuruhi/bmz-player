@@ -1058,7 +1058,7 @@ fn session() -> GameSession {
             normalize_chart_volume: true,
             key_volume: 1.0,
             bgm_volume: 1.0,
-            auto_key_volume: 0.0,
+            auto_keysound: false,
         },
         hispeed: 2.0,
         hispeed_mode: bmz_gameplay::session::HispeedMode::Normal,

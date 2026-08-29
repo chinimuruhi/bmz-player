@@ -53,10 +53,9 @@ pub(in crate::ui::profile_panel) fn build_profile_volume_section(
                 &mut profile.audio_mix.key_volume,
                 &tr!(text, "profile-volume-keysound"),
             );
-            volume_slider(
-                ui,
-                &mut profile.audio_mix.auto_key_volume,
-                &tr!(text, "profile-volume-keysound-auto"),
+            ui.checkbox(
+                &mut profile.audio_mix.auto_keysound,
+                tr!(text, "profile-volume-keysound-auto"),
             );
             volume_slider(ui, &mut profile.audio_mix.bgm_volume, "BGM");
             volume_slider(

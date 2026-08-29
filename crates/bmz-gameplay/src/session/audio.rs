@@ -1,5 +1,12 @@
 pub fn schedule_keysounds(session: &mut GameSession, audio: &mut dyn AudioScheduler) {
-    for event in std::mem::take(&mut session.pending_keysounds) {
+    let pending = std::mem::take(&mut session.pending_keysounds);
+    if session.audio_mix.auto_keysound {
+        // キー音自動再生モード中は押鍵音を鳴らさない。HCN 早離しのキー音
+        // ミュート/復帰も、自動再生ボイスに効かせず入力非依存を保つため捨てる。
+        session.pending_keysound_volumes.clear();
+        return;
+    }
+    for event in pending {
         let note_id = event.note_id;
         let Some(note) = session.chart.note_by_id(note_id) else {
             continue;

@@ -39,8 +39,10 @@ pub struct PlayAudioMix {
     pub normalize_chart_volume: bool,
     pub key_volume: f32,
     pub bgm_volume: f32,
-    /// キー音自動再生のボリューム。0.0 なら無効。
-    pub auto_key_volume: f32,
+    /// キー音自動再生モード。ON なら押鍵時のキー音を鳴らさず、譜面の生タイミング
+    /// (入力オフセット・表示オフセットの影響を受けない `NoteEvent.time`) で
+    /// キー音を自動再生する。音量は `key_volume` を使う。
+    pub auto_keysound: bool,
 }
 
 impl PlayAudioMix {

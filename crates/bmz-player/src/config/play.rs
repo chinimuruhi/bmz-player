@@ -102,7 +102,7 @@ pub fn audio_mix_from_profile_with_chart_gain(
         normalize_chart_volume: profile.audio_mix.normalize_chart_volume,
         key_volume: volume_unit_to_f32(profile.audio_mix.key_volume),
         bgm_volume: volume_unit_to_f32(profile.audio_mix.bgm_volume),
-        auto_key_volume: volume_unit_to_f32(profile.audio_mix.auto_key_volume),
+        auto_keysound: profile.audio_mix.auto_keysound,
     }
 }
 

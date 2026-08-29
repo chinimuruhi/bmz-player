@@ -29,6 +29,42 @@ fn advance_session_frame_schedules_bgm_with_mix_volume() {
 }
 
 #[test]
+fn auto_keysound_plays_note_sounds_without_input() {
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.autoplay = None;
+    session.audio_mix.master_volume = 0.5;
+    session.audio_mix.key_volume = 0.25;
+    session.audio_mix.chart_normalization_gain = 0.5;
+    session.audio_mix.normalize_chart_volume = true;
+    session.audio_mix.auto_keysound = true;
+    let mut audio = TestAudio::default();
+
+    advance_session_frame(&mut session, &mut audio);
+
+    // 押鍵ゼロでも譜面の生タイミングでキー音が鳴る。音量は key_volume を使う。
+    assert_eq!(audio.scheduled.len(), 1);
+    assert_eq!(audio.scheduled[0].sound_id, SoundId(7));
+    assert_eq!(audio.scheduled[0].start_frame, 0);
+    assert_eq!(audio.scheduled[0].volume, 0.0625);
+    assert_eq!(audio.scheduled[0].restart_policy, RestartPolicy::StopSameSound);
+}
+
+#[test]
+fn auto_keysound_suppresses_hit_keysounds() {
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.audio_mix.auto_keysound = true;
+    let mut audio = TestAudio::default();
+
+    let frame = advance_session_frame(&mut session, &mut audio);
+
+    // オートプレイでノーツは判定されるが、キー音は自動再生の 1 回だけ
+    // (押鍵経路は抑制されるので二重再生しない)。
+    assert_eq!(frame.judgements.len(), 1);
+    assert_eq!(audio.scheduled.len(), 1);
+    assert_eq!(audio.scheduled[0].sound_id, SoundId(7));
+}
+
+#[test]
 fn advance_session_frame_applies_chart_volume_channels() {
     let mut chart = chart_with_keysound();
     chart.key_volume_events.push(bmz_chart::model::ChartVolumeEvent {
