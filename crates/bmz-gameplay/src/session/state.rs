@@ -9,7 +9,15 @@ pub enum PlayState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HispeedMode {
     Normal,
+    Classic,
     Floating,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FloatingPolicy {
+    Disabled,
+    Toggle,
+    Locked,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -218,6 +226,9 @@ pub struct GameSession {
     pub audio_mix: PlayAudioMix,
     pub hispeed: f32,
     pub hispeed_mode: HispeedMode,
+    pub base_hispeed_mode: HispeedMode,
+    pub floating_policy: FloatingPolicy,
+    pub normal_hispeed_level: u8,
     pub target_green_number: u32,
     pub constant_enabled: bool,
     pub constant_fade_ms: i32,

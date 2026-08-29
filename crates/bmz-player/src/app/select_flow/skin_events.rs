@@ -472,15 +472,32 @@ impl WinitApp {
         if !self.begin_selected_play_mode_edit() {
             return;
         }
-        let mode = match self.select.hs_fix_option {
-            HsFixOption::Off => HispeedMode::Normal,
-            HsFixOption::StartBpm
-            | HsFixOption::MaxBpm
-            | HsFixOption::MainBpm
-            | HsFixOption::MinBpm => HispeedMode::Floating,
+        let mode = match self.boot.profile_config.lane.floating_policy {
+            FloatingPolicyConfig::Disabled => {
+                base_hispeed_mode_from_config(self.boot.profile_config.lane.base_hispeed)
+            }
+            FloatingPolicyConfig::Locked => HispeedMode::Floating,
+            FloatingPolicyConfig::Toggle if self.select.hs_fix_option != HsFixOption::Off => {
+                HispeedMode::Floating
+            }
+            FloatingPolicyConfig::Toggle => {
+                base_hispeed_mode_from_config(self.boot.profile_config.lane.base_hispeed)
+            }
         };
-        let step = hispeed_step_for_profile(&self.boot.profile_config, mode);
         let change = if arg >= 0 { HispeedChange::Up } else { HispeedChange::Down };
+        if mode == HispeedMode::Normal {
+            let current = self.boot.profile_config.lane.normal_hispeed_level;
+            let next = adjusted_normal_hispeed_level(current, change);
+            if next == current {
+                return;
+            }
+            self.boot.profile_config.lane.normal_hispeed_level = next;
+            self.finish_selected_play_mode_edit();
+            self.sync_realtime_profile_settings();
+            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+            return;
+        }
+        let step = hispeed_step_for_profile(&self.boot.profile_config, mode);
         let current = self.boot.profile_config.lane.hispeed;
         let next = adjusted_hispeed(current, change, step);
         if next == current {
@@ -494,6 +511,9 @@ impl WinitApp {
 
     pub(super) fn adjust_select_note_display_duration(&mut self, arg: i32) {
         if !self.begin_selected_play_mode_edit() {
+            return;
+        }
+        if self.boot.profile_config.lane.floating_policy == FloatingPolicyConfig::Disabled {
             return;
         }
         let current = self.boot.profile_config.lane.target_green_number;

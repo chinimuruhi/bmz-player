@@ -21,7 +21,7 @@ use bmz_gameplay::input::binding::LaneBinding;
 use bmz_gameplay::input::system::last_input_collection_diagnostics;
 use bmz_gameplay::rule::RuleMode;
 use bmz_gameplay::session::compute_frame_times;
-use bmz_gameplay::session::{HispeedMode, PlaySkinOffset};
+use bmz_gameplay::session::{FloatingPolicy, HispeedMode, PlaySkinOffset};
 use bmz_render::assets::{RgbaImageAsset, load_chart_bga_image, load_static_rgba_image};
 use bmz_render::plan::{
     PLAY_BACKBMP_TEXTURE, Rect, SELECT_BANNER_TEXTURE, SELECT_STAGE_TEXTURE, TextureId,
@@ -71,12 +71,13 @@ use crate::config::play::{
     input_bounce_config_from_profile,
 };
 use crate::config::profile_config::{
-    BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig, DoubleOptionConfig,
-    GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig,
-    InputActionConfig, JudgeAlgorithmConfig, KeyModeConversionConfig, LaneEffectConfig,
-    LaneViewConfig, PlayDefaultsConfig, PlayModeConfig, ProfileConfig, ProfileInputConfig,
-    RandomOptionConfig, RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig,
-    default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
+    BaseHispeedConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
+    DoubleOptionConfig, FloatingPolicyConfig, GaugeAutoShiftConfig, GaugeTypeConfig,
+    HispeedConfigPreset, HispeedDirectionConfig, HsFixConfig, InputActionConfig,
+    JudgeAlgorithmConfig, KeyModeConversionConfig, LaneEffectConfig, LaneViewConfig,
+    PlayDefaultsConfig, PlayModeConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
+    RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig,
+    default_classic_hispeed_step, default_floating_hispeed_step, normalize_hispeed_step,
     replay_slot_rule_indices,
 };
 use crate::config::save::{save_app_config, save_profile_config};

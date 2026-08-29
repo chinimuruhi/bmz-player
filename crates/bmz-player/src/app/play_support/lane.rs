@@ -17,21 +17,37 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
             if lane.lift_enabled && lane.hidden_enabled {
                 lane.lane_target = lane.lane_target.toggled_lift_hidden();
             } else {
+                if lane.floating_policy != FloatingPolicy::Toggle {
+                    return false;
+                }
                 match lane.hispeed_mode {
-                    HispeedMode::Normal => {
+                    HispeedMode::Normal | HispeedMode::Classic => {
                         lane.target_green_number = lane.current_green_number(now_bpm);
                         lane.hispeed_mode = HispeedMode::Floating;
                     }
                     HispeedMode::Floating => {
                         lane.hispeed = clamp_hispeed(lane.hispeed);
-                        lane.hispeed_mode = HispeedMode::Normal;
+                        lane.hispeed_mode = lane.base_hispeed_mode;
+                        if lane.hispeed_mode == HispeedMode::Normal {
+                            lane.normal_hispeed_level =
+                                crate::config::play::normal_hispeed_level_for_green_number(
+                                    lane.current_full_lane_green_number(now_bpm),
+                                );
+                            lane.refresh_normal_hispeed(now_bpm, false);
+                        }
                     }
                 }
             }
         }
         PlayLaneAction::Hispeed(change) => {
-            let step = hispeed_step_for_profile(profile, lane.hispeed_mode);
-            lane.hispeed = adjusted_hispeed(lane.hispeed, change, step);
+            if lane.hispeed_mode == HispeedMode::Normal {
+                lane.normal_hispeed_level =
+                    adjusted_normal_hispeed_level(lane.normal_hispeed_level, change);
+                lane.refresh_normal_hispeed(now_bpm, false);
+            } else {
+                let step = hispeed_step_for_profile(profile, lane.hispeed_mode);
+                lane.hispeed = adjusted_hispeed(lane.hispeed, change, step);
+            }
         }
         PlayLaneAction::LaneCoverDelta(delta) => {
             apply_pending_lane_cover_delta(lane, profile, now_bpm, delta, false)
@@ -40,8 +56,11 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
             apply_pending_lane_cover_delta(lane, profile, now_bpm, delta, true)
         }
         PlayLaneAction::GreenNumberDelta(delta) => {
+            if lane.floating_policy == FloatingPolicy::Disabled {
+                return false;
+            }
             let current = match lane.hispeed_mode {
-                HispeedMode::Normal => lane.current_green_number(now_bpm),
+                HispeedMode::Normal | HispeedMode::Classic => lane.current_green_number(now_bpm),
                 HispeedMode::Floating => lane.target_green_number,
             };
             lane.target_green_number = adjusted_green_number(current, delta);
@@ -144,21 +163,41 @@ pub(in crate::app) fn apply_play_lane_action_to_session(
                 *lane_target = lane_target.toggled_lift_hidden();
                 return true;
             }
+            if session.floating_policy != FloatingPolicy::Toggle {
+                return false;
+            }
             match session.hispeed_mode {
-                HispeedMode::Normal => {
+                HispeedMode::Normal | HispeedMode::Classic => {
                     let now = session.audio_clock.now();
                     session.target_green_number = current_green_number(session, now);
                     session.hispeed_mode = HispeedMode::Floating;
                 }
                 HispeedMode::Floating => {
                     session.hispeed = clamp_hispeed(session.hispeed);
-                    session.hispeed_mode = HispeedMode::Normal;
+                    session.hispeed_mode = session.base_hispeed_mode;
+                    if session.hispeed_mode == HispeedMode::Normal {
+                        let now = session.audio_clock.now();
+                        session.normal_hispeed_level =
+                            crate::config::play::normal_hispeed_level_for_green_number(
+                                current_full_lane_green_number(session, now),
+                            );
+                        session.hispeed =
+                            hispeed_for_normal_level(session, session.normal_hispeed_level, now);
+                    }
                 }
             }
             true
         }
         PlayLaneAction::Hispeed(change) => {
-            apply_hispeed_change_to_session(session, change, hispeed_step);
+            if session.hispeed_mode == HispeedMode::Normal {
+                session.normal_hispeed_level =
+                    adjusted_normal_hispeed_level(session.normal_hispeed_level, change);
+                let now = session.audio_clock.now();
+                session.hispeed =
+                    hispeed_for_normal_level(session, session.normal_hispeed_level, now);
+            } else {
+                apply_hispeed_change_to_session(session, change, hispeed_step);
+            }
             true
         }
         PlayLaneAction::LaneCoverDelta(delta) => {
@@ -257,8 +296,13 @@ pub(in crate::app) fn apply_green_number_step_to_session(
     if speed_locked {
         return false;
     }
+    if session.floating_policy == FloatingPolicy::Disabled {
+        return false;
+    }
     let current = match session.hispeed_mode {
-        HispeedMode::Normal => current_green_number(session, session.audio_clock.now()),
+        HispeedMode::Normal | HispeedMode::Classic => {
+            current_green_number(session, session.audio_clock.now())
+        }
         HispeedMode::Floating => session.target_green_number,
     };
     session.target_green_number = adjusted_green_number(current, delta);

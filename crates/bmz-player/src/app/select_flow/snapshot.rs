@@ -92,9 +92,20 @@ impl WinitApp {
         let selected_play_mode = self.selected_play_mode();
         let mode_config =
             selected_play_mode.map(|mode| self.boot.profile_config.play_mode_config(mode));
+        let hispeed_config = mode_config.as_ref().map(PlayModeConfig::hispeed_config);
+        let select_floating =
+            mode_config.as_ref().is_some_and(|config| match config.floating_policy {
+                FloatingPolicyConfig::Disabled => false,
+                FloatingPolicyConfig::Locked => true,
+                FloatingPolicyConfig::Toggle => self.select.hs_fix_option != HsFixOption::Off,
+            });
         let note_display_duration_ms = mode_config.as_ref().map(|config| {
-            crate::config::play::duration_ms_from_green_number(config.target_green_number.max(1))
-                as i32
+            let green = if !select_floating && config.base_hispeed == BaseHispeedConfig::Normal {
+                crate::config::play::normal_hispeed_green_number(config.normal_hispeed_level)
+            } else {
+                config.target_green_number.max(1)
+            };
+            crate::config::play::duration_ms_from_green_number(green) as i32
         });
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let ln_score_policy = match selected {
@@ -280,6 +291,14 @@ impl WinitApp {
                 selected.map(|item| item.display_name_for_locale(locale)).unwrap_or_default()
             },
             hispeed: mode_config.as_ref().map(|config| config.hispeed).unwrap_or(0.0),
+            hispeed_mode_index: i32::from(select_floating),
+            base_hispeed_index: mode_config
+                .as_ref()
+                .map_or(0, |config| i32::from(config.base_hispeed == BaseHispeedConfig::Normal)),
+            normal_hispeed_level: mode_config.as_ref().map_or(18, |config| {
+                crate::config::play::normalize_normal_hispeed_level(config.normal_hispeed_level)
+            }),
+            hispeed_config_index: hispeed_config.map_or(4, HispeedConfigPreset::index),
             note_display_duration_ms,
             rows,
             arrange: self.select.arrange_option.as_str().to_string(),

@@ -156,9 +156,14 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
             format!("{} ms", profile.play.misslayer_duration_ms)
         }
         SettingsEntryId::Hispeed => format!("{:.2}", profile.lane.hispeed),
-        SettingsEntryId::HispeedMode => format_hispeed_mode(profile.lane.hispeed_mode),
-        SettingsEntryId::HispeedStepNhs => format!("{:.2}", profile.lane.hispeed_step_nhs),
-        SettingsEntryId::HispeedStepFhs => format!("{:.2}", profile.lane.hispeed_step_fhs),
+        SettingsEntryId::HispeedMode => format_hispeed_mode(profile.lane.hispeed_config()),
+        SettingsEntryId::NormalHispeedLevel => {
+            format!("{}", profile.lane.normal_hispeed_level)
+        }
+        SettingsEntryId::ClassicHispeedStep => format!("{:.2}", profile.lane.classic_hispeed_step),
+        SettingsEntryId::FloatingHispeedStep => {
+            format!("{:.2}", profile.lane.floating_hispeed_step)
+        }
         SettingsEntryId::SuddenEnabled => {
             format_bool_on_off(profile.play.lane_effect.sudden_enabled())
         }

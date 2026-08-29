@@ -287,13 +287,13 @@ E1/E2単押しでは開始・退出しません。E1/E2 hold中は従来どお�
 
 | Key | 操作 |
 | --- | --- |
-| Left / Right | ハイスピードを HS MODE ごとの設定刻みで下げる / 上げる (NHS 既定 0.25、FHS 既定 0.50) |
+| Left / Right | Normalは20段階を下げる / 上げる。Classic / Floatingは設定刻みで倍率を下げる / 上げる |
 | Up / Down | SUDDEN+表示中はSUDDEN+、非表示中は有効なLIFT/HIDDEN+を調整 |
-| E1 hold + 鍵盤 | KEY MODE ごとの HS 方向に従い、HS MODE ごとの設定刻みでハイスピードを下げる / 上げる |
-| E1 hold + E2 | LIFT/HIDDEN+両方有効時は変更対象を切替。それ以外はHS MODEを切替 |
+| E1 hold + 鍵盤 | KEY MODE ごとのHS方向に従い、Normalは段階、Classic / Floatingは倍率を変更 |
+| E1 hold + E2 | LIFT/HIDDEN+両方有効時は変更対象を切替。それ以外は切替可能な設定でFloatingを切替 |
 | E1 hold + Scratch Up/Down | Up/Downと同じ対象のカバー量を変更 |
-| E2 hold + 鍵盤 | E1 と同じ KEY MODE ごとの HS 方向に従い、緑数字を下げる / 上げる |
-| E2 hold + Scratch Up/Down | 緑数字を下げる / 上げる |
+| E2 hold + 鍵盤 | Floatingが利用可能な設定では、E1と同じKEY MODEごとのHS方向に従い緑数字を下げる / 上げる |
+| E2 hold + Scratch Up/Down | Floatingが利用可能な設定では緑数字を下げる / 上げる |
 | E1 double press | SUDDEN+が有効な場合だけSUDDEN+表示を切替 |
 | Escape | プレイを中断して選曲へ戻る。最終ノーツ処理後、終了演出開始前は E1 と同じく終了演出を開始 |
 | E1+E2 hold | 一定時間長押しでプレイを中断 |
@@ -312,10 +312,16 @@ E1+E2の押下エッジごとにLIFT/HIDDEN+を切り替えます。押す順序
 HIDDEN+を変更対象にした場合だけ増減方向がSUDDEN+/LIFTと逆になり、カーソルキーと
 E1+ScratchのどちらでもUpでHIDDEN+量が増え、Downで減ります。
 
+HS設定は `NORMAL` / `CLASSIC` / `FLOATING` / `NORMAL+FLOATING` /
+`CLASSIC+FLOATING` の5種類です。`NORMAL` と `CLASSIC` ではFloatingと緑数字操作を
+無効にし、`FLOATING` ではFloatingを固定します。末尾が `+FLOATING` の2設定だけ、
+E1+E2で基準方式とFloatingを切り替えられます。Normalの段階表と切替時の変換規則は
+`docs/hs.md`を参照してください。
+
 SUDDEN+が無効または非表示で、LIFT/HIDDEN+も無効なため操作可能なカバーがない場合、
 カバー操作はEndlessDream互換のHS操作になります。HS Auto AdjustがOFFならデジタル入力は
-現在のHS MODEの設定刻み、アナログスクラッチは1 tickあたり0.01でHSを直接変更します。
-HS Auto AdjustがONのFHSでは、SUDDEN+とLIFTを0として現在BPMでHSを再計算します。
+現在方式の速度操作、アナログスクラッチは1 tickあたり0.01でHS倍率を直接変更します。
+HS Auto AdjustがONのFloatingでは、SUDDEN+とLIFTを0として現在BPMでHSを再計算します。
 どちらの場合も無効なSUDDEN+/LIFT/HIDDEN+の量は変更・保存されません。
 
 Practiceでは最終ノーツ処理後にE1 / E2 / Escapeで終了した場合もリザルトを表示せず、直前の判定グラフを反映してPractice設定画面へ戻ります。

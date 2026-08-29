@@ -6,11 +6,11 @@ use super::profile_config::{
     AssistLongNoteMode, AssistMineMode, AssistOptionConfig, AssistScrollMode, BgaExpandConfig,
     BgaModeConfig, BottomShiftableGaugeConfig, DifficultyTableLevelDisplay, DoubleOptionConfig,
     FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX,
-    HISPEED_STEP_MIN, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, JudgeAlgorithmConfig,
-    KeyModeConversionConfig, LaneConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX, RandomOptionConfig,
-    ReplaySlotRule, SelectInputModeConfig, SevenToNinePattern, SevenToNineRuleMode,
-    SevenToNineType, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
-    normalize_hispeed_step,
+    HISPEED_STEP_MIN, HispeedConfigPreset, HispeedDirectionConfig, HsFixConfig,
+    JudgeAlgorithmConfig, KeyModeConversionConfig, LaneConfig, ProfileConfig,
+    RELEASE_BOUNCE_MS_MAX, RandomOptionConfig, ReplaySlotRule, SelectInputModeConfig,
+    SevenToNinePattern, SevenToNineRuleMode, SevenToNineType, TargetOptionConfig,
+    default_classic_hispeed_step, normalize_hispeed_step,
 };
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
@@ -81,8 +81,9 @@ pub enum SettingsEntryId {
     GuideSe,
     Hispeed,
     HispeedMode,
-    HispeedStepNhs,
-    HispeedStepFhs,
+    NormalHispeedLevel,
+    ClassicHispeedStep,
+    FloatingHispeedStep,
     SuddenEnabled,
     Sudden,
     LiftEnabled,
@@ -211,8 +212,9 @@ impl SettingsEntryId {
     pub const DISPLAY_ENTRIES: &'static [Self] = &[
         Self::Hispeed,
         Self::HispeedMode,
-        Self::HispeedStepNhs,
-        Self::HispeedStepFhs,
+        Self::NormalHispeedLevel,
+        Self::ClassicHispeedStep,
+        Self::FloatingHispeedStep,
         Self::SuddenEnabled,
         Self::Sudden,
         Self::LiftEnabled,
@@ -341,10 +343,11 @@ impl SettingsEntryId {
             Self::NoteRetention => "NOTE RETENTION",
             Self::ShowLnTailCap => "LN TAIL CAP",
             Self::GuideSe => "GUIDE SE",
-            Self::Hispeed => "HISPEED",
-            Self::HispeedMode => "HS MODE",
-            Self::HispeedStepNhs => "HS STEP NHS",
-            Self::HispeedStepFhs => "HS STEP FHS",
+            Self::Hispeed => "CLASSIC HS",
+            Self::HispeedMode => "HS CONFIG",
+            Self::NormalHispeedLevel => "NORMAL HS",
+            Self::ClassicHispeedStep => "CLASSIC HS STEP",
+            Self::FloatingHispeedStep => "FLOATING HS STEP",
             Self::SuddenEnabled => "SUDDEN+ ENABLED",
             Self::Sudden => "SUDDEN+",
             Self::LiftEnabled => "LIFT ENABLED",
@@ -461,8 +464,9 @@ impl SettingsEntryId {
             Self::GuideSe => "settings-entry-description-guide-se",
             Self::Hispeed => "settings-entry-description-hispeed",
             Self::HispeedMode => "settings-entry-description-hispeed-mode",
-            Self::HispeedStepNhs => "settings-entry-description-hispeed-step-nhs",
-            Self::HispeedStepFhs => "settings-entry-description-hispeed-step-fhs",
+            Self::NormalHispeedLevel => "settings-entry-description-normal-hispeed-level",
+            Self::ClassicHispeedStep => "settings-entry-description-classic-hispeed-step",
+            Self::FloatingHispeedStep => "settings-entry-description-floating-hispeed-step",
             Self::SuddenEnabled => "settings-entry-description-sudden-enabled",
             Self::Sudden => "settings-entry-description-sudden",
             Self::LiftEnabled => "settings-entry-description-lift-enabled",
@@ -532,7 +536,7 @@ use support::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::profile_config::{LaneEffectConfig, ProfileConfig};
+    use crate::config::profile_config::{FloatingPolicyConfig, LaneEffectConfig, ProfileConfig};
 
     #[test]
     fn adjust_volume_clamps_to_range() {
@@ -587,26 +591,26 @@ mod tests {
     }
 
     #[test]
-    fn adjust_hispeed_uses_mode_specific_steps() {
+    fn adjust_classic_hispeed_uses_classic_step() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::Hispeed, 1));
         assert!((profile.lane.hispeed - 2.25).abs() < f32::EPSILON);
 
-        profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+        profile.lane.floating_policy = FloatingPolicyConfig::Locked;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::Hispeed, 1));
-        assert!((profile.lane.hispeed - 2.75).abs() < f32::EPSILON);
+        assert!((profile.lane.hispeed - 2.50).abs() < f32::EPSILON);
     }
 
     #[test]
     fn adjust_hispeed_step_settings_increments_by_five_hundredths() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::HispeedStepNhs), "0.25");
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::HispeedStepFhs), "0.50");
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::ClassicHispeedStep), "0.25");
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::FloatingHispeedStep), "0.50");
 
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedStepNhs, 1));
-        assert!((profile.lane.hispeed_step_nhs - 0.30).abs() < f32::EPSILON);
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedStepFhs, -1));
-        assert!((profile.lane.hispeed_step_fhs - 0.45).abs() < f32::EPSILON);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::ClassicHispeedStep, 1));
+        assert!((profile.lane.classic_hispeed_step - 0.30).abs() < f32::EPSILON);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::FloatingHispeedStep, -1));
+        assert!((profile.lane.floating_hispeed_step - 0.45).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -768,12 +772,12 @@ mod tests {
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::LnModePolicy, 1));
         assert_eq!(profile.play.ln_mode_policy, crate::ln_policy::LnPolicySetting::AutoCn);
 
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::HispeedMode), "NORMAL");
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedMode, 1));
         assert_eq!(
-            profile.lane.hispeed_mode,
-            crate::config::profile_config::HispeedModeConfig::Floating
+            format_settings_value(&profile, SettingsEntryId::HispeedMode),
+            "CLASSIC+FLOATING"
         );
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedMode, 1));
+        assert_eq!(profile.lane.hispeed_config(), HispeedConfigPreset::Normal);
     }
 
     #[test]

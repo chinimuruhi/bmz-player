@@ -277,6 +277,9 @@ fn apply_lane_state_preserves_lift_amount_while_lift_is_disabled() {
             lift_enabled: false,
             hidden_enabled: false,
             hispeed_mode: HispeedMode::Normal,
+            base_hispeed_mode: HispeedMode::Normal,
+            floating_policy: FloatingPolicy::Toggle,
+            normal_hispeed_level: 18,
             target_green_number: 300,
         }),
     );

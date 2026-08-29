@@ -18,7 +18,7 @@ use bmz_gameplay::rule::RuleMode;
 use rusqlite::Connection;
 
 use super::*;
-use crate::config::profile_config::HispeedModeConfig;
+use crate::config::profile_config::{BaseHispeedConfig, FloatingPolicyConfig, HispeedConfigPreset};
 use crate::storage::common::configure_connection;
 use crate::storage::library_db::{ChartImportRecord, ChartNormalizationAnalysis, LibraryDatabase};
 use crate::storage::migration::{LIBRARY_MIGRATIONS, run_migrations};

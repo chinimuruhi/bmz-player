@@ -1,4 +1,7 @@
-use super::schema::default_hispeed_mode;
+use super::schema::{
+    default_base_hispeed, default_classic_hispeed_step, default_floating_hispeed_step,
+    default_floating_policy,
+};
 use super::*;
 
 /// スキン設定。スキンはプロファイルごとに切り替えられる。
@@ -492,9 +495,11 @@ impl ProfileConfig {
             },
             lane: LaneViewConfig {
                 hispeed: 2.0,
-                hispeed_mode: default_hispeed_mode(),
-                hispeed_step_nhs: default_hispeed_step_nhs(),
-                hispeed_step_fhs: default_hispeed_step_fhs(),
+                base_hispeed: default_base_hispeed(),
+                floating_policy: default_floating_policy(),
+                normal_hispeed_level: default_normal_hispeed_level(),
+                classic_hispeed_step: default_classic_hispeed_step(),
+                floating_hispeed_step: default_floating_hispeed_step(),
                 sudden: 0,
                 lift: 0,
                 lift_enabled: true,

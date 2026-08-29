@@ -451,11 +451,14 @@ select snapshotへ予定配置を設定する。
 
 | ref | kind | meaning |
 | ---: | --- | --- |
-| 1900 | number / event_index / text | HS mode。number / event_index は `0=NHS`, `1=FHS`、text は `NHS` / `FHS` |
-| 1901 | number / option | FHS active flag。`0=NHS`, `1=FHS` |
-| 1902 | number | target green number。FHS 時は固定 target green、NHS 時は現在 green number |
+| 1900 | number / event_index / text | current HS mode。number / event_indexは `0=base`, `1=Floating`、textは `CHS` / `NHS` / `FHS` |
+| 1901 | number / option | Floating active flag。`0=OFF`, `1=ON` |
+| 1902 | number | target green number。Floating時は固定target、それ以外は現在green number |
+| 1916 | number / event_index / text | base HS。`0=Classic`, `1=Normal`、textは `CHS` / `NHS` |
+| 1917 | number / event_index | Normal HS level (`1..=20`) |
+| 1918 | number / event_index / text | HS設定。`0=NORMAL`, `1=CLASSIC`, `2=FLOATING`, `3=NORMAL+FLOATING`, `4=CLASSIC+FLOATING` |
 
-`op: [1901]` または `draw: "number(1901)==1"` で FHS 時だけ destination を表示できる。
+`op: [1901]` または `draw: "number(1901)==1"` でFloating時だけdestinationを表示できる。
 
 ### BMZ Key Mode Refs
 

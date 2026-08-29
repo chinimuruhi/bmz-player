@@ -316,7 +316,7 @@ fn placeholder_session_visuals_preserve_preloaded_meta_images() {
 #[test]
 fn placeholder_session_visuals_initialize_floating_hispeed_for_ready_display() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.target_green_number = 300;
     // Stale value from a different BPM should not leak into READY display.
     profile.lane.hispeed = 4.0;
@@ -335,7 +335,6 @@ fn placeholder_session_visuals_initialize_floating_hispeed_for_ready_display() {
 #[test]
 fn placeholder_session_visuals_use_hsfix_to_select_hispeed_mode() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
     profile.lane.hispeed = 4.0;
     profile.lane.target_green_number = 300;
     let options = PlaySessionOptions::default();

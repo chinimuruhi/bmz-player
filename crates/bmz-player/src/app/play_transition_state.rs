@@ -126,6 +126,9 @@ impl PendingPlayStart {
 pub(super) struct PendingPlayLaneState {
     pub(super) hispeed: f32,
     pub(super) hispeed_mode: HispeedMode,
+    pub(super) base_hispeed_mode: HispeedMode,
+    pub(super) floating_policy: FloatingPolicy,
+    pub(super) normal_hispeed_level: u8,
     pub(super) target_green_number: u32,
     pub(super) lane_cover: f32,
     pub(super) lift: f32,
@@ -150,13 +153,26 @@ impl PendingPlayLaneState {
     ) -> Self {
         let sudden_enabled = mode_config.lane_effect.sudden_enabled();
         let hidden_enabled = mode_config.lane_effect.hidden_enabled();
+        let base_hispeed_mode = match mode_config.base_hispeed {
+            BaseHispeedConfig::Normal => HispeedMode::Normal,
+            BaseHispeedConfig::Classic => HispeedMode::Classic,
+        };
         Self {
             hispeed: snapshot.hispeed,
             hispeed_mode: if snapshot.hispeed_mode_index == 0 {
-                HispeedMode::Normal
+                base_hispeed_mode
             } else {
                 HispeedMode::Floating
             },
+            base_hispeed_mode,
+            floating_policy: match mode_config.floating_policy {
+                FloatingPolicyConfig::Disabled => FloatingPolicy::Disabled,
+                FloatingPolicyConfig::Toggle => FloatingPolicy::Toggle,
+                FloatingPolicyConfig::Locked => FloatingPolicy::Locked,
+            },
+            normal_hispeed_level: crate::config::play::normalize_normal_hispeed_level(
+                mode_config.normal_hispeed_level,
+            ),
             target_green_number: mode_config.target_green_number.max(1),
             lane_cover: crate::config::play::clamp_lane_cover_for_lift(
                 crate::config::play::lane_unit_to_f32(mode_config.sudden),
@@ -262,11 +278,55 @@ impl PendingPlayLaneState {
         green_number_from_display_duration(duration)
     }
 
+    pub(super) fn current_full_lane_green_number(self, now_bpm: f32) -> u32 {
+        let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+            f64::from(now_bpm),
+            self.playback_rate_percent,
+        ) as f32;
+        let duration = crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(
+            now_bpm,
+            self.hispeed,
+            0.0,
+            0.0,
+            1.0,
+        );
+        green_number_from_display_duration(duration)
+    }
+
+    pub(super) fn refresh_normal_hispeed(&mut self, now_bpm: f32, speed_locked: bool) {
+        if self.hispeed_mode != HispeedMode::Normal || speed_locked {
+            return;
+        }
+        let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+            f64::from(now_bpm),
+            self.playback_rate_percent,
+        );
+        self.hispeed =
+            clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
+                crate::config::play::normal_hispeed_green_number(self.normal_hispeed_level) as f32,
+                1.0,
+                now_bpm,
+                1.0,
+            ));
+    }
+
     pub(super) fn apply_to_snapshot(self, snapshot: &mut RenderSnapshot) {
         snapshot.hispeed = self.hispeed;
         snapshot.hispeed_mode_index = match self.hispeed_mode {
-            HispeedMode::Normal => 0,
+            HispeedMode::Normal | HispeedMode::Classic => 0,
             HispeedMode::Floating => 1,
+        };
+        snapshot.base_hispeed_index = match self.base_hispeed_mode {
+            HispeedMode::Normal => 1,
+            HispeedMode::Classic | HispeedMode::Floating => 0,
+        };
+        snapshot.normal_hispeed_level = self.normal_hispeed_level;
+        snapshot.hispeed_config_index = match (self.base_hispeed_mode, self.floating_policy) {
+            (_, FloatingPolicy::Locked) => 2,
+            (HispeedMode::Normal, FloatingPolicy::Disabled) => 0,
+            (_, FloatingPolicy::Disabled) => 1,
+            (HispeedMode::Normal, FloatingPolicy::Toggle) => 3,
+            (_, FloatingPolicy::Toggle) => 4,
         };
         snapshot.target_green_number = self.target_green_number;
         snapshot.lift = self.lift;

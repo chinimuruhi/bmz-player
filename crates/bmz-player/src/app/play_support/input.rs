@@ -190,13 +190,26 @@ pub(in crate::app) fn green_number_change_step(change: GreenNumberChange) -> i32
 
 pub(in crate::app) fn hispeed_step_for_profile(profile: &ProfileConfig, mode: HispeedMode) -> f32 {
     match mode {
-        HispeedMode::Normal => {
-            normalize_hispeed_step(profile.lane.hispeed_step_nhs, default_hispeed_step_nhs())
-        }
-        HispeedMode::Floating => {
-            normalize_hispeed_step(profile.lane.hispeed_step_fhs, default_hispeed_step_fhs())
-        }
+        HispeedMode::Normal | HispeedMode::Classic => normalize_hispeed_step(
+            profile.lane.classic_hispeed_step,
+            default_classic_hispeed_step(),
+        ),
+        HispeedMode::Floating => normalize_hispeed_step(
+            profile.lane.floating_hispeed_step,
+            default_floating_hispeed_step(),
+        ),
     }
+}
+
+pub(in crate::app) fn adjusted_normal_hispeed_level(current: u8, change: HispeedChange) -> u8 {
+    let delta = match change {
+        HispeedChange::Down => -1,
+        HispeedChange::Up => 1,
+    };
+    (i16::from(current) + delta).clamp(
+        i16::from(crate::config::play::NORMAL_HISPEED_LEVEL_MIN),
+        i16::from(crate::config::play::NORMAL_HISPEED_LEVEL_MAX),
+    ) as u8
 }
 
 pub(in crate::app) fn adjusted_hispeed(current: f32, change: HispeedChange, step: f32) -> f32 {

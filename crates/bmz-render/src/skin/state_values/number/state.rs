@@ -3,7 +3,7 @@ use super::*;
 pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> Option<i64> {
     if state.select_screen
         && state.duration_green_ms.is_none()
-        && (matches!(ref_id, 55 | 310 | 311 | 342 | 1900..=1902)
+        && (matches!(ref_id, 55 | 310 | 311 | 342 | 1900..=1902 | 1916..=1918)
             || (ref_id == 12 && state.select_option_panel == 3))
     {
         return None;
@@ -159,6 +159,9 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         1900 => Some(skin_hispeed_mode_index(state) as i64),
         1901 => Some(i64::from(skin_hispeed_mode_is_floating(state))),
         1902 => Some(skin_target_green_number(state)),
+        SKIN_REF_BMZ_BASE_HISPEED => Some(skin_base_hispeed_index(state) as i64),
+        SKIN_REF_BMZ_NORMAL_HISPEED_LEVEL => Some(skin_normal_hispeed_level(state)),
+        SKIN_REF_BMZ_HISPEED_CONFIG => Some(skin_hispeed_config_index(state) as i64),
         SKIN_REF_BMZ_SELECT_SETTINGS_ROW_KIND => {
             Some(i64::from(select_settings_row_kind_index(state.select_row_kind)))
         }

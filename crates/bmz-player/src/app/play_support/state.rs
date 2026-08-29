@@ -7,6 +7,9 @@ pub(in crate::app) struct ActiveLaneState {
     pub(in crate::app) lift_enabled: bool,
     pub(in crate::app) hidden_enabled: bool,
     pub(in crate::app) hispeed_mode: HispeedMode,
+    pub(in crate::app) base_hispeed_mode: HispeedMode,
+    pub(in crate::app) floating_policy: FloatingPolicy,
+    pub(in crate::app) normal_hispeed_level: u8,
     pub(in crate::app) target_green_number: u32,
 }
 
@@ -15,7 +18,9 @@ pub(in crate::app) fn profile_lane_settings_changed(
     after: &LaneViewConfig,
 ) -> bool {
     before.hispeed != after.hispeed
-        || before.hispeed_mode != after.hispeed_mode
+        || before.base_hispeed != after.base_hispeed
+        || before.floating_policy != after.floating_policy
+        || before.normal_hispeed_level != after.normal_hispeed_level
         || before.sudden != after.sudden
         || before.lift != after.lift
         || before.lift_enabled != after.lift_enabled
@@ -42,7 +47,9 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
         return false;
     }
 
-    let mode_changed = before.hispeed_mode != profile.hispeed_mode;
+    let config_changed = before.base_hispeed != profile.base_hispeed
+        || before.floating_policy != profile.floating_policy;
+    let normal_level_changed = before.normal_hispeed_level != profile.normal_hispeed_level;
     let hispeed_changed = before.hispeed != profile.hispeed;
     let sudden_changed = before.sudden != profile.sudden;
     let sudden_enabled_changed =
@@ -88,17 +95,36 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     }
 
     let now = session.audio_clock.now();
-    if mode_changed {
-        session.hispeed_mode = match profile.hispeed_mode {
-            HispeedModeConfig::Normal => HispeedMode::Normal,
-            HispeedModeConfig::Floating => HispeedMode::Floating,
+    if config_changed {
+        session.base_hispeed_mode = base_hispeed_mode_from_config(profile.base_hispeed);
+        session.floating_policy = floating_policy_from_config(profile.floating_policy);
+        let previous_mode = session.hispeed_mode;
+        session.hispeed_mode = match session.floating_policy {
+            FloatingPolicy::Locked => HispeedMode::Floating,
+            FloatingPolicy::Disabled => session.base_hispeed_mode,
+            FloatingPolicy::Toggle if previous_mode == HispeedMode::Floating => {
+                HispeedMode::Floating
+            }
+            FloatingPolicy::Toggle => session.base_hispeed_mode,
         };
         if session.hispeed_mode == HispeedMode::Floating
+            && previous_mode != HispeedMode::Floating
             && !target_green_changed
             && !hispeed_changed
         {
             session.target_green_number = current_green_number(session, now);
+        } else if session.hispeed_mode == HispeedMode::Normal
+            && previous_mode != HispeedMode::Normal
+        {
+            session.normal_hispeed_level =
+                crate::config::play::normal_hispeed_level_for_green_number(
+                    current_full_lane_green_number(session, now),
+                );
         }
+    }
+    if normal_level_changed {
+        session.normal_hispeed_level =
+            crate::config::play::normalize_normal_hispeed_level(profile.normal_hispeed_level);
     }
 
     if target_green_changed {
@@ -115,18 +141,22 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     }
 
     let direct_hispeed_change = hispeed_changed;
-    if direct_hispeed_change {
+    if direct_hispeed_change && session.hispeed_mode == HispeedMode::Classic {
         session.hispeed = clamp_hispeed(profile.hispeed);
     }
 
-    if session.hispeed_mode == HispeedMode::Floating {
+    if session.hispeed_mode == HispeedMode::Normal {
+        if normal_level_changed || config_changed {
+            session.hispeed = hispeed_for_normal_level(session, session.normal_hispeed_level, now);
+        }
+    } else if session.hispeed_mode == HispeedMode::Floating {
         if direct_hispeed_change && !target_green_changed {
-            // FHS の直接 HS 変更は、現在の見た目から緑数字ターゲットを更新する。
+            // Floating中に設定UIで倍率を変更した場合は、現在の見た目を目標値にする。
             session.target_green_number = current_green_number(session, now);
         } else if target_green_changed
             || cover_changed
             || auto_adjust_changed
-            || (mode_changed && !direct_hispeed_change)
+            || (config_changed && !direct_hispeed_change)
         {
             session.hispeed =
                 hispeed_for_green_number(session, active_lane_cover_for_hispeed(session), now);
@@ -155,8 +185,11 @@ pub(in crate::app) fn active_lane_state_for_session(
         lift_enabled: session.lift_enabled,
         hidden_enabled: session.hidden_enabled,
         hispeed_mode: session.hispeed_mode,
-        // NHS の現在表示は曲終了時に変動するため保存しない。target は NHS→FHS
-        // の明示切替時に session 側で更新された値を引き継ぐ。
+        base_hispeed_mode: session.base_hispeed_mode,
+        floating_policy: session.floating_policy,
+        normal_hispeed_level: session.normal_hispeed_level,
+        // 基準方式の現在表示は曲終了時に変動するため保存しない。target は
+        // Floatingへの明示切替時にsession側で更新された値を引き継ぐ。
         target_green_number: session.target_green_number,
     }
 }
@@ -303,15 +336,18 @@ pub(in crate::app) fn apply_lane_state_to_profile(
     hispeed: Option<f32>,
     lane_state: Option<ActiveLaneState>,
 ) {
-    let saved_hispeed_mode = lane_state
-        .map(|state| hispeed_mode_to_config(state.hispeed_mode))
-        .unwrap_or(profile.lane.hispeed_mode);
-    if let Some(hispeed) = hispeed {
-        let step = match saved_hispeed_mode {
-            HispeedModeConfig::Normal => profile.lane.hispeed_step_nhs,
-            HispeedModeConfig::Floating => profile.lane.hispeed_step_fhs,
+    let active_mode = lane_state.map(|state| state.hispeed_mode).unwrap_or(HispeedMode::Classic);
+    let base_mode = lane_state
+        .map(|state| state.base_hispeed_mode)
+        .unwrap_or_else(|| base_hispeed_mode_from_config(profile.lane.base_hispeed));
+    if let Some(hispeed) = hispeed
+        && base_mode == HispeedMode::Classic
+    {
+        let step = match active_mode {
+            HispeedMode::Floating => profile.lane.floating_hispeed_step,
+            HispeedMode::Normal | HispeedMode::Classic => profile.lane.classic_hispeed_step,
         };
-        profile.lane.hispeed = clamp_hispeed_for_profile(hispeed, saved_hispeed_mode, step);
+        profile.lane.hispeed = clamp_hispeed_for_profile(hispeed, active_mode, step);
     }
     if let Some(state) = lane_state {
         if state.sudden_enabled {
@@ -323,19 +359,19 @@ pub(in crate::app) fn apply_lane_state_to_profile(
         if state.hidden_enabled {
             profile.lane.hidden = crate::config::play::lane_f32_to_unit(state.hidden_cover);
         }
-        profile.lane.hispeed_mode = hispeed_mode_to_config(state.hispeed_mode);
+        profile.lane.base_hispeed = base_hispeed_config(state.base_hispeed_mode);
+        profile.lane.floating_policy = floating_policy_config(state.floating_policy);
+        profile.lane.normal_hispeed_level =
+            crate::config::play::normalize_normal_hispeed_level(state.normal_hispeed_level);
         profile.lane.target_green_number = state.target_green_number.max(1);
     }
 }
 
-pub(in crate::app) fn clamp_hispeed_for_profile(
-    hispeed: f32,
-    mode: HispeedModeConfig,
-    step: f32,
-) -> f32 {
+pub(in crate::app) fn clamp_hispeed_for_profile(hispeed: f32, mode: HispeedMode, step: f32) -> f32 {
     let clamped = clamp_hispeed(hispeed);
-    if mode == HispeedModeConfig::Normal
-        && (normalize_hispeed_step(step, default_hispeed_step_nhs()) - 0.25).abs() < f32::EPSILON
+    if mode == HispeedMode::Classic
+        && (normalize_hispeed_step(step, default_classic_hispeed_step()) - 0.25).abs()
+            < f32::EPSILON
     {
         clamp_hispeed((clamped * 4.0).round() / 4.0)
     } else {
@@ -343,10 +379,35 @@ pub(in crate::app) fn clamp_hispeed_for_profile(
     }
 }
 
-pub(in crate::app) fn hispeed_mode_to_config(mode: HispeedMode) -> HispeedModeConfig {
+pub(in crate::app) const fn base_hispeed_mode_from_config(mode: BaseHispeedConfig) -> HispeedMode {
     match mode {
-        HispeedMode::Normal => HispeedModeConfig::Normal,
-        HispeedMode::Floating => HispeedModeConfig::Floating,
+        BaseHispeedConfig::Normal => HispeedMode::Normal,
+        BaseHispeedConfig::Classic => HispeedMode::Classic,
+    }
+}
+
+pub(in crate::app) const fn base_hispeed_config(mode: HispeedMode) -> BaseHispeedConfig {
+    match mode {
+        HispeedMode::Normal => BaseHispeedConfig::Normal,
+        HispeedMode::Classic | HispeedMode::Floating => BaseHispeedConfig::Classic,
+    }
+}
+
+pub(in crate::app) const fn floating_policy_from_config(
+    policy: FloatingPolicyConfig,
+) -> FloatingPolicy {
+    match policy {
+        FloatingPolicyConfig::Disabled => FloatingPolicy::Disabled,
+        FloatingPolicyConfig::Toggle => FloatingPolicy::Toggle,
+        FloatingPolicyConfig::Locked => FloatingPolicy::Locked,
+    }
+}
+
+pub(in crate::app) const fn floating_policy_config(policy: FloatingPolicy) -> FloatingPolicyConfig {
+    match policy {
+        FloatingPolicy::Disabled => FloatingPolicyConfig::Disabled,
+        FloatingPolicy::Toggle => FloatingPolicyConfig::Toggle,
+        FloatingPolicy::Locked => FloatingPolicyConfig::Locked,
     }
 }
 

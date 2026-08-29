@@ -258,9 +258,15 @@ pub struct RenderSnapshot {
     pub gauge_border: f32,
     pub opponent: Option<OpponentRenderSnapshot>,
     pub hispeed: f32,
-    /// BMZ extension: current hispeed mode for play skin refs. 0=NHS, 1=FHS.
+    /// BMZ extension: current hispeed mode for play skin refs. 0=base, 1=Floating.
     pub hispeed_mode_index: i32,
-    /// BMZ extension: target green number used by FHS.
+    /// BMZ extension: configured base hispeed. 0=Classic, 1=Normal.
+    pub base_hispeed_index: i32,
+    /// BMZ extension: selected Normal hispeed level (1..=20).
+    pub normal_hispeed_level: u8,
+    /// BMZ extension: five-choice hispeed configuration index.
+    pub hispeed_config_index: i32,
+    /// BMZ extension: target green number used by Floating.
     pub target_green_number: u32,
     pub lift: f32,
     pub lane_cover: f32,

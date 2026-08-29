@@ -159,9 +159,15 @@ pub struct SkinDrawState {
     pub skin_offsets: SkinOffsetValues,
     /// 現在のハイスピード倍率 (NUMBER_HISPEED=310, NUMBER_HISPEED_AFTERDOT=311 に使用)。
     pub hispeed: f32,
-    /// BMZ extension: current hispeed mode. 0=NHS, 1=FHS.
+    /// BMZ extension: current hispeed mode. 0=base, 1=Floating.
     pub hispeed_mode_index: i32,
-    /// BMZ extension: target green number used by FHS.
+    /// BMZ extension: configured base hispeed. 0=Classic, 1=Normal.
+    pub base_hispeed_index: i32,
+    /// BMZ extension: selected Normal hispeed level (1..=20).
+    pub normal_hispeed_level: u8,
+    /// BMZ extension: five-choice hispeed configuration index.
+    pub hispeed_config_index: i32,
+    /// BMZ extension: target green number used by Floating.
     pub target_green_number: u32,
     /// 曲残り時間 ms (NUMBER_TIMELEFT_MINUTE=163, NUMBER_TIMELEFT_SECOND=164 に使用)。
     pub timeleft_ms: i32,
@@ -534,6 +540,9 @@ impl Default for SkinDrawState {
             skin_offsets: SkinOffsetValues::default(),
             hispeed: 0.0,
             hispeed_mode_index: 0,
+            base_hispeed_index: 0,
+            normal_hispeed_level: 18,
+            hispeed_config_index: 4,
             target_green_number: 0,
             timeleft_ms: 0,
             total_duration_ms: 0,

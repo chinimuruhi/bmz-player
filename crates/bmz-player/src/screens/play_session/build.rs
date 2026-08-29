@@ -86,9 +86,15 @@ pub fn apply_placeholder_session_visuals(
             snapshot.lift,
         )
     };
-    let hispeed_mode =
-        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(hs_fix) };
+    let hispeed_mode = initial_hispeed_mode(&mode_config, hs_fix, speed_locked);
     snapshot.hispeed_mode_index = hispeed_mode_index(hispeed_mode);
+    snapshot.base_hispeed_index = match mode_config.base_hispeed {
+        BaseHispeedConfig::Classic => 0,
+        BaseHispeedConfig::Normal => 1,
+    };
+    snapshot.normal_hispeed_level =
+        crate::config::play::normalize_normal_hispeed_level(mode_config.normal_hispeed_level);
+    snapshot.hispeed_config_index = mode_config.hispeed_config().index();
     let target_green_number = mode_config.target_green_number.max(1);
     snapshot.hispeed = if speed_locked {
         1.0
@@ -336,8 +342,7 @@ pub fn build_game_session_with_input_backend(
         &chart.timing_events,
     );
     let speed_locked = options.speed_constraint == bmz_core::course::CourseSpeedConstraint::NoSpeed;
-    let hispeed_mode =
-        if speed_locked { HispeedMode::Normal } else { hispeed_mode_from_hs_fix(hs_fix) };
+    let hispeed_mode = initial_hispeed_mode(&mode_config, hs_fix, speed_locked);
     let target_green_number = mode_config.target_green_number.max(1);
     let lift = if speed_locked { 0.0 } else { lift_from_mode_config(&mode_config) };
     let lane_cover = if speed_locked {
@@ -559,6 +564,11 @@ pub fn build_game_session_with_input_backend(
         audio_mix: audio_mix_from_profile(profile),
         hispeed,
         hispeed_mode,
+        base_hispeed_mode: base_hispeed_mode(mode_config.base_hispeed),
+        floating_policy: floating_policy(mode_config.floating_policy),
+        normal_hispeed_level: crate::config::play::normalize_normal_hispeed_level(
+            mode_config.normal_hispeed_level,
+        ),
         target_green_number,
         constant_enabled: mode_config.constant_enabled
             && session_mode != crate::select_options::SessionMode::Practice,
@@ -655,19 +665,45 @@ pub(super) fn apply_judge_constraint_to_window(
     window
 }
 
-pub(super) fn hispeed_mode_from_hs_fix(hs_fix: HsFixOption) -> HispeedMode {
-    match hs_fix {
-        HsFixOption::Off => HispeedMode::Normal,
-        HsFixOption::StartBpm
-        | HsFixOption::MaxBpm
-        | HsFixOption::MainBpm
-        | HsFixOption::MinBpm => HispeedMode::Floating,
+pub(super) const fn base_hispeed_mode(base: BaseHispeedConfig) -> HispeedMode {
+    match base {
+        BaseHispeedConfig::Normal => HispeedMode::Normal,
+        BaseHispeedConfig::Classic => HispeedMode::Classic,
+    }
+}
+
+pub(super) const fn floating_policy(policy: FloatingPolicyConfig) -> FloatingPolicy {
+    match policy {
+        FloatingPolicyConfig::Disabled => FloatingPolicy::Disabled,
+        FloatingPolicyConfig::Toggle => FloatingPolicy::Toggle,
+        FloatingPolicyConfig::Locked => FloatingPolicy::Locked,
+    }
+}
+
+pub(super) fn initial_hispeed_mode(
+    config: &PlayModeConfig,
+    hs_fix: HsFixOption,
+    speed_locked: bool,
+) -> HispeedMode {
+    if speed_locked {
+        return HispeedMode::Classic;
+    }
+    match config.floating_policy {
+        FloatingPolicyConfig::Disabled => base_hispeed_mode(config.base_hispeed),
+        FloatingPolicyConfig::Locked => HispeedMode::Floating,
+        FloatingPolicyConfig::Toggle => {
+            if hs_fix == HsFixOption::Off {
+                base_hispeed_mode(config.base_hispeed)
+            } else {
+                HispeedMode::Floating
+            }
+        }
     }
 }
 
 pub(super) fn hispeed_mode_index(mode: HispeedMode) -> i32 {
     match mode {
-        HispeedMode::Normal => 0,
+        HispeedMode::Normal | HispeedMode::Classic => 0,
         HispeedMode::Floating => 1,
     }
 }
@@ -683,23 +719,34 @@ pub(super) fn initial_hispeed_for_mode(
     hs_fix: HsFixOption,
     playback_rate_percent: u16,
 ) -> f32 {
-    if hispeed_mode == HispeedMode::Normal {
-        return clamp_hispeed(mode_config.hispeed);
-    }
-
     let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
         hsfix_base_bpm_for_chart(chart, timing_map, hs_fix),
         playback_rate_percent,
     );
     let scroll_multiplier =
         crate::screens::play_snapshot::current_scroll_multiplier(chart, timing_map, TimeUs(0));
-    let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
-    clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
-        target_green_number as f32,
-        visible_max,
-        now_bpm,
-        scroll_multiplier,
-    ))
+    match hispeed_mode {
+        HispeedMode::Classic => clamp_hispeed(mode_config.hispeed),
+        HispeedMode::Normal => {
+            let green =
+                crate::config::play::normal_hispeed_green_number(mode_config.normal_hispeed_level);
+            clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
+                green as f32,
+                1.0,
+                now_bpm,
+                scroll_multiplier,
+            ))
+        }
+        HispeedMode::Floating => {
+            let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
+            clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
+                target_green_number as f32,
+                visible_max,
+                now_bpm,
+                scroll_multiplier,
+            ))
+        }
+    }
 }
 
 pub(super) fn hsfix_base_bpm_for_chart(
@@ -778,21 +825,32 @@ pub(super) fn placeholder_hispeed_for_mode(
     now_bpm: f32,
     playback_rate_percent: u16,
 ) -> f32 {
-    if hispeed_mode == HispeedMode::Normal {
-        return clamp_hispeed(mode_config.hispeed);
-    }
-
-    let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
     let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
         f64::from(now_bpm),
         playback_rate_percent,
     );
-    clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
-        target_green_number as f32,
-        visible_max,
-        now_bpm,
-        1.0,
-    ))
+    match hispeed_mode {
+        HispeedMode::Classic => clamp_hispeed(mode_config.hispeed),
+        HispeedMode::Normal => {
+            let green =
+                crate::config::play::normal_hispeed_green_number(mode_config.normal_hispeed_level);
+            clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
+                green as f32,
+                1.0,
+                now_bpm,
+                1.0,
+            ))
+        }
+        HispeedMode::Floating => {
+            let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
+            clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
+                target_green_number as f32,
+                visible_max,
+                now_bpm,
+                1.0,
+            ))
+        }
+    }
 }
 
 pub(crate) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeAlgorithm {

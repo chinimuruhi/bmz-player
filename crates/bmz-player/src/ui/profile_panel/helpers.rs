@@ -210,10 +210,13 @@ pub(in crate::ui) fn bga_expand_label(value: BgaExpandConfig) -> &'static str {
     }
 }
 
-pub(in crate::ui) fn hispeed_mode_label(value: HispeedModeConfig) -> &'static str {
+pub(in crate::ui) fn hispeed_mode_label(value: HispeedConfigPreset) -> &'static str {
     match value {
-        HispeedModeConfig::Normal => "NORMAL",
-        HispeedModeConfig::Floating => "FLOATING",
+        HispeedConfigPreset::Normal => "NORMAL",
+        HispeedConfigPreset::Classic => "CLASSIC",
+        HispeedConfigPreset::Floating => "FLOATING",
+        HispeedConfigPreset::NormalFloating => "NORMAL+FLOATING",
+        HispeedConfigPreset::ClassicFloating => "CLASSIC+FLOATING",
     }
 }
 

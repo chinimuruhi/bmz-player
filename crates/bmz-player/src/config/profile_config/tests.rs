@@ -148,7 +148,7 @@ fn assist_config_migrates_legacy_value_and_roundtrips_all_modifiers() {
 }
 
 #[test]
-fn lane_view_uses_mode_specific_hispeed_step_and_auto_adjust_defaults_for_old_profiles() {
+fn lane_view_migrates_old_hispeed_fields_to_classic_floating_defaults() {
     let lane: LaneViewConfig = toml::from_str(
         r#"
             hispeed = 2.0
@@ -161,14 +161,23 @@ fn lane_view_uses_mode_specific_hispeed_step_and_auto_adjust_defaults_for_old_pr
     )
     .unwrap();
 
-    assert_eq!(lane.hispeed_step_nhs, 0.25);
-    assert_eq!(lane.hispeed_step_fhs, 0.50);
+    assert_eq!(lane.hispeed, 2.0);
+    assert_eq!(lane.base_hispeed, BaseHispeedConfig::Classic);
+    assert_eq!(lane.floating_policy, FloatingPolicyConfig::Toggle);
+    assert_eq!(lane.normal_hispeed_level, 18);
+    assert_eq!(lane.classic_hispeed_step, 0.25);
+    assert_eq!(lane.floating_hispeed_step, 0.50);
     assert!(lane.lift_enabled);
     assert!(lane.hispeed_auto_adjust);
 
     let serialized = toml::to_string(&lane).unwrap();
-    assert!(serialized.contains("hispeed_step_nhs = 0.25"));
-    assert!(serialized.contains("hispeed_step_fhs = 0.5"));
+    assert!(serialized.contains("classic_hispeed = 2.0"));
+    assert!(serialized.contains("base_hispeed = \"Classic\""));
+    assert!(serialized.contains("floating_policy = \"Toggle\""));
+    assert!(serialized.contains("normal_hispeed_level = 18"));
+    assert!(serialized.contains("classic_hispeed_step = 0.25"));
+    assert!(serialized.contains("floating_hispeed_step = 0.5"));
+    assert!(serialized.contains("floating_target_green = 300"));
     assert!(serialized.contains("lift_enabled = true"));
     assert!(serialized.contains("hispeed_auto_adjust = true"));
 }

@@ -955,6 +955,9 @@ impl WinitApp {
         if !self.begin_selected_play_mode_edit() {
             return false;
         }
+        if self.boot.profile_config.lane.floating_policy == FloatingPolicyConfig::Disabled {
+            return false;
+        }
         let current = self.boot.profile_config.lane.target_green_number.max(1);
         let next = adjusted_green_number(current, delta);
         if current == next {

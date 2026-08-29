@@ -234,27 +234,30 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             profile.play.guide_se = !profile.play.guide_se;
             true
         }
-        SettingsEntryId::Hispeed => {
-            let (step, default) = match profile.lane.hispeed_mode {
-                HispeedModeConfig::Normal => {
-                    (profile.lane.hispeed_step_nhs, default_hispeed_step_nhs())
-                }
-                HispeedModeConfig::Floating => {
-                    (profile.lane.hispeed_step_fhs, default_hispeed_step_fhs())
-                }
-            };
-            adjust_hispeed(&mut profile.lane.hispeed, delta, step, default)
-        }
+        SettingsEntryId::Hispeed => adjust_hispeed(
+            &mut profile.lane.hispeed,
+            delta,
+            profile.lane.classic_hispeed_step,
+            default_classic_hispeed_step(),
+        ),
         SettingsEntryId::HispeedMode => {
-            cycle_enum(delta, profile.lane.hispeed_mode, cycle_hispeed_mode)
-                .map(|next| profile.lane.hispeed_mode = next)
+            cycle_enum(delta, profile.lane.hispeed_config(), cycle_hispeed_mode)
+                .map(|next| profile.lane.set_hispeed_config(next))
                 .is_some()
         }
-        SettingsEntryId::HispeedStepNhs => {
-            adjust_hispeed_step(&mut profile.lane.hispeed_step_nhs, delta)
+        SettingsEntryId::NormalHispeedLevel => {
+            let before = profile.lane.normal_hispeed_level;
+            profile.lane.normal_hispeed_level = (i32::from(before) + delta).clamp(
+                i32::from(crate::config::play::NORMAL_HISPEED_LEVEL_MIN),
+                i32::from(crate::config::play::NORMAL_HISPEED_LEVEL_MAX),
+            ) as u8;
+            profile.lane.normal_hispeed_level != before
         }
-        SettingsEntryId::HispeedStepFhs => {
-            adjust_hispeed_step(&mut profile.lane.hispeed_step_fhs, delta)
+        SettingsEntryId::ClassicHispeedStep => {
+            adjust_hispeed_step(&mut profile.lane.classic_hispeed_step, delta)
+        }
+        SettingsEntryId::FloatingHispeedStep => {
+            adjust_hispeed_step(&mut profile.lane.floating_hispeed_step, delta)
         }
         SettingsEntryId::SuddenEnabled => {
             profile.play.lane_effect = profile

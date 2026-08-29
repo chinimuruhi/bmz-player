@@ -9,16 +9,10 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
     egui::CollapsingHeader::new(tr!(text, "profile-display-title"))
         .id_salt("profile_display")
         .show(ui, |ui| {
-            let hispeed_step = match profile.lane.hispeed_mode {
-                HispeedModeConfig::Normal => normalize_hispeed_step(
-                    profile.lane.hispeed_step_nhs,
-                    default_hispeed_step_nhs(),
-                ),
-                HispeedModeConfig::Floating => normalize_hispeed_step(
-                    profile.lane.hispeed_step_fhs,
-                    default_hispeed_step_fhs(),
-                ),
-            };
+            let hispeed_step = normalize_hispeed_step(
+                profile.lane.classic_hispeed_step,
+                default_classic_hispeed_step(),
+            );
             ui.add(
                 egui::Slider::new(
                     &mut profile.lane.hispeed,
@@ -27,35 +21,40 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
                 .step_by(hispeed_step as f64)
                 .text(tr!(text, "profile-display-hispeed")),
             );
+            let mut preset = profile.lane.hispeed_config();
             egui::ComboBox::new("profile_hispeed_mode", tr!(text, "profile-display-hispeed-mode"))
-                .selected_text(hispeed_mode_label(profile.lane.hispeed_mode))
+                .selected_text(hispeed_mode_label(preset))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut profile.lane.hispeed_mode,
-                        HispeedModeConfig::Normal,
-                        hispeed_mode_label(HispeedModeConfig::Normal),
-                    );
-                    ui.selectable_value(
-                        &mut profile.lane.hispeed_mode,
-                        HispeedModeConfig::Floating,
-                        hispeed_mode_label(HispeedModeConfig::Floating),
-                    );
+                    for value in HispeedConfigPreset::ORDER {
+                        ui.selectable_value(&mut preset, value, hispeed_mode_label(value));
+                    }
                 });
+            profile.lane.set_hispeed_config(preset);
+            let normal_green =
+                crate::config::play::normal_hispeed_green_number(profile.lane.normal_hispeed_level);
             ui.add(
                 egui::Slider::new(
-                    &mut profile.lane.hispeed_step_nhs,
-                    HISPEED_STEP_MIN..=HISPEED_STEP_MAX,
+                    &mut profile.lane.normal_hispeed_level,
+                    crate::config::play::NORMAL_HISPEED_LEVEL_MIN
+                        ..=crate::config::play::NORMAL_HISPEED_LEVEL_MAX,
                 )
-                .step_by(0.05)
-                .text(tr!(text, "profile-display-nhs-step")),
+                .text(format!("{} ({normal_green})", tr!(text, "profile-display-normal-hispeed"))),
             );
             ui.add(
                 egui::Slider::new(
-                    &mut profile.lane.hispeed_step_fhs,
+                    &mut profile.lane.classic_hispeed_step,
                     HISPEED_STEP_MIN..=HISPEED_STEP_MAX,
                 )
                 .step_by(0.05)
-                .text(tr!(text, "profile-display-fhs-step")),
+                .text(tr!(text, "profile-display-classic-hispeed-step")),
+            );
+            ui.add(
+                egui::Slider::new(
+                    &mut profile.lane.floating_hispeed_step,
+                    HISPEED_STEP_MIN..=HISPEED_STEP_MAX,
+                )
+                .step_by(0.05)
+                .text(tr!(text, "profile-display-floating-hispeed-step")),
             );
             ui.label(tr!(text, "profile-display-step-range"));
             let mut sudden_enabled = profile.play.lane_effect.sudden_enabled();

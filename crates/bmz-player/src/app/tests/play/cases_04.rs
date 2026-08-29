@@ -22,7 +22,7 @@ fn active_lane_state_keeps_green_number_captured_when_switching_to_fhs() {
     assert_eq!(session.hispeed_mode, HispeedMode::Floating);
     assert_eq!(session.target_green_number, expected_target);
 
-    // NHSへ戻ってHSを変更しても、終了時の現在緑数字でtargetを上書きしない。
+    // CHSへ戻ってHSを変更しても、終了時の現在緑数字でtargetを上書きしない。
     session.hispeed = 1.0;
     assert!(apply_play_option_control_to_session(
         &mut session,
@@ -32,7 +32,7 @@ fn active_lane_state_keeps_green_number_captured_when_switching_to_fhs() {
     ));
     let state = active_lane_state_for_session(&session);
 
-    assert_eq!(state.hispeed_mode, HispeedMode::Normal);
+    assert_eq!(state.hispeed_mode, HispeedMode::Classic);
     assert_eq!(state.target_green_number, expected_target);
 }
 
@@ -417,6 +417,9 @@ fn active_lane_state_saves_current_green_number_for_nhs() {
             lift_enabled: true,
             hidden_enabled: false,
             hispeed_mode: HispeedMode::Normal,
+            base_hispeed_mode: HispeedMode::Normal,
+            floating_policy: FloatingPolicy::Toggle,
+            normal_hispeed_level: 18,
             target_green_number: 600,
         }),
         CurrentPlayOptions {
@@ -433,24 +436,22 @@ fn active_lane_state_saves_current_green_number_for_nhs() {
         42,
     );
 
-    assert_eq!(profile.lane.hispeed_mode, HispeedModeConfig::Normal);
+    assert_eq!(profile.lane.base_hispeed, BaseHispeedConfig::Normal);
+    assert_eq!(profile.lane.floating_policy, FloatingPolicyConfig::Toggle);
     assert_eq!(profile.lane.target_green_number, 600);
 }
 
 #[test]
-fn normal_hispeed_rounding_restores_quarter_steps() {
-    assert_eq!(clamp_hispeed_for_profile(3.783_051, HispeedModeConfig::Normal, 0.25), 3.75);
+fn classic_hispeed_rounding_restores_quarter_steps() {
+    assert_eq!(clamp_hispeed_for_profile(3.783_051, HispeedMode::Classic, 0.25), 3.75);
 }
 
 #[test]
 fn custom_hispeed_step_preserves_non_quarter_profile_values() {
-    assert_eq!(clamp_hispeed_for_profile(2.3, HispeedModeConfig::Normal, 0.3), 2.3);
-    assert_eq!(clamp_hispeed_for_profile(2.37, HispeedModeConfig::Floating, 0.5), 2.37);
-    assert_eq!(
-        clamp_hispeed_for_profile(0.145_620_94, HispeedModeConfig::Floating, 0.5),
-        0.145_620_94
-    );
-    assert_eq!(clamp_hispeed_for_profile(0.01, HispeedModeConfig::Normal, 0.25), 0.01);
+    assert_eq!(clamp_hispeed_for_profile(2.3, HispeedMode::Classic, 0.3), 2.3);
+    assert_eq!(clamp_hispeed_for_profile(2.37, HispeedMode::Floating, 0.5), 2.37);
+    assert_eq!(clamp_hispeed_for_profile(0.145_620_94, HispeedMode::Floating, 0.5), 0.145_620_94);
+    assert_eq!(clamp_hispeed_for_profile(0.01, HispeedMode::Classic, 0.25), 0.01);
 }
 
 #[test]
@@ -484,6 +485,9 @@ fn apply_current_play_options_updates_profile_defaults() {
             lift_enabled: true,
             hidden_enabled: false,
             hispeed_mode: HispeedMode::Floating,
+            base_hispeed_mode: HispeedMode::Classic,
+            floating_policy: FloatingPolicy::Toggle,
+            normal_hispeed_level: 18,
             target_green_number: 280,
         }),
         CurrentPlayOptions {
@@ -503,7 +507,8 @@ fn apply_current_play_options_updates_profile_defaults() {
     assert_eq!(profile.lane.hispeed, 3.37);
     assert_eq!(profile.lane.sudden, 420);
     assert_eq!(profile.lane.lift, 100);
-    assert_eq!(profile.lane.hispeed_mode, HispeedModeConfig::Floating);
+    assert_eq!(profile.lane.base_hispeed, BaseHispeedConfig::Classic);
+    assert_eq!(profile.lane.floating_policy, FloatingPolicyConfig::Toggle);
     assert_eq!(profile.lane.target_green_number, 280);
     assert!(matches!(profile.play.random, RandomOptionConfig::Mirror));
     assert!(matches!(profile.play.random2, RandomOptionConfig::Random));

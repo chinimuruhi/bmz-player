@@ -224,10 +224,13 @@ pub(super) fn format_judge_algorithm(value: JudgeAlgorithmConfig) -> String {
     }
 }
 
-pub(super) fn format_hispeed_mode(value: HispeedModeConfig) -> String {
+pub(super) fn format_hispeed_mode(value: HispeedConfigPreset) -> String {
     match value {
-        HispeedModeConfig::Normal => "NORMAL".to_string(),
-        HispeedModeConfig::Floating => "FLOATING".to_string(),
+        HispeedConfigPreset::Normal => "NORMAL".to_string(),
+        HispeedConfigPreset::Classic => "CLASSIC".to_string(),
+        HispeedConfigPreset::Floating => "FLOATING".to_string(),
+        HispeedConfigPreset::NormalFloating => "NORMAL+FLOATING".to_string(),
+        HispeedConfigPreset::ClassicFloating => "CLASSIC+FLOATING".to_string(),
     }
 }
 
@@ -482,9 +485,11 @@ pub(super) fn cycle_bga_expand(current: BgaExpandConfig, forward: bool) -> BgaEx
     cycle_in_slice(&VALUES, current, forward)
 }
 
-pub(super) fn cycle_hispeed_mode(current: HispeedModeConfig, forward: bool) -> HispeedModeConfig {
-    const VALUES: [HispeedModeConfig; 2] = [HispeedModeConfig::Normal, HispeedModeConfig::Floating];
-    cycle_in_slice(&VALUES, current, forward)
+pub(super) fn cycle_hispeed_mode(
+    current: HispeedConfigPreset,
+    forward: bool,
+) -> HispeedConfigPreset {
+    cycle_in_slice(&HispeedConfigPreset::ORDER, current, forward)
 }
 
 pub(super) fn cycle_select_input_mode(

@@ -27,6 +27,46 @@ pub const DEFAULT_JUDGE_WINDOW: JudgeWindow = JudgeWindow {
 pub const TARGET_GREEN_NUMBER_MIN: u32 = 1;
 /// beatoraja duration upper bound (10,000ms) expressed as green number.
 pub const TARGET_GREEN_NUMBER_MAX: u32 = 6_000;
+pub const NORMAL_HISPEED_LEVEL_MIN: u8 = 1;
+pub const NORMAL_HISPEED_LEVEL_MAX: u8 = 20;
+pub const NORMAL_HISPEED_GREEN_NUMBERS: [u32; 20] = [
+    1_200, 1_000, 800, 700, 650, 600, 550, 500, 480, 460, 440, 420, 400, 380, 360, 340, 320, 300,
+    280, 260,
+];
+
+pub const fn normalize_normal_hispeed_level(level: u8) -> u8 {
+    if level < NORMAL_HISPEED_LEVEL_MIN {
+        NORMAL_HISPEED_LEVEL_MIN
+    } else if level > NORMAL_HISPEED_LEVEL_MAX {
+        NORMAL_HISPEED_LEVEL_MAX
+    } else {
+        level
+    }
+}
+
+pub const fn normal_hispeed_green_number(level: u8) -> u32 {
+    NORMAL_HISPEED_GREEN_NUMBERS[(normalize_normal_hispeed_level(level) - 1) as usize]
+}
+
+pub fn normal_hispeed_level_for_green_number(green_number: u32) -> u8 {
+    if green_number >= NORMAL_HISPEED_GREEN_NUMBERS[0] {
+        return NORMAL_HISPEED_LEVEL_MIN;
+    }
+    for (index, pair) in NORMAL_HISPEED_GREEN_NUMBERS.windows(2).enumerate() {
+        let slower = pair[0];
+        let faster = pair[1];
+        if green_number < faster || green_number > slower {
+            continue;
+        }
+        let boundary = if slower - faster == 50 && slower <= 700 && faster >= 500 {
+            faster + 30
+        } else {
+            (slower + faster) / 2
+        };
+        return if green_number <= boundary { index as u8 + 2 } else { index as u8 + 1 };
+    }
+    NORMAL_HISPEED_LEVEL_MAX
+}
 pub const NOTE_DISPLAY_DURATION_MIN_MS: u32 = 1;
 pub const NOTE_DISPLAY_DURATION_MAX_MS: u32 = 10_000;
 pub const CONSTANT_FADE_MIN_MS: i32 = -1_000;
@@ -280,6 +320,35 @@ mod tests {
         assert_eq!(adjust_green_number_by_duration_ms(300, 10), 306);
         assert_eq!(adjust_green_number_by_duration_ms(TARGET_GREEN_NUMBER_MAX, 1), 6_000);
         assert_eq!(adjust_green_number_by_duration_ms(TARGET_GREEN_NUMBER_MIN, -1), 1);
+    }
+
+    #[test]
+    fn normal_hispeed_levels_use_the_fixed_green_number_table() {
+        for (index, green_number) in NORMAL_HISPEED_GREEN_NUMBERS.iter().copied().enumerate() {
+            let level = index as u8 + 1;
+            assert_eq!(normal_hispeed_green_number(level), green_number);
+            assert_eq!(normal_hispeed_level_for_green_number(green_number), level);
+        }
+        assert_eq!(normal_hispeed_green_number(0), 1_200);
+        assert_eq!(normal_hispeed_green_number(21), 260);
+        assert_eq!(normal_hispeed_level_for_green_number(1_500), 1);
+        assert_eq!(normal_hispeed_level_for_green_number(100), 20);
+    }
+
+    #[test]
+    fn normal_hispeed_rounding_uses_faster_side_for_ordinary_ties() {
+        assert_eq!(normal_hispeed_level_for_green_number(371), 14);
+        assert_eq!(normal_hispeed_level_for_green_number(370), 15);
+        assert_eq!(normal_hispeed_level_for_green_number(369), 15);
+    }
+
+    #[test]
+    fn normal_hispeed_rounding_uses_thirty_point_boundary_for_wide_middle_steps() {
+        assert_eq!(normal_hispeed_level_for_green_number(581), 6);
+        assert_eq!(normal_hispeed_level_for_green_number(580), 7);
+        assert_eq!(normal_hispeed_level_for_green_number(579), 7);
+        assert_eq!(normal_hispeed_level_for_green_number(681), 4);
+        assert_eq!(normal_hispeed_level_for_green_number(680), 5);
     }
 
     #[test]

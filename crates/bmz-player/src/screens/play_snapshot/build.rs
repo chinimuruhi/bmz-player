@@ -327,6 +327,12 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         opponent,
         hispeed: session.hispeed,
         hispeed_mode_index: hispeed_mode_index(session.hispeed_mode),
+        base_hispeed_index: base_hispeed_index(session.base_hispeed_mode),
+        normal_hispeed_level: session.normal_hispeed_level,
+        hispeed_config_index: hispeed_config_index(
+            session.base_hispeed_mode,
+            session.floating_policy,
+        ),
         target_green_number: session.target_green_number,
         lift: session.lift,
         lane_cover,
@@ -519,6 +525,10 @@ pub fn update_render_snapshot_play_options(
 ) {
     snapshot.hispeed = session.hispeed;
     snapshot.hispeed_mode_index = hispeed_mode_index(session.hispeed_mode);
+    snapshot.base_hispeed_index = base_hispeed_index(session.base_hispeed_mode);
+    snapshot.normal_hispeed_level = session.normal_hispeed_level;
+    snapshot.hispeed_config_index =
+        hispeed_config_index(session.base_hispeed_mode, session.floating_policy);
     snapshot.target_green_number = session.target_green_number;
     snapshot.lift = session.lift;
     snapshot.lane_cover = if session.lanecover_enabled && session.lane_cover_visible {
@@ -542,7 +552,35 @@ pub fn update_render_snapshot_play_options(
 
 pub(super) fn hispeed_mode_index(mode: bmz_gameplay::session::HispeedMode) -> i32 {
     match mode {
-        bmz_gameplay::session::HispeedMode::Normal => 0,
+        bmz_gameplay::session::HispeedMode::Normal
+        | bmz_gameplay::session::HispeedMode::Classic => 0,
         bmz_gameplay::session::HispeedMode::Floating => 1,
+    }
+}
+
+pub(super) const fn base_hispeed_index(mode: bmz_gameplay::session::HispeedMode) -> i32 {
+    match mode {
+        bmz_gameplay::session::HispeedMode::Normal => 1,
+        bmz_gameplay::session::HispeedMode::Classic
+        | bmz_gameplay::session::HispeedMode::Floating => 0,
+    }
+}
+
+pub(super) const fn hispeed_config_index(
+    base: bmz_gameplay::session::HispeedMode,
+    floating: bmz_gameplay::session::FloatingPolicy,
+) -> i32 {
+    match (base, floating) {
+        (_, bmz_gameplay::session::FloatingPolicy::Locked) => 2,
+        (
+            bmz_gameplay::session::HispeedMode::Normal,
+            bmz_gameplay::session::FloatingPolicy::Disabled,
+        ) => 0,
+        (_, bmz_gameplay::session::FloatingPolicy::Disabled) => 1,
+        (
+            bmz_gameplay::session::HispeedMode::Normal,
+            bmz_gameplay::session::FloatingPolicy::Toggle,
+        ) => 3,
+        (_, bmz_gameplay::session::FloatingPolicy::Toggle) => 4,
     }
 }

@@ -11,7 +11,7 @@ use crate::config::play_input::resolve_play_bindings;
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
     DifficultyTableLevelDisplay, DoubleOptionConfig, FastSlowDisplayScope, GaugeAutoShiftConfig,
-    GaugeTypeConfig, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, InputActionConfig,
+    GaugeTypeConfig, HispeedConfigPreset, HispeedDirectionConfig, HsFixConfig, InputActionConfig,
     JudgeAlgorithmConfig, KeyModeConversionConfig, LaneConfig, LaneEffectConfig, ProfileConfig,
     ProfileInputConfig, RandomOptionConfig, ReplaySlotRule, ScratchDirectionConfig,
     SelectInputModeConfig, SevenToNinePattern, SevenToNineRuleMode, SevenToNineType,
@@ -250,7 +250,7 @@ enum SettingsBaseline {
     SevenToNinePattern(SevenToNinePattern),
     SevenToNineType(SevenToNineType),
     SevenToNineRuleMode(SevenToNineRuleMode),
-    HispeedMode(HispeedModeConfig),
+    HispeedMode(HispeedConfigPreset),
     HispeedDirection(HispeedDirectionConfig),
     SelectInputMode(SelectInputModeConfig),
     DifficultyTableLevelDisplay(DifficultyTableLevelDisplay),
@@ -424,10 +424,17 @@ impl SettingsEditSession {
             SettingsEntryId::GuideSe => SettingsBaseline::Bool(profile.play.guide_se),
             SettingsEntryId::Hispeed => SettingsBaseline::F32(profile.lane.hispeed),
             SettingsEntryId::HispeedMode => {
-                SettingsBaseline::HispeedMode(profile.lane.hispeed_mode)
+                SettingsBaseline::HispeedMode(profile.lane.hispeed_config())
             }
-            SettingsEntryId::HispeedStepNhs => SettingsBaseline::F32(profile.lane.hispeed_step_nhs),
-            SettingsEntryId::HispeedStepFhs => SettingsBaseline::F32(profile.lane.hispeed_step_fhs),
+            SettingsEntryId::NormalHispeedLevel => {
+                SettingsBaseline::U32(u32::from(profile.lane.normal_hispeed_level))
+            }
+            SettingsEntryId::ClassicHispeedStep => {
+                SettingsBaseline::F32(profile.lane.classic_hispeed_step)
+            }
+            SettingsEntryId::FloatingHispeedStep => {
+                SettingsBaseline::F32(profile.lane.floating_hispeed_step)
+            }
             SettingsEntryId::SuddenEnabled => {
                 SettingsBaseline::LaneEffect(profile.play.lane_effect)
             }
@@ -708,13 +715,16 @@ impl SettingsEditSession {
                 profile.lane.hispeed = *value;
             }
             (SettingsEntryId::HispeedMode, SettingsBaseline::HispeedMode(value)) => {
-                profile.lane.hispeed_mode = *value;
+                profile.lane.set_hispeed_config(*value);
             }
-            (SettingsEntryId::HispeedStepNhs, SettingsBaseline::F32(value)) => {
-                profile.lane.hispeed_step_nhs = *value;
+            (SettingsEntryId::NormalHispeedLevel, SettingsBaseline::U32(value)) => {
+                profile.lane.normal_hispeed_level = *value as u8;
             }
-            (SettingsEntryId::HispeedStepFhs, SettingsBaseline::F32(value)) => {
-                profile.lane.hispeed_step_fhs = *value;
+            (SettingsEntryId::ClassicHispeedStep, SettingsBaseline::F32(value)) => {
+                profile.lane.classic_hispeed_step = *value;
+            }
+            (SettingsEntryId::FloatingHispeedStep, SettingsBaseline::F32(value)) => {
+                profile.lane.floating_hispeed_step = *value;
             }
             (SettingsEntryId::Sudden, SettingsBaseline::U32(value)) => {
                 profile.lane.sudden = *value;

@@ -51,6 +51,8 @@ impl ProfileConfig {
     /// Migrates old profiles by copying their single set of values to every
     /// supported key mode, then restores the K7 editable mirror.
     pub fn normalize_play_mode_configs(&mut self) {
+        self.lane.normal_hispeed_level =
+            crate::config::play::normalize_normal_hispeed_level(self.lane.normal_hispeed_level);
         self.lane.constant_fade_ms = self.lane.constant_fade_ms.clamp(
             crate::config::play::CONSTANT_FADE_MIN_MS,
             crate::config::play::CONSTANT_FADE_MAX_MS,
@@ -72,7 +74,9 @@ impl ProfileConfig {
     fn editable_play_mode_config(&self) -> PlayModeConfig {
         PlayModeConfig {
             hispeed: self.lane.hispeed,
-            hispeed_mode: self.lane.hispeed_mode,
+            base_hispeed: self.lane.base_hispeed,
+            floating_policy: self.lane.floating_policy,
+            normal_hispeed_level: self.lane.normal_hispeed_level,
             hs_fix: self.play.hs_fix,
             lane_effect: self.play.lane_effect,
             sudden: self.lane.sudden,
@@ -89,7 +93,9 @@ impl ProfileConfig {
 
     fn apply_editable_play_mode_config(&mut self, config: &PlayModeConfig) {
         self.lane.hispeed = config.hispeed;
-        self.lane.hispeed_mode = config.hispeed_mode;
+        self.lane.base_hispeed = config.base_hispeed;
+        self.lane.floating_policy = config.floating_policy;
+        self.lane.normal_hispeed_level = config.normal_hispeed_level;
         self.play.hs_fix = config.hs_fix;
         self.play.lane_effect = config.lane_effect;
         self.lane.sudden = config.sudden;
@@ -105,6 +111,8 @@ impl ProfileConfig {
 }
 
 fn normalize_play_mode_config(config: &mut PlayModeConfig) {
+    config.normal_hispeed_level =
+        crate::config::play::normalize_normal_hispeed_level(config.normal_hispeed_level);
     config.constant_fade_ms = config.constant_fade_ms.clamp(
         crate::config::play::CONSTANT_FADE_MIN_MS,
         crate::config::play::CONSTANT_FADE_MAX_MS,
@@ -119,7 +127,8 @@ mod tests {
     fn legacy_play_settings_are_copied_to_every_key_mode() {
         let mut profile = ProfileConfig::new_default("default", "Default", 1);
         profile.lane.hispeed = 3.25;
-        profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+        profile.lane.base_hispeed = BaseHispeedConfig::Normal;
+        profile.lane.floating_policy = FloatingPolicyConfig::Locked;
         profile.play.hs_fix = HsFixConfig::MainBpm;
         profile.play.lane_effect = LaneEffectConfig::HiddenSudden;
         profile.lane.sudden = 420;
@@ -187,8 +196,8 @@ mod tests {
         let profile = ProfileConfig::new_default("default", "Default", 1);
         let serialized = toml::to_string(&profile).expect("serialize profile");
         let legacy = serialized.replace(
-            "target_green_number = 300",
-            "target_green_number = 300\nnote_display_duration_ms = 497",
+            "floating_target_green = 300",
+            "floating_target_green = 300\nnote_display_duration_ms = 497",
         );
         assert_ne!(legacy, serialized, "green number must be present in serialized profile");
 

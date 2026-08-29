@@ -186,6 +186,9 @@ fn pending_hispeed_changes_use_displayed_mode_without_mutating_profile() {
     let mut lane = PendingPlayLaneState {
         hispeed: 2.0,
         hispeed_mode: HispeedMode::Floating,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
         lane_cover: 0.0,
         lift: 0.0,
@@ -220,6 +223,9 @@ fn pending_disabled_covers_use_zero_cover_as_auto_adjust_trigger() {
     let mut lane = PendingPlayLaneState {
         hispeed: 1.0,
         hispeed_mode: HispeedMode::Floating,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
         lane_cover: 0.25,
         lift: 0.0,
@@ -254,7 +260,10 @@ fn pending_disabled_covers_without_auto_adjust_change_hispeed_directly() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut lane = PendingPlayLaneState {
         hispeed: 2.0,
-        hispeed_mode: HispeedMode::Normal,
+        hispeed_mode: HispeedMode::Classic,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
         lane_cover: 0.25,
         lift: 0.0,
@@ -295,7 +304,10 @@ fn pending_hidden_cover_reverses_digital_and_analog_lane_actions() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut lane = PendingPlayLaneState {
         hispeed: 2.0,
-        hispeed_mode: HispeedMode::Normal,
+        hispeed_mode: HispeedMode::Classic,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
         lane_cover: 0.0,
         lift: 0.0,
@@ -353,7 +365,10 @@ fn pending_green_number_change_switches_displayed_state_to_floating() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut lane = PendingPlayLaneState {
         hispeed: 2.0,
-        hispeed_mode: HispeedMode::Normal,
+        hispeed_mode: HispeedMode::Classic,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
         lane_cover: 0.0,
         lift: 0.0,
@@ -385,11 +400,149 @@ fn pending_green_number_change_switches_displayed_state_to_floating() {
 }
 
 #[test]
+fn pending_floating_to_normal_uses_full_lane_rounding_boundaries() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    for (green_number, expected_level) in [(580, 7), (581, 6)] {
+        let mut lane = PendingPlayLaneState {
+            hispeed: crate::screens::play_snapshot::hispeed_for_green_number_values(
+                green_number as f32,
+                1.0,
+                120.0,
+                1.0,
+            ),
+            hispeed_mode: HispeedMode::Floating,
+            base_hispeed_mode: HispeedMode::Normal,
+            floating_policy: FloatingPolicy::Toggle,
+            normal_hispeed_level: 18,
+            target_green_number: 300,
+            lane_cover: 0.25,
+            lift: 0.10,
+            hidden_cover: 0.0,
+            sudden_enabled: true,
+            lift_enabled: false,
+            hidden_enabled: false,
+            lane_cover_visible: true,
+            lane_target: PlayLaneTarget::Lift,
+            lane_cover_changing: true,
+            hsfix_base_bpm: 120.0,
+            hispeed_auto_adjust: false,
+            playback_rate_percent: 100,
+        };
+
+        assert!(apply_pending_play_lane_action_to_state(
+            &mut lane,
+            PlayLaneAction::ToggleHispeedMode,
+            &profile,
+            120.0,
+            false,
+        ));
+
+        assert_eq!(lane.hispeed_mode, HispeedMode::Normal);
+        assert_eq!(lane.normal_hispeed_level, expected_level);
+        let expected_green = crate::config::play::normal_hispeed_green_number(expected_level);
+        assert_eq!(lane.current_full_lane_green_number(120.0), expected_green);
+    }
+}
+
+#[test]
+fn pending_normal_hispeed_action_changes_level_and_ignores_lane_effects() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut lane = PendingPlayLaneState {
+        hispeed: 4.0,
+        hispeed_mode: HispeedMode::Normal,
+        base_hispeed_mode: HispeedMode::Normal,
+        floating_policy: FloatingPolicy::Disabled,
+        normal_hispeed_level: 18,
+        target_green_number: 300,
+        lane_cover: 0.40,
+        lift: 0.20,
+        hidden_cover: 0.0,
+        sudden_enabled: true,
+        lift_enabled: true,
+        hidden_enabled: false,
+        lane_cover_visible: true,
+        lane_target: PlayLaneTarget::Lift,
+        lane_cover_changing: true,
+        hsfix_base_bpm: 120.0,
+        hispeed_auto_adjust: false,
+        playback_rate_percent: 100,
+    };
+
+    assert!(apply_pending_play_lane_action_to_state(
+        &mut lane,
+        PlayLaneAction::Hispeed(HispeedChange::Up),
+        &profile,
+        120.0,
+        false,
+    ));
+
+    assert_eq!(lane.normal_hispeed_level, 19);
+    assert_eq!(lane.current_full_lane_green_number(120.0), 280);
+}
+
+#[test]
+fn pending_hispeed_policy_rejects_unavailable_controls() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let base = PendingPlayLaneState {
+        hispeed: 2.0,
+        hispeed_mode: HispeedMode::Classic,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Disabled,
+        normal_hispeed_level: 18,
+        target_green_number: 300,
+        lane_cover: 0.0,
+        lift: 0.0,
+        hidden_cover: 0.0,
+        sudden_enabled: true,
+        lift_enabled: false,
+        hidden_enabled: false,
+        lane_cover_visible: true,
+        lane_target: PlayLaneTarget::Lift,
+        lane_cover_changing: true,
+        hsfix_base_bpm: 120.0,
+        hispeed_auto_adjust: false,
+        playback_rate_percent: 100,
+    };
+
+    let mut disabled = base;
+    assert!(!apply_pending_play_lane_action_to_state(
+        &mut disabled,
+        PlayLaneAction::ToggleHispeedMode,
+        &profile,
+        120.0,
+        false,
+    ));
+    assert!(!apply_pending_play_lane_action_to_state(
+        &mut disabled,
+        PlayLaneAction::GreenNumberDelta(1),
+        &profile,
+        120.0,
+        false,
+    ));
+
+    let mut locked = PendingPlayLaneState {
+        hispeed_mode: HispeedMode::Floating,
+        floating_policy: FloatingPolicy::Locked,
+        ..base
+    };
+    assert!(!apply_pending_play_lane_action_to_state(
+        &mut locked,
+        PlayLaneAction::ToggleHispeedMode,
+        &profile,
+        120.0,
+        false,
+    ));
+}
+
+#[test]
 fn pending_lane_state_rejects_all_no_speed_controls() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut lane = PendingPlayLaneState {
         hispeed: 2.0,
         hispeed_mode: HispeedMode::Floating,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
         lane_cover: 0.0,
         lift: 0.0,
@@ -428,7 +581,7 @@ fn pending_lane_state_rejects_all_no_speed_controls() {
 #[test]
 fn pending_lane_actions_replay_once_on_loaded_session() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.target_green_number = 300;
     profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut session = crate::screens::play_session::build_game_session(

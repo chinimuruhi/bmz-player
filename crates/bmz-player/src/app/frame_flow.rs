@@ -844,6 +844,9 @@ impl WinitApp {
                     lift_enabled: pending.lane.lift_enabled,
                     hidden_enabled: pending.lane.hidden_enabled,
                     hispeed_mode: pending.lane.hispeed_mode,
+                    base_hispeed_mode: pending.lane.base_hispeed_mode,
+                    floating_policy: pending.lane.floating_policy,
+                    normal_hispeed_level: pending.lane.normal_hispeed_level,
                     target_green_number: pending.lane.target_green_number,
                 })
             })
@@ -871,6 +874,9 @@ impl WinitApp {
                 lift_enabled: pending.lane.lift_enabled,
                 hidden_enabled: pending.lane.hidden_enabled,
                 hispeed_mode: pending.lane.hispeed_mode,
+                base_hispeed_mode: pending.lane.base_hispeed_mode,
+                floating_policy: pending.lane.floating_policy,
+                normal_hispeed_level: pending.lane.normal_hispeed_level,
                 target_green_number: pending.lane.target_green_number,
             }),
         );
