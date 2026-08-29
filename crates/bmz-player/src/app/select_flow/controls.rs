@@ -508,6 +508,9 @@ impl WinitApp {
         if entry_id == SettingsEntryId::Language {
             self.reload_select_items();
         }
+        if entry_id == SettingsEntryId::HispeedMode {
+            self.reload_select_items();
+        }
         if entry_id == SettingsEntryId::ShowFps
             && let Some(egui) = self.ui.egui.as_mut()
         {

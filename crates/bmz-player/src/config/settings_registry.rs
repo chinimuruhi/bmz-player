@@ -210,23 +210,35 @@ impl SettingsEntryId {
     ];
 
     pub const DISPLAY_ENTRIES: &'static [Self] = &[
-        Self::Hispeed,
         Self::HispeedMode,
         Self::NormalHispeedLevel,
+        Self::Hispeed,
         Self::ClassicHispeedStep,
         Self::FloatingHispeedStep,
+        Self::TargetGreenNumber,
+        Self::NoteDisplayDurationMs,
+        Self::HispeedAutoAdjust,
         Self::SuddenEnabled,
         Self::Sudden,
         Self::LiftEnabled,
         Self::Lift,
-        Self::HispeedAutoAdjust,
         Self::HiddenEnabled,
         Self::Hidden,
-        Self::TargetGreenNumber,
-        Self::NoteDisplayDurationMs,
         Self::Constant,
         Self::ConstantFadeMs,
     ];
+
+    pub const fn visible_for_hispeed_config(self, preset: HispeedConfigPreset) -> bool {
+        match self {
+            Self::NormalHispeedLevel => preset.supports_normal(),
+            Self::Hispeed | Self::ClassicHispeedStep => preset.supports_classic(),
+            Self::FloatingHispeedStep
+            | Self::TargetGreenNumber
+            | Self::NoteDisplayDurationMs
+            | Self::HispeedAutoAdjust => preset.supports_floating(),
+            _ => true,
+        }
+    }
 
     pub const INPUT_ENTRIES: &'static [Self] = &[
         Self::SelectInputMode,

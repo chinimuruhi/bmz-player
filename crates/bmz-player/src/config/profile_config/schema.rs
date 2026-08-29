@@ -1160,6 +1160,18 @@ impl HispeedConfigPreset {
             Self::ClassicFloating => 4,
         }
     }
+
+    pub const fn supports_normal(self) -> bool {
+        matches!(self, Self::Normal | Self::NormalFloating)
+    }
+
+    pub const fn supports_classic(self) -> bool {
+        matches!(self, Self::Classic | Self::ClassicFloating)
+    }
+
+    pub const fn supports_floating(self) -> bool {
+        matches!(self, Self::Floating | Self::NormalFloating | Self::ClassicFloating)
+    }
 }
 
 pub const fn default_normal_hispeed_level() -> u8 {

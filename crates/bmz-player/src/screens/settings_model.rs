@@ -226,13 +226,19 @@ pub fn load_settings_items(path: &str) -> Vec<SelectItem> {
 }
 
 pub fn load_settings_items_for_locale(path: &str, locale: AppLocale) -> Vec<SelectItem> {
-    load_settings_items_for_config(path, locale, &AppConfig::default())
+    load_settings_items_for_config(
+        path,
+        locale,
+        &AppConfig::default(),
+        &ProfileConfig::new_default("default", "Default", 0),
+    )
 }
 
 pub fn load_settings_items_for_config(
     path: &str,
     locale: AppLocale,
     app_config: &AppConfig,
+    profile_config: &ProfileConfig,
 ) -> Vec<SelectItem> {
     let text = Localizer::new(locale);
     let settings_path = parse_settings_path(path);
@@ -314,7 +320,7 @@ pub fn load_settings_items_for_config(
         Some(SettingsPath::PlayAssist) => assist_items(locale),
         Some(SettingsPath::PlayAssistNote) => config_items(SettingsEntryId::ASSIST_NOTE_ENTRIES),
         Some(SettingsPath::PlayAssistJudge) => config_items(SettingsEntryId::ASSIST_JUDGE_ENTRIES),
-        Some(SettingsPath::Display) => config_items(SettingsEntryId::DISPLAY_ENTRIES),
+        Some(SettingsPath::Display) => display_items(profile_config),
         Some(SettingsPath::Video) => app_config_items(AppSettingsEntryId::VIDEO_ENTRIES),
         Some(SettingsPath::Input) => config_items(SettingsEntryId::INPUT_ENTRIES),
         Some(SettingsPath::Select) => config_items(SettingsEntryId::SELECT_ENTRIES),
@@ -450,6 +456,16 @@ fn config_items(entries: &'static [SettingsEntryId]) -> Vec<SelectItem> {
         .collect()
 }
 
+fn display_items(profile: &ProfileConfig) -> Vec<SelectItem> {
+    let preset = profile.lane.hispeed_config();
+    SettingsEntryId::DISPLAY_ENTRIES
+        .iter()
+        .copied()
+        .filter(|entry_id| entry_id.visible_for_hispeed_config(preset))
+        .map(|entry_id| SelectItem::Config(ConfigSelectRow { entry_id }))
+        .collect()
+}
+
 fn app_config_items(entries: &[AppSettingsEntryId]) -> Vec<SelectItem> {
     entries
         .iter()
@@ -529,7 +545,9 @@ mod tests {
     fn settings_audio_lists_backend_specific_entries_and_apply_action() {
         let mut app_config = AppConfig::default();
         app_config.audio.backend = AudioBackend::Wasapi;
-        let wasapi = load_settings_items_for_config(CONFIG_AUDIO_PATH, AppLocale::Ja, &app_config);
+        let profile = ProfileConfig::new_default("default", "Default", 0);
+        let wasapi =
+            load_settings_items_for_config(CONFIG_AUDIO_PATH, AppLocale::Ja, &app_config, &profile);
         assert!(wasapi.iter().any(|item| matches!(
             item,
             SelectItem::AppConfig(row)
@@ -538,7 +556,8 @@ mod tests {
         assert!(matches!(wasapi.last(), Some(SelectItem::ApplyAudioSettings)));
 
         app_config.audio.backend = AudioBackend::Asio;
-        let asio = load_settings_items_for_config(CONFIG_AUDIO_PATH, AppLocale::Ja, &app_config);
+        let asio =
+            load_settings_items_for_config(CONFIG_AUDIO_PATH, AppLocale::Ja, &app_config, &profile);
         assert!(asio.iter().any(|item| matches!(
             item,
             SelectItem::AppConfig(row)
@@ -846,20 +865,85 @@ mod tests {
     }
 
     #[test]
-    fn settings_display_lists_green_number_entry() {
-        let items = load_settings_items(CONFIG_DISPLAY_PATH);
-        assert!(items.iter().any(|item| matches!(
-            item,
-            SelectItem::Config(row) if row.entry_id == SettingsEntryId::ClassicHispeedStep
-        )));
-        assert!(items.iter().any(|item| matches!(
-            item,
-            SelectItem::Config(row) if row.entry_id == SettingsEntryId::FloatingHispeedStep
-        )));
-        assert!(items.iter().any(|item| matches!(
-            item,
-            SelectItem::Config(row) if row.entry_id == SettingsEntryId::TargetGreenNumber
-        )));
+    fn settings_display_starts_with_hispeed_config_and_hides_unused_hispeed_entries() {
+        let app_config = AppConfig::default();
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        let common = [
+            SettingsEntryId::SuddenEnabled,
+            SettingsEntryId::Sudden,
+            SettingsEntryId::LiftEnabled,
+            SettingsEntryId::Lift,
+            SettingsEntryId::HiddenEnabled,
+            SettingsEntryId::Hidden,
+            SettingsEntryId::Constant,
+            SettingsEntryId::ConstantFadeMs,
+        ];
+        let cases = [
+            (
+                crate::config::profile_config::HispeedConfigPreset::Normal,
+                vec![SettingsEntryId::HispeedMode, SettingsEntryId::NormalHispeedLevel],
+            ),
+            (
+                crate::config::profile_config::HispeedConfigPreset::Classic,
+                vec![
+                    SettingsEntryId::HispeedMode,
+                    SettingsEntryId::Hispeed,
+                    SettingsEntryId::ClassicHispeedStep,
+                ],
+            ),
+            (
+                crate::config::profile_config::HispeedConfigPreset::Floating,
+                vec![
+                    SettingsEntryId::HispeedMode,
+                    SettingsEntryId::FloatingHispeedStep,
+                    SettingsEntryId::TargetGreenNumber,
+                    SettingsEntryId::NoteDisplayDurationMs,
+                    SettingsEntryId::HispeedAutoAdjust,
+                ],
+            ),
+            (
+                crate::config::profile_config::HispeedConfigPreset::NormalFloating,
+                vec![
+                    SettingsEntryId::HispeedMode,
+                    SettingsEntryId::NormalHispeedLevel,
+                    SettingsEntryId::FloatingHispeedStep,
+                    SettingsEntryId::TargetGreenNumber,
+                    SettingsEntryId::NoteDisplayDurationMs,
+                    SettingsEntryId::HispeedAutoAdjust,
+                ],
+            ),
+            (
+                crate::config::profile_config::HispeedConfigPreset::ClassicFloating,
+                vec![
+                    SettingsEntryId::HispeedMode,
+                    SettingsEntryId::Hispeed,
+                    SettingsEntryId::ClassicHispeedStep,
+                    SettingsEntryId::FloatingHispeedStep,
+                    SettingsEntryId::TargetGreenNumber,
+                    SettingsEntryId::NoteDisplayDurationMs,
+                    SettingsEntryId::HispeedAutoAdjust,
+                ],
+            ),
+        ];
+
+        for (preset, mut expected) in cases {
+            profile.lane.set_hispeed_config(preset);
+            let items = load_settings_items_for_config(
+                CONFIG_DISPLAY_PATH,
+                AppLocale::Ja,
+                &app_config,
+                &profile,
+            );
+            let actual = items
+                .iter()
+                .filter_map(|item| match item {
+                    SelectItem::Config(row) => Some(row.entry_id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            expected.extend(common);
+            assert_eq!(actual, expected, "{preset:?}");
+        }
     }
 
     #[test]
