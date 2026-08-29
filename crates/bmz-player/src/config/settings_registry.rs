@@ -7,10 +7,10 @@ use super::profile_config::{
     BgaModeConfig, BottomShiftableGaugeConfig, DifficultyTableLevelDisplay, DoubleOptionConfig,
     FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX,
     HISPEED_STEP_MIN, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, JudgeAlgorithmConfig,
-    KeyModeConversionConfig, LaneConfig, LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX,
-    RandomOptionConfig, ReplaySlotRule, SelectInputModeConfig, SevenToNinePattern,
-    SevenToNineRuleMode, SevenToNineType, TargetOptionConfig, default_hispeed_step_fhs,
-    default_hispeed_step_nhs, normalize_hispeed_step,
+    KeyModeConversionConfig, LaneConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX, RandomOptionConfig,
+    ReplaySlotRule, SelectInputModeConfig, SevenToNinePattern, SevenToNineRuleMode,
+    SevenToNineType, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
+    normalize_hispeed_step,
 };
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
@@ -46,7 +46,6 @@ pub enum SettingsEntryId {
     DoubleOption,
     HsFix,
     Target,
-    LaneEffect,
     Assist,
     BgaMode,
     BgaExpand,
@@ -166,7 +165,6 @@ impl SettingsEntryId {
         Self::DoubleOption,
         Self::HsFix,
         Self::Target,
-        Self::LaneEffect,
         Self::BgaMode,
         Self::BgaExpand,
         Self::SessionMode,
@@ -310,7 +308,6 @@ impl SettingsEntryId {
             Self::DoubleOption => "DP OPTION",
             Self::HsFix => "HS-FIX",
             Self::Target => "TARGET",
-            Self::LaneEffect => "LANE FX",
             Self::Assist => "ASSIST",
             Self::BgaMode => "BGA",
             Self::BgaExpand => "BGA FIT",
@@ -427,7 +424,6 @@ impl SettingsEntryId {
             Self::DoubleOption => "settings-entry-description-double-option",
             Self::HsFix => "settings-entry-description-hs-fix",
             Self::Target => "settings-entry-description-target",
-            Self::LaneEffect => "settings-entry-description-lane-effect",
             Self::Assist => "settings-entry-description-assist",
             Self::BgaMode => "settings-entry-description-bga-mode",
             Self::BgaExpand => "settings-entry-description-bga-expand",
@@ -536,7 +532,7 @@ use support::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::profile_config::ProfileConfig;
+    use crate::config::profile_config::{LaneEffectConfig, ProfileConfig};
 
     #[test]
     fn adjust_volume_clamps_to_range() {

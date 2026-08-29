@@ -194,15 +194,6 @@ pub(in crate::ui) fn target_label(value: TargetOptionConfig) -> String {
     }
 }
 
-pub(in crate::ui) fn lane_effect_label(value: LaneEffectConfig) -> &'static str {
-    match value {
-        LaneEffectConfig::Off => "OFF",
-        LaneEffectConfig::Hidden => "HIDDEN",
-        LaneEffectConfig::Sudden => "SUDDEN",
-        LaneEffectConfig::HiddenSudden => "HIDDEN+SUDDEN",
-    }
-}
-
 pub(in crate::ui) fn bga_mode_label(value: BgaModeConfig) -> &'static str {
     match value {
         BgaModeConfig::On => "ON",

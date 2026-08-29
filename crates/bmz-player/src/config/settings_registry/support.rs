@@ -182,15 +182,6 @@ pub(super) fn format_target(value: TargetOptionConfig) -> String {
     }
 }
 
-pub(super) fn format_lane_effect(value: LaneEffectConfig) -> String {
-    match value {
-        LaneEffectConfig::Off => "OFF".to_string(),
-        LaneEffectConfig::Hidden => "HIDDEN".to_string(),
-        LaneEffectConfig::Sudden => "SUDDEN".to_string(),
-        LaneEffectConfig::HiddenSudden => "HIDDEN+SUDDEN".to_string(),
-    }
-}
-
 pub(super) fn format_assist(value: AssistOptionConfig) -> String {
     let labels = value
         .flags()
@@ -468,16 +459,6 @@ pub(super) fn cycle_target(current: TargetOptionConfig, forward: bool) -> Target
     } else {
         current
     };
-    cycle_in_slice(&VALUES, current, forward)
-}
-
-pub(super) fn cycle_lane_effect(current: LaneEffectConfig, forward: bool) -> LaneEffectConfig {
-    const VALUES: [LaneEffectConfig; 4] = [
-        LaneEffectConfig::Off,
-        LaneEffectConfig::Hidden,
-        LaneEffectConfig::Sudden,
-        LaneEffectConfig::HiddenSudden,
-    ];
     cycle_in_slice(&VALUES, current, forward)
 }
 

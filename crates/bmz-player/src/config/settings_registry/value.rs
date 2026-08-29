@@ -67,7 +67,6 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::DoubleOption => format_double_option(profile.play.double_option),
         SettingsEntryId::HsFix => format_hs_fix(profile.play.hs_fix),
         SettingsEntryId::Target => format_target(profile.play.target),
-        SettingsEntryId::LaneEffect => format_lane_effect(profile.play.lane_effect),
         SettingsEntryId::Assist => format_assist(profile.play.assist),
         SettingsEntryId::BgaMode => format_bga_mode(profile.play.bga),
         SettingsEntryId::BgaExpand => format_bga_expand(profile.play.bga_expand),

@@ -371,7 +371,6 @@ impl SettingsEditSession {
             }
             SettingsEntryId::HsFix => SettingsBaseline::HsFix(profile.play.hs_fix),
             SettingsEntryId::Target => SettingsBaseline::Target(profile.play.target),
-            SettingsEntryId::LaneEffect => SettingsBaseline::LaneEffect(profile.play.lane_effect),
             SettingsEntryId::Assist => SettingsBaseline::Assist(profile.play.assist),
             SettingsEntryId::BgaMode => SettingsBaseline::BgaMode(profile.play.bga),
             SettingsEntryId::BgaExpand => SettingsBaseline::BgaExpand(profile.play.bga_expand),
@@ -628,9 +627,7 @@ impl SettingsEditSession {
                 profile.play.target = *value;
             }
             (
-                SettingsEntryId::LaneEffect
-                | SettingsEntryId::SuddenEnabled
-                | SettingsEntryId::HiddenEnabled,
+                SettingsEntryId::SuddenEnabled | SettingsEntryId::HiddenEnabled,
                 SettingsBaseline::LaneEffect(value),
             ) => {
                 profile.play.lane_effect = *value;

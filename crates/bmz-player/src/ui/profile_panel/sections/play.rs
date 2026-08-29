@@ -148,18 +148,6 @@ pub(in crate::ui::profile_panel) fn build_profile_play_section(
                         ui.selectable_value(&mut profile.play.target, value, label);
                     }
                 });
-            egui::ComboBox::new("profile_lane_effect", tr!(text, "profile-play-lane-effect"))
-                .selected_text(lane_effect_label(profile.play.lane_effect))
-                .show_ui(ui, |ui| {
-                    for (value, label) in [
-                        (LaneEffectConfig::Off, "OFF"),
-                        (LaneEffectConfig::Hidden, "HIDDEN"),
-                        (LaneEffectConfig::Sudden, "SUDDEN"),
-                        (LaneEffectConfig::HiddenSudden, "HIDDEN+SUDDEN"),
-                    ] {
-                        ui.selectable_value(&mut profile.play.lane_effect, value, label);
-                    }
-                });
             egui::ComboBox::from_label("BGA")
                 .selected_text(bga_mode_label(profile.play.bga))
                 .show_ui(ui, |ui| {
