@@ -45,8 +45,7 @@ pub(super) fn skin_config_get_path(
 
     // ユーザがスキン設定パネルで「ランダム」を選んだときは、候補からロードごとに
     // ランダムに選ぶ (beatoraja のファイル選択 "Random" 相当)。
-    let want_random =
-        skin_files.get(&requested.replace('\\', "/")).is_some_and(|s| s == RANDOM_FILE_SELECTION);
+    let want_random = skin_config_path_uses_random_selection(requested, skin_files);
 
     // ユーザがスキン設定パネルで選んだファイルを最優先で返す。
     // 選択が存在しない / ファイルが消えている場合は従来通り候補解決へ委ねる。
@@ -78,6 +77,15 @@ pub(super) fn skin_config_get_path(
     }
     let index = if want_random { random_skin_file_index(candidates.len()) } else { 0 };
     Ok(candidates.swap_remove(index))
+}
+
+pub(super) fn skin_config_path_uses_random_selection(
+    requested: &str,
+    skin_files: &BTreeMap<String, String>,
+) -> bool {
+    skin_files
+        .get(&requested.replace('\\', "/"))
+        .is_some_and(|selected| selected == RANDOM_FILE_SELECTION)
 }
 
 pub(super) fn resolve_selected_skin_path_for_wildcard_child(
@@ -212,7 +220,7 @@ pub(super) fn record_virtual_io_dependency(
     }
 }
 
-pub(super) fn mark_io_dependency_opaque(dependencies: Option<&Arc<Mutex<SkinLoadDependencies>>>) {
+pub(super) fn mark_load_dependency_opaque(dependencies: Option<&Arc<Mutex<SkinLoadDependencies>>>) {
     if let Some(dependencies) = dependencies
         && let Ok(mut dependencies) = dependencies.lock()
     {

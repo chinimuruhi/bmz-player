@@ -1,6 +1,29 @@
 use super::*;
 
 impl WinitApp {
+    pub(super) fn prepare_play_skin_for_scene(
+        &mut self,
+        chart_id: i64,
+        options: &PlayStartOptions,
+    ) {
+        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, options);
+        let play_skin_runtime_state = lua_runtime_state_for_play(
+            options,
+            self.boot.profile_config.play.auto_play,
+            play_skin_key_mode,
+            self.play_skin_previous_best_ex_score(chart_id, options),
+            &self.boot.profile_config.display_name,
+            skin_attempt,
+        );
+        self.spawn_play_skin_decode_for(
+            play_skin_key_mode,
+            options.session_mode,
+            play_skin_runtime_state,
+        );
+        self.ensure_skin_ready(SkinKind::Play);
+    }
+
     /// 既に開始済みの preload を維持したまま Play シーンへ入場する。
     ///
     /// Decide 中の通常 preload、Result retry、中間リザルト中のコース次曲先読みで
@@ -13,22 +36,7 @@ impl WinitApp {
     ) {
         self.normalize_key_mode_conversion_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
-        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
-        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
-        let play_skin_runtime_state = lua_runtime_state_for_play(
-            &options,
-            self.boot.profile_config.play.auto_play,
-            play_skin_key_mode,
-            self.play_skin_previous_best_ex_score(chart_id, &options),
-            &self.boot.profile_config.display_name,
-            skin_attempt,
-        );
-        self.spawn_play_skin_decode_for(
-            play_skin_key_mode,
-            options.session_mode,
-            play_skin_runtime_state,
-        );
-        self.ensure_skin_ready(SkinKind::Play);
+        self.prepare_play_skin_for_scene(chart_id, &options);
         if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
             self.play.play_media_cache = None;
         }
@@ -54,22 +62,10 @@ impl WinitApp {
     ) {
         self.normalize_key_mode_conversion_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
-        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
-        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
-        let play_skin_runtime_state = lua_runtime_state_for_play(
-            &options,
-            self.boot.profile_config.play.auto_play,
-            play_skin_key_mode,
-            self.play_skin_previous_best_ex_score(chart_id, &options),
-            &self.boot.profile_config.display_name,
-            skin_attempt,
-        );
-        self.spawn_play_skin_decode_for(
-            play_skin_key_mode,
-            options.session_mode,
-            play_skin_runtime_state,
-        );
-        self.ensure_skin_ready(SkinKind::Play);
+        // Decide preload を通らない direct boot / replay / retry も新しい
+        // Play scene entry として必ずロード時Randomを再評価する。
+        self.skin.last_play_skin_signature = None;
+        self.prepare_play_skin_for_scene(chart_id, &options);
         self.invalidate_play_preload();
         if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
             self.play.play_media_cache = None;

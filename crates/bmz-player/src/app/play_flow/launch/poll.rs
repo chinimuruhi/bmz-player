@@ -282,6 +282,7 @@ impl WinitApp {
         // Result から Retry した直後は、前回結果の score DB 更新を
         // SelectItem がまだ取り込んでいない。曲開始前退出でも必ず再取得する。
         self.reload_select_items();
+        self.reload_skin_for_scene_entry(SkinKind::Select);
         self.restart_select_scene_timers();
     }
 

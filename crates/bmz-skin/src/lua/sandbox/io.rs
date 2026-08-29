@@ -98,11 +98,11 @@ pub(super) fn create_io_stub(
                     return create_read_file_stub(lua, source.clone());
                 }
                 let Ok(path) = resolve_skin_io_path(&root_for_open, &requested) else {
-                    mark_io_dependency_opaque(dependencies_for_open.as_ref());
+                    mark_load_dependency_opaque(dependencies_for_open.as_ref());
                     return Ok(Value::Nil);
                 };
                 let Ok(source) = read_skin_io_source(&path) else {
-                    mark_io_dependency_opaque(dependencies_for_open.as_ref());
+                    mark_load_dependency_opaque(dependencies_for_open.as_ref());
                     return Ok(Value::Nil);
                 };
                 record_lua_loaded_file_dependency(&path, dependencies_for_open.as_ref());
@@ -133,14 +133,14 @@ pub(super) fn create_io_stub(
                 source.clone()
             } else {
                 let Ok(path) = resolve_skin_io_path(&root_for_lines, &requested) else {
-                    mark_io_dependency_opaque(dependencies_for_lines.as_ref());
+                    mark_load_dependency_opaque(dependencies_for_lines.as_ref());
                     return create_lines_iterator(
                         lua,
                         Arc::new(Mutex::new(ReadFileState::default())),
                     );
                 };
                 let Ok(source) = read_skin_io_source(&path) else {
-                    mark_io_dependency_opaque(dependencies_for_lines.as_ref());
+                    mark_load_dependency_opaque(dependencies_for_lines.as_ref());
                     return create_lines_iterator(
                         lua,
                         Arc::new(Mutex::new(ReadFileState::default())),

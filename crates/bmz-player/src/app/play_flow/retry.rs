@@ -624,6 +624,7 @@ impl WinitApp {
                 self.start_play_preload(chart_id, options.clone());
             }
         }
+        self.prepare_play_skin_for_scene(chart_id, &options);
         self.enter_play_scene(chart_id, options, self.decide_snapshot_for_chart(chart_id));
         self.poll_play_preload();
     }

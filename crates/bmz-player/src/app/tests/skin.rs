@@ -15,6 +15,43 @@ fn lua_runtime_offsets_keep_names_distinct_and_runtime_ids_last_wins() {
 }
 
 #[test]
+fn play_skin_signature_changes_for_each_preload_generation() {
+    let options = BTreeMap::new();
+    let files = BTreeMap::new();
+    let runtime_state = bmz_skin::LuaLoadRuntimeState::default();
+    let first = play_skin_signature(
+        KeyMode::K7,
+        SessionMode::Normal,
+        "play.luaskin",
+        &options,
+        &files,
+        &runtime_state,
+        10,
+    );
+    let same_entry = play_skin_signature(
+        KeyMode::K7,
+        SessionMode::Normal,
+        "play.luaskin",
+        &options,
+        &files,
+        &runtime_state,
+        10,
+    );
+    let next_entry = play_skin_signature(
+        KeyMode::K7,
+        SessionMode::Normal,
+        "play.luaskin",
+        &options,
+        &files,
+        &runtime_state,
+        11,
+    );
+
+    assert_eq!(first, same_entry);
+    assert_ne!(first, next_entry);
+}
+
+#[test]
 fn skin_video_play_level_number_extracts_digits_without_allocating_label_shapes() {
     assert_eq!(skin_video_play_level_number("12"), 12);
     assert_eq!(skin_video_play_level_number("LV 10+"), 10);
