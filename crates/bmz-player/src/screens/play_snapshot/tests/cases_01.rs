@@ -460,6 +460,83 @@ fn judged_notes_remain_visible_until_their_scheduled_time() {
 }
 
 #[test]
+fn note_retention_keeps_unjudged_tap_on_judge_line_until_poor() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.note_retention = true;
+    let mut session =
+        build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    session.hispeed = 1.0;
+
+    let retained = build_render_snapshot(&session, TimeUs(1_000_001), &[], None);
+    let notes = &retained.visible_notes[Lane::Key1.index()];
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].y, 0.0);
+    assert_eq!(notes[0].processed_judge, None);
+
+    let miss_time = TimeUs(
+        1_000_000_i64.saturating_add(session.judge.window_set.note.bad_slow_us).saturating_add(1),
+    );
+    let outcome = session.judge.process_misses(&session.chart, miss_time);
+    assert_eq!(outcome.events.len(), 1);
+    assert_eq!(outcome.events[0].judge, Judge::Poor);
+
+    let processed = build_render_snapshot(&session, miss_time, &outcome.events, None);
+    assert!(processed.visible_notes[Lane::Key1.index()].is_empty());
+}
+
+#[test]
+fn note_retention_off_culls_unjudged_tap_after_scheduled_time() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut session =
+        build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    session.hispeed = 1.0;
+
+    let snapshot = build_render_snapshot(&session, TimeUs(1_000_001), &[], None);
+
+    assert!(!session.note_retention);
+    assert!(snapshot.visible_notes[Lane::Key1.index()].is_empty());
+}
+
+#[test]
+fn note_retention_uses_visual_time_but_waits_for_gameplay_judgement() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.note_retention = true;
+    let mut session =
+        build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
+    session.hispeed = 1.0;
+    session.offsets.visual_offset_us = 50_000;
+
+    let snapshot = build_render_snapshot(&session, TimeUs(960_000), &[], None);
+    let notes = &snapshot.visible_notes[Lane::Key1.index()];
+
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].y, 0.0);
+    assert_eq!(notes[0].processed_judge, None);
+}
+
+#[test]
+fn note_retention_does_not_keep_past_mines_or_long_notes() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.note_retention = true;
+
+    let mut mine_chart = chart();
+    mine_chart.lane_notes[Lane::Key1.index()][0].kind = NoteKind::Mine;
+    mine_chart.lane_notes[Lane::Key1.index()][0].damage = Some(8.0);
+    let mine_session =
+        build_game_session(Arc::new(mine_chart), &profile, PlaySessionOptions::default());
+    let mine_snapshot = build_render_snapshot(&mine_session, TimeUs(1_000_001), &[], None);
+    assert!(mine_snapshot.visible_mines[Lane::Key1.index()].is_empty());
+
+    let long_session = build_game_session(
+        Arc::new(chart_with_long_note()),
+        &profile,
+        PlaySessionOptions::default(),
+    );
+    let long_snapshot = build_render_snapshot(&long_session, TimeUs(1_500_001), &[], None);
+    assert!(long_snapshot.visible_long_notes.is_empty());
+}
+
+#[test]
 fn build_render_snapshot_culls_past_and_far_future_notes() {
     let mut chart = chart();
     chart.lane_notes[Lane::Key1.index()] = vec![
@@ -489,7 +566,8 @@ fn build_render_snapshot_keeps_k9_poor_note_while_falling() {
     let mut chart = chart();
     chart.metadata.key_mode = KeyMode::K9;
     chart.lane_notes[Lane::Key1.index()] = vec![tap_note(1, Lane::Key1, 0, 0)];
-    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.note_retention = true;
     let mut session = build_game_session(Arc::new(chart), &profile, PlaySessionOptions::default());
     session.hispeed = 1.0;
     session.judge.judged_notes.insert(NoteId(1), Judge::Poor);

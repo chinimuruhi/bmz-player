@@ -420,6 +420,7 @@ impl SettingsEditSession {
             SettingsEntryId::MisslayerDurationMs => {
                 SettingsBaseline::U32(profile.play.misslayer_duration_ms)
             }
+            SettingsEntryId::NoteRetention => SettingsBaseline::Bool(profile.play.note_retention),
             SettingsEntryId::ShowLnTailCap => SettingsBaseline::Bool(profile.play.show_ln_tail_cap),
             SettingsEntryId::GuideSe => SettingsBaseline::Bool(profile.play.guide_se),
             SettingsEntryId::Hispeed => SettingsBaseline::F32(profile.lane.hispeed),
@@ -685,6 +686,9 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::MisslayerDurationMs, SettingsBaseline::U32(value)) => {
                 profile.play.misslayer_duration_ms = *value;
+            }
+            (SettingsEntryId::NoteRetention, SettingsBaseline::Bool(value)) => {
+                profile.play.note_retention = *value;
             }
             (SettingsEntryId::ShowLnTailCap, SettingsBaseline::Bool(value)) => {
                 profile.play.show_ln_tail_cap = *value;
@@ -1017,6 +1021,12 @@ mod tests {
         assert!(adjust_settings_draft(&mut profile, &assist, 5));
         assist.restore(&mut profile);
         assert!((profile.play.assist.scroll_rate - 0.5).abs() < f64::EPSILON);
+
+        let note_retention = SettingsEditSession::capture(&profile, SettingsEntryId::NoteRetention);
+        assert!(adjust_settings_draft(&mut profile, &note_retention, 1));
+        assert!(profile.play.note_retention);
+        note_retention.restore(&mut profile);
+        assert!(!profile.play.note_retention);
 
         let duration =
             SettingsEditSession::capture(&profile, SettingsEntryId::NoteDisplayDurationMs);

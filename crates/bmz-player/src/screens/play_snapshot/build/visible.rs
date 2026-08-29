@@ -65,20 +65,27 @@ fn populate_visible_notes(
 ) {
     let note_lower_time = (snapshot.key_mode != KeyMode::K9).then_some(lane_render_now);
     for lane in Lane::ALL {
+        let retention_lower_index =
+            session.note_retention.then_some(session.judge.lanes[lane.index()].next_note_index);
         for note in visible_lane_notes(
             session.chart.notes_for_lane(lane),
             note_lower_time,
+            retention_lower_index,
             tick_upper_bound,
         ) {
             let Some(alpha) = constant_object_alpha(session, lane_render_now, note.time) else {
                 continue;
             };
             let processed_judge = session.judge.judged_notes.get(&note.id).copied();
+            let retained_at_judge_line = session.note_retention
+                && note.kind == NoteKind::Tap
+                && processed_judge.is_none()
+                && note.time < lane_render_now;
             let falling_pms_poor = snapshot.key_mode == KeyMode::K9
                 && note.kind == NoteKind::Tap
                 && processed_judge == Some(Judge::Poor)
                 && note.time < lane_render_now;
-            if note.time < lane_render_now && !falling_pms_poor {
+            if note.time < lane_render_now && !retained_at_judge_line && !falling_pms_poor {
                 continue;
             }
             match note.kind {
@@ -101,6 +108,7 @@ fn populate_visible_notes(
                         cursor_tick,
                         note,
                         lane_render_now,
+                        retained_at_judge_line,
                         falling_pms_poor,
                     );
                     if let Some(y) = y {
@@ -125,9 +133,12 @@ fn visible_tap_y(
     cursor_tick: f64,
     note: &NoteEvent,
     lane_render_now: TimeUs,
+    retained_at_judge_line: bool,
     falling_pms_poor: bool,
 ) -> Option<f32> {
-    if falling_pms_poor {
+    if retained_at_judge_line {
+        Some(0.0)
+    } else if falling_pms_poor {
         Some(-pms_missed_note_fall_progress(
             &session.timing_map,
             note.tick,

@@ -473,6 +473,7 @@ impl ProfileConfig {
                 lane_effect: LaneEffectConfig::Off,
                 assist: AssistOptionConfig::default(),
                 guide_se: false,
+                note_retention: false,
                 session_mode: Some(SessionMode::Normal),
                 auto_play: false,
                 bga: default_bga_mode(),

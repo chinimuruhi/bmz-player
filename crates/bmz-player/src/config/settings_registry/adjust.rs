@@ -219,6 +219,14 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         SettingsEntryId::MisslayerDurationMs => {
             adjust_u32(&mut profile.play.misslayer_duration_ms, delta, 0, 5000)
         }
+        SettingsEntryId::NoteRetention => {
+            if delta == 0 {
+                false
+            } else {
+                profile.play.note_retention = !profile.play.note_retention;
+                true
+            }
+        }
         SettingsEntryId::ShowLnTailCap => {
             if delta == 0 {
                 false

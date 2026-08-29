@@ -41,7 +41,8 @@ Backspaceまたは「解除」で割り当てを削除します。Decide / Play�
 割り当てを使用します。
 F1メニューのプロファイル設定では、beatoraja互換の7アシストと
 SCROLL / LONGNOTE / MINE / EXTRA NOTEモディファイアを設定できます。
-「プレイ」では判定ごとのGUIDE SE、「表示」ではノーツ表示時間、CONSTANT、
+「プレイ」では判定ごとのGUIDE SEと未処理ノートの判定ライン滞留、
+「表示」ではノーツ表示時間、CONSTANT、
 CONSTANTフェード時間を設定できます。CONSTANTはPracticeでは無効です。
 `RULE MODE` / `LN MODE` を変更すると、選曲一覧のスコア・リプレイ・フォルダ集計を
 新しいスコア文脈で即時再読込し、変更前のプリロードとリトライ用cacheは破棄します。

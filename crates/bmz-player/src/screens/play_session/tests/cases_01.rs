@@ -4,6 +4,7 @@ use super::*;
 fn build_game_session_uses_profile_play_settings() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.play.auto_play = true;
+    profile.play.note_retention = true;
     profile.judge.input_offset_us = 123;
     let chart = Arc::new(chart());
 
@@ -20,6 +21,7 @@ fn build_game_session_uses_profile_play_settings() {
     assert!(session.bga_enabled);
     assert_eq!(session.poor_bga_duration_us, 500_000);
     assert_eq!(session.bga_stretch, 1);
+    assert!(session.note_retention);
 }
 
 #[test]

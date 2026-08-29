@@ -222,6 +222,8 @@ pub struct GameSession {
     pub constant_enabled: bool,
     pub constant_fade_ms: i32,
     pub guide_se_enabled: bool,
+    /// 未処理の通常ノートを判定ラインへ滞留させる表示設定。
+    pub note_retention: bool,
     /// Floating hispeed の曲開始前基準 BPM。曲開始後は現在 BPM で再計算する。
     pub hsfix_base_bpm: f64,
     pub lift: f32,

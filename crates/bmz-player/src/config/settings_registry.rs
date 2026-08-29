@@ -77,6 +77,7 @@ pub enum SettingsEntryId {
     AssistScratchGoodRate,
     AssistLongNoteMarginRate,
     MisslayerDurationMs,
+    NoteRetention,
     ShowLnTailCap,
     GuideSe,
     Hispeed,
@@ -170,6 +171,7 @@ impl SettingsEntryId {
         Self::KeyModeConversion,
         Self::MisslayerDurationMs,
         Self::PlayExitHoldMs,
+        Self::NoteRetention,
         Self::ShowLnTailCap,
         Self::GuideSe,
     ];
@@ -334,6 +336,7 @@ impl SettingsEntryId {
             Self::AssistScratchGoodRate => "SCRATCH GOOD",
             Self::AssistLongNoteMarginRate => "LN MARGIN",
             Self::MisslayerDurationMs => "MISSLAYER",
+            Self::NoteRetention => "NOTE RETENTION",
             Self::ShowLnTailCap => "LN TAIL CAP",
             Self::GuideSe => "GUIDE SE",
             Self::Hispeed => "HISPEED",
@@ -450,6 +453,7 @@ impl SettingsEntryId {
                 "settings-entry-description-assist-long-note-margin-rate"
             }
             Self::MisslayerDurationMs => "settings-entry-description-misslayer-duration",
+            Self::NoteRetention => "settings-entry-description-note-retention",
             Self::ShowLnTailCap => "settings-entry-description-show-ln-tail-cap",
             Self::GuideSe => "settings-entry-description-guide-se",
             Self::Hispeed => "settings-entry-description-hispeed",
@@ -773,6 +777,10 @@ mod tests {
         assert!(profile.lane.constant_enabled);
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::GuideSe, 1));
         assert!(profile.play.guide_se);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::NoteRetention), "OFF");
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::NoteRetention, 1));
+        assert!(profile.play.note_retention);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::NoteRetention), "ON");
 
         profile.play.misslayer_duration_ms = 4_980;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::MisslayerDurationMs, 50));

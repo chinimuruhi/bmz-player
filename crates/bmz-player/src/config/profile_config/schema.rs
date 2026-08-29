@@ -187,6 +187,10 @@ pub struct PlayDefaultsConfig {
     /// beatoraja `PlayerConfig.guideSE` 相当。判定時に guide-*.wav を再生する。
     #[serde(default)]
     pub guide_se: bool,
+    /// lr2oraja-endlessdream `PlayerConfig.noteretention` 相当。
+    /// 未処理の通常ノートを判定ラインへ滞留させる。
+    #[serde(default)]
+    pub note_retention: bool,
     /// 選曲画面で選んだセッション全体のモード。
     ///
     /// 旧 profile の `auto_play` を読み込めるよう Option とし、None の場合だけ

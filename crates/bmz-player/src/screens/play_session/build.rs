@@ -563,6 +563,7 @@ pub fn build_game_session_with_input_backend(
             && session_mode != crate::select_options::SessionMode::Practice,
         constant_fade_ms: mode_config.constant_fade_ms,
         guide_se_enabled: profile.play.guide_se,
+        note_retention: profile.play.note_retention,
         hsfix_base_bpm,
         lift,
         lane_cover,

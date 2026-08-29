@@ -150,6 +150,7 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::AssistLongNoteMarginRate => {
             format!("{}%", profile.play.assist.long_note_margin_rate)
         }
+        SettingsEntryId::NoteRetention => format_bool_on_off(profile.play.note_retention),
         SettingsEntryId::ShowLnTailCap => format_bool_on_off(profile.play.show_ln_tail_cap),
         SettingsEntryId::GuideSe => format_bool_on_off(profile.play.guide_se),
         SettingsEntryId::MisslayerDurationMs => {

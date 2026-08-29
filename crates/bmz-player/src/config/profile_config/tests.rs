@@ -68,6 +68,19 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
     assert_eq!(play.misslayer_duration_ms, 500);
     assert_eq!(play.play_exit_hold_ms, 1000);
     assert_eq!(play.bottom_shiftable_gauge, BottomShiftableGaugeConfig::AssistEasy);
+    assert!(!play.note_retention);
+}
+
+#[test]
+fn note_retention_defaults_off_and_roundtrips() {
+    let mut play = ProfileConfig::new_default("default", "Default", 0).play;
+    assert!(!play.note_retention);
+
+    play.note_retention = true;
+    let encoded = toml::to_string(&play).unwrap();
+    let decoded: PlayDefaultsConfig = toml::from_str(&encoded).unwrap();
+
+    assert!(decoded.note_retention);
 }
 
 #[test]
