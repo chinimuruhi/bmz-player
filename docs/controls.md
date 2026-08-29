@@ -309,6 +309,8 @@ SUDDEN+、LIFT、HIDDEN+の有効状態は、F1メニューのプロファイル
 対象になりません。LIFTとHIDDEN+を同時に有効にした場合、プレイ開始時の変更対象はLIFTで、
 E1+E2の押下エッジごとにLIFT/HIDDEN+を切り替えます。押す順序は問いません。
 この短押し切替とE1+E2長押しによる中断は共存します。
+HIDDEN+を変更対象にした場合だけ増減方向がSUDDEN+/LIFTと逆になり、カーソルキーと
+E1+ScratchのどちらでもUpでHIDDEN+量が増え、Downで減ります。
 
 SUDDEN+が無効または非表示で、LIFT/HIDDEN+も無効なため操作可能なカバーがない場合、
 カバー操作はEndlessDream互換のHS操作になります。HS Auto AdjustがOFFならデジタル入力は

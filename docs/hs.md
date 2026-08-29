@@ -158,6 +158,9 @@ Course の `NoSpeed` 制約中は、HS 変更、緑数字変更、FHS 再計算�
 | `E2 hold + Scratch Up/Down` | 緑数字を変更する |
 | `E1 double press` | SUDDEN+が有効な場合だけSUDDEN+表示を切り替える |
 
+HIDDEN+を変更対象にした場合だけSUDDEN+/LIFTと増減方向が逆になり、`Up`でHIDDEN+量を
+増やし、`Down`で減らす。カーソルキーと`E1 hold + Scratch Up/Down`に共通で適用する。
+
 ### 操作可能なレーンカバーがない場合
 
 SUDDEN+が無効または非表示で、LIFT/HIDDEN+も無効な場合は、カバー操作を次のHS操作へ

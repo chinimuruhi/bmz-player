@@ -291,6 +291,46 @@ fn pending_disabled_covers_without_auto_adjust_change_hispeed_directly() {
 }
 
 #[test]
+fn pending_hidden_cover_reverses_digital_and_analog_lane_actions() {
+    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut lane = PendingPlayLaneState {
+        hispeed: 2.0,
+        hispeed_mode: HispeedMode::Normal,
+        target_green_number: 300,
+        lane_cover: 0.0,
+        lift: 0.0,
+        hidden_cover: 0.3,
+        sudden_enabled: false,
+        lift_enabled: false,
+        hidden_enabled: true,
+        lane_cover_visible: false,
+        lane_target: PlayLaneTarget::Lift,
+        lane_cover_changing: true,
+        hsfix_base_bpm: 120.0,
+        hispeed_auto_adjust: false,
+        playback_rate_percent: 100,
+    };
+
+    assert!(apply_pending_play_lane_action_to_state(
+        &mut lane,
+        PlayLaneAction::LaneCoverDelta(LANE_COVER_STEP),
+        &profile,
+        120.0,
+        false,
+    ));
+    assert!((lane.hidden_cover - 0.301).abs() < 0.000_1);
+
+    assert!(apply_pending_play_lane_action_to_state(
+        &mut lane,
+        PlayLaneAction::AnalogLaneCoverDelta(-LANE_COVER_STEP),
+        &profile,
+        120.0,
+        false,
+    ));
+    assert!((lane.hidden_cover - 0.3).abs() < 0.000_1);
+}
+
+#[test]
 fn pending_lane_state_preserves_sub_one_hsfix_bpm() {
     let mut snapshot =
         RenderSnapshot { hispeed_mode_index: 1, min_bpm: 0.96, ..Default::default() };

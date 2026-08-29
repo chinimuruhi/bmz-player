@@ -103,7 +103,7 @@ fn apply_pending_lane_cover_delta(
             }
         }
         PlayLaneTarget::Hidden => {
-            lane.hidden_cover = (lane.hidden_cover - delta).clamp(0.0, 1.0);
+            lane.hidden_cover = (lane.hidden_cover + delta).clamp(0.0, 1.0);
         }
     }
 }
@@ -314,7 +314,7 @@ pub(in crate::app) fn apply_lane_cover_step_to_session(
             }
         }
         PlayLaneTarget::Hidden => {
-            session.hidden_cover = (session.hidden_cover - delta).clamp(0.0, 1.0);
+            session.hidden_cover = (session.hidden_cover + delta).clamp(0.0, 1.0);
         }
     }
     true

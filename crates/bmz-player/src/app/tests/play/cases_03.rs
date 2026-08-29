@@ -443,8 +443,23 @@ fn lift_and_hidden_share_lane_actions_with_an_explicit_target() {
     assert_eq!(lane_target, PlayLaneTarget::Hidden);
     assert_eq!(session.hispeed_mode, HispeedMode::Normal);
 
-    assert!(apply_lane_cover_step_to_session(&mut session, &mut lane_target, -0.1, false,));
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::LaneCoverDelta(0.1),
+        false,
+        0.25,
+    ));
     assert!((session.hidden_cover - 0.4).abs() < f32::EPSILON);
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::AnalogLaneCoverDelta(-0.1),
+        false,
+        0.25,
+    ));
+    assert!((session.hidden_cover - 0.3).abs() < f32::EPSILON);
 }
 
 #[test]
