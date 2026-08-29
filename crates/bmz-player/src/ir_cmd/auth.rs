@@ -33,8 +33,11 @@ pub(super) async fn login(
         None => prompt_password()?,
     };
 
+    let is_bms_ir = crate::ir::bms_ir::is_bms_ir_provider(provider);
     let is_rian_ir = crate::ir::rian_ir::is_rian_ir_provider(provider);
-    let tokens = if is_rian_ir {
+    let tokens = if is_bms_ir {
+        crate::ir::bms_ir::BmsIrClient::new(&base_url)?.login(email, &password).await?
+    } else if is_rian_ir {
         crate::ir::rian_ir::RianIrClient::new(&base_url)?.login(email, &password).await?
     } else {
         BmzOfficialIrClient::anonymous(&base_url)?.login(email, &password).await?
@@ -92,7 +95,7 @@ pub(super) async fn login(
     entry.account_id = account_id.clone();
     entry.account_display_name = display_name.clone();
     entry.last_login_at = Some(now);
-    if profile.ir.primary_provider.is_empty() {
+    if profile.ir.primary_provider.is_empty() && !is_bms_ir {
         profile.ir.primary_provider = provider_key.clone();
         entry.role = IrProviderRoleConfig::Primary;
     }
@@ -140,6 +143,7 @@ pub(super) async fn logout(
     if let Some(credentials) = &credentials
         && let Some(entry) = entry
         && !crate::ir::rian_ir::is_rian_ir_config(entry)
+        && !crate::ir::bms_ir::is_bms_ir_config(entry)
     {
         let client = BmzOfficialIrClient::new(&entry.base_url, credentials.access_token.clone())?;
         if let Err(error) = client.logout(&credentials.refresh_token).await {
@@ -170,7 +174,9 @@ pub(super) async fn logout(
 }
 
 pub(super) fn canonical_provider_protocol(provider: &str) -> &'static str {
-    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+    if crate::ir::bms_ir::is_bms_ir_provider(provider) {
+        crate::ir::bms_ir::BMS_IR_PROVIDER
+    } else if crate::ir::rian_ir::is_rian_ir_provider(provider) {
         crate::ir::rian_ir::RIAN_IR_PROVIDER
     } else {
         crate::ir::bmz_official::BMZ_IR_PROVIDER
@@ -216,7 +222,15 @@ pub(super) async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig
                     .await
                     {
                         Ok(fresh) => {
-                            if crate::ir::rian_ir::is_rian_ir_config(entry) {
+                            if crate::ir::bms_ir::is_bms_ir_config(entry) {
+                                match crate::ir::bms_ir::BmsIrClient::new(&entry.base_url)?
+                                    .login(&fresh.account_id, &fresh.access_token)
+                                    .await
+                                {
+                                    Ok(_) => println!("  connection: OK ({})", fresh.account_id),
+                                    Err(error) => println!("  connection: NG ({error:#})"),
+                                }
+                            } else if crate::ir::rian_ir::is_rian_ir_config(entry) {
                                 println!(
                                     "  connection: credentials stored ({})",
                                     fresh.display_name

@@ -83,6 +83,7 @@ pub fn normalize_chart(
 
 pub(super) fn normalize_metadata(input: &IntermediateMetadata) -> ChartMetadata {
     ChartMetadata {
+        source_format: crate::model::ChartSourceFormat::Unknown,
         title: input.title.clone(),
         subtitle: input.subtitle.clone(),
         artist: input.artist.clone(),

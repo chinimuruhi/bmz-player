@@ -85,6 +85,9 @@ pub(super) fn selected_provider<'a>(
                 provider.provider
             );
         }
+        if crate::ir::bms_ir::is_bms_ir_config(provider) {
+            bail!("BMS-IR is submit-only and does not support this operation");
+        }
         return Ok(provider);
     }
 
@@ -94,7 +97,9 @@ pub(super) fn selected_provider<'a>(
             .providers
             .iter()
             .find(|entry| {
-                entry.enabled && crate::ir::provider_key::configured_provider_key(entry).is_some()
+                entry.enabled
+                    && crate::ir::provider_key::configured_provider_key(entry).is_some()
+                    && !crate::ir::bms_ir::is_bms_ir_config(entry)
             })
             .and_then(crate::ir::provider_key::configured_provider_key)
             .map(str::to_string)
@@ -108,10 +113,11 @@ pub(super) fn selected_provider<'a>(
         .iter()
         .find(|entry| {
             !entry.base_url.is_empty()
+                && !crate::ir::bms_ir::is_bms_ir_config(entry)
                 && crate::ir::provider_key::configured_provider_key(entry)
                     .is_some_and(|provider_key| provider_key == provider_name)
         })
-        .context("no IR provider configured; run `bmz ir login` first")
+        .context("no read-capable IR provider configured; BMS-IR is submit-only")
 }
 
 pub(super) fn parse_scope(value: &str) -> Result<IrRankingScope> {

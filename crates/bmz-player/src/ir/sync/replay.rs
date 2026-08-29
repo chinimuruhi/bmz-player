@@ -92,7 +92,10 @@ pub(super) fn replay_job_for_score(
     remote_score_id: &str,
     now: i64,
 ) -> Result<Option<NewIrScoreJob>> {
-    if job.kind != IrJobKind::Score || crate::ir::rian_ir::is_rian_ir_provider(&job.provider) {
+    if job.kind != IrJobKind::Score
+        || crate::ir::rian_ir::is_rian_ir_provider(&job.provider)
+        || crate::ir::bms_ir::is_bms_ir_provider(&job.provider)
+    {
         return Ok(None);
     }
     let payload: IrScoreSubmission =
@@ -125,6 +128,9 @@ pub(super) async fn submit_replay_job(
     local_score_id: i64,
     now: i64,
 ) -> Result<()> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR replay upload is not supported");
+    }
     let payload: IrReplayJobPayload =
         serde_json::from_str(payload_json).context("failed to parse stored IR replay payload")?;
     let replay_path = replay_path.with_context(|| {
@@ -177,6 +183,13 @@ pub(super) async fn submit_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        let client = crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_score(&payload, &credentials.account_id, &credentials.access_token)
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     if crate::ir::rian_ir::is_rian_ir_config(provider) {
         let client = crate::ir::rian_ir::RianIrClient::new(&provider.base_url)?;
         let outcome = client
@@ -203,6 +216,9 @@ pub(super) fn ensure_score_payload_allowed(
     provider: &IrProviderConfig,
     payload: &IrScoreSubmission,
 ) -> Result<()> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        return crate::ir::bms_ir::ensure_score_payload_supported(payload);
+    }
     if crate::ir::rian_ir::is_rian_ir_config(provider)
         && crate::ir::backfill::is_local_backfill_submission(payload)
     {

@@ -62,6 +62,23 @@ fn sync_ir_provider_roles_keeps_only_primary_role() {
 }
 
 #[test]
+fn sync_ir_provider_roles_keeps_bms_ir_submit_only() {
+    let mut bms_ir = IrProviderConfig::bms_ir();
+    bms_ir.provider_key = crate::ir::bms_ir::BMS_IR_PROVIDER.to_string();
+    bms_ir.enabled = true;
+    bms_ir.role = IrProviderRoleConfig::Primary;
+    let mut ir_config = IrConfig {
+        primary_provider: crate::ir::bms_ir::BMS_IR_PROVIDER.to_string(),
+        providers: vec![bms_ir],
+        ..IrConfig::default()
+    };
+
+    assert!(sync_ir_provider_roles(&mut ir_config));
+    assert!(ir_config.primary_provider.is_empty());
+    assert_eq!(ir_config.providers[0].role, IrProviderRoleConfig::SubmitOnly);
+}
+
+#[test]
 fn clamp_panel_layout_fits_high_dpi_1920x1080_logical_viewport() {
     // 1920x1080 物理ウィンドウ @ 2x → egui 論理 960x540 相当。
     let constrain = egui::Rect::from_min_size(egui::pos2(16.0, 16.0), egui::vec2(928.0, 508.0));

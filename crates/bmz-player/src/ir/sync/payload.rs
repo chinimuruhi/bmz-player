@@ -6,6 +6,9 @@ pub(super) async fn submit_score_attestation_job(
     payload_json: &str,
     now: i64,
 ) -> Result<(String, String, String)> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR score attestation is not supported");
+    }
     const ATTESTATION_PURPOSE: &str = "score_attestation";
     const ATTESTATION_SCHEMA: &str = "bmz-score-attestation-v1";
 
@@ -49,6 +52,9 @@ pub(super) async fn submit_course_job_payload(
     payload_json: &str,
     now: i64,
 ) -> Result<(String, String)> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR course submission is not supported");
+    }
     let mut payload: serde_json::Value =
         serde_json::from_str(payload_json).context("failed to parse stored IR course payload")?;
     normalize_legacy_course_payload(&mut payload);

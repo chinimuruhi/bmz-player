@@ -388,6 +388,8 @@ fn default_profile_uses_normalized_quieter_audio_and_prefetches_ir_rankings() {
     assert!(profile.ir.prefetch_rival_ranking_on_score_submit);
     assert_eq!(profile.ir.providers[0], IrProviderConfig::bmz_ir());
     assert_eq!(profile.ir.providers[1], IrProviderConfig::rian_ir());
+    assert_eq!(profile.ir.providers[2], IrProviderConfig::bms_ir());
+    assert!(!profile.ir.providers[2].enabled);
 }
 
 #[test]
@@ -491,18 +493,27 @@ fn ir_provider_normalization_moves_builtins_first_and_preserves_accounts_and_cus
     rian.account_id = "bob".to_string();
     rian.last_success_at = Some(20);
 
+    let mut bms_ir = IrProviderConfig::bms_ir();
+    bms_ir.provider = "BMSIR".to_string();
+    bms_ir.base_url = "https://www.bms-ir.org/ignored/path".to_string();
+    bms_ir.provider_key = "legacy-bms-key".to_string();
+    bms_ir.account_id = "1234".to_string();
+    bms_ir.account_display_name = "1234".to_string();
+    bms_ir.enabled = true;
+    bms_ir.role = IrProviderRoleConfig::Primary;
+
     let mut custom = IrProviderConfig::custom();
     custom.base_url = "http://localhost:3000/".to_string();
     custom.send_policy = IrSendPolicyConfig::CompleteSong;
 
     let duplicate = IrProviderConfig::bmz_ir();
     let mut ir = IrConfig {
-        providers: vec![custom.clone(), duplicate.clone(), rian, bmz],
+        providers: vec![custom.clone(), duplicate.clone(), bms_ir, rian, bmz],
         ..IrConfig::default()
     };
 
     assert!(ir.normalize_builtin_providers());
-    assert_eq!(ir.providers.len(), 4);
+    assert_eq!(ir.providers.len(), 5);
     assert_eq!(ir.providers[0].provider, "bmz");
     assert_eq!(ir.providers[0].base_url, "https://bmz-player.hyrorre.workers.dev/");
     assert_eq!(ir.providers[0].provider_key, "bmz-account");
@@ -513,8 +524,15 @@ fn ir_provider_normalization_moves_builtins_first_and_preserves_accounts_and_cus
     assert_eq!(ir.providers[1].provider_key, "rian-account");
     assert_eq!(ir.providers[1].account_id, "bob");
     assert_eq!(ir.providers[1].last_success_at, Some(20));
-    assert_eq!(ir.providers[2], custom);
-    assert_eq!(ir.providers[3], duplicate);
+    assert_eq!(ir.providers[2].provider, "bms-ir");
+    assert_eq!(ir.providers[2].base_url, "https://www.bms-ir.org");
+    assert_eq!(ir.providers[2].provider_key, "legacy-bms-key");
+    assert_eq!(ir.providers[2].account_id, "1234");
+    assert_eq!(ir.providers[2].account_display_name, "1234");
+    assert!(ir.providers[2].enabled);
+    assert_eq!(ir.providers[2].role, IrProviderRoleConfig::SubmitOnly);
+    assert_eq!(ir.providers[3], custom);
+    assert_eq!(ir.providers[4], duplicate);
     assert!(!ir.normalize_builtin_providers());
 }
 
@@ -526,7 +544,15 @@ fn ir_provider_normalization_adds_missing_builtins_before_custom_entries() {
     let mut ir = IrConfig { providers: vec![custom.clone()], ..IrConfig::default() };
 
     assert!(ir.normalize_builtin_providers());
-    assert_eq!(ir.providers, vec![IrProviderConfig::bmz_ir(), IrProviderConfig::rian_ir(), custom]);
+    assert_eq!(
+        ir.providers,
+        vec![
+            IrProviderConfig::bmz_ir(),
+            IrProviderConfig::rian_ir(),
+            IrProviderConfig::bms_ir(),
+            custom,
+        ]
+    );
 }
 
 #[test]

@@ -293,7 +293,9 @@ impl IrLoginUiState {
                     entry.account_id = outcome.account_id;
                     entry.account_display_name = outcome.display_name;
                     entry.last_login_at = Some(now_unix_seconds());
-                    if profile.ir.primary_provider.is_empty() {
+                    if profile.ir.primary_provider.is_empty()
+                        && !crate::ir::bms_ir::is_bms_ir_provider(&outcome.provider)
+                    {
                         profile.ir.primary_provider = outcome.provider_key;
                         entry.role = IrProviderRoleConfig::Primary;
                     }
@@ -337,7 +339,9 @@ impl IrLoginUiState {
         self.message = None;
         tokio::spawn(async move {
             let outcome = async {
-                let tokens = if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
+                let tokens = if crate::ir::bms_ir::is_bms_ir_provider(&provider) {
+                    crate::ir::bms_ir::BmsIrClient::new(&base_url)?.login(&email, &password).await?
+                } else if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
                     crate::ir::rian_ir::RianIrClient::new(&base_url)?
                         .login(&email, &password)
                         .await?

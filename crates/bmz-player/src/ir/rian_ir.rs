@@ -254,6 +254,7 @@ mod tests {
                 platform: "test".to_string(),
             },
             chart: IrChartPayload {
+                source_format: "bms".to_string(),
                 sha256: "ab".repeat(32),
                 md5: Some("cd".repeat(16)),
                 length_ms: Some(123_456),
