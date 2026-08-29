@@ -11,6 +11,7 @@ pub struct SelectSnapshot {
     /// beatoraja の NUMBER_OPERATING_TIME_HOUR/MINUTE/SECOND (27..29) に使う。
     pub operating_time_ms: i32,
     pub skin_input: SkinLogicalInputSnapshot,
+    pub skin_attempt: SkinAttemptState,
     /// 現在の選曲スキンスロットに設定された destination offset。
     pub skin_offsets: SkinOffsetValues,
     pub selection_time: TimeUs,
@@ -56,6 +57,8 @@ pub struct SelectSnapshot {
     pub assist_mine_mode: i64,
     pub assist_scroll_mode: i64,
     pub assist_long_note_mode: i64,
+    pub guide_se_enabled: bool,
+    pub constant_enabled: bool,
     pub select_mode: String,
     /// LR2-style difficulty filter: 0=ALL, 1=BEGINNER .. 5=INSANE.
     pub select_difficulty_filter: u8,
@@ -63,6 +66,12 @@ pub struct SelectSnapshot {
     pub random_mix_options: [u32; 7],
     pub select_sort: String,
     pub select_ln_mode: String,
+    /// BMZ extension: current profile scoring rule mode index.
+    pub rule_mode_index: usize,
+    /// BMZ extension: current profile LN setting index before normalization.
+    pub ln_policy_setting_index: usize,
+    /// BMZ extension: selected chart/course score-key LN policy index.
+    pub ln_score_policy_index: Option<usize>,
     pub judge_algorithm: String,
     pub bga: String,
     /// Select detail option panelで表示する判定表示オフセット(ms)。
@@ -115,7 +124,8 @@ pub struct SelectSnapshot {
     /// 非入力時の placeholder / feedback はスキン本来の destination 順で描画し、
     /// 入力中の文字と caret だけを TextField 相当の最前面オーバーレイにする。
     pub search_input_active: bool,
-    /// Select skin mouse position in normalized screen coordinates.
+    /// Select skin mouse position in normalized skin-canvas coordinates.
+    /// The origin is the top-left corner.
     pub mouse_position: Option<(f32, f32)>,
     /// 選曲カーソル譜面の IR ランキング状態 (NUMBER_IR_* / OPTION_IR_*)。
     pub ir: ResultIrSnapshot,
@@ -163,6 +173,7 @@ impl Default for SelectSnapshot {
             current_fps: 0,
             operating_time_ms: 0,
             skin_input: SkinLogicalInputSnapshot::default(),
+            skin_attempt: SkinAttemptState::default(),
             skin_offsets: SkinOffsetValues::default(),
             selection_time: TimeUs::default(),
             option_panel_time: TimeUs::default(),
@@ -194,11 +205,16 @@ impl Default for SelectSnapshot {
             assist_mine_mode: 0,
             assist_scroll_mode: 0,
             assist_long_note_mode: 0,
+            guide_se_enabled: false,
+            constant_enabled: false,
             select_mode: String::new(),
             select_difficulty_filter: 0,
             random_mix_options: [0, 0, 0, 10, 0, 0, 5],
             select_sort: String::new(),
             select_ln_mode: String::new(),
+            rule_mode_index: 0,
+            ln_policy_setting_index: 0,
+            ln_score_policy_index: None,
             judge_algorithm: String::new(),
             bga: String::new(),
             judge_timing_offset_ms: 0,
@@ -242,6 +258,8 @@ impl Default for SelectSnapshot {
 pub struct SelectRowSnapshot {
     pub index: u32,
     pub title: String,
+    /// 選曲一覧のバー内だけに表示する文字列。空の場合は `title` を使う。
+    pub bar_text: String,
     pub subtitle: String,
     pub artist: String,
     pub genre: String,
@@ -251,6 +269,9 @@ pub struct SelectRowSnapshot {
     pub table_text_primary: String,
     pub table_text_secondary: String,
     pub table_text_fallback: String,
+    /// songlist のレベル装飾を表示するか。G-BATTLEの固定行など、
+    /// Song 行の描画を使いつつレベル欄だけ隠す場合に false。
+    pub show_level: bool,
     /// 現在の曲の #RANK / 判定ランク。0..4 は VERYHARD..VERYEASY、10 以上は直接倍率。
     pub judge_rank: Option<i32>,
     pub total_notes: u32,
@@ -276,9 +297,12 @@ pub struct SelectRowSnapshot {
     pub favorite_song: bool,
     /// Same-folder `.txt` presence for OPTION_NO_TEXT / OPTION_TEXT (174/175).
     pub has_document: bool,
+    pub has_bga: bool,
     pub has_long_notes: bool,
     pub has_mines: bool,
     pub has_random: bool,
+    /// BMZ source LN profile bit mask. None for non-chart rows.
+    pub source_ln_profile_bits: Option<u8>,
     /// beatoraja SongInformation-derived chart details for selected song rows.
     pub chart_normal_notes: u32,
     pub chart_long_notes: u32,
@@ -315,11 +339,18 @@ pub struct SelectRowSnapshot {
     pub chart_key_mode: Option<bmz_core::lane::KeyMode>,
 }
 
+impl SelectRowSnapshot {
+    pub fn display_bar_text(&self) -> &str {
+        if self.bar_text.is_empty() { &self.title } else { &self.bar_text }
+    }
+}
+
 impl Default for SelectRowSnapshot {
     fn default() -> Self {
         Self {
             index: 0,
             title: String::new(),
+            bar_text: String::new(),
             subtitle: String::new(),
             artist: String::new(),
             genre: String::new(),
@@ -329,6 +360,7 @@ impl Default for SelectRowSnapshot {
             table_text_primary: String::new(),
             table_text_secondary: String::new(),
             table_text_fallback: String::new(),
+            show_level: true,
             judge_rank: None,
             total_notes: 0,
             initial_bpm: 0.0,
@@ -350,9 +382,11 @@ impl Default for SelectRowSnapshot {
             favorite_chart: false,
             favorite_song: false,
             has_document: false,
+            has_bga: false,
             has_long_notes: false,
             has_mines: false,
             has_random: false,
+            source_ln_profile_bits: None,
             chart_normal_notes: 0,
             chart_long_notes: 0,
             chart_scratch_notes: 0,

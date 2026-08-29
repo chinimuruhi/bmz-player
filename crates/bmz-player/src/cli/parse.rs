@@ -40,12 +40,12 @@ where
                 }
                 Some("list") => Ok(Command::Songs(SongsCommand::List)),
                 Some("load") => {
-                    let target = rest.get(1).cloned();
-                    Ok(Command::Songs(SongsCommand::Load { target }))
+                    let (target, use_everything) = parse_songs_scan_args(&rest[1..])?;
+                    Ok(Command::Songs(SongsCommand::Load { target, use_everything }))
                 }
                 Some("reload") => {
-                    let target = rest.get(1).cloned();
-                    Ok(Command::Songs(SongsCommand::Reload { target }))
+                    let (target, use_everything) = parse_songs_scan_args(&rest[1..])?;
+                    Ok(Command::Songs(SongsCommand::Reload { target, use_everything }))
                 }
                 Some(sub) => bail!("unknown songs subcommand: {sub}. Use: add, list, load, reload"),
                 None => bail!("songs requires a subcommand: add, list, load, reload"),
@@ -87,10 +87,64 @@ where
                 None => bail!("course requires a subcommand: import, list, history, attempt"),
             }
         }
+        Some("replay") => {
+            let rest = &args[1..];
+            match rest.first().map(|s| s.as_str()) {
+                Some("import") => {
+                    let flags = &rest[1..];
+                    let paths =
+                        flags.iter().filter(|arg| !arg.starts_with('-')).collect::<Vec<_>>();
+                    let path = paths
+                        .first()
+                        .ok_or_else(|| anyhow::anyhow!("replay import requires a PATH"))?
+                        .to_string();
+                    if paths.len() > 1 {
+                        bail!("replay import accepts only one PATH, got: {}", paths[1]);
+                    }
+                    for flag in flags.iter().filter(|arg| arg.starts_with('-')) {
+                        if !matches!(flag.as_str(), "--overwrite" | "--controller") {
+                            bail!("unknown replay import flag: {flag}");
+                        }
+                    }
+                    Ok(Command::Replay(ReplayCommand::Import {
+                        path,
+                        overwrite: flags.iter().any(|arg| arg == "--overwrite"),
+                        controller: flags.iter().any(|arg| arg == "--controller"),
+                    }))
+                }
+                Some(sub) => bail!("unknown replay subcommand: {sub}. Use: import"),
+                None => bail!("replay requires a subcommand: import"),
+            }
+        }
         Some("profile") => parse_profile_command(&args[1..]),
         Some("ir") => parse_ir_command(&args[1..]),
         _ => Ok(Command::Run(AppOptions::parse_args(args)?)),
     }
+}
+
+fn parse_songs_scan_args(args: &[String]) -> Result<(Option<String>, Option<bool>)> {
+    let mut target = None;
+    let mut use_everything = None;
+    for arg in args {
+        match arg.as_str() {
+            "--everything" => {
+                if use_everything == Some(false) {
+                    bail!("--everything conflicts with --no-everything");
+                }
+                use_everything = Some(true);
+            }
+            "--no-everything" => {
+                if use_everything == Some(true) {
+                    bail!("--no-everything conflicts with --everything");
+                }
+                use_everything = Some(false);
+            }
+            flag if flag.starts_with('-') => bail!("unknown songs scan flag: {flag}"),
+            value if target.is_none() => target = Some(value.to_string()),
+            value => bail!("songs scan accepts only one PATH or NAME, got: {value}"),
+        }
+    }
+    Ok((target, use_everything))
 }
 
 fn parse_profile_command(rest: &[String]) -> Result<Command> {

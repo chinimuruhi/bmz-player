@@ -26,7 +26,7 @@ impl WinitApp {
         else {
             return;
         };
-        if fadeout_started_at.elapsed() >= self.play_fadeout_duration() {
+        if fadeout_started_at.elapsed() >= self.play_fadeout_duration(ending.completion) {
             self.finish_play_ending();
         }
     }
@@ -44,10 +44,23 @@ impl WinitApp {
         let Some(mut ending) = self.play.play_ending.take() else {
             return;
         };
-        if ending.completion == PlayEndingCompletion::Select {
-            tracing::info!("play fadeout before chart start completed; returning to select");
-            self.abort_pending_play_start();
-            return;
+        match ending.completion {
+            PlayEndingCompletion::Select => {
+                tracing::info!("play fadeout before chart start completed; returning to select");
+                self.abort_pending_play_start();
+                return;
+            }
+            PlayEndingCompletion::PracticeConfig => {
+                tracing::info!("practice play transition completed; returning to configuration");
+                self.finish_practice_round();
+                return;
+            }
+            PlayEndingCompletion::PracticeLeave => {
+                tracing::info!("practice fadeout completed; returning to select");
+                self.leave_practice();
+                return;
+            }
+            PlayEndingCompletion::Result => {}
         }
         let Some(mut started) = self.play.active_play.take() else {
             return;
@@ -87,6 +100,7 @@ impl WinitApp {
                     },
                 ) {
                     Ok(mut finished) => {
+                        finished.summary.skin_attempt = started.running.skin_attempt;
                         finished.summary.graph = Arc::new(
                             started
                                 .running

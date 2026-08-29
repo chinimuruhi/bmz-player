@@ -72,6 +72,7 @@ fn select_preview_key_waits_for_beatoraja_start_delay() {
     assert_eq!(
         select_preview_key_after_delay(
             key.clone(),
+            None,
             SELECT_PREVIEW_START_DELAY - Duration::from_millis(1),
             SELECT_PREVIEW_START_DELAY,
         ),
@@ -80,10 +81,36 @@ fn select_preview_key_waits_for_beatoraja_start_delay() {
     assert_eq!(
         select_preview_key_after_delay(
             key.clone(),
+            None,
             SELECT_PREVIEW_START_DELAY,
             SELECT_PREVIEW_START_DELAY,
         ),
         key
+    );
+}
+
+#[test]
+fn select_preview_key_keeps_current_source_during_bar_animation() {
+    let key = Some("folder|preview.ogg".to_string());
+    let elapsed = Duration::ZERO;
+
+    assert_eq!(
+        select_preview_key_after_delay(
+            key.clone(),
+            Some("folder|preview.ogg"),
+            elapsed,
+            SELECT_PREVIEW_START_DELAY,
+        ),
+        key
+    );
+    assert_eq!(
+        select_preview_key_after_delay(
+            Some("folder|next.ogg".to_string()),
+            Some("folder|preview.ogg"),
+            elapsed,
+            SELECT_PREVIEW_START_DELAY,
+        ),
+        None
     );
 }
 
@@ -225,8 +252,119 @@ fn select_snapshot_rows_preserves_settings_action_kinds() {
         .unwrap();
     assert_eq!(back.title, "戻る");
     assert_eq!(close.title, "閉じる");
+    assert_eq!(back.display_bar_text(), "戻る");
+    assert_eq!(close.display_bar_text(), "閉じる");
     assert!(back.is_folder);
     assert!(close.is_folder);
+}
+
+#[test]
+fn select_snapshot_rows_append_values_only_to_config_bar_text() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    profile.audio_mix.master_volume = 37;
+    let rows = vec![
+        SelectItem::Config(crate::screens::settings_model::ConfigSelectRow {
+            entry_id: SettingsEntryId::MasterVolume,
+        }),
+        SelectItem::KeyBinding(crate::screens::settings_model::KeyBindingSelectRow {
+            key_mode: KeyMode::K7,
+            target: KeyBindingTarget::Action {
+                action: InputActionConfig::E1,
+                slot: KeyBindingSlot::KeyboardPrimary,
+            },
+        }),
+    ];
+
+    let snapshot_rows = select_snapshot_rows(&rows, 0, 2, &profile, None, &HashMap::new());
+
+    let config = snapshot_rows.iter().find(|row| row.index == 0).unwrap();
+    let binding = snapshot_rows.iter().find(|row| row.index == 1).unwrap();
+    assert_eq!(config.title, "MASTER");
+    assert_eq!(config.display_bar_text(), "MASTER [37]");
+    assert_eq!(config.artist, "37");
+    assert_eq!(config.subtitle, "ゲーム全体の音量を調整します。");
+    assert_eq!(config.play_level, "37");
+    assert_eq!(binding.title, "E1 (KEYBOARD)");
+    assert_eq!(binding.display_bar_text(), "E1 (KEYBOARD) [Q]");
+    assert_eq!(binding.artist, "Q");
+    assert_eq!(binding.subtitle, "操作またはレーンに使用する入力を割り当てます。");
+    assert_eq!(binding.play_level, "Q");
+
+    profile.audio_mix.master_volume = 38;
+    let updated = select_snapshot_rows(&rows, 0, 2, &profile, None, &HashMap::new());
+    let updated_config = updated.iter().find(|row| row.index == 0).unwrap();
+    assert_eq!(updated_config.display_bar_text(), "MASTER [38]");
+    assert_eq!(updated_config.artist, "38");
+    assert_eq!(updated_config.subtitle, config.subtitle);
+}
+
+#[test]
+fn select_snapshot_rows_formats_app_config_values_and_audio_apply_action() {
+    let profile = ProfileConfig::new_default("default", "Default", 0);
+    let mut app_config = AppConfig::default();
+    app_config.audio.backend = crate::config::app_config::AudioBackend::Wasapi;
+    let rows = vec![
+        SelectItem::AppConfig(crate::screens::settings_model::AppConfigSelectRow {
+            entry_id: AppSettingsEntryId::AudioBackend,
+        }),
+        SelectItem::ApplyAudioSettings,
+    ];
+
+    let snapshot = select_snapshot_rows_with_rival(
+        &rows,
+        0,
+        2,
+        &profile,
+        &app_config,
+        false,
+        None,
+        &HashMap::new(),
+        None,
+    );
+
+    let backend = snapshot.iter().find(|row| row.index == 0).unwrap();
+    let apply = snapshot.iter().find(|row| row.index == 1).unwrap();
+    assert_eq!(backend.title, "AUDIO BACKEND");
+    assert_eq!(backend.display_bar_text(), "AUDIO BACKEND [WASAPI]");
+    assert_eq!(backend.artist, "WASAPI");
+    assert_eq!(backend.subtitle, "音声出力に使用するOS・ドライバのバックエンドを選びます。");
+    assert_eq!(apply.title, "適用（音声出力を開き直す）");
+    assert_eq!(
+        apply.subtitle,
+        "「適用」で現在の設定を保存し音声出力を再構築します（再生中は不可）。"
+    );
+}
+
+#[test]
+fn difficulty_table_level_display_can_use_chart_original_level() {
+    let mut row = select_chart_row(12);
+    row.chart.as_mut().unwrap().play_level = "9".to_string();
+    row.table_text = DifficultyTableText::from_parts("Test Table".to_string(), "★", "12");
+    row.table_level = row.table_text.table_level.clone();
+    let rows = vec![SelectItem::Chart(row)];
+
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    let table_level = select_snapshot_rows_in_difficulty_table_level(&rows, 0, 1, &profile);
+    assert_eq!(table_level[0].play_level, "9");
+    assert_eq!(table_level[0].table_level, "★12");
+    assert_eq!(table_level[0].table_text_secondary, "★12");
+
+    profile.select.difficulty_table_level_display =
+        crate::config::profile_config::DifficultyTableLevelDisplay::Chart;
+    let chart_level = select_snapshot_rows_in_difficulty_table_level(&rows, 0, 1, &profile);
+    assert_eq!(chart_level[0].play_level, "9");
+    assert!(chart_level[0].table_level.is_empty());
+    assert_eq!(chart_level[0].table_text_secondary, "★12");
+
+    let outside_table = select_snapshot_rows(&rows, 0, 1, &profile, None, &HashMap::new());
+    assert_eq!(outside_table[0].table_level, "★12");
+
+    let mut missing = rows[0].clone();
+    if let SelectItem::Chart(row) = &mut missing {
+        row.chart = None;
+    }
+    let missing = select_snapshot_rows_in_difficulty_table_level(&[missing], 0, 1, &profile);
+    assert_eq!(missing[0].table_level, "★12");
 }
 
 #[test]

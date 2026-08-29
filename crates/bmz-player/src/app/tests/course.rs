@@ -5,6 +5,7 @@ fn course_decide_title_override_preserves_play_metadata_and_course_context() {
     let transition = DecideTransition {
         chart_id: 1,
         options: PlayStartOptions::default(),
+        launch: DecideLaunch::Play,
         started_at: Instant::now(),
         fadeout_started_at: None,
         cancel: false,
@@ -72,6 +73,7 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
     fn entry_summary(ex_score: u32, notes: u32, max_combo: u32, duration_ms: i32) -> ResultSummary {
         ResultSummary {
             clear_type: ClearType::NoPlay,
+            skin_attempt: Default::default(),
             target_name: "RANK AAA".to_string(),
             arrange: "NORMAL".to_string(),
             arrange_2p: "NORMAL".to_string(),
@@ -301,8 +303,15 @@ fn course_result_summary_for_skin_uses_aggregate_course_values() {
     summary.arrange = "RANDOM".to_string();
     summary.arrange_2p = "MIRROR".to_string();
     summary.target_name = "RANK AAA".to_string();
-    let mut runtime_state =
-        lua_runtime_state_for_result(false, None, true, KeyMode::K7, number_values, "Player");
+    let mut runtime_state = lua_runtime_state_for_result(
+        false,
+        None,
+        true,
+        false,
+        KeyMode::K7,
+        number_values,
+        "Player",
+    );
     apply_result_summary_lua_load_state(&mut runtime_state, &summary, "Table", "★12", "Table ★12");
     assert_eq!(runtime_state.text_values.get(&1).map(String::as_str), Some("RANK AAA"));
     assert_eq!(runtime_state.text_values.get(&3).map(String::as_str), Some("RANK AAA"));
@@ -441,9 +450,24 @@ fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
         release: true,
     };
     let options = vec![
-        PlayStartOptions::default(),
+        PlayStartOptions {
+            key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+            ..Default::default()
+        },
         PlayStartOptions { double_option: DoubleOption::Battle, ..Default::default() },
     ];
+
+    let score_enabled_snapshot = course_play_metrics_from_chart_metadata(
+        &definition,
+        crate::ln_policy::LnPolicySetting::ForceCn,
+        &options,
+        vec![first.clone(), second.clone()],
+    )
+    .unwrap();
+    assert!(!score_enabled_snapshot.has_score_disabling_key_mode_conversion);
+
+    let mut options = options;
+    options[0].seven_to_nine_rule_mode = crate::config::profile_config::SevenToNineRuleMode::Keys9;
 
     let snapshot = course_play_metrics_from_chart_metadata(
         &definition,
@@ -454,7 +478,7 @@ fn course_metadata_metrics_use_stored_ln_counts_and_double_multiplier() {
     .unwrap();
 
     assert_eq!(snapshot.first_chart.chart_id, 10);
-    assert!(snapshot.has_seven_key);
+    assert!(snapshot.has_score_disabling_key_mode_conversion);
     assert_eq!(snapshot.titles.get(&20).map(String::as_str), Some("Second"));
     assert_eq!(snapshot.metrics.total_notes, 505);
     assert_eq!(snapshot.metrics.ln_mode, Some(bmz_chart::model::LongNoteMode::Cn));
@@ -566,6 +590,36 @@ fn course_normalizes_battle_session_modes() {
     assert_eq!(autoplay_battle.session_mode, SessionMode::Autoplay);
     assert!(autoplay_battle.autoplay);
     assert!(autoplay_battle.replay_player.is_none());
+
+    let mut practice =
+        PlayStartOptions { session_mode: SessionMode::Practice, ..PlayStartOptions::default() };
+    normalize_session_mode_for_course(&mut practice);
+    assert_eq!(practice.session_mode, SessionMode::Normal);
+    assert!(!practice.autoplay);
+
+    let mut g_battle = PlayStartOptions {
+        session_mode: SessionMode::GBattle,
+        battle_target: Some(crate::screens::play_start::BattleTarget {
+            provider: "local".to_string(),
+            score_id: "score".to_string(),
+            player_id: "rival".to_string(),
+            player_name: "RIVAL".to_string(),
+            rank: 1,
+            ex_score: 100,
+            gauge: None,
+            playback: crate::screens::play_start::BattleTargetPlayback::Seed {
+                arrange: ArrangeOption::Normal,
+                arrange_2p: ArrangeOption::Normal,
+                double_option: DoubleOption::Off,
+                packed_seed: None,
+            },
+        }),
+        ..PlayStartOptions::default()
+    };
+    normalize_session_mode_for_course(&mut g_battle);
+    assert_eq!(g_battle.session_mode, SessionMode::Normal);
+    assert!(!g_battle.autoplay);
+    assert!(g_battle.battle_target.is_none());
 }
 
 #[test]

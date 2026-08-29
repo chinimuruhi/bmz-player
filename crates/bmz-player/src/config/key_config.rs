@@ -141,9 +141,20 @@ pub const COMMON_ACTIONS: &[InputActionConfig] = &[
     InputActionConfig::E2,
     InputActionConfig::E3,
     InputActionConfig::E4,
+    InputActionConfig::SelectOpenFolder,
+    InputActionConfig::SelectReload,
+    InputActionConfig::SelectAutoplayFolder,
+    InputActionConfig::SelectOpenIr,
+    InputActionConfig::SelectOpenKeyConfig,
+    InputActionConfig::Screenshot,
+    InputActionConfig::SelectRivalCycle,
+    InputActionConfig::SelectOpenDocuments,
     InputActionConfig::SelectFavoriteSong,
     InputActionConfig::SelectFavoriteChart,
     InputActionConfig::SelectSameFolder,
+    InputActionConfig::SelectModeFilter,
+    InputActionConfig::SelectSort,
+    InputActionConfig::SelectLnMode,
     InputActionConfig::SelectDifficultyFilter,
     InputActionConfig::SelectReplayCycle,
     InputActionConfig::SelectReplayPlay,
@@ -199,21 +210,39 @@ pub fn lane_label_for_key_mode(key_mode: KeyMode, lane: LaneConfig) -> &'static 
 }
 
 pub fn binding_row_label(key_mode: KeyMode, target: KeyBindingTarget) -> String {
+    format!("{} ({})", binding_target_label(key_mode, target), target.slot().suffix())
+}
+
+pub fn binding_target_label(key_mode: KeyMode, target: KeyBindingTarget) -> String {
     match target {
-        KeyBindingTarget::Key { lane, slot } => {
-            format!("{} ({})", lane_label_for_key_mode(key_mode, lane), slot.suffix())
-        }
-        KeyBindingTarget::Scratch { lane, direction, slot } => {
+        KeyBindingTarget::Key { lane, .. } => lane_label_for_key_mode(key_mode, lane).to_string(),
+        KeyBindingTarget::Scratch { lane, direction, .. } => {
             let dir = match direction {
                 ScratchDirection::Up => "UP",
                 ScratchDirection::Down => "DOWN",
             };
-            format!("{} {} ({})", lane_label_for_key_mode(key_mode, lane), dir, slot.suffix())
+            format!("{} {}", lane_label_for_key_mode(key_mode, lane), dir)
         }
-        KeyBindingTarget::Action { action, slot } => {
-            format!("{} ({})", action_label(action), slot.suffix())
-        }
+        KeyBindingTarget::Action { action, .. } => action_label(action).to_string(),
     }
+}
+
+pub fn common_key_binding_targets(slot: KeyBindingSlot) -> Vec<KeyBindingTarget> {
+    COMMON_ACTIONS.iter().copied().map(|action| KeyBindingTarget::Action { action, slot }).collect()
+}
+
+pub fn key_mode_binding_targets(key_mode: KeyMode, slot: KeyBindingSlot) -> Vec<KeyBindingTarget> {
+    let scratch_rows = scratch_lanes_for_key_mode(key_mode).into_iter().flat_map(|lane| {
+        let slot = resolve_binding_slot(slot, key_mode, lane);
+        [ScratchDirection::Up, ScratchDirection::Down]
+            .into_iter()
+            .map(move |direction| KeyBindingTarget::Scratch { lane, direction, slot })
+    });
+    let key_rows = key_lanes_for_key_mode(key_mode).into_iter().map(|lane| {
+        let slot = resolve_binding_slot(slot, key_mode, lane);
+        KeyBindingTarget::Key { lane, slot }
+    });
+    scratch_rows.chain(key_rows).collect()
 }
 
 pub fn action_label(action: InputActionConfig) -> &'static str {
@@ -227,9 +256,20 @@ pub fn action_label(action: InputActionConfig) -> &'static str {
         InputActionConfig::SelectOptionGauge => "OPTION GAUGE",
         InputActionConfig::SelectOptionAssist => "OPTION ASSIST",
         InputActionConfig::SelectOptionBga => "OPTION BGA",
+        InputActionConfig::SelectOpenFolder => "OPEN FOLDER / COPY HASH",
+        InputActionConfig::SelectReload => "RELOAD",
+        InputActionConfig::SelectAutoplayFolder => "AUTOPLAY FOLDER",
+        InputActionConfig::SelectOpenIr => "OPEN IR",
+        InputActionConfig::SelectOpenKeyConfig => "KEY CONFIG",
+        InputActionConfig::Screenshot => "SCREENSHOT",
+        InputActionConfig::SelectRivalCycle => "RIVAL CYCLE",
+        InputActionConfig::SelectOpenDocuments => "OPEN SONG TEXT",
         InputActionConfig::SelectFavoriteSong => "FAVORITE SONG",
         InputActionConfig::SelectFavoriteChart => "FAVORITE CHART",
         InputActionConfig::SelectSameFolder => "SAME FOLDER",
+        InputActionConfig::SelectModeFilter => "MODE FILTER",
+        InputActionConfig::SelectSort => "SORT",
+        InputActionConfig::SelectLnMode => "LN MODE",
         InputActionConfig::SelectDifficultyFilter => "DIFFICULTY FILTER",
         InputActionConfig::SelectReplayCycle => "REPLAY CYCLE",
         InputActionConfig::SelectReplayPlay => "REPLAY PLAY",

@@ -333,6 +333,8 @@ pub enum SkinPhase {
 pub enum BlendMode {
     Normal,
     Add,
+    /// LR2 / beatoraja `blend=4`。描画済みの色へソース色を乗算する。
+    Multiply,
     /// 透明な render target へ通常 alpha 合成済みの offscreen texture 用。
     /// RGB は premultiplied 済みなので、再合成時に source alpha を掛け直さない。
     Premultiplied,

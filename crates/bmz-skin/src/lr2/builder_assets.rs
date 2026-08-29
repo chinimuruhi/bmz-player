@@ -131,6 +131,18 @@ impl<'a> CsvBuilder<'a> {
         } else {
             0
         };
+        let ref_id = if matches!(self.header.skin_type, 0 | 1 | 2 | 3 | 4 | 12 | 13) {
+            match values[11] {
+                // Modified LR2 / OpenLR2 FAST/SLOW extension. Keep these aliases
+                // conversion-local because beatoraja assigns other meanings to 210/212/214.
+                210 => SKIN_REF_BMZ_LR2_FAST_SLOW_1P,
+                212 => 423,
+                214 => 424,
+                ref_id => ref_id,
+            }
+        } else {
+            values[11]
+        };
         let id = self.alloc_id("lr2-number");
         self.values.push(json!({
             "id": id,
@@ -143,7 +155,7 @@ impl<'a> CsvBuilder<'a> {
             "divy": region.divy,
             "cycle": region.cycle,
             "timer": region.timer,
-            "ref": values[11],
+            "ref": ref_id,
             "align": values[12],
             "digit": digit,
             "zeropadding": zeropadding,

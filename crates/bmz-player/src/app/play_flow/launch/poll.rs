@@ -108,6 +108,7 @@ impl WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config)
         {
+            self.refresh_practice_preview_snapshot();
             return;
         }
         let Some(play_start) = self.play.pending_play_start.as_ref() else {
@@ -210,6 +211,7 @@ impl WinitApp {
             self.key_mode_for_chart(chart_id),
             prepared.chart.metadata.key_mode,
             options.session_mode,
+            options.battle_target.is_some(),
         );
         let Some(snapshot) = &mut self.play.last_play_snapshot else {
             return;
@@ -220,6 +222,7 @@ impl WinitApp {
             &prepared.render_snapshot_cache,
             battle_presentation,
         );
+        snapshot.skin_attempt.merge_known(prepared.skin_attempt);
         apply_play_arrange_to_snapshot(snapshot, &prepared.applied_arrange);
         snapshot.target = options
             .resolved_target
@@ -279,9 +282,7 @@ impl WinitApp {
         // Result から Retry した直後は、前回結果の score DB 更新を
         // SelectItem がまだ取り込んでいない。曲開始前退出でも必ず再取得する。
         self.reload_select_items();
-        let now = Instant::now();
-        self.select.select_scene_started_at = now;
-        self.restart_select_bar_timer_without_scroll(now);
+        self.restart_select_scene_timers();
     }
 
     /// Clears any active course session and the cached finished-course
@@ -324,7 +325,10 @@ impl WinitApp {
             arrange_seed_2p: option_seeds.p2.map(|seed| i64::from(seed.value())),
             random_trainer_seed,
             bms_random_seed: Some(crate::random_option_seed::fresh_bms_random_seed()),
-            seven_to_six: self.boot.profile_config.play.seven_to_six,
+            key_mode_conversion: self.boot.profile_config.play.key_mode_conversion,
+            seven_to_nine_pattern: self.boot.profile_config.play.seven_to_nine_pattern,
+            seven_to_nine_type: self.boot.profile_config.play.seven_to_nine_type,
+            seven_to_nine_rule_mode: self.boot.profile_config.play.seven_to_nine_rule_mode,
             ..Default::default()
         }
     }

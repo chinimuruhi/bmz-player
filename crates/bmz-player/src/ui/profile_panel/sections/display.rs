@@ -75,5 +75,33 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
                 )
                 .text(tr!(text, "profile-display-green-number")),
             );
+            let mut note_display_duration_ms = crate::config::play::duration_ms_from_green_number(
+                profile.lane.target_green_number,
+            );
+            let duration_changed = ui
+                .add(
+                    egui::Slider::new(
+                        &mut note_display_duration_ms,
+                        crate::config::play::NOTE_DISPLAY_DURATION_MIN_MS
+                            ..=crate::config::play::NOTE_DISPLAY_DURATION_MAX_MS,
+                    )
+                    .text(tr!(text, "profile-display-note-duration")),
+                )
+                .changed();
+            if duration_changed {
+                profile.lane.target_green_number =
+                    crate::config::play::green_number_from_duration_ms(note_display_duration_ms)
+                        .clamp(TARGET_GREEN_NUMBER_MIN, TARGET_GREEN_NUMBER_MAX);
+            }
+            ui.checkbox(&mut profile.lane.constant_enabled, tr!(text, "profile-display-constant"));
+            ui.add_enabled(
+                profile.lane.constant_enabled,
+                egui::Slider::new(
+                    &mut profile.lane.constant_fade_ms,
+                    crate::config::play::CONSTANT_FADE_MIN_MS
+                        ..=crate::config::play::CONSTANT_FADE_MAX_MS,
+                )
+                .text(tr!(text, "profile-display-constant-fade")),
+            );
         });
 }

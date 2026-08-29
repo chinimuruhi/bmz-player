@@ -51,6 +51,13 @@ impl ProfileConfig {
     /// Migrates old profiles by copying their single set of values to every
     /// supported key mode, then restores the K7 editable mirror.
     pub fn normalize_play_mode_configs(&mut self) {
+        self.lane.constant_fade_ms = self.lane.constant_fade_ms.clamp(
+            crate::config::play::CONSTANT_FADE_MIN_MS,
+            crate::config::play::CONSTANT_FADE_MAX_MS,
+        );
+        for config in self.play_mode.values_mut() {
+            normalize_play_mode_config(config);
+        }
         let legacy = self.editable_play_mode_config();
         for key_mode in PLAY_MODE_CONFIG_MODES {
             self.play_mode
@@ -74,6 +81,8 @@ impl ProfileConfig {
             hispeed_auto_adjust: self.lane.hispeed_auto_adjust,
             hidden: self.lane.hidden,
             target_green_number: self.lane.target_green_number,
+            constant_enabled: self.lane.constant_enabled,
+            constant_fade_ms: self.lane.constant_fade_ms,
             visual_offset_us: self.judge.visual_offset_us,
         }
     }
@@ -89,8 +98,17 @@ impl ProfileConfig {
         self.lane.hispeed_auto_adjust = config.hispeed_auto_adjust;
         self.lane.hidden = config.hidden;
         self.lane.target_green_number = config.target_green_number;
+        self.lane.constant_enabled = config.constant_enabled;
+        self.lane.constant_fade_ms = config.constant_fade_ms;
         self.judge.visual_offset_us = config.visual_offset_us;
     }
+}
+
+fn normalize_play_mode_config(config: &mut PlayModeConfig) {
+    config.constant_fade_ms = config.constant_fade_ms.clamp(
+        crate::config::play::CONSTANT_FADE_MIN_MS,
+        crate::config::play::CONSTANT_FADE_MAX_MS,
+    );
 }
 
 #[cfg(test)]
@@ -162,5 +180,28 @@ mod tests {
         assert_eq!(profile.play.lane_effect, LaneEffectConfig::HiddenSudden);
         assert_eq!(profile.play.hs_fix, HsFixConfig::MaxBpm);
         assert_eq!(profile.judge.visual_offset_us, -11_000);
+    }
+
+    #[test]
+    fn legacy_note_display_duration_is_ignored_and_not_serialized() {
+        let profile = ProfileConfig::new_default("default", "Default", 1);
+        let serialized = toml::to_string(&profile).expect("serialize profile");
+        let legacy = serialized.replace(
+            "target_green_number = 300",
+            "target_green_number = 300\nnote_display_duration_ms = 497",
+        );
+        assert_ne!(legacy, serialized, "green number must be present in serialized profile");
+
+        let loaded: ProfileConfig = toml::from_str(&legacy).expect("load legacy duration field");
+
+        assert_eq!(loaded.lane.target_green_number, 300);
+        for key_mode in PLAY_MODE_CONFIG_MODES {
+            assert_eq!(loaded.play_mode_config(key_mode).target_green_number, 300);
+        }
+        assert!(
+            !toml::to_string(&loaded)
+                .expect("serialize migrated profile")
+                .contains("note_display_duration_ms")
+        );
     }
 }

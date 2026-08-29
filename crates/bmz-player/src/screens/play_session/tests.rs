@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use super::*;
 use crate::config::profile_config::HispeedModeConfig;
 use crate::storage::common::configure_connection;
-use crate::storage::library_db::{ChartImportRecord, LibraryDatabase};
+use crate::storage::library_db::{ChartImportRecord, ChartNormalizationAnalysis, LibraryDatabase};
 use crate::storage::migration::{LIBRARY_MIGRATIONS, run_migrations};
 
 fn class_gauge_values(session: &GameSession) -> [f32; 6] {
@@ -66,6 +66,51 @@ fn chart() -> PlayableChart {
         total_notes: 1,
         end_time: TimeUs(0),
     }
+}
+
+fn preloaded_play_session(chart: PlayableChart) -> PreloadedPlaySession {
+    let source_ln_profile = ChartLnProfile::from_chart(&chart);
+    let score_key =
+        ScoreKey::new(chart.identity.file_sha256, crate::ln_policy::LnScorePolicy::AutoLn);
+    let chart = Arc::new(chart);
+    PreloadedPlaySession {
+        render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(
+            &chart,
+        ),
+        chart,
+        skin_attempt: Default::default(),
+        source_ln_profile,
+        chart_length_ms: 0,
+        audio: AudioEngine::new(48_000),
+        sample_report: Vec::new(),
+        chart_normalization_gain: 1.0,
+        applied_arrange: AppliedArrange::default(),
+        score_key,
+        assist_runtime: AssistRuntime::default(),
+        score_save_disabled: false,
+        opponent_chart: None,
+    }
+}
+
+#[test]
+fn cloned_preload_reuses_loaded_pcm_without_playback_state() {
+    let mut preloaded = preloaded_play_session(chart());
+    preloaded.audio.insert_sample(
+        SoundId(7),
+        bmz_audio::sample::DecodedSample {
+            channels: 1,
+            sample_rate: 48_000,
+            frames: vec![0.25, 0.5],
+        },
+    );
+    preloaded.audio.play_now(SoundId(7), 1.0, false);
+
+    let reused = preloaded.clone_loaded_resources();
+
+    assert!(Arc::ptr_eq(&preloaded.chart, &reused.chart));
+    assert_eq!(reused.audio.samples.source_count(), 1);
+    assert_eq!(reused.audio.samples.region_count(), 1);
+    assert!(reused.audio.is_idle());
 }
 
 #[test]

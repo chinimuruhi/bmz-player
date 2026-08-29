@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::scene::{SelectRowKind, SelectRowSnapshot, SelectSnapshot};
 use crate::skin::{DestinationListEntry, SkinDestinationDef, SkinDocument, SkinDrawState};
 
-const DETAIL_TEXT_REFS: [i32; 6] = [10, 11, 12, 14, 15, 16];
+const DETAIL_TEXT_REFS: [i32; 7] = [10, 11, 12, 13, 14, 15, 16];
 const BREADCRUMB_TEXT_REF: i32 = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -128,6 +128,14 @@ fn classify_destination_element(
     if destination_id_is_detail_panel(destination_id) {
         return SelectSettingsDestClass::AllowConfig;
     }
+    if let Some(text) = document.text.iter().find(|text| text.id == destination_id) {
+        // beatoraja の詳細文字列 ref を優先する。`genre` など曲情報らしい id でも、
+        // 設定行では ref=13 に `[編集中]` を表示するため描画対象に残す。
+        if detail_text_ref(text.ref_id) {
+            return SelectSettingsDestClass::AllowConfig;
+        }
+        return SelectSettingsDestClass::DenyConfig;
+    }
     if destination_id_is_song_metadata(destination_id) {
         return SelectSettingsDestClass::DenyConfig;
     }
@@ -143,15 +151,6 @@ fn classify_destination_element(
         return SelectSettingsDestClass::DenyConfig;
     }
     if document.value.iter().any(|value| value.id == destination_id) {
-        return SelectSettingsDestClass::DenyConfig;
-    }
-    if let Some(text) = document.text.iter().find(|text| text.id == destination_id) {
-        if detail_text_ref(text.ref_id) {
-            return SelectSettingsDestClass::AllowConfig;
-        }
-        if !text.constant_text.is_empty() && constant_text_is_song_metadata(&text.constant_text) {
-            return SelectSettingsDestClass::DenyConfig;
-        }
         return SelectSettingsDestClass::DenyConfig;
     }
     if document.image.iter().any(|image| image.id == destination_id) {
@@ -216,13 +215,6 @@ fn destination_uses_breadcrumb_ref(document: &SkinDocument, destination_id: &str
 
 fn detail_text_ref(ref_id: i32) -> bool {
     DETAIL_TEXT_REFS.contains(&ref_id) || ref_id == BREADCRUMB_TEXT_REF
-}
-
-fn constant_text_is_song_metadata(text: &str) -> bool {
-    let upper = text.to_ascii_uppercase();
-    ["BPM", "TOTAL", "TIME", "NOTES", "SCORE", "RANK", "LEVEL", "JUDGE", "TARGET", "CLEAR"]
-        .iter()
-        .any(|token| upper.contains(token))
 }
 
 fn destination_id_is_song_metadata(destination_id: &str) -> bool {

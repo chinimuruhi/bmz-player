@@ -224,6 +224,10 @@ cargo run -p bmz-player -- songs list
 - `course history <COURSE_ID> [--limit N]`
 - `course attempt <SCORE_ID>`
 
+`replay`:
+
+- `replay import <PATH> [--overwrite] [--controller]` — beatoraja の player/replay ディレクトリ、replay ディレクトリ、または単一 `.brd` を現在の profile に取り込む
+
 新しいデバッグフラグを追加するときも `crates/bmz-player/src/cli.rs` に集約してください。
 
 ## Manual Check Keys

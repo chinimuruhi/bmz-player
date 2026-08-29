@@ -22,6 +22,7 @@ export default defineI18nLocale(() =>
         courses: '課程',
         players: '玩家',
         daily: '今日成果',
+        rivals: '對手',
         profile: '個人資料',
         settings: '帳戶設定',
         logout: '登出',

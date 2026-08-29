@@ -13,7 +13,7 @@ impl WinitApp {
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
-        self.apply_active_rival_play_overrides(chart_id, &mut options);
+        self.apply_rival_play_overrides(chart_id, &mut options);
         if options.chart_zero_time == TimeUs(0) {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }
@@ -74,8 +74,11 @@ impl WinitApp {
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
-            options.seven_to_six = applied.seven_to_six;
-            options.score_save_disabled |= applied.seven_to_six;
+            options.key_mode_conversion = applied.key_mode_conversion;
+            options.seven_to_nine_pattern = applied.seven_to_nine_pattern;
+            options.seven_to_nine_type = applied.seven_to_nine_type;
+            options.seven_to_nine_rule_mode = applied.seven_to_nine_rule_mode;
+            options.score_save_disabled |= applied.score_persistence_disabled();
             options.arrange = applied.arrange;
             options.arrange_2p = applied.arrange_2p;
             options.double_option = applied.double_option;
@@ -96,8 +99,11 @@ impl WinitApp {
         if let Some(applied) =
             self.result.finished_play.as_ref().map(|finished| &finished.applied_arrange)
         {
-            options.seven_to_six = applied.seven_to_six;
-            options.score_save_disabled |= applied.seven_to_six;
+            options.key_mode_conversion = applied.key_mode_conversion;
+            options.seven_to_nine_pattern = applied.seven_to_nine_pattern;
+            options.seven_to_nine_type = applied.seven_to_nine_type;
+            options.seven_to_nine_rule_mode = applied.seven_to_nine_rule_mode;
+            options.score_save_disabled |= applied.score_persistence_disabled();
             options.arrange = applied.arrange;
             options.arrange_pattern = None;
         }
@@ -109,8 +115,11 @@ impl WinitApp {
         options.battle_target = self.play.last_battle_target.clone();
         if let Some(active) = &self.play.active_play {
             let applied = &active.running.applied_arrange;
-            options.seven_to_six = applied.seven_to_six;
-            options.score_save_disabled |= applied.seven_to_six;
+            options.key_mode_conversion = applied.key_mode_conversion;
+            options.seven_to_nine_pattern = applied.seven_to_nine_pattern;
+            options.seven_to_nine_type = applied.seven_to_nine_type;
+            options.seven_to_nine_rule_mode = applied.seven_to_nine_rule_mode;
+            options.score_save_disabled |= applied.score_persistence_disabled();
             options.arrange = applied.arrange;
             options.arrange_2p = applied.arrange_2p;
             options.double_option = applied.double_option;
@@ -143,6 +152,7 @@ impl WinitApp {
             chart,
             opponent_chart,
             source_ln_profile,
+            skin_attempt,
             render_snapshot_cache,
             applied_arrange,
             score_key,
@@ -156,17 +166,19 @@ impl WinitApp {
                     .as_ref()
                     .map(|opponent| Arc::clone(&opponent.chart)),
                 Some(active.running.source_ln_profile),
+                Some(active.running.skin_attempt),
                 Some(active.running.render_snapshot_cache.clone()),
                 Some(active.running.applied_arrange.clone()),
                 Some(active.running.score_key),
             ),
-            ResultRetryMode::DifferentArrange => (None, None, None, None, None, None),
+            ResultRetryMode::DifferentArrange => (None, None, None, None, None, None, None),
         };
         Some(PlayMediaCache {
             chart_id,
             chart,
             opponent_chart,
             source_ln_profile,
+            skin_attempt,
             chart_length_ms: active.running.chart_length_ms,
             render_snapshot_cache,
             chart_normalization_gain: active.running.session.audio_mix.chart_normalization_gain,
@@ -195,6 +207,7 @@ impl WinitApp {
                 .as_ref()
                 .map(|opponent| Arc::clone(&opponent.chart)),
             source_ln_profile: Some(running.source_ln_profile),
+            skin_attempt: Some(running.skin_attempt),
             chart_length_ms: running.chart_length_ms,
             render_snapshot_cache: Some(running.render_snapshot_cache.clone()),
             chart_normalization_gain: running.session.audio_mix.chart_normalization_gain,
@@ -245,6 +258,8 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let library_db_path = self.boot.app_paths.library_db.clone();
         let app_config = self.play_session_app_config();
+        let normalization_output_gain =
+            crate::config::play::chart_normalization_output_gain(&self.boot.profile_config);
         let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
         let rule_mode = self.boot.profile_config.play.rule_mode;
         let input = SharedInputBackend::default();
@@ -271,6 +286,7 @@ impl WinitApp {
                             &library_db,
                             chart_id,
                             session_options.clone(),
+                            normalization_output_gain,
                             |chart| {
                                 let _ = worker_prepared_chart.set(chart.clone());
                             },
@@ -313,6 +329,7 @@ impl WinitApp {
         let opponent_chart = cache.opponent_chart.clone();
         let source_ln_profile =
             cache.source_ln_profile.expect("SameArrange cache includes source LN profile");
+        let skin_attempt = cache.skin_attempt.expect("SameArrange cache includes skin attempt");
         let chart_length_ms = cache.chart_length_ms;
         let render_snapshot_cache = cache
             .render_snapshot_cache
@@ -342,6 +359,7 @@ impl WinitApp {
         let preview_prepared_chart = Arc::new(OnceLock::new());
         let prepared_chart = PreparedPlayChart {
             chart: Arc::clone(&chart),
+            skin_attempt,
             source_ln_profile,
             chart_length_ms,
             render_snapshot_cache: render_snapshot_cache.clone(),
@@ -448,8 +466,30 @@ impl WinitApp {
             active_play.running.session.state,
             active_play.running.session.judge.is_exhausted(&active_play.running.session.chart),
         );
-        if !should_begin {
-            return false;
+        let practice_playing = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Playing);
+        match final_notes_control_action(should_begin, practice_playing) {
+            Some(FinalNotesControlAction::ReturnToPractice) => {
+                let now = Instant::now();
+                if let Some(active_play) = &mut self.play.active_play {
+                    active_play.running.session.state = bmz_gameplay::session::PlayState::Finished;
+                    if let Err(error) = active_play.running.pause_audio() {
+                        tracing::warn!(%error, "failed to stop practice audio on requested finish");
+                    }
+                }
+                self.commit_active_play_lane_state_to_profile();
+                self.clear_play_control_holds();
+                self.notify_obs_play_ended();
+                self.play.play_ending = Some(practice_requested_finish_ending(now));
+                self.update_play_ending_snapshot();
+                tracing::info!(control, "started practice fadeout after final notes");
+                return true;
+            }
+            Some(FinalNotesControlAction::BeginResultFadeout) => {}
+            None => return false,
         }
 
         let finish_mode = if self.play.active_course.is_some() {
@@ -498,6 +538,7 @@ impl WinitApp {
                     },
                 ) {
                     Ok(mut finished) => {
+                        finished.summary.skin_attempt = active_play.running.skin_attempt;
                         finished.summary.graph = Arc::new(
                             active_play
                                 .running
@@ -526,6 +567,7 @@ impl WinitApp {
         self.notify_obs_play_ended();
         self.play.play_ending = Some(PlayEndingTransition {
             started_at: now,
+            music_end_started_at: None,
             fadeout_started_at: Some(now),
             failed: false,
             completion: PlayEndingCompletion::Result,
@@ -546,7 +588,7 @@ impl WinitApp {
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
-        self.apply_active_rival_play_overrides(chart_id, &mut options);
+        self.apply_rival_play_overrides(chart_id, &mut options);
         if options.chart_zero_time == TimeUs(0) {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }

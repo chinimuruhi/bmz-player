@@ -29,6 +29,28 @@ impl WinitApp {
         self.skin.skin_pipeline.upload_worker_started = true;
     }
 
+    /// 起動直後の Select が表示されている間は、非表示の Decide / Result skin が
+    /// GPU queue と main-thread install を奪わないよう upload worker を保留する。
+    /// Select skin の input 時刻を過ぎた後、または別 scene が必要になった時点で開始する。
+    pub(super) fn start_deferred_skin_uploads_if_ready(&mut self) {
+        if self.skin.skin_pipeline.upload_worker_started {
+            return;
+        }
+        let select_startup_active = matches!(self.view_state(), AppViewState::Select);
+        let select_input_ms =
+            self.renderer.select_skin_document().map(|document| document.input.max(0)).unwrap_or(0);
+        let select_elapsed_ms = (self.select_time().0 / 1_000).clamp(0, i32::MAX as i64) as i32;
+        if should_defer_initial_skin_uploads(
+            select_startup_active,
+            self.first_frame_startup_completed,
+            select_elapsed_ms,
+            select_input_ms,
+        ) {
+            return;
+        }
+        self.start_skin_upload_worker();
+    }
+
     /// upload worker が GPU アップロードまで終えたスキンを非ブロッキングで取り込む。
     /// 毎フレーム呼ぶ。テクスチャ挿入 + フォント登録 + SkinContext 構築のみで軽量。
     pub(super) fn drain_pending_skins(&mut self) -> SkinDrainStats {
@@ -56,6 +78,9 @@ impl WinitApp {
     /// 進むため、main は worker からの受信を待つだけで重い同期処理は無い。
     /// 先読みが間に合っていれば待ちはゼロ。
     pub(super) fn ensure_skin_ready(&mut self, kind: SkinKind) {
+        // Select の開始演出中でも、scene 遷移が skin を要求した場合は待機中の
+        // decode 結果を直ちに GPU upload へ流す。
+        self.start_skin_upload_worker();
         while self.is_kind_pending_decode(kind) {
             match self.skin.skin_pipeline.upload_rx.recv() {
                 Ok(result) => {
@@ -198,11 +223,13 @@ impl WinitApp {
             table_song,
             ir_name,
             self.result_score_save_enabled_for_slot(slot),
+            self.current_result_autoplay(),
             key_mode,
             number_values,
             &self.boot.profile_config.display_name,
         );
         if let Some(summary) = summary {
+            apply_skin_attempt_lua_load_state(&mut runtime_state, summary.skin_attempt);
             apply_result_summary_lua_load_state(
                 &mut runtime_state,
                 summary,
@@ -211,13 +238,15 @@ impl WinitApp {
                 &self.play.play_table_text_fallback,
             );
         }
-        runtime_state.event_index_values.insert(
-            54,
-            i32::try_from(bmz_render::skin::select_double_option_index(
-                self.result_double_option_for_slot(slot).as_str(),
-            ))
-            .unwrap_or_default(),
-        );
+        if summary.is_none() {
+            runtime_state.event_index_values.insert(
+                54,
+                i32::try_from(bmz_render::skin::select_double_option_index(
+                    self.result_double_option_for_slot(slot).as_str(),
+                ))
+                .unwrap_or_default(),
+            );
+        }
         if let Some(stage) = self.current_course_stage_marker() {
             apply_course_mode_lua_options(&mut runtime_state, Some(stage));
         }
@@ -245,6 +274,10 @@ impl WinitApp {
 
     pub(super) fn current_result_score_save_enabled(&self) -> bool {
         self.result_score_save_enabled_for_slot(self.current_result_skin_slot())
+    }
+
+    pub(super) fn current_result_autoplay(&self) -> bool {
+        self.result.finished_play.as_ref().is_some_and(|finished| finished.result.autoplay)
     }
 
     pub(super) fn result_score_save_enabled_for_slot(&self, slot: ResultSkinSlot) -> bool {
@@ -499,5 +532,31 @@ impl WinitApp {
             self.restart_select_scene_timers();
         }
         true
+    }
+}
+
+fn should_defer_initial_skin_uploads(
+    select_view: bool,
+    first_frame_startup_completed: bool,
+    select_elapsed_ms: i32,
+    select_input_ms: i32,
+) -> bool {
+    select_view && (!first_frame_startup_completed || select_elapsed_ms < select_input_ms.max(0))
+}
+
+#[cfg(test)]
+mod deferred_upload_tests {
+    use super::should_defer_initial_skin_uploads;
+
+    #[test]
+    fn initial_select_defers_background_skin_uploads_until_input_time() {
+        assert!(should_defer_initial_skin_uploads(true, false, 0, 2_000));
+        assert!(should_defer_initial_skin_uploads(true, true, 1_999, 2_000));
+        assert!(!should_defer_initial_skin_uploads(true, true, 2_000, 2_000));
+    }
+
+    #[test]
+    fn non_select_scene_does_not_defer_required_skin_uploads() {
+        assert!(!should_defer_initial_skin_uploads(false, false, 0, 2_000));
     }
 }

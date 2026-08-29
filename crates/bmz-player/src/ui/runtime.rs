@@ -34,6 +34,7 @@ impl EguiLayer {
             show_fps,
             show_settings: false,
             show_profile_settings: false,
+            key_config: EguiKeyConfigUiState::default(),
             show_skin: false,
             show_course_editor: false,
             course_editor: CourseEditorUiState::default(),
@@ -50,6 +51,12 @@ impl EguiLayer {
             score_import_device_type: InputDeviceKind::Keyboard,
             score_import_status: String::new(),
             score_import_error: String::new(),
+            replay_import_path: String::new(),
+            replay_import_device_type: InputDeviceKind::Keyboard,
+            replay_import_overwrite: false,
+            replay_import_status: String::new(),
+            replay_import_error: String::new(),
+            replay_import_progress: None,
             audio_device_picker: AudioDevicePickerState::default(),
             obs_scene_picker: ObsScenePickerState::default(),
             ir_login: IrLoginUiState::default(),
@@ -62,6 +69,9 @@ impl EguiLayer {
     /// メニュー表示状態を反転する (F1)。
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
+        if !self.visible {
+            self.cancel_key_config_listening();
+        }
         tracing::info!(visible = self.visible, "egui menu toggled");
     }
 
@@ -72,6 +82,18 @@ impl EguiLayer {
         tracing::info!("egui advanced settings opened from select");
     }
 
+    /// 選曲スキンの beatoraja event 14 からスキン設定を直接開く。
+    pub fn open_skin_settings(&mut self) {
+        self.visible = true;
+        self.show_skin = true;
+        tracing::info!("egui skin settings opened from select");
+    }
+
+    /// profile側からFPS表示設定が変更されたとき、eguiのcheckbox状態も揃える。
+    pub fn set_show_fps(&mut self, show_fps: bool) {
+        self.show_fps = show_fps;
+    }
+
     pub fn set_score_import_status(&mut self, status: String, error: bool) {
         if error {
             self.score_import_error = status;
@@ -80,6 +102,44 @@ impl EguiLayer {
             self.score_import_status = status;
             self.score_import_error.clear();
         }
+    }
+
+    pub fn set_replay_import_status(&mut self, status: String, error: bool) {
+        if error {
+            self.replay_import_error = status;
+            self.replay_import_status.clear();
+        } else {
+            self.replay_import_status = status;
+            self.replay_import_error.clear();
+        }
+    }
+
+    pub fn set_replay_import_progress(&mut self, progress: Option<ReplayImportProgress>) {
+        self.replay_import_progress = progress;
+    }
+
+    pub fn key_config_listening(&self) -> bool {
+        self.key_config.listening.is_some()
+    }
+
+    pub fn key_config_controller_listening(&self) -> bool {
+        self.key_config.listening.is_some_and(|active| active.target.slot().is_controller())
+    }
+
+    pub fn cancel_key_config_listening(&mut self) {
+        self.key_config.listening = None;
+    }
+
+    pub fn capture_key_config_keyboard(&mut self, control: &str) -> EguiKeyConfigInput {
+        self.key_config.capture_keyboard(control)
+    }
+
+    pub fn capture_key_config_gamepad(&mut self, control: &str) -> EguiKeyConfigInput {
+        self.key_config.capture_gamepad(control)
+    }
+
+    pub fn set_key_config_status(&mut self, message: String, error: bool) {
+        self.key_config.status = Some(EguiKeyConfigStatus { message, error });
     }
 
     pub fn course_editor_visible(&self) -> bool {
@@ -203,12 +263,15 @@ impl EguiLayer {
         let mut obs_enabled_changed = false;
         let mut save_app_config = false;
         let mut save_profile_config = false;
+        let mut key_config_action = None;
         let mut reset_skin_config = false;
         let mut skin_reload_request = SkinReloadRequest::default();
         let mut trigger_song_rescan = false;
         let mut song_scan_requests = Vec::new();
         let mut table_fetch_urls = Vec::new();
         let mut score_import_request = None;
+        let mut replay_import_request = None;
+        let mut cancel_replay_import = false;
         let mut apply_audio_output = false;
         let mut check_for_update = false;
         let mut update_dialog_action = None;
@@ -311,6 +374,12 @@ impl EguiLayer {
                         score_import_device_type: &mut self.score_import_device_type,
                         score_import_status: &self.score_import_status,
                         score_import_error: &self.score_import_error,
+                        replay_import_path: &mut self.replay_import_path,
+                        replay_import_device_type: &mut self.replay_import_device_type,
+                        replay_import_overwrite: &mut self.replay_import_overwrite,
+                        replay_import_status: &self.replay_import_status,
+                        replay_import_error: &self.replay_import_error,
+                        replay_import_progress: self.replay_import_progress,
                         audio_device_picker: &mut self.audio_device_picker,
                         obs_scene_picker: &mut self.obs_scene_picker,
                         obs_connection_status,
@@ -326,6 +395,8 @@ impl EguiLayer {
                 table_fetch_urls.extend(settings_actions.table_fetch_urls);
                 apply_audio_output |= settings_actions.apply_audio;
                 score_import_request = settings_actions.score_import_request;
+                replay_import_request = settings_actions.replay_import_request;
+                cancel_replay_import = settings_actions.cancel_replay_import;
                 let profile_settings_actions =
                     build_profile_settings_panel(ProfileSettingsPanelContext {
                         ctx,
@@ -336,12 +407,14 @@ impl EguiLayer {
                         ir_login,
                         ir_device_key: &mut self.ir_device_key,
                         profile_manager: &mut self.profile_manager,
+                        key_config: &mut self.key_config,
                         profile_root,
                         unrestricted: settings_editable,
                         text,
                     });
                 save_profile_config |= profile_settings_actions.save;
                 save_app_config |= profile_settings_actions.save_app_config;
+                key_config_action = profile_settings_actions.key_config_action;
                 let skin_actions = build_skin_panel(
                     ctx,
                     show_skin,
@@ -377,12 +450,15 @@ impl EguiLayer {
             obs_enabled_changed,
             save_app_config,
             save_profile_config,
+            key_config_action,
             reset_skin_config,
             skin_reload_request,
             trigger_song_rescan,
             song_scan_requests,
             table_fetch_urls,
             score_import_request,
+            replay_import_request,
+            cancel_replay_import,
             apply_audio_output,
             check_for_update,
             update_dialog_action,
@@ -391,6 +467,110 @@ impl EguiLayer {
             course_editor_action,
             select_course_builder_action,
         }
+    }
+}
+
+impl EguiKeyConfigUiState {
+    fn capture_keyboard(&mut self, control: &str) -> EguiKeyConfigInput {
+        let Some(active) = self.listening else {
+            return EguiKeyConfigInput::NotHandled;
+        };
+        match control {
+            "Escape" => {
+                self.listening = None;
+                EguiKeyConfigInput::Consumed
+            }
+            "Delete" | "Backspace" => {
+                self.listening = None;
+                EguiKeyConfigInput::Action(EguiKeyConfigAction::Clear {
+                    key_mode: active.key_mode,
+                    target: active.target,
+                })
+            }
+            _ if active.target.slot().is_controller() => EguiKeyConfigInput::Consumed,
+            _ => {
+                self.listening = None;
+                EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind {
+                    key_mode: active.key_mode,
+                    target: active.target,
+                    control: control.to_string(),
+                })
+            }
+        }
+    }
+
+    fn capture_gamepad(&mut self, control: &str) -> EguiKeyConfigInput {
+        let Some(active) = self.listening else {
+            return EguiKeyConfigInput::NotHandled;
+        };
+        if !active.target.slot().is_controller() {
+            return EguiKeyConfigInput::Consumed;
+        }
+        self.listening = None;
+        EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind {
+            key_mode: active.key_mode,
+            target: active.target,
+            control: control.to_string(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod key_config_capture_tests {
+    use super::*;
+    use crate::config::profile_config::{InputActionConfig, LaneConfig};
+
+    fn keyboard_target() -> EguiKeyConfigListenTarget {
+        EguiKeyConfigListenTarget {
+            key_mode: KeyMode::K7,
+            target: KeyBindingTarget::Key {
+                lane: LaneConfig::Key1,
+                slot: KeyBindingSlot::KeyboardPrimary,
+            },
+        }
+    }
+
+    fn controller_target() -> EguiKeyConfigListenTarget {
+        EguiKeyConfigListenTarget {
+            key_mode: KeyMode::K7,
+            target: KeyBindingTarget::Action {
+                action: InputActionConfig::E1,
+                slot: KeyBindingSlot::Controller,
+            },
+        }
+    }
+
+    #[test]
+    fn keyboard_listener_ignores_gamepad_and_captures_keyboard() {
+        let mut state =
+            EguiKeyConfigUiState { listening: Some(keyboard_target()), ..Default::default() };
+        assert_eq!(state.capture_gamepad("Button1"), EguiKeyConfigInput::Consumed);
+        assert!(state.listening.is_some());
+        assert!(matches!(
+            state.capture_keyboard("Q"),
+            EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind { control, .. }) if control == "Q"
+        ));
+        assert!(state.listening.is_none());
+    }
+
+    #[test]
+    fn controller_listener_supports_axis_clear_and_escape() {
+        let mut state =
+            EguiKeyConfigUiState { listening: Some(controller_target()), ..Default::default() };
+        assert!(matches!(
+            state.capture_gamepad("Axis1+"),
+            EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind { control, .. }) if control == "Axis1+"
+        ));
+
+        state.listening = Some(controller_target());
+        assert!(matches!(
+            state.capture_keyboard("Delete"),
+            EguiKeyConfigInput::Action(EguiKeyConfigAction::Clear { .. })
+        ));
+
+        state.listening = Some(controller_target());
+        assert_eq!(state.capture_keyboard("Escape"), EguiKeyConfigInput::Consumed);
+        assert!(state.listening.is_none());
     }
 }
 

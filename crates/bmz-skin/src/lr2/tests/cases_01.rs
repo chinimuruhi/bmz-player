@@ -211,6 +211,44 @@ fn lr2_number_ref_preserves_poor_plus_miss() {
 }
 
 #[test]
+fn lr2_play_number_refs_map_modified_lr2_fast_slow_extension() {
+    let files = BTreeMap::new();
+    let skin_path = unique_test_dir("bmz-lr2-fast-slow-refs").join("play.lr2skin");
+    let mut builder = CsvBuilder::new(&skin_path, Header::default(), &files);
+    builder.add_source("numbers.png");
+
+    for ref_id in [210, 212, 214] {
+        builder
+            .execute(
+                &parse_csv_line(&format!("#SRC_NUMBER,0,0,0,0,110,20,11,1,0,0,{ref_id},0,4,0,1"))
+                    .expect("valid SRC_NUMBER"),
+            )
+            .unwrap();
+    }
+
+    assert_eq!(builder.values[0]["ref"], json!(SKIN_REF_BMZ_LR2_FAST_SLOW_1P));
+    assert_eq!(builder.values[1]["ref"], json!(423));
+    assert_eq!(builder.values[2]["ref"], json!(424));
+}
+
+#[test]
+fn lr2_non_play_number_refs_keep_beatoraja_meanings() {
+    let files = BTreeMap::new();
+    let skin_path = unique_test_dir("bmz-lr2-non-play-fast-slow-refs").join("select.lr2skin");
+    let header = Header { skin_type: 5, ..Header::default() };
+    let mut builder = CsvBuilder::new(&skin_path, header, &files);
+    builder.add_source("numbers.png");
+    builder
+        .execute(
+            &parse_csv_line("#SRC_NUMBER,0,0,0,0,110,20,11,1,0,0,210,0,1,0,1")
+                .expect("valid SRC_NUMBER"),
+        )
+        .unwrap();
+
+    assert_eq!(builder.values[0]["ref"], json!(210));
+}
+
+#[test]
 fn lr2_signed_number_reserves_sign_digit_and_defaults_to_blank_padding() {
     let files = BTreeMap::new();
     let skin_path = unique_test_dir("bmz-lr2-signed-number").join("play.lr2skin");
@@ -392,9 +430,12 @@ fn lr2_nowjudge_adds_beatoraja_judge_detail_objects() {
         .destinations
         .iter()
         .filter(|destination| {
-            destination["op"]
-                .as_array()
-                .is_some_and(|ops| ops.iter().any(|op| matches!(op.as_i64(), Some(1998 | 1999))))
+            destination["op"].as_array().is_some_and(|ops| {
+                ops.iter().any(|op| {
+                    op.as_i64() == Some(i64::from(SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_EARLY_LATE))
+                        || op.as_i64() == Some(i64::from(SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_MS))
+                })
+            })
         })
         .collect::<Vec<_>>();
     assert_eq!(detail_destinations.len(), 4);

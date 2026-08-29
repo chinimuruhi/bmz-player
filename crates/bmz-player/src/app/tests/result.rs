@@ -1,5 +1,7 @@
 use super::*;
-use crate::app::result_flow_timing::play_fadeout_duration_for_skin;
+use crate::app::result_flow_timing::{
+    play_fadeout_duration_for_skin, practice_play_fadeout_duration_for_skin,
+};
 
 #[test]
 fn result_skin_signature_changes_when_only_offset_changes() {
@@ -43,6 +45,13 @@ fn play_fadeout_duration_uses_skin_timer_or_black_fallback() {
 }
 
 #[test]
+fn practice_fadeout_duration_uses_only_the_skin_header() {
+    assert_eq!(practice_play_fadeout_duration_for_skin(0), Duration::ZERO);
+    assert_eq!(practice_play_fadeout_duration_for_skin(300), Duration::from_millis(300));
+    assert_eq!(practice_play_fadeout_duration_for_skin(-1), Duration::ZERO);
+}
+
+#[test]
 fn result_scene_duration_respects_skin_document() {
     let document: SkinDocument =
         serde_json::from_str(r#"{ "type": 7, "input": 1500, "scene": 2345 }"#).unwrap();
@@ -77,9 +86,39 @@ fn pre_play_abort_starts_fadeout_and_returns_to_select_without_result() {
     assert_eq!(ending.started_at, started_at);
     assert!(!ending.failed);
     assert_eq!(ending.completion, PlayEndingCompletion::Select);
+    assert!(ending.music_end_started_at.is_none());
     assert!(ending.finished.is_none());
     assert_eq!(ending.fadeout_started_at, Some(started_at));
     assert!(ending.full_combo_elapsed_at_finish_ms.is_none());
+}
+
+#[test]
+fn practice_endings_match_beatoraja_timer_routes() {
+    let started_at = Instant::now();
+
+    let natural = practice_natural_finish_ending(started_at);
+    assert_eq!(natural.completion, PlayEndingCompletion::PracticeConfig);
+    assert_eq!(natural.music_end_started_at, Some(started_at));
+    assert!(natural.fadeout_started_at.is_none());
+    assert!(!natural.failed);
+
+    let requested = practice_requested_finish_ending(started_at);
+    assert_eq!(requested.completion, PlayEndingCompletion::PracticeConfig);
+    assert!(requested.music_end_started_at.is_none());
+    assert_eq!(requested.fadeout_started_at, Some(started_at));
+    assert!(!requested.failed);
+
+    let failed = practice_failed_ending(started_at);
+    assert_eq!(failed.completion, PlayEndingCompletion::PracticeConfig);
+    assert!(failed.music_end_started_at.is_none());
+    assert!(failed.fadeout_started_at.is_none());
+    assert!(failed.failed);
+
+    let leave = practice_leave_ending(started_at);
+    assert_eq!(leave.completion, PlayEndingCompletion::PracticeLeave);
+    assert!(leave.music_end_started_at.is_none());
+    assert_eq!(leave.fadeout_started_at, Some(started_at));
+    assert!(!leave.failed);
 }
 
 #[test]
@@ -169,10 +208,11 @@ fn first_play_result_lua_values_match_beatoraja_missing_score_sentinels() {
 }
 
 #[test]
-fn result_lua_runtime_state_exposes_ir_connection_options() {
+fn result_lua_runtime_state_exposes_scene_options() {
     let online = lua_runtime_state_for_result(
         false,
         Some("BMZ IR"),
+        true,
         true,
         KeyMode::K7,
         BTreeMap::new(),
@@ -182,16 +222,27 @@ fn result_lua_runtime_state_exposes_ir_connection_options() {
     assert_eq!(online.option_values.get(&51), Some(&true));
     assert_eq!(online.option_values.get(&60), Some(&false));
     assert_eq!(online.option_values.get(&61), Some(&true));
+    assert_eq!(online.option_values.get(&32), Some(&false));
+    assert_eq!(online.option_values.get(&33), Some(&true));
     assert_eq!(online.option_values.get(&160), Some(&true));
     assert_eq!(online.option_values.get(&161), Some(&false));
     assert_eq!(online.text_values.get(&1020).map(String::as_str), Some("BMZ IR"));
 
-    let offline =
-        lua_runtime_state_for_result(false, None, false, KeyMode::K5, BTreeMap::new(), "Player");
+    let offline = lua_runtime_state_for_result(
+        false,
+        None,
+        false,
+        false,
+        KeyMode::K5,
+        BTreeMap::new(),
+        "Player",
+    );
     assert_eq!(offline.option_values.get(&50), Some(&true));
     assert_eq!(offline.option_values.get(&51), Some(&false));
     assert_eq!(offline.option_values.get(&60), Some(&true));
     assert_eq!(offline.option_values.get(&61), Some(&false));
+    assert_eq!(offline.option_values.get(&32), Some(&true));
+    assert_eq!(offline.option_values.get(&33), Some(&false));
     assert_eq!(offline.option_values.get(&160), Some(&false));
     assert_eq!(offline.option_values.get(&161), Some(&true));
     assert_eq!(offline.text_values.get(&1020).map(String::as_str), Some(""));

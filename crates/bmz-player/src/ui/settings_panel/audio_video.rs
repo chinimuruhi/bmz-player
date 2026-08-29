@@ -59,9 +59,16 @@ pub(super) fn build_audio_video_settings_sections(
                             AudioOutputMode::SharedLowLatency,
                             tr!(text, "settings-audio-output-mode-low-latency"),
                         );
+                        ui.selectable_value(
+                            &mut config.audio.output_mode,
+                            AudioOutputMode::Exclusive,
+                            tr!(text, "settings-audio-output-mode-exclusive"),
+                        );
                     });
                 if config.audio.output_mode == AudioOutputMode::SharedLowLatency {
                     ui.label(tr!(text, "settings-audio-low-latency-help"));
+                } else if config.audio.output_mode == AudioOutputMode::Exclusive {
+                    ui.label(tr!(text, "settings-audio-exclusive-help"));
                 }
             }
             let sample_rate_text = if config.audio.sample_rate_mode == AudioSampleRateMode::Auto {

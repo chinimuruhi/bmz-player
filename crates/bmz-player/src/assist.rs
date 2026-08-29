@@ -17,6 +17,7 @@ use crate::config::profile_config::{
     AssistLongNoteMode, AssistMineMode, AssistOptionConfig, AssistScrollMode,
 };
 use crate::random_option_seed::JavaRandom;
+use crate::select_options::ArrangeOption;
 
 pub const EXPAND_JUDGE_MASK: u32 = 1 << 0;
 pub const CONSTANT_MASK: u32 = 1 << 1;
@@ -38,6 +39,30 @@ pub fn configured_mask(config: AssistOptionConfig) -> u32 {
 
 pub fn mask_flags(mask: u32) -> [bool; 7] {
     std::array::from_fn(|index| mask & (1 << index) != 0)
+}
+
+/// beatoraja で Light Assist 扱いになる配置を、実効アシストへ合成する。
+///
+/// 配置は assist button 301..307 の bit mask には含めず、ランプ・score/replay/IR の
+/// 保存可否に使う level だけを更新する。scratch のない mode などで NORMAL へ
+/// fallback した場合を除外できるよう、呼び出し側は適用後の配置を渡す。
+pub fn merge_arrange_assist_level(
+    runtime: &mut AssistRuntime,
+    arrange_1p: ArrangeOption,
+    arrange_2p: ArrangeOption,
+) {
+    if [arrange_1p, arrange_2p].into_iter().any(|arrange| {
+        matches!(
+            arrange,
+            ArrangeOption::Spiral
+                | ArrangeOption::HRandom
+                | ArrangeOption::AllScratch
+                | ArrangeOption::RandomEx
+                | ArrangeOption::SRandomEx
+        )
+    }) {
+        runtime.level = runtime.level.max(AssistLevel::LightAssist);
+    }
 }
 
 /// 譜面依存の有効性を判定しながら、beatoraja と同じ modifier 順で適用する。
@@ -729,6 +754,45 @@ mod tests {
         assert_eq!(runtime.level, AssistLevel::None);
         assert!(runtime.score_update_enabled());
         assert!(runtime.judge_area && runtime.mark_note && runtime.bpm_guide);
+    }
+
+    #[test]
+    fn beatoraja_light_assist_arranges_disable_score_on_either_side() {
+        for arrange in [
+            ArrangeOption::Spiral,
+            ArrangeOption::HRandom,
+            ArrangeOption::AllScratch,
+            ArrangeOption::RandomEx,
+            ArrangeOption::SRandomEx,
+        ] {
+            let mut p1 = AssistRuntime::default();
+            merge_arrange_assist_level(&mut p1, arrange, ArrangeOption::Normal);
+            assert_eq!(p1.level, AssistLevel::LightAssist, "1P {arrange:?}");
+            assert!(!p1.score_update_enabled(), "1P {arrange:?}");
+
+            let mut p2 = AssistRuntime::default();
+            merge_arrange_assist_level(&mut p2, ArrangeOption::Normal, arrange);
+            assert_eq!(p2.level, AssistLevel::LightAssist, "2P {arrange:?}");
+            assert!(!p2.score_update_enabled(), "2P {arrange:?}");
+        }
+    }
+
+    #[test]
+    fn scoreable_arranges_do_not_raise_assist_level() {
+        for arrange in [
+            ArrangeOption::Normal,
+            ArrangeOption::Mirror,
+            ArrangeOption::Random,
+            ArrangeOption::RRandom,
+            ArrangeOption::SRandom,
+            ArrangeOption::FRandom,
+            ArrangeOption::MFRandom,
+        ] {
+            let mut runtime = AssistRuntime::default();
+            merge_arrange_assist_level(&mut runtime, arrange, arrange);
+            assert_eq!(runtime.level, AssistLevel::None, "{arrange:?}");
+            assert!(runtime.score_update_enabled(), "{arrange:?}");
+        }
     }
 
     #[test]

@@ -1,5 +1,83 @@
 # CHANGELOG
 
+## v0.3.0
+
+### 改善
+
+- プレイオプションと Practice を拡張しました。
+  - beatoraja 互換の `EXPAND JUDGE`、`CONSTANT`、`JUDGE AREA`、`LEGACY NOTE`、`MARK NOTE`、`BPM GUIDE`、`NO MINE` と、譜面モディファイア `SCROLL` / `LONGNOTE` / `MINE` / `EXTRA NOTE` を追加しました。アシスト使用時はランプとプレイ回数だけを保存し、スコア・リプレイ・IR は更新しません。
+  - Practice で小節範囲、再生速度、ゲージ、判定ランク、グラフを設定し、指定区間を繰り返し練習できるようにしました。専用コントローラーだけで設定・開始でき、ラウンド間では譜面・音源・BGAを再利用します。Practice は独立したセッションモードとして autoplay とスコア保存を無効にします。
+  - `SP TO DP`、`7K TO 9K`、`7K TO 6K` のキーモード変換を追加しました。7K→9K は6種類の配置と3種類のScratch処理に対応し、7K規則では7Kの判定・ゲージ・スコアidentityを維持してリプレイを現在の変換設定へ投影します。
+  - 120Hz の論理フレーム補正を使う LM 近似 S-RANDOM 配置方式を追加しました。緑数字、レーンカバー、判定表示などは 4K・5K・6K・7K・9K・10K・14K のキーモード別に保存します。
+
+- コース作成・管理と選曲操作を拡張しました。
+  - コース・段位の作成、編集、削除、beatoraja 互換 JSON の import / export をアプリ内へ追加しました。選曲画面からも最大10譜面を追加し、並べ替えてローカルコースを作成できます。
+  - 現在のキーモード、レベル、BPM、曲数から LR2 RANDOM MIX コースを生成できるようにしました。
+  - コース構成譜面を定義順に確認し、未所持譜面を難易度表の取得情報から一括ダウンロードできるようにしました。
+  - LR2 難易度フィルター、難易度表レベルと譜面レベルの表示切り替え、選曲画面でのリプレイスロット選択に対応しました。
+
+- 選曲画面と設定UIを拡張しました。
+  - 選曲画面のフォルダから、セッションモード、キーモード変換、アシスト、表示、リプレイ、UI、音声、映像設定を変更できるようにしました。選曲 skin の設定 event、`GUIDE SE`、`CONSTANT`、`KEY CONFIG` も実際の設定へ接続します。
+  - 設定行へ項目名・現在値・説明・編集中表示を公開し、skin property とファイル候補には前後の項目へ移動するボタンを追加しました。
+  - egui のプロフィール設定からキーボード、コントローラーボタン、軸、共通操作、キーモード別操作を割り当てられるようにしました。選曲画面から開くショートカットも変更できます。
+  - beatoraja 互換の数字キー操作を追加し、Autoplay / Replay の長押し速度変更をゲーム時計・音声へ反映しました。Result / Course Result からは選曲画面と同じ `OPEN IR` 割り当てを利用できます。
+
+- beatoraja のリプレイを取り込めるようにしました。
+  - 設定画面と `replay import` CLI から、player / replay ディレクトリまたは単一 `.brd` を現在のプロファイルへ取り込めます。
+  - 5K / 6K / 7K / 9K / 10K / 14K、DP option、ゲージ、配置 seed、BMS RANDOM、H-RANDOM 閾値、Scratch 方向を Replay v6 へ変換し、コースリプレイも既存のコース再生経路へ登録します。
+  - 大量 import はバックグラウンドで進捗表示・キャンセル・差分スキップを行い、DB 更新をまとめて処理するようにしました。既存の BMZ リプレイスロットは明示的に上書きしない限り保護します。
+
+- G-BATTLE と IR 連携を拡張しました。
+  - セッションモードを `NORMAL` / `PRACTICE` / `AUTOPLAY` / `AUTO BATTLE` / `G-BATTLE` に整理しました。G-BATTLE は選曲画面の通常操作から選択でき、相手データ自体はセッションモードと独立して扱います。
+  - IR ランキングから相手を選び、公開リプレイを独立した2P側のゴーストとして全キーモードで再生できるようにしました。相手の option・seed・ゲージ・Scratch を再現し、自分の結果は通常どおり保存・送信します。
+  - BMZ IR Web にライバル登録・解除、逆ライバル一覧、共通譜面の EX SCORE / MIN BP 比較、自分とライバルのランキング scope を追加しました。
+  - 大規模なライバル比較は D1 上で集計・ページングし、Worker の CPU・メモリ負荷を削減しました。
+  - Result skin へ送信前の IR 順位を公開し、BMZ IR / rianIR のランキング表示と G-BATTLE 候補をスコア更新後に再取得するようにしました。
+
+- 音声出力、音量正規化、表示遅延を改善しました。
+  - Windows に event-driven・MMCSS 対応の WASAPI 排他出力を追加し、対応形式とバッファを endpoint ごとに交渉するようにしました。排他適用に失敗した場合は以前の設定へ戻します。
+  - プレビューと system BGM にゲート付き全体音量、最大3秒区間、sample peak による正規化を追加しました。譜面の音量解析はPCMをまとめてmixし、プレイ時の master / key / BGM volume を加味します。
+  - 対応済みのPCM WAVは専用decoderで直接読み込み、非対応形式だけFFmpegへフォールバックすることで、多数のWAVを含む譜面のロードを高速化しました。
+  - 描画の frame latency を `Auto` / `LowLatency` / `Stable` から選択できるようにし、surface の再構成で即時反映します。
+
+- skin 互換性と診断機能を拡張しました。
+  - Lua skin の未推論 callback を永続 VM で実行する fallback と、対応済み function も実行時評価する `--lua-skin-runtime compat` を追加しました。Lua の `print` はスキンパス付きでデバッグログへ記録します。
+  - 初回プレイ、rule mode、LN policy、変換前・実効 key mode、譜面モディファイア、session mode、ランク境界・差分、autoplay、IR 前回順位などを Select / Decide / Play / Result skin へ公開しました。
+  - modified LR2 の FAST / SLOW ref、LR2 の乗算判定 overlay、WMII の次ランク表示に対応しました。
+  - PeacefulPlay 1.2.0 のキーロガーについて、CHATTERING ALERT、1秒周期のNPS、押下単位の判定集計を元スキンの規則へ合わせました。
+  - 日次ローテーション・10世代保持の診断ログを追加し、起動失敗や panic を含むログをコンソールのない環境でも回収できるようにしました。
+
+- Windows の大規模な曲ライブラリで Everything 1.5 の IPC インデックスを利用できるようにしました。利用できない場合は曲 root ごとに通常のファイル探索へフォールバックします。
+
+### 修正
+
+- macOS Intel 版の配布物が High Sierra で起動できない問題を修正しました。
+  - Intel 版は macOS 10.13、Apple Silicon 版は macOS 11.0 を最小要件としてビルドし、FFmpeg・音声・TLS が新しい macOS API を強参照しないようにしました。
+  - 配布時に Mach-O の最小 OS バージョンと未対応 API の参照を検査し、互換性の後退を検出するようにしました。
+- `SPIRAL`、`H-RANDOM`、`ALL-SCR`、`RANDOM-EX`、`S-RANDOM-EX` を Light Assist として扱い、ランプ限定保存でもプレイヤー統計を更新するようにしました。保存後の選曲表示、skin の保存可否表示も修正しました。
+- Practice の HS-FIX、判定ランク、再生速度に応じた入力時刻・緑数字・判定幅、GAUGE AUTO SHIFT を beatoraja に合わせました。設定済みPlay skinを使用し、完走・途中終了・失敗・準備中退出でskinの終了タイマーを通って設定画面へ戻るようにしました。
+- Practice 設定中だけeguiがプレイ入力を占有し、通常プレイや Select / Decide / Result では未消費入力を正しく各画面へ渡すようにしました。
+- アプリ終了時に非同期のリザルト保存が失われる問題と、LN policy・DOUBLE option・rule mode が異なるリプレイスロットを誤って表示・再生する問題を修正しました。保存対象外のキーモード変換は通常リプレイ再生時にも適用しません。
+- 移動した譜面を含むコースのリンク修復、変更後のコース制約・履歴・リプレイ検証、RANDOM MIX の BPM フィルター適用を修正しました。RANDOM MIX の結果は IR へ送信せずローカルだけに保存します。
+- HS-FIX の MAIN BPM へ不可視ノート・Mine が混入する問題、1未満の正の BPM が丸められる問題、除外レーン適用時のリザルトノート数を修正しました。ノーツ表示時間は重複保存せず緑数字から導出します。
+- WASAPI 排他出力がendpointエラー後に無音のままになる問題を修正し、bounded exponential backoffで再接続するようにしました。CPALの出力停止後のゲーム時計と、音量正規化で実際のプレイmixを考慮しない問題も修正しました。
+- BSS の終点を元方向のScratch releaseでも判定し、直後の反転入力を二重判定・Mine・キー音へ流さないようにしました。
+- DPの2Pターンテーブルが1Pと逆方向へ回転する問題を修正しました。
+- Select の scene / bar / option timer を初回present後に開始し、`TIMER_STARTINPUT` を実際の発火フレームで保持するようにしました。destination timerと画像animationの時計を分離し、開始演出中は非表示skinのGPU uploadを保留します。
+- cursorが利用できない入力中のskin hover、選曲フォルダ・コースに譜面のkey modeが表示される問題、デフォルトskinのHS-FIXラベル、設定行の編集中表示を修正しました。
+- Windows で譜面フォルダを開く際、DBの正規化パスをnative pathへ戻してローカルドライブとUNC pathを正しく開くようにしました。
+- プレイスキンが指定していない `BACKBMP` を画面全体へ自動表示する問題と、BMS `#TEXT` をスキン外の固定パネルへ自動表示する問題を修正しました。
+- NEXT ランク差分の符号・境界・数値画像、LR2 の乗算判定 overlay、Lua runtime の `nil` draw 判定、WMII の `MAX-` 無効時の次ランク表示を修正しました。
+- rianIR ランキングが20件へ減る問題と、Result が今回の送信前順位を失う問題を修正しました。別taskやCLIが送信jobを先に処理した場合も、保存済み送信応答から順位を復元します。
+
+### テスト・開発環境
+
+- アシスト、Practice、キーモード変換、S-RANDOM、キーモード別設定、選曲内設定、キー設定、コース編集・RANDOM MIX、G-BATTLE、beatoraja replay import、WASAPI 排他、音量正規化、BSS、Everything、Lua runtime、skin state の回帰テストを追加・更新しました。
+- Replay を v6 へ更新し、過去の v1〜v5 を従来の既定値で読み込める互換性を維持しました。FFmpeg binding は v9 へ更新しました。
+- Rust 1.98 の新しい lint に対応し、workspace全体をwarnings-as-errorsで検証できる状態を維持しました。
+- macOS の x86_64 / arm64 配布物、FFmpeg source build、最小 OS バージョン、禁止シンボルを release workflow で検証するようにしました。
+- `README.md`、`docs/controls.md`、`docs/everything.md`、`docs/hs.md`、`docs/ir.md`、`docs/licenses.md`、`docs/ln.md`、`docs/packaging.md`、`docs/rian-ir.md`、`docs/score-persistence.md`、`docs/skin.md` を更新しました。
+
 ## v0.2.1
 
 ### 改善

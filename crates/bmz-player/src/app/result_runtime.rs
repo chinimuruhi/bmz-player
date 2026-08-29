@@ -50,6 +50,7 @@ pub(super) fn course_result_summary_for_skin(course: &CourseResultSummary) -> Re
 
     ResultSummary {
         clear_type: course.final_clear_type,
+        skin_attempt: last.map_or_else(Default::default, |summary| summary.skin_attempt),
         target_name: String::new(),
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
@@ -318,6 +319,16 @@ pub(super) fn debug_boot_result_summary() -> ResultSummary {
     let duration_ms = 180_000;
     ResultSummary {
         clear_type: ClearType::Failed,
+        skin_attempt: bmz_render::snapshot::SkinAttemptState {
+            source_key_mode: Some(KeyMode::K7),
+            effective_key_mode: Some(KeyMode::K7),
+            source_ln_profile_bits: Some(bmz_render::snapshot::SKIN_SOURCE_LN_DEFINED_CN_BIT),
+            session_mode_index: Some(0),
+            ln_mode_index: Some(1),
+            has_bga: Some(true),
+            has_random_sequence: Some(false),
+            ..Default::default()
+        },
         target_name: "RANK AAA".to_string(),
         arrange: "RANDOM".to_string(),
         arrange_2p: "NORMAL".to_string(),

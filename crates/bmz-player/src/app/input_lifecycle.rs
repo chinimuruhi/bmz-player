@@ -109,12 +109,19 @@ impl WinitApp {
     }
 
     pub(super) fn raw_input_gameplay_blocked(&self) -> bool {
+        if self.play.play_ending.is_some() {
+            return true;
+        }
         let practice_overlay = self
             .play
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        self.ui.egui.as_ref().is_some_and(|egui| egui.blocks_game_input(practice_overlay))
+        egui_blocks_raw_play_keyboard(
+            practice_overlay && self.ui.egui.is_some(),
+            self.play.play_e1_held,
+            self.play.play_e2_held,
+        )
     }
 
     pub(super) fn play_input_backend(&self) -> Option<SharedInputBackend> {
@@ -182,6 +189,12 @@ impl WinitApp {
             self.input.discard_raw_keyboard_transition(physical_key, state);
             return;
         }
+        if self.active_play_uses_playback_rate_keys()
+            && is_autoplay_replay_playback_rate_key(physical_key)
+        {
+            self.input.discard_raw_keyboard_transition(physical_key, state);
+            return;
+        }
         let config = input_bounce_config_from_profile(&self.boot.profile_config.input);
         let gameplay_blocked = self.raw_input_gameplay_blocked();
         if let Some(event) =
@@ -227,9 +240,9 @@ impl WinitApp {
                     height = size.height,
                     "window and renderer surface ready"
                 );
-                // surface 接続後 (= GPU device/queue 利用可能) に upload worker を起動する。
-                // decode 結果はそれまで skin_decode_rx にバッファされ、起動後にドレインされる。
-                self.start_skin_upload_worker();
+                // Decide / Result の decode 結果は、Select の開始演出が終わるまで
+                // skin_decode_rx に保持する。遷移側が先に必要とした場合は
+                // ensure_skin_ready() が upload worker を即時起動する。
                 self.configure_device_events(event_loop);
                 let raw_input_attach_error =
                     self.gamepad.as_mut().and_then(|backend| backend.attach_window(&window).err());

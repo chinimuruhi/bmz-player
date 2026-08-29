@@ -17,6 +17,8 @@ pub(in crate::app) fn profile_lane_settings_changed(
         || before.lift_enabled != after.lift_enabled
         || before.hispeed_auto_adjust != after.hispeed_auto_adjust
         || before.target_green_number != after.target_green_number
+        || before.constant_enabled != after.constant_enabled
+        || before.constant_fade_ms != after.constant_fade_ms
 }
 
 pub(in crate::app) fn apply_profile_lane_settings_to_session(
@@ -24,6 +26,7 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     before: &LaneViewConfig,
     profile: &LaneViewConfig,
     speed_locked: bool,
+    practice_mode: bool,
 ) -> bool {
     if !profile_lane_settings_changed(before, profile) {
         return false;
@@ -39,6 +42,8 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     let lift_enabled_changed = before.lift_enabled != profile.lift_enabled;
     let auto_adjust_changed = before.hispeed_auto_adjust != profile.hispeed_auto_adjust;
     let target_green_changed = before.target_green_number != profile.target_green_number;
+    let constant_changed = before.constant_enabled != profile.constant_enabled;
+    let constant_fade_changed = before.constant_fade_ms != profile.constant_fade_ms;
     let cover_changed = sudden_changed || lift_changed || lift_enabled_changed;
 
     if cover_changed {
@@ -73,6 +78,15 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
 
     if target_green_changed {
         session.target_green_number = profile.target_green_number.max(1);
+    }
+    if constant_changed {
+        session.constant_enabled = profile.constant_enabled && !practice_mode;
+    }
+    if constant_fade_changed {
+        session.constant_fade_ms = profile.constant_fade_ms.clamp(
+            crate::config::play::CONSTANT_FADE_MIN_MS,
+            crate::config::play::CONSTANT_FADE_MAX_MS,
+        );
     }
 
     let direct_hispeed_change = hispeed_changed;
@@ -158,7 +172,7 @@ pub(in crate::app) fn session_mode_from_profile(play: &PlayDefaultsConfig) -> Se
 pub(in crate::app) fn normalize_session_mode_for_course(options: &mut PlayStartOptions) {
     options.session_mode = match options.session_mode {
         SessionMode::Autoplay | SessionMode::AutoplayBattle => SessionMode::Autoplay,
-        SessionMode::Normal => SessionMode::Normal,
+        SessionMode::Normal | SessionMode::Practice | SessionMode::GBattle => SessionMode::Normal,
     };
     options.autoplay = options.session_mode.primary_autoplay();
     options.replay_player = None;

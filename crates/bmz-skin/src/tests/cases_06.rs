@@ -317,6 +317,39 @@ fn peaceful_play_integral_property_ops_are_selectable_when_available() {
         destination.timer_expr.starts_with("bmz:keylogger_event:")
             && destination.draw.starts_with("keylogger_judge(")
     }));
+    let chattering = load_lua_skin(
+        &skin_path,
+        SkinKind::Play,
+        &BTreeMap::from([("下部表示情報 Bottom Info".to_string(), "CHATTERING ALERT".to_string())]),
+        &BTreeMap::new(),
+    )
+    .expect("PeacefulPlay chattering alert should decode");
+    let chattering_destinations = chattering
+        .document
+        .destination
+        .iter()
+        .filter_map(|entry| match entry {
+            bmz_skin_document::DestinationListEntry::Single(destination)
+                if destination.id.starts_with("keylogger-chattering-alert-") =>
+            {
+                Some(destination)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(chattering_destinations.len(), 9);
+    for (lane, destination) in chattering_destinations.iter().enumerate() {
+        assert_eq!(destination.timer_expr, format!("bmz:keylogger_chattering:{}", lane + 1));
+        assert!(destination.timer.is_none());
+    }
+    assert!(
+        chattering
+            .warnings
+            .iter()
+            .all(|warning| !warning.message.contains("unsupported field `timer`")),
+        "chattering timer warnings: {:?}",
+        chattering.warnings
+    );
     let keybeams = loaded
         .document
         .destination
@@ -331,7 +364,7 @@ fn peaceful_play_integral_property_ops_are_selectable_when_available() {
         })
         .collect::<Vec<_>>();
     assert_eq!(keybeams.len(), 9 * 4 * 2);
-    for pair in keybeams.chunks_exact(2) {
+    for pair in keybeams.as_chunks::<2>().0 {
         assert!(pair[0].timer.is_none());
         assert!(pair[0].draw.starts_with("keybeam_hold("), "hold: {:?}", pair[0]);
         assert!(matches!(pair[1].timer, Some(120..=129)));
@@ -598,7 +631,6 @@ fn lua_runtime_draw_errors_and_invalid_values_are_log_once_false() {
     for (name, source) in [
         ("bmz-skin-runtime-error", "local draw = function() error('expected test error') end"),
         ("bmz-skin-runtime-invalid-return", "local draw = function() return 'not boolean' end"),
-        ("bmz-skin-runtime-nil-return", "local draw = function() return nil end"),
         (
             "bmz-skin-runtime-missing-main-state-api",
             "local draw = function() return main_state.missing_api() end",
@@ -611,6 +643,20 @@ fn lua_runtime_draw_errors_and_invalid_values_are_log_once_false() {
         assert!(!runtime.evaluate_draw(0, &state));
         assert_eq!(runtime.failure_log_count(), 1);
     }
+}
+
+#[test]
+fn lua_runtime_draw_nil_is_false_without_a_failure() {
+    let mut loaded = load_runtime_draw_fixture(
+        "bmz-skin-runtime-nil-return",
+        "local draw = function() return nil end",
+    );
+    let runtime = loaded.lua_runtime.as_mut().expect("runtime fallback");
+    let state = TestLuaMainState::default();
+
+    assert!(!runtime.evaluate_draw(0, &state));
+    assert!(!runtime.evaluate_draw(0, &state));
+    assert_eq!(runtime.failure_log_count(), 0);
 }
 
 #[test]

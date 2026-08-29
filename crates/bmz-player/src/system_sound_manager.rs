@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use bmz_audio::command::{AudioEngineCommand, AudioEngineHandle};
 use bmz_audio::ffmpeg_loader::FfmpegSampleLoader;
 use bmz_audio::loader::SampleLoader;
+use bmz_audio::loudness::{analyze_decoded_loudness, system_bgm_normalization_gain_for_analysis};
 use bmz_core::ids::SoundId;
 
 use crate::system_sound::{SoundSetSelection, SoundType};
@@ -34,6 +35,8 @@ pub struct SystemSoundManager {
     id_map: HashMap<SoundType, SoundId>,
     last_volumes: RefCell<HashMap<SoundType, f32>>,
     master_gain: Cell<f32>,
+    bgm_normalization_gains: HashMap<SoundType, f32>,
+    normalize_bgm_volume: Cell<bool>,
 }
 
 impl SystemSoundManager {
@@ -41,6 +44,7 @@ impl SystemSoundManager {
     /// 解決失敗は info、デコード失敗は warn をサウンド単位で出してスキップする。
     pub fn new(engine: AudioEngineHandle, selection: &SoundSetSelection) -> Self {
         let mut id_map = HashMap::new();
+        let mut bgm_normalization_gains = HashMap::new();
         let mut loader = FfmpegSampleLoader::default();
         let mut commands = Vec::new();
 
@@ -56,6 +60,21 @@ impl SystemSoundManager {
             };
             match loader.load(&path) {
                 Ok(sample) => {
+                    if sound_type.is_bgm()
+                        && let Some(analysis) = analyze_decoded_loudness(&sample)
+                    {
+                        let gain = system_bgm_normalization_gain_for_analysis(analysis);
+                        tracing::debug!(
+                            sound_type = ?sound_type,
+                            path = %path.display(),
+                            loudness_lufs = analysis.loudness_lufs,
+                            short_term_lufs = analysis.short_term_lufs,
+                            sample_peak = analysis.peak_abs,
+                            normalization_gain = gain,
+                            "analyzed system BGM loudness"
+                        );
+                        bgm_normalization_gains.insert(*sound_type, gain);
+                    }
                     commands.push(AudioEngineCommand::InsertSample { id, sample });
                     id_map.insert(*sound_type, id);
                 }
@@ -74,16 +93,31 @@ impl SystemSoundManager {
             tracing::warn!("failed to enqueue decoded system sounds");
         }
 
-        Self::with_id_map(engine, id_map)
+        Self::with_id_map_and_normalization_gains(engine, id_map, bgm_normalization_gains)
     }
 
+    #[cfg(test)]
     fn with_id_map(engine: AudioEngineHandle, id_map: HashMap<SoundType, SoundId>) -> Self {
+        Self::with_id_map_and_normalization_gains(engine, id_map, HashMap::new())
+    }
+
+    fn with_id_map_and_normalization_gains(
+        engine: AudioEngineHandle,
+        id_map: HashMap<SoundType, SoundId>,
+        bgm_normalization_gains: HashMap<SoundType, f32>,
+    ) -> Self {
         Self {
             engine,
             id_map,
             last_volumes: RefCell::new(HashMap::new()),
             master_gain: Cell::new(1.0),
+            bgm_normalization_gains,
+            normalize_bgm_volume: Cell::new(false),
         }
+    }
+
+    pub fn set_bgm_normalization_enabled(&self, enabled: bool) {
+        self.normalize_bgm_volume.set(enabled);
     }
 
     /// 引数で指定した SoundType を再生する。BGM はループ、SE は 1 ショット。
@@ -97,7 +131,7 @@ impl SystemSoundManager {
         let Some(&id) = self.id_map.get(&sound_type) else {
             return;
         };
-        let master_volume = normalize_volume(master_volume);
+        let master_volume = self.effective_volume(sound_type, master_volume);
         let gain = normalize_volume(gain);
         let loop_playback = sound_type.loops();
         let mut commands = vec![AudioEngineCommand::SetMasterGain { gain }];
@@ -130,7 +164,7 @@ impl SystemSoundManager {
         let Some(&id) = self.id_map.get(&sound_type) else {
             return;
         };
-        let master_volume = normalize_volume(master_volume);
+        let master_volume = self.effective_volume(sound_type, master_volume);
         let gain = normalize_volume(gain);
         let commands = vec![
             AudioEngineCommand::SetMasterGain { gain },
@@ -158,7 +192,7 @@ impl SystemSoundManager {
         {
             let last_volumes = self.last_volumes.borrow();
             for (&sound_type, &id) in &self.id_map {
-                let volume = normalize_volume(volume_for(sound_type));
+                let volume = self.effective_volume(sound_type, volume_for(sound_type));
                 if last_volumes.get(&sound_type).is_none_or(|&last| !volume_matches(last, volume)) {
                     updates.push((sound_type, id, volume));
                 }
@@ -186,7 +220,7 @@ impl SystemSoundManager {
         let Some(&id) = self.id_map.get(&sound_type) else {
             return;
         };
-        let volume = normalize_volume(volume);
+        let volume = self.effective_volume(sound_type, volume);
         if self
             .last_volumes
             .borrow()
@@ -237,6 +271,15 @@ impl SystemSoundManager {
             .map(|id| AudioEngineCommand::StopSound { id })
             .collect::<Vec<_>>();
         self.engine.push_commands(commands);
+    }
+
+    fn effective_volume(&self, sound_type: SoundType, volume: f32) -> f32 {
+        let normalization_gain = if self.normalize_bgm_volume.get() && sound_type.is_bgm() {
+            self.bgm_normalization_gains.get(&sound_type).copied().unwrap_or(1.0)
+        } else {
+            1.0
+        };
+        normalize_volume(volume * normalization_gain)
     }
 }
 
@@ -398,6 +441,59 @@ mod tests {
 
         manager.set_volume(SoundType::Select, 0.4);
         assert_eq!(render(&mut processor, 1, 1), vec![0.4, 0.4]);
+    }
+
+    #[test]
+    fn system_bgm_normalization_composes_with_crossfade_and_runtime_toggle() {
+        let (engine, mut processor) = test_engine();
+        let select_id = SoundId(SYSTEM_SOUND_BASE);
+        let mut id_map = HashMap::new();
+        id_map.insert(SoundType::Select, select_id);
+        insert_sample(
+            &engine,
+            &mut processor,
+            select_id,
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![1.0; 3] },
+        );
+        let manager = SystemSoundManager::with_id_map_and_normalization_gains(
+            engine,
+            id_map,
+            HashMap::from([(SoundType::Select, 0.5)]),
+        );
+        manager.set_bgm_normalization_enabled(true);
+        manager.play(SoundType::Select, 1.0);
+        assert_eq!(render(&mut processor, 0, 1), vec![0.5, 0.5]);
+
+        manager.set_volume(SoundType::Select, 0.4);
+        assert_eq!(render(&mut processor, 1, 1), vec![0.2, 0.2]);
+
+        manager.set_bgm_normalization_enabled(false);
+        manager.refresh_volumes(|_| 1.0);
+        assert_eq!(render(&mut processor, 2, 1), vec![1.0, 1.0]);
+    }
+
+    #[test]
+    fn system_bgm_normalization_never_changes_system_se() {
+        let (engine, mut processor) = test_engine();
+        let clear_id = SoundId(SYSTEM_SOUND_BASE);
+        let mut id_map = HashMap::new();
+        id_map.insert(SoundType::ResultClear, clear_id);
+        insert_sample(
+            &engine,
+            &mut processor,
+            clear_id,
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![1.0] },
+        );
+        let manager = SystemSoundManager::with_id_map_and_normalization_gains(
+            engine,
+            id_map,
+            HashMap::from([(SoundType::ResultClear, 0.25)]),
+        );
+        manager.set_bgm_normalization_enabled(true);
+
+        manager.play(SoundType::ResultClear, 1.0);
+
+        assert_eq!(render(&mut processor, 0, 1), vec![1.0, 1.0]);
     }
 
     #[test]

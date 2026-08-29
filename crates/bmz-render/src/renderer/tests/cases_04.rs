@@ -254,6 +254,18 @@ fn additive_image_blend_uses_source_alpha() {
 }
 
 #[test]
+fn multiply_image_blend_modulates_destination_with_source_color() {
+    let blend = image_blend_state(BlendMode::Multiply);
+
+    assert_eq!(blend.color.src_factor, wgpu::BlendFactor::Zero);
+    assert_eq!(blend.color.dst_factor, wgpu::BlendFactor::Src);
+    assert_eq!(blend.color.operation, wgpu::BlendOperation::Add);
+    assert_eq!(blend.alpha.src_factor, wgpu::BlendFactor::Zero);
+    assert_eq!(blend.alpha.dst_factor, wgpu::BlendFactor::Src);
+    assert_eq!(blend.alpha.operation, wgpu::BlendOperation::Add);
+}
+
+#[test]
 fn premultiplied_image_blend_does_not_apply_source_alpha_twice() {
     let blend = image_blend_state(BlendMode::Premultiplied);
 
@@ -333,11 +345,8 @@ fn plan_geometry_writes_rotation_instance_data() {
     };
 
     let geometry = encode_plan_geometry(&plan, &TextFrame::default(), test_surface_size());
-    let floats: Vec<f32> = geometry
-        .images
-        .chunks_exact(std::mem::size_of::<f32>())
-        .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-        .collect();
+    let floats: Vec<f32> =
+        geometry.images.as_chunks::<4>().0.iter().map(|bytes| f32::from_le_bytes(*bytes)).collect();
 
     assert_eq!(floats.len(), IMAGE_INSTANCE_FLOATS);
     assert_eq!(floats[12], 1.25);

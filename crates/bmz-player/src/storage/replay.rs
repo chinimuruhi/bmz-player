@@ -2,6 +2,7 @@ use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Result, bail};
+use bmz_core::clear::GaugeType;
 use bmz_core::replay::ReplayEvent;
 use bmz_gameplay::replay::ReplayPlayer;
 use bmz_gameplay::rule::RuleMode;
@@ -11,7 +12,7 @@ use crate::ln_policy::LnScorePolicy;
 use crate::screens::play_session::SRandomScheme;
 use crate::select_options::{ArrangeOption, DoubleOption, DoubleOptionScoreBucket};
 
-pub const REPLAY_FILE_VERSION: u32 = 5;
+pub const REPLAY_FILE_VERSION: u32 = 6;
 pub const SEED_SCHEME_BEATORAJA_24BIT_V1: &str = "beatoraja_24bit_v1";
 pub const SEED_SCHEME_LEGACY_SHARED_V3: &str = "legacy_shared_v3";
 pub const S_RANDOM_SCHEME_LEGACY_40MS_V1: &str = SRandomScheme::LEGACY_40MS_V1;
@@ -32,6 +33,17 @@ pub struct ReplayFile {
     pub arrange_2p: String,
     #[serde(default = "default_double_option")]
     pub double_option: String,
+    /// DP option actually applied to the chart. `double_option` remains the
+    /// score bucket, where FLIP intentionally shares Off.
+    #[serde(default)]
+    pub applied_double_option: String,
+    /// Gauge selected when the replay was recorded. Empty on Replay v1-v5.
+    #[serde(default)]
+    pub gauge_type: String,
+    /// beatoraja H-RANDOM/ALL-SCR key-lane threshold. The source `.brd`
+    /// does not carry it, so importers may recover it from config_player.json.
+    #[serde(default)]
+    pub h_random_threshold_ms: Option<u32>,
     #[serde(default)]
     pub arrange_seed: Option<i64>,
     #[serde(default)]
@@ -91,8 +103,12 @@ impl ReplayFile {
         arrange_2p: ArrangeOption,
         arrange_seed: Option<i64>,
         lane_shuffle_pattern: Option<Vec<u8>>,
-        events: Vec<ReplayEvent>,
+        mut events: Vec<ReplayEvent>,
     ) -> Self {
+        // Device timestamps received in the same poll can differ by a few
+        // microseconds and arrive out of order. ReplayPlayer consumes a time-
+        // ordered stream, so preserve equal-time order while normalizing it.
+        events.sort_by_key(|event| event.time);
         Self {
             version: REPLAY_FILE_VERSION,
             chart_sha256: hex_encode(&chart_sha256),
@@ -102,6 +118,9 @@ impl ReplayFile {
             arrange: arrange.to_persistent_str().to_string(),
             arrange_2p: arrange_2p.to_persistent_str().to_string(),
             double_option: double_option.as_str().to_string(),
+            applied_double_option: double_option.as_double_option().to_persistent_str().to_string(),
+            gauge_type: String::new(),
+            h_random_threshold_ms: None,
             arrange_seed,
             arrange_seed_2p: None,
             bms_random_choices: Some(Vec::new()),
@@ -144,6 +163,18 @@ impl ReplayFile {
             .filter(|&scheme| scheme != s_random_scheme)
             .map(|scheme| scheme.as_str().to_string())
             .unwrap_or_default();
+        self
+    }
+
+    pub fn with_playback_metadata(
+        mut self,
+        applied_double_option: DoubleOption,
+        gauge_type: GaugeType,
+        h_random_threshold_ms: Option<u32>,
+    ) -> Self {
+        self.applied_double_option = applied_double_option.to_persistent_str().to_string();
+        self.gauge_type = gauge_type.as_str().to_string();
+        self.h_random_threshold_ms = h_random_threshold_ms;
         self
     }
 
@@ -192,6 +223,9 @@ impl ReplayFile {
     }
 
     pub fn double_option(&self) -> DoubleOption {
+        if !self.applied_double_option.is_empty() {
+            return DoubleOption::from_persistent_str(&self.applied_double_option);
+        }
         match DoubleOptionScoreBucket::from_str_or_off(&self.double_option) {
             DoubleOptionScoreBucket::Off => DoubleOption::Off,
             DoubleOptionScoreBucket::Battle => DoubleOption::Battle,
@@ -201,6 +235,21 @@ impl ReplayFile {
 
     pub fn double_option_bucket(&self) -> DoubleOptionScoreBucket {
         DoubleOptionScoreBucket::from_str_or_off(&self.double_option)
+    }
+
+    pub fn recorded_gauge_type(&self) -> Option<GaugeType> {
+        match self.gauge_type.as_str() {
+            "AssistEasy" => Some(GaugeType::AssistEasy),
+            "Easy" => Some(GaugeType::Easy),
+            "Normal" => Some(GaugeType::Normal),
+            "Hard" => Some(GaugeType::Hard),
+            "ExHard" => Some(GaugeType::ExHard),
+            "Hazard" => Some(GaugeType::Hazard),
+            "Class" => Some(GaugeType::Class),
+            "ExClass" => Some(GaugeType::ExClass),
+            "ExHardClass" => Some(GaugeType::ExHardClass),
+            _ => None,
+        }
     }
 }
 
@@ -213,6 +262,21 @@ pub fn save_replay(path: &Path, replay: &ReplayFile) -> Result<()> {
 /// 保存直後にファイルを読み直して hash を取るのを避けるため、
 /// serialize したテキストから直接計算する。
 pub fn save_replay_with_hash(path: &Path, replay: &ReplayFile) -> Result<String> {
+    save_replay_with_durability(path, replay, true)
+}
+
+/// Bulk imports remain recoverable from their source files, so they keep the
+/// atomic temp-file rename but avoid forcing every individual replay to disk.
+pub(crate) fn save_replay_for_import(path: &Path, replay: &ReplayFile) -> Result<()> {
+    save_replay_with_durability(path, replay, false)?;
+    Ok(())
+}
+
+fn save_replay_with_durability(
+    path: &Path,
+    replay: &ReplayFile,
+    sync_file: bool,
+) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     let text = toml::to_string_pretty(replay)?;
@@ -226,7 +290,9 @@ pub fn save_replay_with_hash(path: &Path, replay: &ReplayFile) -> Result<String>
     {
         let mut file = std::fs::File::create(&tmp_path)?;
         file.write_all(text.as_bytes())?;
-        file.sync_all()?;
+        if sync_file {
+            file.sync_all()?;
+        }
     }
     std::fs::rename(tmp_path, path)?;
     Ok(hash)
@@ -356,6 +422,24 @@ pub fn replay_slot_file_name(
     )
 }
 
+pub fn imported_course_replay_file_name(
+    course_hash: &str,
+    ln_policy: LnScorePolicy,
+    rule_mode: RuleMode,
+    slot: u8,
+    position: usize,
+) -> String {
+    let rule_suffix = match rule_mode {
+        RuleMode::Beatoraja => String::new(),
+        other => format!("-{}", other.as_str()),
+    };
+    format!(
+        "course-{course_hash}-{}{}-slot{slot}-stage{position}.toml",
+        ln_policy.as_str(),
+        rule_suffix,
+    )
+}
+
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -378,7 +462,7 @@ fn hex_decode_32(value: &str) -> Result<[u8; 32]> {
     }
 
     let mut out = [0_u8; 32];
-    for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+    for (index, chunk) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         out[index] = (hex_digit(chunk[0])? << 4) | hex_digit(chunk[1])?;
     }
     Ok(out)
@@ -395,11 +479,40 @@ fn hex_digit(byte: u8) -> Result<u8> {
 
 #[cfg(test)]
 mod tests {
-    use bmz_core::input::{InputDeviceKind, InputKind};
+    use bmz_core::clear::GaugeType;
+    use bmz_core::input::{InputDeviceKind, InputKind, ScratchDirection};
     use bmz_core::lane::Lane;
     use bmz_core::time::TimeUs;
 
     use super::*;
+
+    #[test]
+    fn replay_constructor_stably_orders_input_events() {
+        let event = |lane, time| ReplayEvent {
+            lane,
+            kind: InputKind::Press,
+            time: TimeUs(time),
+            device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
+        };
+
+        let replay = ReplayFile::new(
+            [1; 32],
+            1,
+            None,
+            ArrangeOption::Normal,
+            None,
+            None,
+            vec![event(Lane::Key1, 30), event(Lane::Key2, 20), event(Lane::Key3, 20)],
+        );
+
+        assert_eq!(
+            replay.events.iter().map(|event| event.time.0).collect::<Vec<_>>(),
+            vec![20, 20, 30]
+        );
+        assert_eq!(replay.events[0].lane, Lane::Key2);
+        assert_eq!(replay.events[1].lane, Lane::Key3);
+    }
 
     #[test]
     fn save_and_load_replay_file() {
@@ -420,6 +533,7 @@ mod tests {
                 kind: InputKind::Press,
                 time: TimeUs(1_000),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
         );
 
@@ -437,6 +551,58 @@ mod tests {
         assert_eq!(loaded.events, replay.events);
 
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn replay_v6_round_trip_preserves_playback_metadata_and_scratch_direction() {
+        let replay = ReplayFile::new_with_policy(
+            [9; 32],
+            LnScorePolicy::ForceHcn,
+            DoubleOptionScoreBucket::Off,
+            1_700_000_090,
+            None,
+            ArrangeOption::HRandom,
+            ArrangeOption::Normal,
+            Some(0x12_3456),
+            None,
+            vec![ReplayEvent {
+                lane: Lane::Scratch,
+                kind: InputKind::Press,
+                time: TimeUs(5_000),
+                device_kind: InputDeviceKind::Controller,
+                scratch_direction: Some(ScratchDirection::Up),
+            }],
+        )
+        .with_playback_metadata(DoubleOption::Flip, GaugeType::Hard, Some(125));
+
+        let text = toml::to_string(&replay).unwrap();
+        let loaded: ReplayFile = toml::from_str(&text).unwrap();
+
+        assert_eq!(loaded.version, 6);
+        assert_eq!(loaded.double_option_bucket(), DoubleOptionScoreBucket::Off);
+        assert_eq!(loaded.double_option(), DoubleOption::Flip);
+        assert_eq!(loaded.recorded_gauge_type(), Some(GaugeType::Hard));
+        assert_eq!(loaded.h_random_threshold_ms, Some(125));
+        assert_eq!(loaded.events[0].scratch_direction, Some(ScratchDirection::Up));
+    }
+
+    #[test]
+    fn replay_v5_defaults_new_playback_metadata() {
+        let replay: ReplayFile = toml::from_str(
+            r#"
+version = 5
+chart_sha256 = "0101010101010101010101010101010101010101010101010101010101010101"
+played_at = 1700000060
+double_option = "Battle"
+events = []
+"#,
+        )
+        .unwrap();
+
+        assert!(replay.applied_double_option.is_empty());
+        assert_eq!(replay.double_option(), DoubleOption::Battle);
+        assert_eq!(replay.recorded_gauge_type(), None);
+        assert_eq!(replay.h_random_threshold_ms, None);
     }
 
     #[test]
@@ -500,6 +666,7 @@ mod tests {
                 kind: InputKind::Release,
                 time: TimeUs(2_000),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
         );
         save_replay(&path, &replay).unwrap();
@@ -716,7 +883,7 @@ events = []
         save_replay(&path, &replay).unwrap();
         let loaded = load_replay(&path).unwrap();
 
-        assert_eq!(loaded.version, 5);
+        assert_eq!(loaded.version, REPLAY_FILE_VERSION);
         assert_eq!(loaded.s_random_scheme, S_RANDOM_SCHEME_LM_120HZ_V1);
         assert_eq!(loaded.s_random_scheme_2p, S_RANDOM_SCHEME_LEGACY_40MS_V1);
         assert_eq!(loaded.effective_s_random_scheme().unwrap(), SRandomScheme::Lm120HzV1);
@@ -773,6 +940,7 @@ events = []
                 kind: InputKind::Press,
                 time: TimeUs(10),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
         );
         let r1 = ReplayFile::new(
@@ -787,6 +955,7 @@ events = []
                 kind: InputKind::Release,
                 time: TimeUs(20),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
         );
         let p0 = replay_subdir.join("c0.toml");

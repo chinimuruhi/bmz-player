@@ -313,7 +313,28 @@ impl WinitApp {
 
                         course_result.course_score_id = Some(course_score_id);
                         course_result.course_played_at = Some(played_at);
-                        if !any_assist {
+                        let replay_complete = !any_assist
+                            && self
+                                .boot
+                                .score_db
+                                .course_replay_attempt_is_complete(course_score_id)
+                                .unwrap_or_else(|error| {
+                                    tracing::warn!(
+                                        %error,
+                                        course_id,
+                                        course_score_id,
+                                        "failed to validate saved course replay"
+                                    );
+                                    false
+                                });
+                        if !any_assist && !replay_complete {
+                            tracing::warn!(
+                                course_id,
+                                course_score_id,
+                                "course replay is incomplete; replay slots were not updated"
+                            );
+                        }
+                        if replay_complete {
                             course_result.saved_replay_slots = self.update_course_replay_slots(
                                 &identity.course_hash,
                                 course_ln_policy,

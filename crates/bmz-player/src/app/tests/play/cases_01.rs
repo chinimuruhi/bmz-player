@@ -202,6 +202,33 @@ fn play_control_hold_state_rebuilds_from_pressed_controls() {
 }
 
 #[test]
+fn autoplay_replay_speed_keys_use_top_row_hold_priority() {
+    let keyboard =
+        |control: &str| (W_KEYBOARD_DEVICE_ID, PhysicalControl::KeyboardKey(control.to_string()));
+    assert_eq!(autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::new()), 100);
+    for (control, expected) in [("1", 25), ("2", 50), ("3", 200), ("4", 300)] {
+        assert_eq!(
+            autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([keyboard(control)])),
+            expected
+        );
+    }
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([
+            keyboard("4"),
+            keyboard("2"),
+        ])),
+        50
+    );
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([(
+            DeviceId(7),
+            PhysicalControl::GamepadButton("1".to_string()),
+        )])),
+        100
+    );
+}
+
+#[test]
 fn play_control_hold_state_keeps_legacy_and_default_e1_fallbacks() {
     let mut legacy_input = crate::config::play_input::default_profile_input();
     legacy_input.ui.bindings.retain(|entry| entry.action != Some(InputActionConfig::E1));
@@ -225,11 +252,120 @@ fn play_control_hold_state_keeps_legacy_and_default_e1_fallbacks() {
 }
 
 #[test]
+fn egui_keyboard_routing_switches_to_play_only_for_e1_e2_controls_and_holds() {
+    let input = crate::config::play_input::default_profile_input();
+    let mut play_input = play_option_input_for(&input, KeyMode::K7);
+    let keyboard = |control: &str| PhysicalControl::KeyboardKey(control.to_string());
+
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("Q")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("W")),
+        Some(&play_input),
+    ));
+    assert!(!keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("ArrowLeft")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        true,
+        false,
+        false,
+        Some(&keyboard("ArrowLeft")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        true,
+        false,
+        true,
+        false,
+        Some(&keyboard("ArrowUp")),
+        Some(&play_input),
+    ));
+    assert!(!keyboard_input_bypasses_egui(
+        false,
+        false,
+        false,
+        false,
+        Some(&keyboard("Q")),
+        Some(&play_input),
+    ));
+    assert!(keyboard_input_bypasses_egui(
+        false,
+        false,
+        false,
+        true,
+        Some(&keyboard("ArrowLeft")),
+        Some(&play_input),
+    ));
+
+    play_input.binding.entries.push(bmz_gameplay::input::binding::BindingEntry {
+        device: Some(W_KEYBOARD_DEVICE_ID),
+        control: keyboard("Q"),
+        lane: Lane::Key1,
+        scratch_direction: None,
+    });
+    assert!(!keyboard_input_bypasses_egui(
+        true,
+        false,
+        false,
+        false,
+        Some(&keyboard("Q")),
+        Some(&play_input),
+    ));
+}
+
+#[test]
+fn raw_keyboard_is_blocked_only_by_practice_overlay_without_e1_e2_hold() {
+    assert!(egui_blocks_raw_play_keyboard(true, false, false));
+    assert!(!egui_blocks_raw_play_keyboard(true, true, false));
+    assert!(!egui_blocks_raw_play_keyboard(true, false, true));
+    assert!(!egui_blocks_raw_play_keyboard(false, false, false));
+}
+
+#[test]
+fn window_keyboard_capture_is_exclusive_only_in_practice() {
+    assert!(!egui_blocks_window_keyboard_route(true, false, false, true));
+    assert!(egui_blocks_window_keyboard_route(true, true, false, false));
+    assert!(egui_blocks_window_keyboard_route(true, true, false, true));
+    assert!(!egui_blocks_window_keyboard_route(true, true, true, true));
+}
+
+#[test]
+fn non_play_keyboard_is_blocked_only_when_egui_consumes_it() {
+    assert!(!egui_blocks_window_keyboard_route(false, false, false, false));
+    assert!(egui_blocks_window_keyboard_route(false, false, false, true));
+}
+
+#[test]
 fn play_ready_is_blocked_while_e1_or_e2_is_held() {
     assert!(!play_ready_blocked_by_control_holds(false, false));
     assert!(play_ready_blocked_by_control_holds(true, false));
     assert!(play_ready_blocked_by_control_holds(false, true));
     assert!(play_ready_blocked_by_control_holds(true, true));
+}
+
+#[test]
+fn quick_retry_input_is_routed_only_during_play_ending() {
+    assert!(should_route_quick_retry_input(true, false, true));
+    assert!(!should_route_quick_retry_input(true, false, false));
+    assert!(!should_route_quick_retry_input(false, false, true));
+    assert!(!should_route_quick_retry_input(true, true, true));
 }
 
 #[test]
@@ -253,6 +389,13 @@ fn play_ready_waits_one_second_after_last_e1_or_e2_hold() {
 #[test]
 fn play_ready_has_no_release_delay_without_prior_control_hold() {
     assert!(!play_ready_blocked_by_recent_control_hold(None, Instant::now()));
+}
+
+#[test]
+fn practice_config_play_exit_uses_the_same_leave_path_as_escape() {
+    assert!(play_exit_should_leave_practice(Some(PracticePhase::Config)));
+    assert!(!play_exit_should_leave_practice(Some(PracticePhase::Playing)));
+    assert!(!play_exit_should_leave_practice(None));
 }
 
 #[test]

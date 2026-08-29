@@ -217,6 +217,26 @@ impl Renderer {
         self.select_skin_context.document()
     }
 
+    /// Surface 全体の左上原点正規化座標を select skin canvas 座標へ変換する。
+    /// レターボックス領域なら `None` を返す。
+    pub fn select_skin_mouse_position(
+        &self,
+        surface_position: Option<(f32, f32)>,
+    ) -> Option<(f32, f32)> {
+        let (x, y) = surface_position?;
+        self.select_skin_canvas_point(x, y)
+    }
+
+    /// Surface 全体の左上原点正規化座標を result skin canvas 座標へ変換する。
+    /// レターボックス領域なら `None` を返す。
+    pub fn result_skin_mouse_position(
+        &self,
+        surface_position: Option<(f32, f32)>,
+    ) -> Option<(f32, f32)> {
+        let (x, y) = surface_position?;
+        self.result_skin_canvas_point(x, y)
+    }
+
     pub fn select_skin_click_hit(
         &self,
         snapshot: &crate::scene::SelectSnapshot,
@@ -250,7 +270,7 @@ impl Renderer {
     ) -> Option<SkinClickHit> {
         let (x, y) = self.result_skin_canvas_point(x, y)?;
         let document = self.result_skin_context.document()?;
-        let mut state = crate::plan::result_skin_draw_state(snapshot, document.ranktime);
+        let mut state = crate::plan::result_skin_draw_state_for_document(snapshot, document);
         state.start_input_ms =
             crate::skin::skin_start_input_elapsed_ms(state.elapsed_ms, document.input);
         self.result_skin_context.result_click_hit(&state, x, y)
@@ -264,7 +284,7 @@ impl Renderer {
     ) -> Option<SkinSliderHit> {
         let (x, y) = self.result_skin_canvas_point(x, y)?;
         let document = self.result_skin_context.document()?;
-        let mut state = crate::plan::result_skin_draw_state(snapshot, document.ranktime);
+        let mut state = crate::plan::result_skin_draw_state_for_document(snapshot, document);
         state.start_input_ms =
             crate::skin::skin_start_input_elapsed_ms(state.elapsed_ms, document.input);
         self.result_skin_context.result_slider_hit(&state, x, y)
@@ -283,6 +303,20 @@ impl Renderer {
     /// プレイスキンの document。
     pub fn play_skin_document(&self) -> Option<&SkinDocument> {
         self.play_skin_context.document()
+    }
+
+    /// Play skin の beatoraja `practice` destination を、surface 全体の
+    /// 左上原点正規化座標へ変換して返す。
+    pub fn play_skin_practice_position(&self) -> Option<(f32, f32)> {
+        let position = self.play_skin_context.document()?.practice_destination_position()?;
+        let Some(surface) = self.gpu.as_ref().map(WgpuRenderer::surface_size) else {
+            return Some(position);
+        };
+        let viewport = CanvasViewport::from_policy(surface, self.play_skin_canvas_render_policy());
+        Some((
+            viewport.rect.x + position.0 * viewport.rect.width,
+            viewport.rect.y + position.1 * viewport.rect.height,
+        ))
     }
 
     pub fn set_play_skin_user_selected_options(&mut self, enabled_options: Vec<i32>) -> bool {

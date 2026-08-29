@@ -7,9 +7,9 @@ pub(super) fn plan_result(
 ) -> DrawPlan {
     if let Some(document) = skin.document().filter(|document| matches!(document.skin_type, 7 | 15))
     {
-        let mut state = build_result_skin_draw_state(snapshot, document.ranktime);
+        let mut state = result_skin_draw_state_for_document(snapshot, document);
         state.start_input_ms =
-            crate::skin::skin_start_input_elapsed_ms(state.elapsed_ms, document.input);
+            dynamic_timers.start_input_elapsed_ms(state.elapsed_ms, document.input);
         advance_skin_dynamic_timers(
             skin,
             dynamic_timers,
@@ -139,6 +139,18 @@ pub fn result_skin_draw_state(
     build_result_skin_draw_state(snapshot, result_ranktime_ms)
 }
 
+pub(crate) fn result_skin_draw_state_for_document(
+    snapshot: &crate::scene::ResultSnapshot,
+    document: &SkinDocument,
+) -> crate::skin::SkinDrawState {
+    let mut state = build_result_skin_draw_state(snapshot, document.ranktime);
+    if let Some((x, y)) = snapshot.mouse_position {
+        state.mouse_x = Some(x.clamp(0.0, 1.0) * document.w as f32);
+        state.mouse_y = Some((1.0 - y.clamp(0.0, 1.0)) * document.h as f32);
+    }
+    state
+}
+
 pub(super) fn build_result_skin_draw_state(
     snapshot: &crate::scene::ResultSnapshot,
     result_ranktime_ms: i32,
@@ -179,6 +191,7 @@ pub(super) fn build_result_skin_draw_state(
         current_fps: snapshot.current_fps,
         logical_input_held: snapshot.skin_input.held,
         skin_offsets: snapshot.skin_offsets,
+        skin_attempt: snapshot.skin_attempt,
         select_arrange_index: crate::skin::select_arrange_index(&snapshot.arrange),
         select_arrange_2p_index: crate::skin::select_arrange_index(&snapshot.arrange_2p),
         select_double_option_index: crate::skin::select_double_option_index(
@@ -196,8 +209,10 @@ pub(super) fn build_result_skin_draw_state(
             &snapshot.arrange,
             &snapshot.arrange_2p,
         ),
-        result_has_long_notes: Some(snapshot.has_long_notes),
+        chart_has_long_notes: Some(snapshot.has_long_notes),
         result_ln_mode_index: Some(snapshot.ln_mode_index),
+        rule_mode_index: snapshot.rule_mode_index,
+        ln_score_policy_index: snapshot.ln_score_policy_index,
         assist_flags: snapshot.assist_flags,
         assist_extra_note_depth: snapshot.assist_extra_note_depth,
         assist_mine_mode: snapshot.assist_mine_mode,
@@ -206,11 +221,10 @@ pub(super) fn build_result_skin_draw_state(
         ex_score: snapshot.ex_score,
         total_notes: snapshot.total_notes,
         past_notes: snapshot.total_notes,
-        total_duration_ms: snapshot
+        total_duration_ms: snapshot.note_display_duration_ms.unwrap_or(snapshot.duration_ms),
+        duration_green_ms: snapshot
             .note_display_duration_ms
-            .map(crate::skin::green_duration_to_duration_i32)
-            .unwrap_or(snapshot.duration_ms),
-        duration_green_ms: snapshot.note_display_duration_ms,
+            .map(crate::skin::duration_to_green_number_ms),
         result_duration_ms: snapshot.duration_ms,
         max_combo: snapshot.max_combo,
         judge_counts: snapshot.judge_counts,
@@ -244,6 +258,7 @@ pub(super) fn build_result_skin_draw_state(
         target_clear_index: snapshot.target_clear_type.map(|c| c as i64),
         select_clear_index: snapshot.clear_type as i64,
         result_failed: Some(snapshot.result_failed),
+        autoplay: snapshot.autoplay,
         play_level: skin_level_number(&snapshot.play_level),
         table_song: !snapshot.table_text_primary.is_empty(),
         difficulty: skin_difficulty_code(&snapshot.difficulty_name),

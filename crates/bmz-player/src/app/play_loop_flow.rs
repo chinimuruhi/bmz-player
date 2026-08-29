@@ -2,6 +2,7 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn advance_active_play(&mut self) {
+        self.sync_autoplay_replay_playback_rate();
         self.poll_pending_finished_play();
         if self.play.play_ending.is_some() {
             self.update_play_ending_snapshot();
@@ -53,6 +54,8 @@ impl WinitApp {
                     result_settled_at,
                 );
                 active_play.running.result_graph.record_frame(&frame);
+                let guide_se_enabled = active_play.running.session.guide_se_enabled;
+                let guide_judgements = frame.judgements.clone();
                 let fallback_mine_hits =
                     frame.mine_hits.iter().filter(|hit| hit.sound.is_none()).count();
                 let mut snapshot = frame.render_snapshot;
@@ -79,6 +82,7 @@ impl WinitApp {
                     );
                 }
                 self.play.last_play_snapshot = Some(snapshot);
+                self.play_guide_se_for_judgements(guide_se_enabled, &guide_judgements);
                 self.play_landmine_se(fallback_mine_hits);
                 if result_settled {
                     self.finalize_settled_play_result_once(result_settled_at);
@@ -90,19 +94,50 @@ impl WinitApp {
                     frame.state,
                 );
                 active_play.running.result_graph.record_frame(&frame);
+                let guide_se_enabled = active_play.running.session.guide_se_enabled;
+                let guide_judgements = frame.judgements.clone();
                 if self
                     .play
                     .practice_session
                     .as_ref()
                     .is_some_and(|practice| practice.phase == PracticePhase::Playing)
                 {
+                    let failed = frame.state == bmz_gameplay::session::PlayState::Failed;
                     let fallback_mine_hits =
                         frame.mine_hits.iter().filter(|hit| hit.sound.is_none()).count();
+                    let mut snapshot = frame.render_snapshot;
+                    snapshot.play_elapsed_time = play_elapsed_time;
+                    snapshot.ready_elapsed_time = ready_elapsed_time;
+                    snapshot.stagefile_background = stagefile_background;
+                    snapshot.stagefile_image_size = stagefile_image_size;
+                    snapshot.backbmp_background = backbmp_background;
+                    snapshot.course_stage = course_stage;
+                    snapshot.course_titles = course_titles.clone();
+                    crate::screens::play_snapshot::refresh_play_skin_visuals(
+                        &mut snapshot,
+                        &active_play.running.session,
+                    );
+                    if let Err(error) = active_play.running.pause_audio() {
+                        tracing::warn!(%error, "failed to stop practice audio at round end");
+                    }
+                    self.apply_profile_fast_slow_filter(&mut snapshot);
+                    self.apply_play_table_text(&mut snapshot);
+                    self.play.last_play_snapshot = Some(snapshot);
+                    self.play_guide_se_for_judgements(guide_se_enabled, &guide_judgements);
                     if should_play_retire_sound {
                         self.play_system_sound(crate::system_sound::SoundType::PlayStop);
                     }
                     self.play_landmine_se(fallback_mine_hits);
-                    self.finish_practice_round();
+                    self.commit_active_play_lane_state_to_profile();
+                    self.clear_play_control_holds();
+                    self.notify_obs_play_ended();
+                    let now = Instant::now();
+                    self.play.play_ending = Some(if failed {
+                        practice_failed_ending(now)
+                    } else {
+                        practice_natural_finish_ending(now)
+                    });
+                    self.update_play_ending_snapshot();
                     return;
                 }
                 let finish_mode = if self.play.active_course.is_some() {
@@ -140,6 +175,7 @@ impl WinitApp {
                         },
                     ) {
                         Ok(mut finished) => {
+                            finished.summary.skin_attempt = active_play.running.skin_attempt;
                             finished.summary.graph = Arc::new(
                                 active_play
                                     .running
@@ -173,6 +209,7 @@ impl WinitApp {
                 self.apply_profile_fast_slow_filter(&mut snapshot);
                 self.apply_play_table_text(&mut snapshot);
                 self.play.last_play_snapshot = Some(snapshot);
+                self.play_guide_se_for_judgements(guide_se_enabled, &guide_judgements);
                 if should_play_retire_sound {
                     self.play_system_sound(crate::system_sound::SoundType::PlayStop);
                 }
@@ -186,10 +223,13 @@ impl WinitApp {
                     self.start_result_ir_for_finished_play(finished);
                 }
                 self.notify_obs_play_ended();
+                let now = Instant::now();
+                let failed = frame.state == bmz_gameplay::session::PlayState::Failed;
                 self.play.play_ending = Some(PlayEndingTransition {
-                    started_at: Instant::now(),
+                    started_at: now,
+                    music_end_started_at: (!failed).then_some(now),
                     fadeout_started_at: None,
-                    failed: frame.state == bmz_gameplay::session::PlayState::Failed,
+                    failed,
                     completion: PlayEndingCompletion::Result,
                     full_combo_elapsed_at_finish_ms,
                     finished: early_finished,
@@ -278,10 +318,11 @@ impl WinitApp {
             return;
         };
         let finished = match result {
-            Ok(finished) => {
+            Ok(mut finished) => {
                 let Some(active_play) = &mut self.play.active_play else {
                     return;
                 };
+                finished.summary.skin_attempt = active_play.running.skin_attempt;
                 active_play.running.pending_finished = None;
                 active_play.running.finished = Some(finished.clone());
                 active_play.running.finish_error = None;
@@ -571,6 +612,11 @@ impl WinitApp {
     }
 
     pub(super) fn stop_play_like_escape(&mut self, reason: &'static str) -> bool {
+        let practice_phase = self.play.practice_session.as_ref().map(|practice| practice.phase);
+        if play_exit_should_leave_practice(practice_phase) {
+            self.begin_practice_leave_transition(reason);
+            return true;
+        }
         if self.play.play_ending.is_some() {
             return true;
         }
@@ -583,6 +629,10 @@ impl WinitApp {
             .as_ref()
             .is_some_and(|active_play| chart_play_has_started(&active_play.running.session));
         if !chart_started {
+            if practice_phase == Some(PracticePhase::Playing) {
+                self.begin_practice_leave_transition(reason);
+                return true;
+            }
             tracing::info!(reason, "fading out play before chart start");
             if let Some(active_play) = &mut self.play.active_play
                 && let Err(error) = active_play.running.pause_audio()
@@ -618,6 +668,16 @@ impl WinitApp {
         };
         self.clear_play_control_holds();
         self.play_system_sound(crate::system_sound::SoundType::PlayStop);
+        if practice_phase == Some(PracticePhase::Playing) {
+            if let Some(active_play) = &mut self.play.active_play
+                && let Err(error) = active_play.running.pause_audio()
+            {
+                tracing::warn!(%error, "failed to stop practice audio after abort");
+            }
+            self.notify_obs_play_ended();
+            self.play.play_ending = Some(practice_failed_ending(Instant::now()));
+            self.update_play_ending_snapshot();
+        }
         stopped
     }
 
@@ -640,6 +700,29 @@ impl WinitApp {
         self.play.play_exit_hold_started_at = None;
         self.reset_play_analog_scroll();
         self.refresh_play_lane_value_changing();
+    }
+
+    pub(super) fn active_play_uses_playback_rate_keys(&self) -> bool {
+        self.play.active_play.as_ref().is_some_and(|active_play| {
+            active_play.running.session.autoplay.is_some()
+                || active_play.running.session.replay_player.is_some()
+        })
+    }
+
+    pub(super) fn sync_autoplay_replay_playback_rate(&mut self) {
+        let rate =
+            autoplay_replay_playback_rate_from_pressed_inputs(&self.input.pressed_play_inputs);
+        let Some(active_play) = &mut self.play.active_play else {
+            return;
+        };
+        if active_play.running.session.autoplay.is_none()
+            && active_play.running.session.replay_player.is_none()
+        {
+            return;
+        }
+        if active_play.running.playback_rate_percent != rate {
+            active_play.running.set_playback_rate_percent(rate);
+        }
     }
 
     pub(super) fn sync_play_control_holds_from_pressed_controls(&mut self) {
@@ -819,7 +902,7 @@ impl WinitApp {
             ready_elapsed_time,
             backbmp_background: self.play.play_backbmp_loaded,
             failed_elapsed_ms: ending.failed.then_some(elapsed_since_ms(ending.started_at)),
-            music_end_elapsed_ms: (!ending.failed).then_some(elapsed_since_ms(ending.started_at)),
+            music_end_elapsed_ms: ending.music_end_started_at.map(elapsed_since_ms),
             fadeout_elapsed_ms: ending.fadeout_started_at.map(elapsed_since_ms),
         };
 

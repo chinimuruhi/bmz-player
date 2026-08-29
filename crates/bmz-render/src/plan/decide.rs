@@ -10,7 +10,7 @@ pub(super) fn plan_decide(
             (snapshot.play_elapsed_time.0 / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
         let mut state = crate::skin::SkinDrawState {
             elapsed_ms: play_elapsed_ms,
-            start_input_ms: crate::skin::skin_start_input_elapsed_ms(
+            start_input_ms: dynamic_timers.start_input_elapsed_ms(
                 play_elapsed_ms,
                 skin.document().map_or(0, |document| document.input),
             ),
@@ -18,6 +18,10 @@ pub(super) fn plan_decide(
             operating_time_ms: snapshot.operating_time_ms,
             ready_timer_ms: Some(play_elapsed_ms),
             key_mode: snapshot.key_mode,
+            skin_attempt: snapshot.skin_attempt,
+            chart_has_long_notes: snapshot.has_long_notes,
+            rule_mode_index: snapshot.rule_mode_index,
+            ln_score_policy_index: snapshot.ln_score_policy_index,
             logical_input_held: snapshot.skin_input.held,
             total_notes: snapshot.total_notes,
             select_chart_total_gauge: snapshot.chart_total_gauge,

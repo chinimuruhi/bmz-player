@@ -95,8 +95,10 @@ fn test_chart() -> ChartListItem {
         backbmp_file: String::new(),
         preview_file: String::new(),
         has_document: false,
+        has_bga: false,
         has_long_notes: true,
         has_mines: true,
+        has_bms_random: false,
         judge_rank: Some(100),
         bms_total: 300.0,
         ln_profile: crate::ln_policy::ChartLnProfile {

@@ -134,6 +134,36 @@ pub(in crate::ui) fn filepath_selection_label(value: &str) -> &str {
     }
 }
 
+fn filepath_selection_index(selected: &str, candidates: &[String]) -> Option<usize> {
+    if selected == RANDOM_FILE_SELECTION {
+        return Some(0);
+    }
+    let normalized = normalize_filepath_selection(selected, candidates)
+        .unwrap_or_else(|| selected.replace('\\', "/"));
+    candidates.iter().position(|candidate| candidate == &normalized).map(|index| index + 1)
+}
+
+/// ファイル選択は「ランダム」を先頭とし、その後ろに glob 候補を並べる。
+pub(in crate::ui) fn previous_filepath_selection(
+    selected: &str,
+    candidates: &[String],
+) -> Option<String> {
+    let index = filepath_selection_index(selected, candidates)?.checked_sub(1)?;
+    if index == 0 {
+        Some(RANDOM_FILE_SELECTION.to_string())
+    } else {
+        candidates.get(index - 1).cloned()
+    }
+}
+
+pub(in crate::ui) fn next_filepath_selection(
+    selected: &str,
+    candidates: &[String],
+) -> Option<String> {
+    let index = filepath_selection_index(selected, candidates)?.checked_add(1)?;
+    candidates.get(index - 1).cloned()
+}
+
 /// property の既定選択肢名。beatoraja と同じく `def` が item name と一致する
 /// ときだけ採用し、未指定/不一致なら先頭 item を使う。
 pub(in crate::ui) fn property_default(prop: &SkinPropertyDef) -> String {
@@ -146,10 +176,29 @@ pub(in crate::ui) fn property_default(prop: &SkinPropertyDef) -> String {
 }
 
 pub(in crate::ui) fn property_selection_is_valid(prop: &SkinPropertyDef, selected: &str) -> bool {
-    if let Ok(op) = selected.parse::<i32>() {
-        return prop.item.iter().any(|item| item.op == op);
-    }
-    prop.item.iter().any(|item| item.name == selected)
+    property_selection_index(prop, selected).is_some()
+}
+
+fn property_selection_index(prop: &SkinPropertyDef, selected: &str) -> Option<usize> {
+    prop.item.iter().position(|item| item.name == selected).or_else(|| {
+        selected.parse::<i32>().ok().and_then(|op| prop.item.iter().position(|item| item.op == op))
+    })
+}
+
+pub(in crate::ui) fn previous_property_selection<'a>(
+    prop: &'a SkinPropertyDef,
+    selected: &str,
+) -> Option<&'a str> {
+    let index = property_selection_index(prop, selected)?.checked_sub(1)?;
+    Some(prop.item.get(index)?.name.as_str())
+}
+
+pub(in crate::ui) fn next_property_selection<'a>(
+    prop: &'a SkinPropertyDef,
+    selected: &str,
+) -> Option<&'a str> {
+    let index = property_selection_index(prop, selected)?.checked_add(1)?;
+    Some(prop.item.get(index)?.name.as_str())
 }
 
 pub(in crate::ui) fn filepath_default(

@@ -50,7 +50,7 @@ impl LibraryDatabase {
         };
 
         write_chart_analysis(conn, chart_id, record.chart)?;
-        super::super::course_db::backfill_unresolved_course_entries_for_chart(
+        super::super::course_db::refresh_course_entries_for_chart(
             conn,
             &hash_to_hex(&record.chart.identity.file_sha256),
             &hash_to_hex(&record.chart.identity.file_md5),

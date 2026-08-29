@@ -5,6 +5,11 @@ impl WinitApp {
         let locale = self.boot.profile_config.ui.locale();
         let text = Localizer::new(locale);
         let selected = self.select.select_items.get(self.select.selected_index);
+        let session_mode = if self.select.ir_battle.active {
+            SessionMode::GBattle
+        } else {
+            self.select.session_mode
+        };
         let active_rival_name =
             self.select.select_ir.active_rival_display_name().map(str::to_string);
         let rival = match selected {
@@ -87,20 +92,130 @@ impl WinitApp {
         let selected_play_mode = self.selected_play_mode();
         let mode_config =
             selected_play_mode.map(|mode| self.boot.profile_config.play_mode_config(mode));
-        let note_display_duration_ms = mode_config
-            .as_ref()
-            .map(|config| config.target_green_number.max(1).min(i32::MAX as u32) as i32);
+        let note_display_duration_ms = mode_config.as_ref().map(|config| {
+            crate::config::play::duration_ms_from_green_number(config.target_green_number.max(1))
+                as i32
+        });
+        let ln_policy_setting = self.boot.profile_config.play.ln_mode_policy;
+        let ln_score_policy = match selected {
+            Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| {
+                crate::ln_policy::score_ln_policy(ln_policy_setting, chart.ln_profile)
+            }),
+            Some(SelectItem::Course(row)) => Some(row.ln_policy),
+            _ => None,
+        };
+        let source_ln_profile = match selected {
+            Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| chart.ln_profile),
+            _ => None,
+        };
+        let source_key_mode = selected_play_mode;
+        let conversion = source_key_mode
+            .filter(|_| {
+                !session_mode.is_battle()
+                    && !matches!(
+                        self.select.double_option,
+                        DoubleOption::Battle | DoubleOption::BattleAutoScratch
+                    )
+            })
+            .filter(|mode| self.boot.profile_config.play.key_mode_conversion.applies_to(*mode))
+            .map(|_| self.boot.profile_config.play.key_mode_conversion)
+            .unwrap_or(KeyModeConversionConfig::Off);
+        let applied_double_option = if conversion == KeyModeConversionConfig::Off {
+            self.select.double_option
+        } else {
+            DoubleOption::Off
+        };
+        let skin_attempt = bmz_render::snapshot::SkinAttemptState {
+            source_key_mode,
+            effective_key_mode: source_key_mode.map(|mode| {
+                crate::skin_extension::select_effective_key_mode(
+                    mode,
+                    applied_double_option,
+                    session_mode,
+                    conversion,
+                )
+            }),
+            seven_to_six: conversion == KeyModeConversionConfig::SevenToSix,
+            seven_to_nine_pattern: if conversion == KeyModeConversionConfig::SevenToNine {
+                self.boot.profile_config.play.seven_to_nine_pattern.value()
+            } else {
+                0
+            },
+            seven_to_nine_type: self.boot.profile_config.play.seven_to_nine_type.value(),
+            source_ln_profile_bits: source_ln_profile
+                .map(crate::skin_extension::source_ln_profile_bits),
+            session_mode_index: Some(crate::skin_extension::session_mode_index(session_mode)),
+            double_option_index: Some(crate::skin_extension::double_option_index(
+                applied_double_option,
+            )),
+            hsfix_index: mode_config.as_ref().map(|config| {
+                crate::skin_extension::hsfix_index(hs_fix_option_from_profile(config.hs_fix))
+            }),
+            gauge_auto_shift_index: Some(bmz_render::skin::select_gauge_auto_shift_index(
+                gauge_auto_shift_as_str(self.select.gauge_auto_shift_option),
+            )),
+            bottom_shiftable_gauge_index: Some(
+                bmz_render::skin::select_bottom_shiftable_gauge_index(
+                    bottom_shiftable_gauge_as_str(self.select.bottom_shiftable_gauge_option),
+                ),
+            ),
+            judge_algorithm_index: Some(crate::skin_extension::judge_algorithm_index(
+                crate::screens::play_session::judge_algorithm_from_config(
+                    self.boot.profile_config.judge.judge_algorithm,
+                ),
+            )),
+            ln_mode_index: ln_score_policy.map(|policy| {
+                source_ln_profile.map_or_else(
+                    || {
+                        crate::skin_extension::long_note_mode_index(
+                            crate::skin_extension::ln_score_policy_mode(policy),
+                        )
+                    },
+                    |profile| crate::skin_extension::effective_ln_mode_index(profile, policy),
+                )
+            }),
+            has_bga: match selected {
+                Some(SelectItem::Chart(row)) => row.chart.as_ref().map(|chart| chart.has_bga),
+                _ => None,
+            },
+            has_random_sequence: match selected {
+                Some(SelectItem::Chart(row)) => {
+                    row.chart.as_ref().map(|chart| chart.has_bms_random)
+                }
+                _ => None,
+            },
+        };
         let battle_choices = self.select_battle_choices();
         let displayed_index = if self.select.ir_battle.active {
             self.select.ir_battle.cursor
         } else {
             self.select.selected_index
         };
+        let in_difficulty_table_level =
+            self.select.folder_stack.last().is_some_and(|path| {
+                matches!(parse_table_path(path), Some(TablePath::Level { .. }))
+            });
         let mut rows = if self.select.ir_battle.active {
+            // G-BATTLEでは人物/スコア表示だけを差し替え、譜面そのものの
+            // BPM・長さ・ノート数・解析値などは元の選択行から引き継ぐ。
+            let source_row = select_snapshot_rows_with_rival(
+                &self.select.select_items,
+                self.select.selected_index,
+                1,
+                &self.boot.profile_config,
+                &self.boot.app_config,
+                in_difficulty_table_level,
+                self.select.key_config_edit.as_ref(),
+                &chart_distributions,
+                Some(&self.select.select_ir),
+            )
+            .into_iter()
+            .next();
             crate::app::select_ir_battle::select_ir_battle_snapshot_rows(
                 &battle_choices,
                 self.select.ir_battle.cursor,
                 25,
+                source_row.as_ref(),
             )
         } else {
             select_snapshot_rows_with_rival(
@@ -108,6 +223,8 @@ impl WinitApp {
                 self.select.selected_index,
                 25,
                 &self.boot.profile_config,
+                &self.boot.app_config,
+                in_difficulty_table_level,
                 self.select.key_config_edit.as_ref(),
                 &chart_distributions,
                 Some(&self.select.select_ir),
@@ -126,6 +243,7 @@ impl WinitApp {
             current_fps: 0,
             operating_time_ms: 0,
             skin_input: Default::default(),
+            skin_attempt,
             skin_offsets: skin_offset_values_from_config(
                 &self.boot.profile_config.skin.select_offsets,
             ),
@@ -189,12 +307,14 @@ impl WinitApp {
                 .as_ref()
                 .map(|config| hs_fix_option_from_profile(config.hs_fix).as_str().to_string())
                 .unwrap_or_default(),
-            assist: self.select.session_mode.as_str().to_string(),
+            assist: session_mode.as_str().to_string(),
             assist_flags: self.boot.profile_config.play.assist.flags(),
             assist_extra_note_depth: self.boot.profile_config.play.assist.extra_note_depth,
             assist_mine_mode: self.boot.profile_config.play.assist.mine_mode as i64,
             assist_scroll_mode: self.boot.profile_config.play.assist.scroll_mode as i64,
             assist_long_note_mode: self.boot.profile_config.play.assist.long_note_mode as i64,
+            guide_se_enabled: self.boot.profile_config.play.guide_se,
+            constant_enabled: mode_config.as_ref().is_some_and(|config| config.constant_enabled),
             select_mode: self.select.select_mode_filter.as_str().to_string(),
             select_difficulty_filter: self.select.select_difficulty_filter.difficulty_code(),
             random_mix_options: {
@@ -217,6 +337,14 @@ impl WinitApp {
                 .ln_mode_policy
                 .display_label()
                 .to_string(),
+            rule_mode_index: crate::skin_extension::rule_mode_index(
+                self.boot.profile_config.play.rule_mode,
+            ),
+            ln_policy_setting_index: crate::skin_extension::ln_policy_setting_index(
+                ln_policy_setting,
+            ),
+            ln_score_policy_index: ln_score_policy
+                .map(crate::skin_extension::ln_score_policy_index),
             judge_algorithm: self
                 .boot
                 .profile_config
@@ -287,7 +415,9 @@ impl WinitApp {
             search_word_alpha,
             search_caret_byte_index,
             search_input_active: self.select.search.is_active(),
-            mouse_position: self.cursor_position_normalized(),
+            mouse_position: self
+                .renderer
+                .select_skin_mouse_position(self.cursor_position_normalized()),
             ir: selected_course_ir.as_ref().map_or_else(
                 || {
                     self.select.select_ir.snapshot_for_binding(
@@ -339,11 +469,9 @@ impl WinitApp {
     }
 
     pub(super) fn select_note_display_duration_ms_for_skin(profile: &ProfileConfig) -> i32 {
-        profile
-            .play_mode_config(profile.active_play_mode)
-            .target_green_number
-            .max(1)
-            .min(i32::MAX as u32) as i32
+        crate::config::play::duration_ms_from_green_number(
+            profile.play_mode_config(profile.active_play_mode).target_green_number.max(1),
+        ) as i32
     }
 
     pub(super) fn ensure_visible_select_chart_distributions(&self, visible_limit: usize) {

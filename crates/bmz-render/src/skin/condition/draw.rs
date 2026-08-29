@@ -350,6 +350,10 @@ pub(in crate::skin) fn destination_timer_elapsed_ms(
     destination: &SkinDestinationDef,
     state: &SkinDrawState,
 ) -> Option<i32> {
+    if let Some(rest) = destination.timer_expr.strip_prefix("bmz:keylogger_chattering:") {
+        let lane = rest.parse::<usize>().ok()?.checked_sub(1)?;
+        return state.keylogger_chattering_ms.get(lane).copied().flatten();
+    }
     if let Some(rest) = destination.timer_expr.strip_prefix("bmz:keylogger_event:") {
         let mut parts = rest.split(':');
         let lane = parts.next()?.parse::<usize>().ok()?.checked_sub(1)?;

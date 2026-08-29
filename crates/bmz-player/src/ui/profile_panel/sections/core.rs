@@ -39,6 +39,10 @@ pub(in crate::ui::profile_panel) fn build_profile_volume_section(
                 &mut profile.audio_mix.normalize_chart_volume,
                 tr!(text, "profile-volume-normalize"),
             );
+            ui.checkbox(
+                &mut profile.audio_mix.normalize_system_bgm_volume,
+                tr!(text, "profile-volume-normalize-system-bgm"),
+            );
             volume_slider(
                 ui,
                 &mut profile.audio_mix.master_volume,

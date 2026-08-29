@@ -724,17 +724,17 @@
     },
     {
       "id": "option_hsfix_2",
-      "constantText": "MIN BPM",
-      "size": 12
-    },
-    {
-      "id": "option_hsfix_3",
       "constantText": "MAX BPM",
       "size": 12
     },
     {
-      "id": "option_hsfix_4",
+      "id": "option_hsfix_3",
       "constantText": "MAIN BPM",
+      "size": 12
+    },
+    {
+      "id": "option_hsfix_4",
+      "constantText": "MIN BPM",
       "size": 12
     },
     {
@@ -764,17 +764,22 @@
     },
     {
       "id": "option_assist_1",
-      "constantText": "AUTOPLAY",
+      "constantText": "PRACTICE",
       "size": 12
     },
     {
       "id": "option_assist_2",
-      "constantText": "AUTO BATTLE",
+      "constantText": "AUTOPLAY",
       "size": 12
     },
     {
       "id": "option_assist_3",
-      "constantText": "BATTLE",
+      "constantText": "AUTO BATTLE",
+      "size": 12
+    },
+    {
+      "id": "option_assist_4",
+      "constantText": "G-BATTLE",
       "size": 12
     },
     {
@@ -4422,7 +4427,7 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 3",
+      "draw": "event_index(1970) == 4",
       "dst": [
         {
           "x": 998,
@@ -4455,7 +4460,7 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 2",
+      "draw": "event_index(1970) == 3",
       "dst": [
         {
           "x": 998,
@@ -4488,7 +4493,7 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 1",
+      "draw": "event_index(1970) == 2",
       "dst": [
         {
           "x": 998,
@@ -4521,11 +4526,44 @@
     {
       "id": "panel_img",
       "op": [21],
-      "draw": "event_index(1970) == 0",
+      "draw": "event_index(1970) == 1",
       "dst": [
         {
           "x": 998,
           "y": 309,
+          "w": 150,
+          "h": 21,
+          "a": 225,
+          "r": 172,
+          "g": 82,
+          "b": 24
+        }
+      ]
+    },
+    {
+      "id": "panel_inactive_img",
+      "op": [21],
+      "dst": [
+        {
+          "x": 998,
+          "y": 334,
+          "w": 150,
+          "h": 21,
+          "a": 130,
+          "r": 10,
+          "g": 15,
+          "b": 18
+        }
+      ]
+    },
+    {
+      "id": "panel_img",
+      "op": [21],
+      "draw": "event_index(1970) == 0",
+      "dst": [
+        {
+          "x": 998,
+          "y": 334,
           "w": 150,
           "h": 21,
           "a": 225,
@@ -4541,7 +4579,7 @@
       "dst": [
         {
           "x": 998,
-          "y": 345,
+          "y": 370,
           "w": 4,
           "h": 18,
           "a": 245,
@@ -5580,7 +5618,7 @@
       ]
     },
     {
-      "id": "option_assist_3",
+      "id": "option_assist_4",
       "op": [21],
       "dst": [
         {
@@ -5596,7 +5634,7 @@
       ]
     },
     {
-      "id": "option_assist_2",
+      "id": "option_assist_3",
       "op": [21],
       "dst": [
         {
@@ -5612,7 +5650,7 @@
       ]
     },
     {
-      "id": "option_assist_1",
+      "id": "option_assist_2",
       "op": [21],
       "dst": [
         {
@@ -5628,7 +5666,7 @@
       ]
     },
     {
-      "id": "option_assist_0",
+      "id": "option_assist_1",
       "op": [21],
       "dst": [
         {
@@ -5644,12 +5682,28 @@
       ]
     },
     {
+      "id": "option_assist_0",
+      "op": [21],
+      "dst": [
+        {
+          "x": 1010,
+          "y": 339,
+          "w": 126,
+          "h": 13,
+          "a": 255,
+          "r": 248,
+          "g": 252,
+          "b": 246
+        }
+      ]
+    },
+    {
       "id": "option_assist_title",
       "op": [21],
       "dst": [
         {
           "x": 1010,
-          "y": 344,
+          "y": 369,
           "w": 138,
           "h": 16,
           "a": 255,

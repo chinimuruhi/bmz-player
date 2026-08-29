@@ -189,6 +189,25 @@ BMZ Player の macOS app bundle は `scripts/package-macos-app.sh` で作る。
 scripts/package-macos-app.sh
 ```
 
+配布用 bundle の最低対応バージョンは Intel/x64 版が macOS 10.13、Apple Silicon
+版が macOS 11.0 とする。Apple Silicon Mac と arm64 macOS 自体が 11.0 以降のため、
+arm64 Mach-O を 10.13 target にはできない。package script は
+`MACOSX_DEPLOYMENT_TARGET` と `LSMinimumSystemVersion` を同じ値に揃え、同梱した
+すべての Mach-O が指定値より新しい deployment target を要求していないことを
+`vtool` で検証する。検証値は `--minimum-system-version` または
+`BMZ_MACOS_DEPLOYMENT_TARGET` で上書きできる。
+
+CPAL 0.17 以降の CoreAudio backend は、出力専用アプリでも macOS 14.2 の process
+tap 破棄シンボルを強参照する。BMZ は loopback 入力を使わないため、`bmz-audio` で
+未到達の破棄処理を unsupported error へ解決し、古い OS での dyld load を妨げない。
+package script は process tap と Continuity Camera のシンボルが配布物へ再混入して
+いないことも検証する。
+
+HTTP / WebSocket の TLS は Rustls と WebPKI roots を使う。Security.framework の
+`SecTrustEvaluateWithError` は macOS 10.14 で導入されたため、10.13 向け配布物では
+native-tls / SecureTransport の証明書検証経路をリンクしない。Keychain に認証情報を
+保存する `keyring` の Apple native backend は引き続き使用する。
+
 既定の `CFBundleIdentifier` は、所有ドメイン `hyrorre.net` に合わせて
 `net.hyrorre.bmz-player` とする。必要な場合は `--bundle-id` または
 `BMZ_MACOS_BUNDLE_ID` で上書きする。
@@ -295,6 +314,28 @@ scripts/package-macos-app.sh --skip-rust-license-report
 ### FFmpeg / dylib bundling
 
 既定では Homebrew など、実行環境に存在する dynamic libraries を使う。
+
+公開用 macOS artifact では Homebrew の FFmpeg bottle を同梱しない。bottle の
+deployment target は runner / Homebrew 更新に追従して変わるため、
+`scripts/build-ffmpeg-macos.sh` で FFmpeg 9.0.1 の公式 source archive を検証して
+artifact の最低対応 OS 向け shared library を作る。BMZ が使用しない `libavdevice` /
+`libavfilter`、encoder / muxer、外部 codec library、network protocol、CLI program は
+無効化する。
+
+```sh
+brew install nasm pkg-config
+BMZ_MACOS_DEPLOYMENT_TARGET=10.13 \
+scripts/build-ffmpeg-macos.sh \
+  --target x86_64-apple-darwin \
+  --prefix /tmp/bmz-ffmpeg-x64
+
+FFMPEG_DIR=/tmp/bmz-ffmpeg-x64 \
+PKG_CONFIG_PATH=/tmp/bmz-ffmpeg-x64/lib/pkgconfig \
+scripts/package-macos-app.sh \
+  --target x86_64-apple-darwin \
+  --minimum-system-version 10.13 \
+  --bundle-dylibs
+```
 
 `--bundle-dylibs` を付けると、`otool` で見える非 system dylib 依存を
 `Contents/Frameworks` へコピーし、`install_name_tool` で参照を書き換える。
@@ -445,16 +486,15 @@ bmz-player-v<version>-windows-x64-portable.zip
 bmz-player-v<version>-windows-x64-provenance.txt
 bmz-player-v<version>-macos-arm64.app.zip
 bmz-player-v<version>-macos-x64.app.zip
-bmz-player-v<version>-macos-<arch>-brew-ffmpeg.json
-bmz-player-v<version>-macos-<arch>-ffmpeg-version.txt
+bmz-player-v<version>-macos-<arch>-ffmpeg-build.txt
 bmz-player-v<version>-linux-x64.flatpak
 bmz-player-v<version>-linux-x64-flatpak-provenance.txt
 SHA256SUMS.txt
 ```
 
 GitHub Release に添付するのは、ユーザーが選ぶ配布物と `SHA256SUMS.txt` のみ。
-`*-provenance.txt` / `*-ffmpeg-version.txt` / `*-brew-ffmpeg.json` は Actions
-artifact 側に残し、Release asset には登録しない。
+`*-provenance.txt` / `*-ffmpeg-build.txt` は Actions artifact 側に残し、
+Release asset には登録しない。
 
 ## App update checks
 
@@ -515,6 +555,12 @@ artifact は quarantine 付き環境で通常起動できないことがある�
 secrets が揃っている場合、macOS job は Developer ID 署名、notarization、stapling、
 `spctl` 検証を行ってから `.app.zip` を作る。無い場合は従来通り ad-hoc 署名で
 artifact を作る。
+
+macOS の arm64 runner は `macos-15`、x64 runner は `macos-15-intel` を使う。
+workflow matrix から arm64 には `MACOSX_DEPLOYMENT_TARGET=11.0`、x64 には
+`MACOSX_DEPLOYMENT_TARGET=10.13` を Rust と制御ビルドした FFmpeg の双方へ渡す。
+package 後には本体と全同梱 dylib の deployment target が指定値以下であることを
+検証する。
 
 Linux job は Flatpak 用 container
 `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08` で

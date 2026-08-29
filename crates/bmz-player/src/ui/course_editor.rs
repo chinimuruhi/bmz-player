@@ -1,12 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use bmz_core::course::{
-    CourseClassConstraint, CourseConstraints, CourseDefinition, CourseEntry, CourseGaugeConstraint,
-    CourseJudgeConstraint, CourseKind, CourseLnConstraint, CourseSpeedConstraint, CourseTrophy,
-};
+use bmz_core::course::{CourseConstraints, CourseDefinition, CourseEntry, CourseKind};
 
 use super::{
-    CourseEditorAction, CourseEditorData, CourseEditorUiState, Localizer, PANEL_VIEWPORT_MARGIN,
+    CourseEditorAction, CourseEditorData, CourseEditorUiState, FluentArgs, Localizer,
+    PANEL_VIEWPORT_MARGIN,
+    course_form::{build_course_constraints_editor, build_course_trophy_editor},
 };
 
 const LOCAL_COURSE_SOURCE: &str = "bmz:local";
@@ -23,13 +22,6 @@ pub(super) fn build_course_editor_panel(
     if !*open {
         return None;
     }
-    if state.export_path.is_empty() {
-        state.export_path = profile_root.join("courses.json").display().to_string();
-    }
-    if state.import_path.is_empty() {
-        state.import_path = profile_root.join("courses.json").display().to_string();
-    }
-
     let mut action = None;
     egui::Window::new(text.text("course-editor-title"))
         .id(egui::Id::new("bmz_course_editor"))
@@ -50,27 +42,23 @@ pub(super) fn build_course_editor_panel(
             let Some(draft) = state.draft.as_mut() else {
                 return;
             };
-            let is_new = state.selected_course_id.is_none();
             let mut reset_draft = false;
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                build_identity_editor(ui, draft, is_new, text);
+                build_identity_editor(ui, draft, text);
                 ui.separator();
-                build_constraints_editor(ui, draft, text);
+                build_course_constraints_editor(ui, draft, text, "course_editor");
                 ui.separator();
                 build_entry_editor(ui, draft, &mut state.search_query, data, text);
                 ui.separator();
-                build_trophy_editor(ui, draft, text);
+                build_course_trophy_editor(ui, draft, text, "course_editor");
                 ui.separator();
 
                 ui.horizontal_wrapped(|ui| {
                     if ui.button(text.text("course-editor-save")).clicked() {
-                        action =
-                            Some(CourseEditorAction::Save(normalize_definition(draft.clone())));
-                    }
-                    if ui.button(text.text("course-editor-test-play")).clicked() {
-                        action = Some(CourseEditorAction::SaveAndTest(normalize_definition(
+                        action = Some(CourseEditorAction::Save(normalize_definition(
                             draft.clone(),
+                            text.text("select-new-course"),
                         )));
                     }
                     let local_selected = state.selected_course_id.is_some_and(|id| {
@@ -91,23 +79,29 @@ pub(super) fn build_course_editor_panel(
                     }
                 });
 
-                ui.horizontal(|ui| {
-                    ui.label(text.text("course-editor-export-path"));
-                    ui.text_edit_singleline(&mut state.export_path);
-                    if ui.button(text.text("course-editor-export")).clicked() {
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(text.text("course-editor-export")).clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("beatoraja course JSON", &["json"])
+                            .set_directory(profile_root)
+                            .set_file_name("courses.json")
+                            .save_file()
+                    {
                         action = Some(CourseEditorAction::Export {
-                            path: PathBuf::from(state.export_path.trim()),
-                            definition: normalize_definition(draft.clone()),
+                            path,
+                            definition: normalize_definition(
+                                draft.clone(),
+                                text.text("select-new-course"),
+                            ),
                         });
                     }
-                });
-                ui.horizontal(|ui| {
-                    ui.label(text.text("course-editor-import-path"));
-                    ui.text_edit_singleline(&mut state.import_path);
-                    if ui.button(text.text("course-editor-import")).clicked() {
-                        action = Some(CourseEditorAction::Import {
-                            path: PathBuf::from(state.import_path.trim()),
-                        });
+                    if ui.button(text.text("course-editor-import")).clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("beatoraja course JSON", &["json"])
+                            .set_directory(profile_root)
+                            .pick_file()
+                    {
+                        action = Some(CourseEditorAction::Import { path });
                     }
                 });
                 if !state.status.is_empty() {
@@ -144,7 +138,7 @@ fn build_course_picker(
             .selected_text(&selected_title)
             .width(360.0)
             .show_ui(ui, |ui| {
-                for course in &data.courses {
+                for course in local_first_courses(&data.courses) {
                     let source =
                         if course.source == LOCAL_COURSE_SOURCE { "LOCAL" } else { "IMPORT" };
                     if ui
@@ -160,7 +154,7 @@ fn build_course_picker(
             });
         if ui.button(text.text("course-editor-new")).clicked() {
             state.selected_course_id = None;
-            state.draft = Some(new_definition(&data.courses));
+            state.draft = Some(new_definition(&data.courses, text.text("select-new-course")));
             state.status.clear();
         }
     });
@@ -172,64 +166,28 @@ fn build_course_picker(
         state.status.clear();
     }
     if state.draft.is_none() {
-        state.draft = Some(new_definition(&data.courses));
+        state.draft = Some(new_definition(&data.courses, text.text("select-new-course")));
     }
 }
 
-fn build_identity_editor(
-    ui: &mut egui::Ui,
-    draft: &mut CourseDefinition,
-    key_editable: bool,
-    text: Localizer,
-) {
+fn local_first_courses(
+    courses: &[crate::storage::library_db::StoredCourse],
+) -> impl Iterator<Item = &crate::storage::library_db::StoredCourse> {
+    courses
+        .iter()
+        .filter(|course| course.source == LOCAL_COURSE_SOURCE)
+        .chain(courses.iter().filter(|course| course.source != LOCAL_COURSE_SOURCE))
+}
+
+fn build_identity_editor(ui: &mut egui::Ui, draft: &mut CourseDefinition, text: Localizer) {
     egui::Grid::new("course_editor_identity").num_columns(2).show(ui, |ui| {
         ui.label(text.text("course-editor-name"));
         ui.text_edit_singleline(&mut draft.title);
         ui.end_row();
-        ui.label(text.text("course-editor-key"));
-        ui.add_enabled(key_editable, egui::TextEdit::singleline(&mut draft.key));
-        ui.end_row();
-        ui.label(text.text("course-editor-kind"));
-        let old_kind = draft.kind;
-        egui::ComboBox::from_id_salt("course_editor_kind")
-            .selected_text(kind_label(draft.kind))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut draft.kind, CourseKind::Course, "COURSE");
-                ui.selectable_value(&mut draft.kind, CourseKind::Dan, "DAN / GRADE");
-            });
-        if old_kind != draft.kind {
-            draft.constraints.class = match draft.kind {
-                CourseKind::Course => CourseClassConstraint::None,
-                CourseKind::Dan => CourseClassConstraint::Grade,
-            };
-        }
-        ui.end_row();
-        ui.label(text.text("course-editor-release"));
+        ui.label(text.text("course-editor-ir-submit"));
         ui.checkbox(&mut draft.release, "");
         ui.end_row();
     });
-}
-
-fn build_constraints_editor(ui: &mut egui::Ui, draft: &mut CourseDefinition, text: Localizer) {
-    ui.heading(text.text("course-editor-constraints"));
-    egui::Grid::new("course_editor_constraints").num_columns(2).striped(true).show(ui, |ui| {
-        ui.label("CLASS");
-        combo_class(ui, &mut draft.constraints.class);
-        ui.end_row();
-        ui.label("SPEED");
-        combo_speed(ui, &mut draft.constraints.speed);
-        ui.end_row();
-        ui.label("JUDGE");
-        combo_judge(ui, &mut draft.constraints.judge);
-        ui.end_row();
-        ui.label("GAUGE");
-        combo_gauge(ui, &mut draft.constraints.gauge);
-        ui.end_row();
-        ui.label("LN");
-        combo_ln(ui, &mut draft.constraints.ln);
-        ui.end_row();
-    });
-    draft.kind = CourseDefinition::derive_kind_from_constraints(&draft.constraints);
 }
 
 fn build_entry_editor(
@@ -239,7 +197,10 @@ fn build_entry_editor(
     data: &CourseEditorData,
     text: Localizer,
 ) {
-    ui.heading(text.text("course-editor-entries"));
+    let mut args = FluentArgs::new();
+    args.set("count", draft.entries.len() as i64);
+    args.set("max", crate::course::LOCAL_COURSE_MAX_ENTRIES as i64);
+    ui.heading(text.format("course-editor-entries", &args));
     let mut move_entry = None;
     let mut remove_entry = None;
     for (index, entry) in draft.entries.iter().enumerate() {
@@ -268,171 +229,133 @@ fn build_entry_editor(
         ui.label(text.text("course-editor-chart-search"));
         ui.text_edit_singleline(search_query);
     });
-    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
-        for chart in &data.charts {
-            ui.horizontal(|ui| {
-                if ui.small_button("+").clicked() {
-                    draft.entries.push(CourseEntry {
-                        title_hint: chart.title.clone(),
-                        md5: Some(chart.md5.clone()),
-                        sha256: Some(chart.sha256.clone()),
-                        chart_id: Some(chart.chart_id),
-                    });
-                }
-                ui.label(format!(
-                    "{} / {}  ☆{}  [{}]",
-                    chart.title, chart.artist, chart.play_level, chart.mode
-                ));
-            });
-        }
-    });
-}
-
-fn build_trophy_editor(ui: &mut egui::Ui, draft: &mut CourseDefinition, text: Localizer) {
-    ui.heading(text.text("course-editor-trophies"));
-    let mut remove = None;
-    for (index, trophy) in draft.trophies.iter_mut().enumerate() {
-        ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut trophy.name);
-            ui.label("MISS ≤");
-            ui.add(egui::DragValue::new(&mut trophy.max_miss_rate).range(0.0..=100.0).suffix("%"));
-            ui.label("SCORE ≥");
-            ui.add(egui::DragValue::new(&mut trophy.min_score_rate).range(0.0..=100.0).suffix("%"));
-            if ui.small_button("×").clicked() {
-                remove = Some(index);
+    let row_height = ui.spacing().interact_size.y;
+    egui::ScrollArea::vertical().max_height(180.0).show_rows(
+        ui,
+        row_height,
+        data.charts.len(),
+        |ui, visible_rows| {
+            for index in visible_rows {
+                let chart = &data.charts[index];
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            draft.entries.len() < crate::course::LOCAL_COURSE_MAX_ENTRIES,
+                            egui::Button::new("+"),
+                        )
+                        .clicked()
+                    {
+                        draft.entries.push(CourseEntry {
+                            title_hint: chart.title.clone(),
+                            md5: Some(chart.md5.clone()),
+                            sha256: Some(chart.sha256.clone()),
+                            chart_id: Some(chart.chart_id),
+                        });
+                    }
+                    ui.label(format!(
+                        "{} / {}  ☆{}  [{}]",
+                        chart.title, chart.artist, chart.play_level, chart.mode
+                    ));
+                });
             }
-        });
-    }
-    if let Some(index) = remove {
-        draft.trophies.remove(index);
-    }
-    if ui.button(text.text("course-editor-add-trophy")).clicked() {
-        draft.trophies.push(CourseTrophy {
-            name: format!("trophy{}", draft.trophies.len() + 1),
-            max_miss_rate: 5.0,
-            min_score_rate: 70.0,
-        });
-    }
+        },
+    );
 }
 
-fn new_definition(courses: &[crate::storage::library_db::StoredCourse]) -> CourseDefinition {
-    let key = (1..)
-        .map(|index| format!("local-course-{index}"))
-        .find(|candidate| {
-            courses.iter().all(|course| course.definition.key.as_str() != candidate.as_str())
-        })
-        .expect("course key sequence is finite in practice");
+fn new_definition(
+    courses: &[crate::storage::library_db::StoredCourse],
+    default_title: String,
+) -> CourseDefinition {
+    let key = crate::course::next_local_course_key(
+        courses.iter().map(|course| course.definition.key.as_str()),
+    );
     CourseDefinition {
         key,
-        title: "New Course".to_string(),
+        title: default_title,
         kind: CourseKind::Course,
         entries: Vec::new(),
         constraints: CourseConstraints::default(),
         trophies: Vec::new(),
-        release: true,
+        release: false,
     }
 }
 
-fn normalize_definition(mut definition: CourseDefinition) -> CourseDefinition {
+fn normalize_definition(
+    mut definition: CourseDefinition,
+    default_title: String,
+) -> CourseDefinition {
     definition.title = definition.title.trim().to_string();
     if definition.title.is_empty() {
-        definition.title = "No Course Title".to_string();
+        definition.title = default_title;
     }
-    definition.key = definition.key.trim().to_string();
-    if definition.key.is_empty() {
-        definition.key = definition.title.to_ascii_lowercase().replace(' ', "-");
-    }
-    definition.kind = CourseDefinition::derive_kind_from_constraints(&definition.constraints);
-    definition.constraints.source_constraints = constraint_names(&definition.constraints);
+    crate::course::normalize_course_definition(&mut definition);
     definition
 }
 
-pub(crate) fn constraint_names(constraints: &CourseConstraints) -> Vec<String> {
-    let mut names = Vec::new();
-    match constraints.class {
-        CourseClassConstraint::None => {}
-        CourseClassConstraint::Grade => names.push("grade"),
-        CourseClassConstraint::GradeMirrorAllowed => names.push("grade_mirror"),
-        CourseClassConstraint::GradeRandomAllowed => names.push("grade_random"),
-    }
-    if constraints.speed == CourseSpeedConstraint::NoSpeed {
-        names.push("no_speed");
-    }
-    match constraints.judge {
-        CourseJudgeConstraint::Normal => {}
-        CourseJudgeConstraint::NoGood => names.push("no_good"),
-        CourseJudgeConstraint::NoGreat => names.push("no_great"),
-    }
-    match constraints.gauge {
-        CourseGaugeConstraint::Default => {}
-        CourseGaugeConstraint::Lr2 => names.push("gauge_lr2"),
-        CourseGaugeConstraint::Keys5 => names.push("gauge_5k"),
-        CourseGaugeConstraint::Keys7 => names.push("gauge_7k"),
-        CourseGaugeConstraint::Keys9 => names.push("gauge_9k"),
-        CourseGaugeConstraint::Keys24 => {}
-    }
-    match constraints.ln {
-        CourseLnConstraint::Default => {}
-        CourseLnConstraint::Ln => names.push("ln"),
-        CourseLnConstraint::Cn => names.push("cn"),
-        CourseLnConstraint::Hcn => names.push("hcn"),
-    }
-    names.into_iter().map(str::to_string).collect()
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn kind_label(kind: CourseKind) -> &'static str {
-    match kind {
-        CourseKind::Course => "COURSE",
-        CourseKind::Dan => "DAN / GRADE",
-    }
-}
-
-macro_rules! enum_combo {
-    ($name:ident, $id:literal, $ty:ty, [$($value:path => $label:literal),+ $(,)?]) => {
-        fn $name(ui: &mut egui::Ui, current: &mut $ty) {
-            let selected = match *current { $($value => $label),+ };
-            egui::ComboBox::from_id_salt($id).selected_text(selected).show_ui(ui, |ui| {
-                $(ui.selectable_value(current, $value, $label);)+
-            });
+    fn stored_course(
+        id: i64,
+        source: &str,
+        title: &str,
+    ) -> crate::storage::library_db::StoredCourse {
+        crate::storage::library_db::StoredCourse {
+            id,
+            source: source.to_string(),
+            definition: CourseDefinition {
+                key: format!("course-{id}"),
+                title: title.to_string(),
+                kind: CourseKind::Course,
+                entries: Vec::new(),
+                constraints: CourseConstraints::default(),
+                trophies: Vec::new(),
+                release: false,
+            },
         }
-    };
-}
+    }
 
-enum_combo!(combo_class, "course_class", CourseClassConstraint, [
-    CourseClassConstraint::None => "NONE",
-    CourseClassConstraint::Grade => "GRADE",
-    CourseClassConstraint::GradeMirrorAllowed => "GRADE MIRROR",
-    CourseClassConstraint::GradeRandomAllowed => "GRADE RANDOM",
-]);
-enum_combo!(combo_speed, "course_speed", CourseSpeedConstraint, [
-    CourseSpeedConstraint::Free => "FREE",
-    CourseSpeedConstraint::NoSpeed => "NO SPEED",
-]);
-enum_combo!(combo_judge, "course_judge", CourseJudgeConstraint, [
-    CourseJudgeConstraint::Normal => "NORMAL",
-    CourseJudgeConstraint::NoGood => "NO GOOD",
-    CourseJudgeConstraint::NoGreat => "NO GREAT",
-]);
-fn combo_gauge(ui: &mut egui::Ui, current: &mut CourseGaugeConstraint) {
-    let selected = match *current {
-        CourseGaugeConstraint::Default => "DEFAULT",
-        CourseGaugeConstraint::Lr2 => "LR2",
-        CourseGaugeConstraint::Keys5 => "5KEYS",
-        CourseGaugeConstraint::Keys7 => "7KEYS",
-        CourseGaugeConstraint::Keys9 => "9KEYS",
-        CourseGaugeConstraint::Keys24 => "UNSUPPORTED 24KEYS",
-    };
-    egui::ComboBox::from_id_salt("course_gauge").selected_text(selected).show_ui(ui, |ui| {
-        ui.selectable_value(current, CourseGaugeConstraint::Default, "DEFAULT");
-        ui.selectable_value(current, CourseGaugeConstraint::Lr2, "LR2");
-        ui.selectable_value(current, CourseGaugeConstraint::Keys5, "5KEYS");
-        ui.selectable_value(current, CourseGaugeConstraint::Keys7, "7KEYS");
-        ui.selectable_value(current, CourseGaugeConstraint::Keys9, "9KEYS");
-    });
+    #[test]
+    fn new_course_uses_localized_title_and_automatic_key() {
+        let definition = new_definition(&[], "新規コース".to_string());
+
+        assert_eq!(definition.key, "local-course-1");
+        assert_eq!(definition.title, "新規コース");
+        assert!(definition.trophies.is_empty());
+        assert!(!definition.release);
+    }
+
+    #[test]
+    fn empty_course_title_uses_localized_default_without_changing_key() {
+        let definition = normalize_definition(
+            CourseDefinition {
+                key: "local-course-7".to_string(),
+                title: "  ".to_string(),
+                kind: CourseKind::Course,
+                entries: Vec::new(),
+                constraints: CourseConstraints::default(),
+                trophies: Vec::new(),
+                release: false,
+            },
+            "新規コース".to_string(),
+        );
+
+        assert_eq!(definition.key, "local-course-7");
+        assert_eq!(definition.title, "新規コース");
+    }
+
+    #[test]
+    fn course_picker_orders_local_courses_before_imports_stably() {
+        let courses = vec![
+            stored_course(1, "table:a", "Alpha"),
+            stored_course(2, LOCAL_COURSE_SOURCE, "Beta"),
+            stored_course(3, "table:b", "Charlie"),
+            stored_course(4, LOCAL_COURSE_SOURCE, "Delta"),
+        ];
+
+        let ids = local_first_courses(&courses).map(|course| course.id).collect::<Vec<_>>();
+
+        assert_eq!(ids, [2, 4, 1, 3]);
+    }
 }
-enum_combo!(combo_ln, "course_ln", CourseLnConstraint, [
-    CourseLnConstraint::Default => "DEFAULT",
-    CourseLnConstraint::Ln => "LN",
-    CourseLnConstraint::Cn => "CN",
-    CourseLnConstraint::Hcn => "HCN",
-]);

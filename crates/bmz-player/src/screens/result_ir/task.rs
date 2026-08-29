@@ -114,33 +114,90 @@ pub(super) fn spawn_result_ir_task_for_target(
         query.supports_scope(IrRankingScope::SelfAndRivals) && state_prefetch_rivals(&ir_config);
     tokio::spawn(async move {
         let now = now_unix_seconds();
-        let outcome = async {
+        let primary_outcome = async {
             crate::storage::migration::migrate_network_db(&network_db_path)?;
             let mut network_db =
                 crate::storage::network_db::NetworkDatabase::open(&network_db_path)?;
-            sync_pending_ir_jobs(
+            let (kind, local_score_id) = submit_query.target.submission_job();
+            sync_pending_ir_jobs_filtered(
                 &mut network_db,
                 &score_db_path,
                 &submit_query.profile_root,
                 &logs_dir,
                 &ir_config,
+                IrSyncJobFilter {
+                    provider_key: &submit_query.provider,
+                    account_id: &submit_query.account_id,
+                    kind,
+                    local_score_id: Some(local_score_id),
+                },
                 now,
-                IR_SYNC_BATCH_LIMIT,
+                1,
                 false,
-                IrSyncThrottle::rate_limited(),
+                IrSyncThrottle::none(),
             )
             .await
         }
         .await;
         let mut included_global_ranking = None;
-        match outcome {
+        match primary_outcome {
             Ok(report) => {
+                let primary_processed = report.submitted.saturating_add(report.failed);
                 included_global_ranking = included_global_ranking_for_query(&submit_query, &report);
+                // 通常のランキングAPIには更新前順位が無い。今回の primary provider の
+                // 送信応答を取得できた時点で先に Result へ渡し、残りの provider や
+                // backlog の同期完了を待たせない。
+                if let Some(ranking) = included_global_ranking.clone() {
+                    let _ = submit_sender.send(ResultIrEvent::Ranking {
+                        scope: IrRankingScope::Global,
+                        result: Ok(ranking),
+                    });
+                }
+
+                // primary provider の今回分を優先した後、従来どおり残りの pending
+                // job も送る。primary の送信応答は上で確保済みなので、バッチ順や
+                // 上限によって通常ランキング取得へ誤ってフォールバックしない。
+                let remaining_outcome = async {
+                    let mut network_db =
+                        crate::storage::network_db::NetworkDatabase::open(&network_db_path)?;
+                    sync_pending_ir_jobs(
+                        &mut network_db,
+                        &score_db_path,
+                        &submit_query.profile_root,
+                        &logs_dir,
+                        &ir_config,
+                        now_unix_seconds(),
+                        IR_SYNC_BATCH_LIMIT.saturating_sub(primary_processed),
+                        false,
+                        IrSyncThrottle::rate_limited(),
+                    )
+                    .await
+                }
+                .await;
+                if let Err(error) = remaining_outcome {
+                    tracing::warn!(%error, "failed to sync remaining IR jobs from Result");
+                }
                 // 別の同期 task がこの job を先に claim していても、送信完了まで
                 // 待ってから ranking を取得する。これで古いサーバ側 ranking を
                 // Result に固定しない。
-                let event = watch_result_submission(&network_db_path, &submit_query.target).await;
+                let event = watch_result_submission(&network_db_path, &submit_query).await;
                 let _ = submit_sender.send(event);
+                if included_global_ranking.is_none() {
+                    match stored_included_global_ranking(&network_db_path, &submit_query) {
+                        Ok(Some(ranking)) => {
+                            let _ = submit_sender.send(ResultIrEvent::Ranking {
+                                scope: IrRankingScope::Global,
+                                result: Ok(ranking.clone()),
+                            });
+                            included_global_ranking = Some(ranking);
+                        }
+                        Ok(None) => {}
+                        Err(error) => tracing::warn!(
+                            %error,
+                            "failed to load the completed IR submission response",
+                        ),
+                    }
+                }
             }
             Err(error) => {
                 let _ = submit_sender.send(ResultIrEvent::Submit {
@@ -151,12 +208,6 @@ pub(super) fn spawn_result_ir_task_for_target(
             }
         }
         let included_global_loaded = included_global_ranking.is_some();
-        if let Some(ranking) = included_global_ranking {
-            let _ = submit_sender.send(ResultIrEvent::Ranking {
-                scope: IrRankingScope::Global,
-                result: Ok(ranking),
-            });
-        }
         // 送信完了後に prefetch する。best 更新前のランキングを返さないため。
         if prefetch_global && !included_global_loaded {
             fetch_ranking_and_send(&submit_query, IrRankingScope::Global, &submit_sender).await;
@@ -179,18 +230,27 @@ pub(super) fn spawn_result_ir_task_for_target(
 /// 常駐同期との claim race があっても、今回の attempt の終端状態を待つ。
 pub(super) async fn watch_result_submission(
     network_db_path: &std::path::Path,
-    target: &ResultIrTarget,
+    query: &ResultIrTaskQuery,
 ) -> ResultIrEvent {
     const POLL_INTERVAL: Duration = Duration::from_millis(250);
     const MAX_POLLS: usize = 120;
-    let (kind, local_score_id) = target.submission_job();
+    let (kind, local_score_id) = query.target.submission_job();
 
     for _ in 0..MAX_POLLS {
         match crate::storage::network_db::NetworkDatabase::open(network_db_path)
             .and_then(|db| db.ir_score_jobs_for_local_score(kind, local_score_id))
         {
             Ok(jobs) => {
-                if let Some((submitted, failed, message)) = submission_result_from_jobs(&jobs) {
+                let primary_jobs = jobs
+                    .iter()
+                    .filter(|job| {
+                        job.provider == query.provider && job.account_id == query.account_id
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if let Some((submitted, failed, message)) =
+                    submission_result_from_jobs(&primary_jobs)
+                {
                     return ResultIrEvent::Submit { submitted, failed, message };
                 }
             }
@@ -267,6 +327,40 @@ pub(super) fn included_global_ranking_for_query(
                 ranking.previous_rank,
             )
         })
+}
+
+fn stored_included_global_ranking(
+    network_db_path: &std::path::Path,
+    query: &ResultIrTaskQuery,
+) -> anyhow::Result<Option<ResultIrRanking>> {
+    let ResultIrTarget::Chart { local_score_id, .. } = &query.target else {
+        return Ok(None);
+    };
+    let response_json = crate::storage::network_db::NetworkDatabase::open(network_db_path)?
+        .latest_ir_score_submission_response(
+            &query.provider,
+            &query.account_id,
+            IrJobKind::Score,
+            *local_score_id,
+        )?;
+    let Some(response_json) = response_json else {
+        return Ok(None);
+    };
+    let response = serde_json::from_str::<IrSubmitResponse>(&response_json)?;
+    Ok(included_global_ranking_from_response(query, &response))
+}
+
+pub(super) fn included_global_ranking_from_response(
+    query: &ResultIrTaskQuery,
+    response: &IrSubmitResponse,
+) -> Option<ResultIrRanking> {
+    let ResultIrTarget::Chart { chart_sha256_hex, .. } = &query.target else {
+        return None;
+    };
+    let ranking =
+        response.rankings.get(&IrRankingScope::Global).filter(|ranking| ranking.succeeded)?;
+    let data = ranking.data.as_ref().filter(|data| data.chart.sha256 == *chart_sha256_hex)?;
+    Some(chart_ranking_to_result_ir_ranking_with_previous(data, ranking.previous_rank))
 }
 
 pub(super) fn spawn_ranking_fetch(
@@ -350,12 +444,16 @@ pub(crate) async fn fetch_ranking(
     query: &ResultIrQuery,
     scope: IrRankingScope,
 ) -> anyhow::Result<IrRankingResult> {
-    let limit = if crate::ir::rian_ir::is_rian_ir_provider(&query.provider) {
+    let limit = result_ranking_limit(&query.provider);
+    fetch_ranking_with_limit(query, scope, limit).await
+}
+
+pub(super) fn result_ranking_limit(provider: &str) -> u32 {
+    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
         crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT
     } else {
-        20
-    };
-    fetch_ranking_with_limit(query, scope, limit).await
+        crate::ir::types::default_ranking_limit()
+    }
 }
 
 pub(crate) async fn fetch_ranking_with_limit(

@@ -53,6 +53,7 @@ fn store_play_result_writes_replay_and_score() {
                 kind: InputKind::Press,
                 time: TimeUs(10),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
             arrange: ArrangeOption::Normal,
             arrange_2p: ArrangeOption::Normal,
@@ -62,6 +63,7 @@ fn store_play_result_writes_replay_and_score() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -77,6 +79,8 @@ fn store_play_result_writes_replay_and_score() {
         replay.effective_s_random_scheme().unwrap(),
         crate::screens::play_session::SRandomScheme::Lm120HzV1
     );
+    assert_eq!(replay.double_option(), DoubleOption::Flip);
+    assert_eq!(replay.recorded_gauge_type(), Some(result.gauge_type));
     assert_eq!(score_db.recent_history(1, 0).unwrap()[0].applied_double_option, DoubleOption::Flip);
     assert_eq!(
         score_db
@@ -134,6 +138,7 @@ fn store_play_result_skips_autoplay_replay_by_default() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -188,6 +193,7 @@ fn save_existing_replay_to_slot_overwrites_requested_slot() {
                 kind: InputKind::Press,
                 time: TimeUs(10),
                 device_kind: InputDeviceKind::Keyboard,
+                scratch_direction: None,
             }],
             arrange: ArrangeOption::Normal,
             arrange_2p: ArrangeOption::Normal,
@@ -197,6 +203,7 @@ fn save_existing_replay_to_slot_overwrites_requested_slot() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -275,6 +282,7 @@ fn store_play_result_saves_failed_replay_for_non_autoplay() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -335,6 +343,7 @@ fn store_play_result_course_stage_updates_single_best_with_rounded_clear() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::CourseStage,
@@ -427,6 +436,7 @@ fn store_play_result_writes_history_and_default_slot_files() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -466,6 +476,7 @@ fn store_play_result_writes_history_and_default_slot_files() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -529,6 +540,7 @@ fn store_play_result_skips_slots_for_autoplay_when_disabled() {
             seed_scheme: String::new(),
             s_random_scheme: crate::screens::play_session::SRandomScheme::Lm120HzV1,
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             arrange_pattern: None,
             update_score: true,
             mode: StorePlayResultMode::Normal,
@@ -553,11 +565,14 @@ fn slot_rule_score_update_only_when_strictly_better() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 100,
-        bp: 10,
-        cb: 10,
-        max_combo: 50,
-        clear_rank: ClearType::Normal as u8,
+        ex_score: Some(100),
+        bp: Some(10),
+        cb: Some(10),
+        max_combo: Some(50),
+        clear_rank: Some(ClearType::Normal as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -574,6 +589,34 @@ fn slot_rule_score_update_only_when_strictly_better() {
         ReplaySlotRule::ScoreUpdate,
         Some(&prev),
         &CandidateMetrics { ex_score: 50, bp: 0, cb: 0, max_combo: 100, clear_rank: 6 }
+    ));
+}
+
+#[test]
+fn comparison_rule_replaces_imported_slot_with_unknown_metrics() {
+    let prev = ReplaySlotRecord {
+        chart_sha256: [0; 32],
+        slot: 0,
+        rule: ReplaySlotRule::ScoreUpdate,
+        replay_path: String::new(),
+        ln_policy: LnScorePolicy::ForceLn,
+        double_option: DoubleOptionScoreBucket::Off,
+        rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
+        played_at: 0,
+        ex_score: None,
+        bp: None,
+        cb: None,
+        max_combo: None,
+        clear_rank: None,
+        source_kind: crate::storage::score_db::ScoreSourceKind::Beatoraja,
+        source_path: "source.brd".to_string(),
+        source_fingerprint: String::new(),
+    };
+
+    assert!(evaluate_slot_update(
+        ReplaySlotRule::ScoreUpdate,
+        Some(&prev),
+        &CandidateMetrics { ex_score: 1, bp: 1, cb: 1, max_combo: 1, clear_rank: 1 }
     ));
 }
 
@@ -613,11 +656,14 @@ fn slot_rule_bp_update_only_when_strictly_smaller() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 100,
-        bp: 10,
-        cb: 10,
-        max_combo: 50,
-        clear_rank: ClearType::Normal as u8,
+        ex_score: Some(100),
+        bp: Some(10),
+        cb: Some(10),
+        max_combo: Some(50),
+        clear_rank: Some(ClearType::Normal as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -643,11 +689,14 @@ fn slot_rule_clear_update_only_when_higher_rank() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 100,
-        bp: 10,
-        cb: 10,
-        max_combo: 50,
-        clear_rank: ClearType::Normal as u8,
+        ex_score: Some(100),
+        bp: Some(10),
+        cb: Some(10),
+        max_combo: Some(50),
+        clear_rank: Some(ClearType::Normal as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -685,11 +734,14 @@ fn slot_rule_always_overwrites_unconditionally() {
         double_option: DoubleOptionScoreBucket::Off,
         rule_mode: bmz_gameplay::rule::RuleMode::Beatoraja,
         played_at: 0,
-        ex_score: 10_000,
-        bp: 0,
-        cb: 0,
-        max_combo: 9_999,
-        clear_rank: ClearType::Perfect as u8,
+        ex_score: Some(10_000),
+        bp: Some(0),
+        cb: Some(0),
+        max_combo: Some(9_999),
+        clear_rank: Some(ClearType::Perfect as u8),
+        source_kind: crate::storage::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
+        source_fingerprint: String::new(),
     };
 
     assert!(evaluate_slot_update(
@@ -750,24 +802,28 @@ fn classify_replay_device_type_uses_controller_majority() {
             kind: InputKind::Press,
             time: TimeUs(10),
             device_kind: InputDeviceKind::Controller,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Key2,
             kind: InputKind::Press,
             time: TimeUs(20),
             device_kind: InputDeviceKind::Controller,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Scratch,
             kind: InputKind::Press,
             time: TimeUs(30),
             device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Key1,
             kind: InputKind::Release,
             time: TimeUs(40),
             device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
         },
     ];
 
@@ -782,12 +838,14 @@ fn classify_replay_device_type_defaults_keyboard_for_ties() {
             kind: InputKind::Press,
             time: TimeUs(10),
             device_kind: InputDeviceKind::Controller,
+            scratch_direction: None,
         },
         ReplayEvent {
             lane: Lane::Key2,
             kind: InputKind::Press,
             time: TimeUs(20),
             device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
         },
     ];
 

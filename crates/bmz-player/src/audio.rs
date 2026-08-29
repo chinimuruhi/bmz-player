@@ -97,10 +97,12 @@ pub struct AppAudioOutput {
 #[derive(Clone)]
 pub struct AudioRuntime {
     output: CpalSharedOutput,
+    config: AudioConfig,
 }
 
 pub struct RunningPlaySession {
     pub session: GameSession,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     /// Duration recorded in `library.db` when this play was preloaded.
     pub chart_length_ms: u64,
@@ -146,8 +148,15 @@ impl AppAudioOutput {
     }
 
     pub fn set_playback_rate_percent(&mut self, rate: u16) {
-        self.source.set_playback_rate_percent(rate);
-        self.engine.set_playback_rate_percent(rate);
+        if let Some(change) = self.source.set_playback_rate_percent(rate)
+            && !self.engine.apply_playback_rate_change(change)
+        {
+            tracing::warn!(
+                requested_rate_percent = change.new_rate_percent,
+                "playback rate change was dropped by the audio command queue"
+            );
+            let _ = self.source.set_playback_rate_percent(change.old_rate_percent);
+        }
     }
 
     pub fn pause(&mut self) -> Result<()> {
@@ -157,7 +166,7 @@ impl AppAudioOutput {
 
     pub fn play(&mut self, chart_zero_time: TimeUs) -> Result<()> {
         self.source.play(chart_zero_time);
-        self.runtime.play().context("failed to start shared audio output stream")?;
+        self.runtime.play().context("failed to start audio output stream")?;
         Ok(())
     }
 
@@ -167,6 +176,12 @@ impl AppAudioOutput {
 }
 
 impl RunningPlaySession {
+    pub fn set_playback_rate_percent(&mut self, rate: u16) {
+        self.audio.set_playback_rate_percent(rate);
+        self.session.audio_clock = self.audio.clock();
+        self.playback_rate_percent = self.session.audio_clock.playback_rate_percent();
+    }
+
     pub fn start(&mut self, chart_zero_time: TimeUs) -> Result<()> {
         self.audio.play(chart_zero_time)?;
         self.session.audio_clock = self.audio.clock();
@@ -194,12 +209,16 @@ impl AudioRuntime {
     pub fn open(config: &AudioConfig) -> Result<Self> {
         let output_config = cpal_output_config(config)?;
         let output = CpalBackend::open_shared(output_config)
-            .context("failed to open shared audio output stream")?;
-        Ok(Self { output })
+            .context("failed to open audio output stream")?;
+        Ok(Self { output, config: config.clone() })
     }
 
     pub fn play(&self) -> Result<()> {
-        self.output.play().context("failed to start shared audio output stream")
+        self.output.play().context("failed to start audio output stream")
+    }
+
+    pub fn config(&self) -> &AudioConfig {
+        &self.config
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -294,6 +313,7 @@ pub fn open_prepared_play_audio(
     RunningPlaySession {
         render_snapshot_cache: prepared.render_snapshot_cache,
         session,
+        skin_attempt: prepared.skin_attempt,
         source_ln_profile: prepared.source_ln_profile,
         chart_length_ms: prepared.chart_length_ms,
         play_duration_ms: None,
@@ -328,6 +348,7 @@ fn cpal_output_config(config: &AudioConfig) -> Result<CpalOutputConfig> {
     let sample_rate = cpal_sample_rate(config);
     let buffer_size = cpal_buffer_size(config);
     let low_latency_shared = config.output_mode == AudioOutputMode::SharedLowLatency;
+    let exclusive = config.output_mode == AudioOutputMode::Exclusive;
     // ペア番号(0=1-2ch, 1=3-4ch …)をインターリーブ先頭チャンネル位置へ変換する。
     let channel_offset = config.output_channel_pair.saturating_mul(2);
 
@@ -337,6 +358,7 @@ fn cpal_output_config(config: &AudioConfig) -> Result<CpalOutputConfig> {
         sample_rate,
         buffer_size,
         low_latency_shared,
+        exclusive,
         channel_offset,
     })
 }
@@ -526,15 +548,17 @@ mod tests {
         let output = cpal_output_config(&config).unwrap();
 
         assert!(output.low_latency_shared);
+        assert!(!output.exclusive);
     }
 
     #[test]
-    fn legacy_exclusive_mode_does_not_enable_low_latency_shared_mode() {
+    fn exclusive_mode_is_passed_to_native_wasapi_config() {
         let mut config = AppConfig::default().audio;
-        config.exclusive_mode = true;
+        config.output_mode = AudioOutputMode::Exclusive;
 
         let output = cpal_output_config(&config).unwrap();
 
         assert!(!output.low_latency_shared);
+        assert!(output.exclusive);
     }
 }

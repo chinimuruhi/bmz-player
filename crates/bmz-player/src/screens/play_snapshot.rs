@@ -58,6 +58,7 @@ pub use visuals::{
     refresh_play_skin_visuals_with_input_elapsed, skin_visual_time,
 };
 
+pub(crate) use bga::effective_bpm_for_playback_rate;
 use bga::*;
 use cache::*;
 use display::*;

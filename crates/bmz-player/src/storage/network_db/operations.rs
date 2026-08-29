@@ -330,6 +330,66 @@ impl NetworkDatabase {
         Ok(jobs)
     }
 
+    /// Result で表示中の attempt に対応する primary provider の job だけを claim する。
+    ///
+    /// 通常のバッチ順に依存すると、古い pending job が上限を埋めた場合や別 task と
+    /// claim が競合した場合に、今回の送信レスポンス内ランキングを Result が受け取れない。
+    pub fn claim_pending_ir_score_job_for_local_score(
+        &mut self,
+        provider: &str,
+        account_id: &str,
+        kind: IrJobKind,
+        local_score_id: i64,
+        now: i64,
+        ignore_retry_backoff: bool,
+    ) -> Result<Vec<IrScoreJobRecord>> {
+        const SENDING_STALE_AFTER_SECONDS: i64 = 300;
+        let retry_filter = if ignore_retry_backoff {
+            "status IN ('pending', 'failed')"
+        } else {
+            "status IN ('pending', 'failed') AND next_attempt_at <= ?1"
+        };
+        let sql = format!(
+            "SELECT id, provider, account_id, local_score_id, chart_sha256, ln_policy,
+                payload_json, status, attempt_count, next_attempt_at, last_error,
+                created_at, updated_at, kind
+             FROM ir_score_jobs
+             WHERE provider = ?3
+               AND account_id = ?4
+               AND kind = ?5
+               AND local_score_id = ?6
+               AND (({retry_filter})
+                    OR (status = 'sending' AND updated_at <= ?1 - ?2))
+             LIMIT 1"
+        );
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let jobs = {
+            let mut stmt = tx.prepare(&sql)?;
+            stmt.query_map(
+                params![
+                    now,
+                    SENDING_STALE_AFTER_SECONDS,
+                    provider,
+                    account_id,
+                    kind.as_str(),
+                    local_score_id,
+                ],
+                ir_score_job_from_row,
+            )?
+            .collect::<std::result::Result<Vec<_>, _>>()?
+        };
+        for job in &jobs {
+            tx.execute(
+                "UPDATE ir_score_jobs
+                 SET status = 'sending', updated_at = ?2
+                 WHERE id = ?1",
+                params![job.id, now],
+            )?;
+        }
+        tx.commit()?;
+        Ok(jobs)
+    }
+
     pub fn has_ir_score_job(
         &self,
         provider: &str,
@@ -543,13 +603,14 @@ impl NetworkDatabase {
         &mut self,
         record: &NewIrScoreSubmission,
         replay_job: Option<&NewIrScoreJob>,
+        response_json: &str,
     ) -> Result<()> {
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute(
             "INSERT INTO ir_score_submissions (
                 job_id, provider, account_id, kind, local_score_id, remote_score_id,
-                status, submitted_at, log_path, error
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                status, submitted_at, log_path, error, response_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 record.job_id,
                 record.provider,
@@ -561,6 +622,7 @@ impl NetworkDatabase {
                 record.submitted_at,
                 record.log_path,
                 record.error,
+                response_json,
             ],
         )?;
         if let Some(job) = replay_job {
@@ -597,6 +659,33 @@ impl NetworkDatabase {
         )?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Result表示用に、別taskが完了した送信の応答を同じattemptから取得する。
+    pub fn latest_ir_score_submission_response(
+        &self,
+        provider: &str,
+        account_id: &str,
+        kind: IrJobKind,
+        local_score_id: i64,
+    ) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT response_json
+                 FROM ir_score_submissions
+                 WHERE provider = ?1
+                   AND account_id = ?2
+                   AND kind = ?3
+                   AND local_score_id = ?4
+                   AND status = 'succeeded'
+                   AND response_json != ''
+                 ORDER BY submitted_at DESC, id DESC
+                 LIMIT 1",
+                params![provider, account_id, kind.as_str(), local_score_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
     }
 
     pub fn local_score_id_for_remote_score(

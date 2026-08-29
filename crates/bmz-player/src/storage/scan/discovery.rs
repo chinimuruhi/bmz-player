@@ -14,6 +14,7 @@ pub(super) struct ChartDiscovery {
     pub(super) issues: Vec<ScanDiscoveryIssue>,
     pub(super) complete: bool,
     pub(super) root_readable: bool,
+    pub(super) backend: ScanDiscoveryBackend,
 }
 
 pub fn discover_chart_files(
@@ -25,6 +26,52 @@ pub fn discover_chart_files(
 }
 
 pub(super) fn discover_chart_files_with_progress(
+    root: &Path,
+    recursive: bool,
+    scan: &ScanConfig,
+    on_discovered: impl FnMut(u32),
+) -> ChartDiscovery {
+    #[cfg(windows)]
+    let mut on_discovered = on_discovered;
+
+    #[cfg(windows)]
+    if scan.use_everything {
+        match super::everything::discover_chart_files_everything(
+            root,
+            recursive,
+            scan,
+            &mut on_discovered,
+        ) {
+            Ok(discovery) => return discovery,
+            Err(error) => {
+                tracing::warn!(
+                    root = %root.display(),
+                    error = %error,
+                    "Everything song discovery failed; falling back to native discovery"
+                );
+                let mut discovery =
+                    discover_chart_files_native(root, recursive, scan, on_discovered);
+                discovery.backend = ScanDiscoveryBackend::NativeFallback;
+                return discovery;
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    if scan.use_everything {
+        tracing::warn!(
+            root = %root.display(),
+            "Everything song discovery is only available on Windows; falling back to native discovery"
+        );
+        let mut discovery = discover_chart_files_native(root, recursive, scan, on_discovered);
+        discovery.backend = ScanDiscoveryBackend::NativeFallback;
+        return discovery;
+    }
+
+    discover_chart_files_native(root, recursive, scan, on_discovered)
+}
+
+fn discover_chart_files_native(
     root: &Path,
     recursive: bool,
     scan: &ScanConfig,

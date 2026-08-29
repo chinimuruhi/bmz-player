@@ -145,11 +145,8 @@ fn plan_geometry_applies_canvas_viewport_to_images() {
         viewport,
         &mut |_, _| None,
     );
-    let floats: Vec<f32> = geometry
-        .images
-        .chunks_exact(std::mem::size_of::<f32>())
-        .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-        .collect();
+    let floats: Vec<f32> =
+        geometry.images.as_chunks::<4>().0.iter().map(|bytes| f32::from_le_bytes(*bytes)).collect();
 
     assert_approx(floats[0], 0.0);
     assert_approx(floats[1], 0.21875);
@@ -211,10 +208,8 @@ fn text_instances_are_transformed_into_canvas_viewport() {
     }
 
     viewport.transform_text_instances(&mut instances);
-    let floats: Vec<f32> = instances
-        .chunks_exact(std::mem::size_of::<f32>())
-        .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-        .collect();
+    let floats: Vec<f32> =
+        instances.as_chunks::<4>().0.iter().map(|bytes| f32::from_le_bytes(*bytes)).collect();
 
     assert_approx(floats[0], 0.1);
     assert_approx(floats[1], 0.33125);

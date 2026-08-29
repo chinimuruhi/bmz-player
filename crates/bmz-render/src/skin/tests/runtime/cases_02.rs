@@ -289,12 +289,24 @@ fn timer_zero_uses_scene_elapsed_time() {
 
 #[test]
 fn start_input_timer_activates_strictly_after_skin_input_delay() {
-    assert_eq!(skin_start_input_elapsed_ms(499, 500), None);
-    assert_eq!(skin_start_input_elapsed_ms(500, 500), None);
-    assert_eq!(skin_start_input_elapsed_ms(501, 500), Some(1));
+    let mut runtime = DynamicTimerRuntime::default();
+    assert_eq!(runtime.start_input_elapsed_ms(499, 500), None);
+    assert_eq!(runtime.start_input_elapsed_ms(500, 500), None);
+    assert_eq!(runtime.start_input_elapsed_ms(725, 500), Some(0));
+    assert_eq!(runtime.start_input_elapsed_ms(750, 500), Some(25));
 
-    let state = SkinDrawState { start_input_ms: Some(275), ..SkinDrawState::default() };
-    assert_eq!(skin_timer_elapsed_ms(Some(1), &state), Some(275));
+    let state = SkinDrawState { start_input_ms: Some(25), ..SkinDrawState::default() };
+    assert_eq!(skin_timer_elapsed_ms(Some(1), &state), Some(25));
+}
+
+#[test]
+fn start_input_timer_restarts_after_scene_time_rewinds() {
+    let mut runtime = DynamicTimerRuntime::default();
+    assert_eq!(runtime.start_input_elapsed_ms(501, 500), Some(0));
+    assert_eq!(runtime.start_input_elapsed_ms(600, 500), Some(99));
+
+    assert_eq!(runtime.start_input_elapsed_ms(0, 500), None);
+    assert_eq!(runtime.start_input_elapsed_ms(725, 500), Some(0));
 }
 
 #[test]

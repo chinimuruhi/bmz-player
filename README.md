@@ -28,6 +28,7 @@ Features
 - advanced selectable ln-mode (AUTO(LN) / AUTO(CN) / AUTO(HCN) / FORCE(LN) / FORCE(CN) / FORCE(HCN))
 - on-demand preview generation
   - #PREVIEW 定義や preview.wav(.ogg) がない曲のプレビューを再生することができます
+- FAST/SLOW 表示ms指定機能
 - Discord Rich Presence
 - OBS WebSocket control integration
 
@@ -132,12 +133,12 @@ cargo run
 
 ## Roadmap
 
-- [ ] more beatoraja-compatible features 
+- [x] WASAPI exclusive
+- [x] practice mode
+- [x] more beatoraja-compatible features
 - [ ] battle mode (WIP)
 - [ ] rec mode (譜面動画作成モード)
-- [ ] practice mode
 - [ ] Arena Mode
-- [ ] WASAPI exclusive
 - [ ] ギミック系BMSへの対応
 - [ ] non stop mode
 

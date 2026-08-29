@@ -175,6 +175,10 @@ impl SelectAssetRuntime {
         self.preview_playing
     }
 
+    pub(super) fn preview_source(&self) -> Option<&str> {
+        self.preview_source.as_deref()
+    }
+
     pub(super) fn preview_fade(&self) -> SelectPreviewFade {
         self.preview_fade
     }
@@ -559,6 +563,8 @@ pub(super) fn prepare_select_preview(sample: DecodedSample) -> PreparedSelectPre
         .map(|analysis| {
             tracing::debug!(
                 loudness_lufs = analysis.loudness_lufs,
+                short_term_lufs = analysis.short_term_lufs,
+                sample_peak = analysis.peak_abs,
                 normalization_gain = analysis.normalization_gain,
                 "analyzed select preview loudness"
             );

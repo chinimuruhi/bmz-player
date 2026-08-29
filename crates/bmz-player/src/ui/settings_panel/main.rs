@@ -20,6 +20,8 @@ pub(in crate::ui) fn build_settings_panel(
     let mut song_scan_requests = Vec::new();
     let mut table_fetch_urls = Vec::new();
     let mut score_import_request = None;
+    let mut replay_import_request = None;
+    let mut cancel_replay_import = false;
     let mut apply_audio = false;
     localized_sized_panel_window(
         "app_settings_panel",
@@ -43,11 +45,15 @@ pub(in crate::ui) fn build_settings_panel(
                     difficulty_tables,
                     text,
                     &mut state,
-                    &mut save_clicked,
-                    &mut rescan_clicked,
-                    &mut song_scan_requests,
-                    &mut table_fetch_urls,
-                    &mut score_import_request,
+                    LibrarySettingsActions {
+                        save_clicked: &mut save_clicked,
+                        rescan_clicked: &mut rescan_clicked,
+                        song_scan_requests: &mut song_scan_requests,
+                        table_fetch_urls: &mut table_fetch_urls,
+                        score_import_request: &mut score_import_request,
+                        replay_import_request: &mut replay_import_request,
+                        cancel_replay_import: &mut cancel_replay_import,
+                    },
                 );
                 build_audio_video_settings_sections(
                     ui,
@@ -86,6 +92,8 @@ pub(in crate::ui) fn build_settings_panel(
         song_scan_requests,
         table_fetch_urls,
         score_import_request,
+        replay_import_request,
+        cancel_replay_import,
         apply_audio,
     }
 }

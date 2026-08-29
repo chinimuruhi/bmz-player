@@ -133,8 +133,10 @@ impl WinitApp {
         let options = PlayStartOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
-            practice_mode: false,
-            seven_to_six: false,
+            key_mode_conversion: self.boot.profile_config.play.key_mode_conversion,
+            seven_to_nine_pattern: self.boot.profile_config.play.seven_to_nine_pattern,
+            seven_to_nine_type: self.boot.profile_config.play.seven_to_nine_type,
+            seven_to_nine_rule_mode: self.boot.profile_config.play.seven_to_nine_rule_mode,
             score_save_disabled: false,
             playback_rate_percent: 100,
             assist: Default::default(),
@@ -142,6 +144,7 @@ impl WinitApp {
             battle_target: None,
             chart_zero_time: TimeUs(0),
             gauge: Some(self.select.gauge_option),
+            replay_gauge_override: replay_file.recorded_gauge_type(),
             gauge_auto_shift: self.select.gauge_auto_shift_option,
             bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: replay_file.arrange_option(),
@@ -156,6 +159,7 @@ impl WinitApp {
             legacy_arrange_seed: replay_file.uses_legacy_seed_scheme(),
             s_random_scheme,
             s_random_scheme_2p,
+            h_random_threshold_ms: replay_file.h_random_threshold_ms,
             bms_random_seed: None,
             bms_random_choices: replay_file.bms_random_choices.clone(),
             arrange_pattern: replay_file.lane_shuffle_pattern.clone(),
@@ -251,8 +255,10 @@ impl WinitApp {
         let options = PlayStartOptions {
             session_mode: SessionMode::Normal,
             autoplay: false,
-            practice_mode: false,
-            seven_to_six: false,
+            key_mode_conversion: self.boot.profile_config.play.key_mode_conversion,
+            seven_to_nine_pattern: self.boot.profile_config.play.seven_to_nine_pattern,
+            seven_to_nine_type: self.boot.profile_config.play.seven_to_nine_type,
+            seven_to_nine_rule_mode: self.boot.profile_config.play.seven_to_nine_rule_mode,
             score_save_disabled: false,
             playback_rate_percent: 100,
             assist: Default::default(),
@@ -260,6 +266,7 @@ impl WinitApp {
             battle_target: None,
             chart_zero_time: TimeUs(0),
             gauge: Some(self.select.gauge_option),
+            replay_gauge_override: replay_file.recorded_gauge_type(),
             gauge_auto_shift: self.select.gauge_auto_shift_option,
             bottom_shiftable_gauge: self.select.bottom_shiftable_gauge_option,
             arrange: replay_file.arrange_option(),
@@ -274,6 +281,7 @@ impl WinitApp {
             legacy_arrange_seed: replay_file.uses_legacy_seed_scheme(),
             s_random_scheme,
             s_random_scheme_2p,
+            h_random_threshold_ms: replay_file.h_random_threshold_ms,
             bms_random_seed: None,
             bms_random_choices: replay_file.bms_random_choices.clone(),
             arrange_pattern: replay_file.lane_shuffle_pattern.clone(),
@@ -311,10 +319,12 @@ impl WinitApp {
             | SelectItem::Course(_)
             | SelectItem::Executable(_)
             | SelectItem::Config(_)
+            | SelectItem::AppConfig(_)
             | SelectItem::KeyBinding(_)
             | SelectItem::SettingsBack
             | SelectItem::SettingsClose
-            | SelectItem::AdvancedSettings => None,
+            | SelectItem::AdvancedSettings
+            | SelectItem::ApplyAudioSettings => None,
         }
     }
 
@@ -325,10 +335,12 @@ impl WinitApp {
             | SelectItem::Folder { .. }
             | SelectItem::Executable(_)
             | SelectItem::Config(_)
+            | SelectItem::AppConfig(_)
             | SelectItem::KeyBinding(_)
             | SelectItem::SettingsBack
             | SelectItem::SettingsClose
-            | SelectItem::AdvancedSettings => None,
+            | SelectItem::AdvancedSettings
+            | SelectItem::ApplyAudioSettings => None,
         }
     }
 

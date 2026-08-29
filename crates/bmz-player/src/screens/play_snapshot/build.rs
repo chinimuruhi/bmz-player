@@ -39,8 +39,14 @@ pub fn apply_prepared_chart_to_render_snapshot(
     snapshot.min_bpm = cache.min_bpm;
     snapshot.max_bpm = cache.max_bpm;
     snapshot.has_bga = chart.metadata.has_bga;
+    snapshot.has_long_notes = Some(!chart.long_notes.is_empty());
     snapshot.has_bpm_stop = cache.has_bpm_stop;
     snapshot.key_mode = chart.metadata.key_mode;
+    snapshot.skin_attempt.effective_key_mode = Some(chart.metadata.key_mode);
+    snapshot.skin_attempt.ln_mode_index =
+        Some(crate::skin_extension::long_note_mode_index(chart.metadata.long_note_mode));
+    snapshot.skin_attempt.has_bga = Some(chart.metadata.has_bga);
+    snapshot.skin_attempt.has_random_sequence = Some(chart.metadata.has_bms_random);
     let primary_key_mode = if battle {
         match chart.metadata.key_mode {
             KeyMode::K10 => KeyMode::K5,
@@ -253,6 +259,27 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         play_elapsed_time,
         operating_time_ms: 0,
         skin_input: Default::default(),
+        skin_attempt: bmz_render::snapshot::SkinAttemptState {
+            effective_key_mode: Some(session.chart.metadata.key_mode),
+            hsfix_index: usize::try_from(session.hsfix_index).ok(),
+            gauge_auto_shift_index: Some(crate::skin_extension::gauge_auto_shift_index(
+                session.gauge.auto_shift_mode,
+            )),
+            bottom_shiftable_gauge_index: Some(
+                crate::skin_extension::bottom_shiftable_gauge_index(
+                    session.gauge.bottom_shiftable_gauge,
+                ),
+            ),
+            judge_algorithm_index: Some(crate::skin_extension::judge_algorithm_index(
+                session.judge.algorithm,
+            )),
+            ln_mode_index: Some(crate::skin_extension::long_note_mode_index(
+                session.chart.metadata.long_note_mode,
+            )),
+            has_bga: Some(session.chart.metadata.has_bga),
+            has_random_sequence: Some(session.chart.metadata.has_bms_random),
+            ..Default::default()
+        },
         ready_elapsed_time: None,
         rhythm_timer_elapsed_ms: rhythm_timer_elapsed_ms(
             &session.timing_map,
@@ -315,6 +342,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         min_bpm: cache.min_bpm,
         max_bpm: cache.max_bpm,
         has_bga: session.chart.metadata.has_bga,
+        has_long_notes: Some(!session.chart.long_notes.is_empty()),
         has_bpm_stop: cache.has_bpm_stop,
         bga_enabled: session.bga_enabled,
         bga_base: session
@@ -364,12 +392,18 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         bpm_graph_segments: Arc::clone(&cache.bpm_graph_segments),
         autoplay: session.autoplay.as_ref().is_some_and(|autoplay| autoplay.is_full()),
         replay_playback: session.replay_player.is_some() && session.replay_lane_mask.is_none(),
+        rule_mode_index: crate::skin_extension::rule_mode_index(session.rule_mode),
+        ln_score_policy_index: None,
         practice_mode: false,
+        practice_preview: false,
         assist_flags: crate::assist::mask_flags(session.assist.configured_mask),
         assist_extra_note_depth: session.assist.extra_note_depth,
         assist_mine_mode: session.assist.mine_mode,
         assist_scroll_mode: session.assist.scroll_mode,
         assist_long_note_mode: session.assist.long_note_mode,
+        guide_se_enabled: session.guide_se_enabled,
+        constant_enabled: session.constant_enabled,
+        constant_fade_ms: session.constant_fade_ms,
         judge_area: session.assist.judge_area,
         mark_processed_note: session.assist.mark_note,
         bpm_guide: session.assist.bpm_guide,

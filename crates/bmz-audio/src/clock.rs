@@ -15,8 +15,15 @@ pub struct AudioClock {
     started_at: Option<Instant>,
 }
 
-pub const MIN_PLAYBACK_RATE_PERCENT: u16 = 50;
-pub const MAX_PLAYBACK_RATE_PERCENT: u16 = 200;
+pub const MIN_PLAYBACK_RATE_PERCENT: u16 = 25;
+pub const MAX_PLAYBACK_RATE_PERCENT: u16 = 300;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaybackRateChange {
+    pub anchor_output_frame: u64,
+    pub old_rate_percent: u16,
+    pub new_rate_percent: u16,
+}
 
 pub const fn clamp_playback_rate_percent(rate: u16) -> u16 {
     if rate < MIN_PLAYBACK_RATE_PERCENT {
@@ -59,9 +66,33 @@ impl AudioClock {
         }
     }
 
-    pub fn set_playback_rate_percent(&mut self, rate: u16) {
-        debug_assert!(!self.running, "playback rate must be fixed before the clock starts");
-        self.playback_rate_percent = clamp_playback_rate_percent(rate);
+    pub fn set_playback_rate_percent(&mut self, rate: u16) -> Option<PlaybackRateChange> {
+        self.set_playback_rate_percent_at(rate, Instant::now())
+    }
+
+    fn set_playback_rate_percent_at(
+        &mut self,
+        rate: u16,
+        changed_at: Instant,
+    ) -> Option<PlaybackRateChange> {
+        let rate = clamp_playback_rate_percent(rate);
+        let old_rate_percent = self.playback_rate_percent;
+        if rate == old_rate_percent {
+            return None;
+        }
+
+        let anchor_output_frame = self.current_frame.load(Ordering::Relaxed);
+        if self.running {
+            if self.started_at.is_some() {
+                self.chart_zero_time_us = self.now_at(changed_at).0;
+                self.started_at = Some(changed_at);
+            } else {
+                self.chart_zero_time_us = self.now().0;
+            }
+            self.start_output_frame = anchor_output_frame;
+        }
+        self.playback_rate_percent = rate;
+        Some(PlaybackRateChange { anchor_output_frame, old_rate_percent, new_rate_percent: rate })
     }
 
     pub const fn playback_rate_percent(&self) -> u16 {
@@ -188,5 +219,42 @@ mod tests {
         assert_eq!(clock.now_at(started_at), TimeUs(-1_000_000));
         assert_eq!(clock.now_at(started_at + Duration::from_micros(4_167)), TimeUs(-995_833));
         assert_eq!(current_frame.load(Ordering::Relaxed), 256);
+    }
+
+    #[test]
+    fn playback_rate_change_keeps_monotonic_clock_continuous() {
+        let current_frame = Arc::new(AtomicU64::new(48_000));
+        let started_at = Instant::now();
+        let changed_at = started_at + Duration::from_secs(1);
+        let mut clock = AudioClock::with_position(48_000, 0, 0, current_frame, false);
+        clock.start_at(TimeUs(0), started_at);
+
+        let change = clock.set_playback_rate_percent_at(300, changed_at).unwrap();
+
+        assert_eq!(change.anchor_output_frame, 48_000);
+        assert_eq!(change.old_rate_percent, 100);
+        assert_eq!(change.new_rate_percent, 300);
+        assert_eq!(clock.now_at(changed_at), TimeUs(1_000_000));
+        assert_eq!(clock.now_at(changed_at + Duration::from_secs(1)), TimeUs(4_000_000));
+    }
+
+    #[test]
+    fn playback_rate_change_keeps_output_frame_clock_continuous() {
+        let current_frame = Arc::new(AtomicU64::new(48_000));
+        let mut clock = AudioClock::with_position(48_000, 0, 0, Arc::clone(&current_frame), true);
+
+        let change = clock.set_playback_rate_percent(25).unwrap();
+        assert_eq!(change.anchor_output_frame, 48_000);
+        assert_eq!(clock.now(), TimeUs(1_000_000));
+
+        current_frame.store(96_000, Ordering::Relaxed);
+        assert_eq!(clock.now(), TimeUs(1_250_000));
+    }
+
+    #[test]
+    fn playback_rate_is_clamped_to_autoplay_range() {
+        let mut clock = AudioClock::stopped(48_000);
+        assert_eq!(clock.set_playback_rate_percent(1).unwrap().new_rate_percent, 25);
+        assert_eq!(clock.set_playback_rate_percent(400).unwrap().new_rate_percent, 300);
     }
 }

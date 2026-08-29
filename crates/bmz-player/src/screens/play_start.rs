@@ -5,6 +5,7 @@ use bmz_core::course::{
     CourseClassConstraint, CourseConstraints, CourseGaugeConstraint, CourseJudgeConstraint,
     CourseLnConstraint, CourseSpeedConstraint,
 };
+use bmz_core::lane::KeyMode;
 use bmz_core::time::TimeUs;
 use bmz_gameplay::gauge::{GaugeCarryValue, GaugeProperty};
 use bmz_gameplay::input::backend::{InputBackend, NullInputBackend};
@@ -16,15 +17,18 @@ use crate::config::play::{
     bottom_shiftable_gauge_from_config, gauge_auto_shift_from_config, gauge_type_from_config,
 };
 use crate::config::profile_config::{
-    AssistOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, ProfileConfig,
+    AssistOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, KeyModeConversionConfig,
+    ProfileConfig, SevenToNinePattern, SevenToNineRuleMode, SevenToNineType,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::input::shared::SharedInputBackend;
 use crate::screens::play_session::{
     BattleOpponentOptions, PlaySessionOptions, PreloadedPlaySession, PreparedPlaySession,
-    SRandomScheme, build_prepared_play_session_from_preloaded,
+    SRandomScheme, build_practice_prepared_from_preloaded,
+    build_prepared_play_session_from_preloaded,
     load_prepared_play_session_for_chart_with_input_backend,
 };
+use crate::screens::practice::PracticeProperty;
 use crate::select_options::{
     ArrangeOption, DoubleOption, HsFixOption, ResolvedTarget, SessionMode, TargetOption,
 };
@@ -55,22 +59,109 @@ pub enum BattleTargetPlayback {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BattleTargetArrangement {
+    pub(crate) arrange: ArrangeOption,
+    pub(crate) arrange_2p: ArrangeOption,
+    pub(crate) double_option: DoubleOption,
+    pub(crate) arrange_seed: Option<i64>,
+    pub(crate) arrange_seed_2p: Option<i64>,
+    pub(crate) packed_seed: Option<i64>,
+    pub(crate) arrange_pattern: Option<Vec<u8>>,
+    pub(crate) legacy_arrange_seed: bool,
+    pub(crate) s_random_scheme: SRandomScheme,
+    pub(crate) s_random_scheme_2p: Option<SRandomScheme>,
+    pub(crate) h_random_threshold_ms: Option<u32>,
+}
+
+impl BattleTargetPlayback {
+    pub(crate) fn arrangement(&self) -> BattleTargetArrangement {
+        match self {
+            Self::Replay(replay) => BattleTargetArrangement {
+                arrange: replay.arrange_option(),
+                arrange_2p: replay.arrange_2p_option(),
+                double_option: replay.double_option(),
+                arrange_seed: replay.arrange_seed,
+                arrange_seed_2p: replay.arrange_seed_2p,
+                packed_seed: None,
+                arrange_pattern: replay.lane_shuffle_pattern.clone(),
+                legacy_arrange_seed: replay.uses_legacy_seed_scheme(),
+                s_random_scheme: replay.effective_s_random_scheme().unwrap_or_default(),
+                s_random_scheme_2p: replay.effective_s_random_scheme_2p().ok(),
+                h_random_threshold_ms: replay.h_random_threshold_ms,
+            },
+            Self::Seed { arrange, arrange_2p, double_option, packed_seed } => {
+                BattleTargetArrangement {
+                    arrange: *arrange,
+                    arrange_2p: *arrange_2p,
+                    double_option: *double_option,
+                    arrange_seed: None,
+                    arrange_seed_2p: None,
+                    packed_seed: *packed_seed,
+                    arrange_pattern: None,
+                    legacy_arrange_seed: false,
+                    s_random_scheme: SRandomScheme::default(),
+                    s_random_scheme_2p: None,
+                    h_random_threshold_ms: None,
+                }
+            }
+        }
+    }
+}
+
+/// G-BATTLEの相手は元譜面のプレイヤー側入力だけを再生する。
+///
+/// 旧BMZでは5K/7Kのバトル表示中に2P側キーバインドが有効だったため、表示用入力が
+/// リプレイへ混入することがあった。また、同じpollで得た複数入力のtimestampが数usだけ
+/// 前後する場合がある。再生対象を1P側へ限定し、安定sortして既存リプレイを救済する。
+pub(crate) fn normalize_battle_replay_for_key_mode(
+    replay: &mut ReplayFile,
+    key_mode: KeyMode,
+) -> Result<()> {
+    if replay.events.is_empty() {
+        anyhow::bail!("battle score has no full input replay");
+    }
+    let has_arrangement_pattern =
+        replay.lane_shuffle_pattern.as_ref().is_some_and(|pattern| !pattern.is_empty());
+    let missing_1p_arrangement =
+        !matches!(replay.arrange_option(), ArrangeOption::Normal | ArrangeOption::Mirror)
+            && replay.arrange_seed.is_none()
+            && !has_arrangement_pattern;
+    let missing_2p_arrangement =
+        !matches!(replay.arrange_2p_option(), ArrangeOption::Normal | ArrangeOption::Mirror)
+            && replay.arrange_seed_2p.is_none()
+            && !has_arrangement_pattern;
+    if missing_1p_arrangement || missing_2p_arrangement {
+        anyhow::bail!("battle replay has no seed or pattern for its recorded arrangement");
+    }
+    let active_lanes = key_mode.active_lanes();
+    replay.events.retain(|event| active_lanes.contains(&event.lane));
+    if replay.events.is_empty() {
+        anyhow::bail!("battle replay has no playable input for the selected key mode");
+    }
+    replay.events.sort_by_key(|event| event.time);
+    Ok(())
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PlayStartOptions {
     pub session_mode: SessionMode,
     pub autoplay: bool,
-    /// Practice mode: section play without result DB update.
-    pub practice_mode: bool,
-    pub seven_to_six: bool,
+    pub key_mode_conversion: KeyModeConversionConfig,
+    pub seven_to_nine_pattern: SevenToNinePattern,
+    pub seven_to_nine_type: SevenToNineType,
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
     pub score_save_disabled: bool,
     pub playback_rate_percent: u16,
     pub assist: AssistOptionConfig,
     pub replay_player: Option<ReplayPlayer>,
-    /// G-BATTLE target selected independently from SessionMode.
+    /// Target required by `SessionMode::GBattle`.
     pub battle_target: Option<BattleTarget>,
     pub chart_zero_time: TimeUs,
     /// Override profile gauge type. None means use the profile default.
     pub gauge: Option<GaugeTypeConfig>,
+    /// Gauge stored in a replay, which takes priority over the current profile.
+    pub replay_gauge_override: Option<GaugeType>,
     pub gauge_auto_shift: GaugeAutoShiftConfig,
     pub bottom_shiftable_gauge: crate::config::profile_config::BottomShiftableGaugeConfig,
     pub arrange: ArrangeOption,
@@ -87,6 +178,7 @@ pub struct PlayStartOptions {
     pub legacy_arrange_seed: bool,
     pub s_random_scheme: SRandomScheme,
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
     pub bms_random_seed: Option<u64>,
     pub bms_random_choices: Option<Vec<i32>>,
     pub arrange_pattern: Option<Vec<u8>>,
@@ -137,71 +229,53 @@ pub struct PreloadedInputPlaySession {
     pub session_options: PlaySessionOptions,
 }
 
+impl PreloadedInputPlaySession {
+    pub fn clone_loaded_resources(&self) -> Self {
+        Self {
+            chart_id: self.chart_id,
+            preloaded: self.preloaded.clone_loaded_resources(),
+            input: SharedInputBackend::default(),
+            session_options: self.session_options.clone(),
+        }
+    }
+}
+
 pub fn play_session_options_from_start(
     app_config: &AppConfig,
     start_options: PlayStartOptions,
 ) -> PlaySessionOptions {
     let gauge_override = start_options
         .course_gauge_override
+        .or(start_options.replay_gauge_override)
         .or_else(|| start_options.gauge.map(gauge_type_from_config));
     let gauge_auto_shift = start_options
         .gauge
         .map(|gauge| gauge_auto_shift_from_config(gauge, start_options.gauge_auto_shift))
         .unwrap_or_default();
     let battle_opponent = start_options.battle_target.as_ref().map(|target| {
-        let (
-            replay_player,
-            arrange,
-            arrange_2p,
-            double_option,
-            arrange_seed,
-            arrange_seed_2p,
-            bms_random_choices,
-            arrange_pattern,
-            s_random_scheme,
-            s_random_scheme_2p,
-            packed_seed,
-        ) = match &target.playback {
+        let arrangement = target.playback.arrangement();
+        let (replay_player, bms_random_choices) = match &target.playback {
             BattleTargetPlayback::Replay(replay) => (
                 Some(ReplayPlayer { events: replay.events.clone(), next_index: 0 }),
-                replay.arrange_option(),
-                replay.arrange_2p_option(),
-                replay.double_option(),
-                replay.arrange_seed,
-                replay.arrange_seed_2p,
                 replay.bms_random_choices.clone(),
-                replay.lane_shuffle_pattern.clone(),
-                replay.effective_s_random_scheme().unwrap_or_default(),
-                replay.effective_s_random_scheme_2p().ok(),
-                None,
             ),
-            BattleTargetPlayback::Seed { arrange, arrange_2p, double_option, packed_seed } => (
-                None,
-                *arrange,
-                *arrange_2p,
-                *double_option,
-                None,
-                None,
-                None,
-                None,
-                SRandomScheme::default(),
-                None,
-                *packed_seed,
-            ),
+            BattleTargetPlayback::Seed { .. } => (None, None),
         };
         BattleOpponentOptions {
             replay_player,
             gauge: target.gauge,
-            arrange,
-            arrange_2p,
-            double_option,
-            arrange_seed,
-            arrange_seed_2p,
-            packed_seed,
+            arrange: arrangement.arrange,
+            arrange_2p: arrangement.arrange_2p,
+            double_option: arrangement.double_option,
+            arrange_seed: arrangement.arrange_seed,
+            arrange_seed_2p: arrangement.arrange_seed_2p,
+            legacy_arrange_seed: arrangement.legacy_arrange_seed,
+            packed_seed: arrangement.packed_seed,
             bms_random_choices,
-            arrange_pattern,
-            s_random_scheme,
-            s_random_scheme_2p,
+            arrange_pattern: arrangement.arrange_pattern,
+            s_random_scheme: arrangement.s_random_scheme,
+            s_random_scheme_2p: arrangement.s_random_scheme_2p,
+            h_random_threshold_ms: arrangement.h_random_threshold_ms,
         }
     });
 
@@ -209,8 +283,10 @@ pub fn play_session_options_from_start(
         play_config_key_mode: None,
         session_mode: start_options.session_mode,
         autoplay: start_options.autoplay,
-        practice_mode: start_options.practice_mode,
-        seven_to_six: start_options.seven_to_six,
+        key_mode_conversion: start_options.key_mode_conversion,
+        seven_to_nine_pattern: start_options.seven_to_nine_pattern,
+        seven_to_nine_type: start_options.seven_to_nine_type,
+        seven_to_nine_rule_mode: start_options.seven_to_nine_rule_mode,
         score_save_disabled: start_options.score_save_disabled,
         playback_rate_percent: bmz_audio::clock::clamp_playback_rate_percent(
             if start_options.playback_rate_percent == 0 {
@@ -246,6 +322,7 @@ pub fn play_session_options_from_start(
         legacy_arrange_seed: start_options.legacy_arrange_seed,
         s_random_scheme: start_options.s_random_scheme,
         s_random_scheme_2p: start_options.s_random_scheme_2p,
+        h_random_threshold_ms: start_options.h_random_threshold_ms,
         bms_random_seed: start_options.bms_random_seed,
         bms_random_choices: start_options.bms_random_choices,
         arrange_pattern: start_options.arrange_pattern,
@@ -367,6 +444,21 @@ pub fn prepare_winit_play_session_from_preloaded(
     let prepared = build_prepared_play_session_from_preloaded(
         preloaded.preloaded,
         profile,
+        preloaded.session_options,
+        Box::new(preloaded.input.clone()),
+    );
+    PreparedInputPlaySession { prepared, input: preloaded.input }
+}
+
+pub fn prepare_practice_winit_play_session_from_preloaded(
+    profile: &ProfileConfig,
+    property: &PracticeProperty,
+    preloaded: PreloadedInputPlaySession,
+) -> PreparedInputPlaySession {
+    let prepared = build_practice_prepared_from_preloaded(
+        preloaded.preloaded,
+        profile,
+        property,
         preloaded.session_options,
         Box::new(preloaded.input.clone()),
     );
@@ -528,10 +620,14 @@ pub fn apply_arrange_override(
     options.legacy_arrange_seed = arrange.legacy_seed;
     options.s_random_scheme = arrange.s_random_scheme;
     options.s_random_scheme_2p = arrange.s_random_scheme_2p;
+    options.h_random_threshold_ms = arrange.h_random_threshold_ms;
     options.bms_random_choices = Some(arrange.bms_random_choices.clone());
     options.arrange_pattern = arrange.pattern.clone();
-    options.seven_to_six = arrange.seven_to_six;
-    options.score_save_disabled |= arrange.seven_to_six;
+    options.key_mode_conversion = arrange.key_mode_conversion;
+    options.seven_to_nine_pattern = arrange.seven_to_nine_pattern;
+    options.seven_to_nine_type = arrange.seven_to_nine_type;
+    options.seven_to_nine_rule_mode = arrange.seven_to_nine_rule_mode;
+    options.score_save_disabled |= arrange.score_persistence_disabled();
 }
 
 pub fn apply_queued_replay(
@@ -549,9 +645,10 @@ pub fn apply_queued_replay(
     options.legacy_arrange_seed = replay.replay.uses_legacy_seed_scheme();
     options.s_random_scheme = replay.replay.effective_s_random_scheme()?;
     options.s_random_scheme_2p = Some(replay.replay.effective_s_random_scheme_2p()?);
+    options.h_random_threshold_ms = replay.replay.h_random_threshold_ms;
+    options.replay_gauge_override = replay.replay.recorded_gauge_type();
     options.bms_random_choices = replay.replay.bms_random_choices.clone();
     options.arrange_pattern = replay.replay.lane_shuffle_pattern.clone();
-    options.seven_to_six = false;
     // Replays of past plays were recorded by a human; never autoplay them.
     options.autoplay = false;
     Ok(())
@@ -581,9 +678,13 @@ mod tests {
             legacy_seed: false,
             s_random_scheme: SRandomScheme::Legacy40MsV1,
             s_random_scheme_2p: Some(SRandomScheme::Lm120HzV1),
+            h_random_threshold_ms: Some(125),
             bms_random_choices: vec![2],
             pattern: Some(vec![3, 1, 2, 0]),
-            seven_to_six: true,
+            key_mode_conversion: KeyModeConversionConfig::SevenToSix,
+            seven_to_nine_pattern: SevenToNinePattern::default(),
+            seven_to_nine_type: SevenToNineType::default(),
+            seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
         };
         apply_arrange_override(&mut options, &arrange);
 
@@ -594,10 +695,96 @@ mod tests {
         assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
         assert_eq!(options.s_random_scheme_2p, Some(SRandomScheme::Lm120HzV1));
         assert_eq!(options.arrange_pattern, Some(vec![3, 1, 2, 0]));
-        assert!(options.seven_to_six);
+        assert_eq!(options.key_mode_conversion, KeyModeConversionConfig::SevenToSix);
         assert!(options.score_save_disabled);
         // Unlike a replay, no playback player is attached: the chart is played.
         assert!(options.replay_player.is_none());
+    }
+
+    #[test]
+    fn battle_target_arrangement_reads_replay_randomization() {
+        let replay = ReplayFile::new(
+            [1; 32],
+            1,
+            Some(42),
+            ArrangeOption::SRandom,
+            Some(42),
+            Some(vec![2, 0, 1]),
+            Vec::new(),
+        )
+        .with_randomization(Some(24), Vec::new())
+        .with_seed_scheme(crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3)
+        .with_s_random_schemes(SRandomScheme::Legacy40MsV1, Some(SRandomScheme::Lm120HzV1));
+
+        let arrangement = BattleTargetPlayback::Replay(Box::new(replay)).arrangement();
+
+        assert_eq!(arrangement.arrange, ArrangeOption::SRandom);
+        assert_eq!(arrangement.arrange_seed, Some(42));
+        assert_eq!(arrangement.arrange_seed_2p, Some(24));
+        assert_eq!(arrangement.arrange_pattern, Some(vec![2, 0, 1]));
+        assert!(arrangement.legacy_arrange_seed);
+        assert_eq!(arrangement.s_random_scheme, SRandomScheme::Legacy40MsV1);
+        assert_eq!(arrangement.s_random_scheme_2p, Some(SRandomScheme::Lm120HzV1));
+    }
+
+    #[test]
+    fn battle_replay_normalization_keeps_source_lanes_and_stably_orders_them() {
+        use bmz_core::input::{InputDeviceKind, InputKind};
+        use bmz_core::lane::Lane;
+        use bmz_core::replay::ReplayEvent;
+
+        let event = |lane, time, kind| ReplayEvent {
+            lane,
+            kind,
+            time: TimeUs(time),
+            device_kind: InputDeviceKind::Keyboard,
+            scratch_direction: None,
+        };
+        let mut replay =
+            ReplayFile::new([1; 32], 1, None, ArrangeOption::Normal, None, None, Vec::new())
+                .with_seed_scheme(crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3);
+        // Assign directly to model a replay loaded from an older, unsorted file.
+        replay.events = vec![
+            event(Lane::Key1, 30, InputKind::Release),
+            event(Lane::Key8, 10, InputKind::Press),
+            event(Lane::Key1, 20, InputKind::Press),
+            event(Lane::Key2, 20, InputKind::Release),
+        ];
+
+        normalize_battle_replay_for_key_mode(&mut replay, KeyMode::K7).unwrap();
+
+        assert_eq!(replay.events.len(), 3);
+        assert!(replay.events.iter().all(|event| event.lane != Lane::Key8));
+        assert_eq!(
+            replay.events.iter().map(|event| event.time.0).collect::<Vec<_>>(),
+            vec![20, 20, 30]
+        );
+        assert_eq!(replay.events[0].lane, Lane::Key1);
+        assert_eq!(replay.events[1].lane, Lane::Key2);
+    }
+
+    #[test]
+    fn play_session_options_carry_battle_legacy_seed_scheme() {
+        let replay =
+            ReplayFile::new([1; 32], 1, None, ArrangeOption::Random, Some(42), None, Vec::new())
+                .with_seed_scheme(crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3);
+        let target = BattleTarget {
+            provider: "local".to_string(),
+            score_id: "1".to_string(),
+            player_id: "self".to_string(),
+            player_name: "SELF".to_string(),
+            rank: 0,
+            ex_score: 0,
+            gauge: None,
+            playback: BattleTargetPlayback::Replay(Box::new(replay)),
+        };
+
+        let options = play_session_options_from_start(
+            &AppConfig::default(),
+            PlayStartOptions { battle_target: Some(target), ..Default::default() },
+        );
+
+        assert!(options.battle_opponent.expect("battle opponent").legacy_arrange_seed);
     }
 
     #[test]
@@ -640,7 +827,11 @@ mod tests {
             chart_sha256: [1; 32],
             replay,
         };
-        let mut options = PlayStartOptions::default();
+        let mut options = PlayStartOptions {
+            key_mode_conversion: KeyModeConversionConfig::SevenToNine,
+            seven_to_nine_rule_mode: SevenToNineRuleMode::Keys7,
+            ..Default::default()
+        };
 
         apply_queued_replay(&mut options, &queued).unwrap();
 
@@ -648,6 +839,8 @@ mod tests {
         assert_eq!(options.s_random_scheme, SRandomScheme::Legacy40MsV1);
         assert_eq!(options.s_random_scheme_2p, Some(SRandomScheme::Legacy40MsV1));
         assert!(options.replay_player.is_some());
+        assert_eq!(options.key_mode_conversion, KeyModeConversionConfig::SevenToNine);
+        assert_eq!(options.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys7);
     }
 
     fn default_constraints() -> CourseConstraints {

@@ -40,8 +40,8 @@ pub enum AudioEngineCommand {
     SetMasterGain {
         gain: f32,
     },
-    SetPlaybackRatePercent {
-        rate: u16,
+    ApplyPlaybackRateChange {
+        change: crate::clock::PlaybackRateChange,
     },
     SetSoundVolume {
         id: SoundId,
@@ -86,7 +86,9 @@ impl AudioEngineCommand {
                 engine.stop_sound_with_fade_out(id, fade_out_frames);
             }
             Self::SetMasterGain { gain } => engine.set_master_gain(gain),
-            Self::SetPlaybackRatePercent { rate } => engine.set_playback_rate_percent(rate),
+            Self::ApplyPlaybackRateChange { change } => {
+                engine.apply_playback_rate_change(change);
+            }
             Self::SetSoundVolume { id, volume } => engine.set_sound_volume(id, volume),
             Self::PlayNow { sound_id, volume, loop_playback } => {
                 engine.play_now(sound_id, volume, loop_playback);
@@ -333,8 +335,8 @@ impl AudioEngineHandle {
         self.push_command(AudioEngineCommand::SetMasterGain { gain })
     }
 
-    pub fn set_playback_rate_percent(&self, rate: u16) -> bool {
-        self.push_command(AudioEngineCommand::SetPlaybackRatePercent { rate })
+    pub fn apply_playback_rate_change(&self, change: crate::clock::PlaybackRateChange) -> bool {
+        self.push_command(AudioEngineCommand::ApplyPlaybackRateChange { change })
     }
 
     pub fn set_sound_volume(&self, id: SoundId, volume: f32) -> bool {
@@ -543,10 +545,6 @@ fn command_supersedes(incoming: &AudioEngineCommand, pending: &AudioEngineComman
             true
         }
         (
-            AudioEngineCommand::SetPlaybackRatePercent { .. },
-            AudioEngineCommand::SetPlaybackRatePercent { .. },
-        ) => true,
-        (
             AudioEngineCommand::SetSoundVolume { id: incoming_id, .. },
             AudioEngineCommand::SetSoundVolume { id: pending_id, .. },
         ) => incoming_id == pending_id,
@@ -620,6 +618,32 @@ mod tests {
 
         assert_eq!(output, vec![0.25, 0.25]);
         assert_eq!(handle.diagnostics().coalesced, 1);
+    }
+
+    #[test]
+    fn command_queue_keeps_sequential_playback_rate_anchors() {
+        let handle = AudioEngineHandle::with_capacity(AudioEngine::default(), 8);
+        let mut processor = handle.processor();
+
+        for change in [
+            crate::clock::PlaybackRateChange {
+                anchor_output_frame: 100,
+                old_rate_percent: 100,
+                new_rate_percent: 25,
+            },
+            crate::clock::PlaybackRateChange {
+                anchor_output_frame: 120,
+                old_rate_percent: 25,
+                new_rate_percent: 50,
+            },
+        ] {
+            assert!(handle.apply_playback_rate_change(change));
+        }
+
+        assert_eq!(handle.diagnostics().coalesced, 0);
+        processor.apply_pending_commands_for_tests();
+        assert_eq!(handle.diagnostics().drained, 2);
+        assert_eq!(handle.engine.lock().unwrap().mixer.playback_rate, 0.5);
     }
 
     #[test]

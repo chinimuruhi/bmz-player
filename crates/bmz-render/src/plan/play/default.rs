@@ -97,6 +97,7 @@ fn push_lane(
 
     push_long_notes(commands, snapshot, manifest, layout, x, lane);
     for note in &snapshot.visible_notes[lane_index] {
+        let start = commands.len();
         let rect = note_rect(layout, snapshot.lift, x, note.y);
         match note.kind {
             NoteVisualKind::LnStart => push_ln_start_skin(manifest, commands, lane, rect),
@@ -109,6 +110,7 @@ fn push_lane(
                 }
             }
         }
+        apply_draw_command_alpha(&mut commands[start..], note.alpha);
     }
     for mine in &snapshot.visible_mines[lane_index] {
         commands.push(DrawCommand::Image {
@@ -116,7 +118,7 @@ fn push_lane(
             uv: UvRect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
             source_size: None,
             texture: DEFAULT_MINE_NOTE_TEXTURE,
-            tint: Color::rgba(1.0, 1.0, 1.0, 1.0),
+            tint: Color::rgba(1.0, 1.0, 1.0, mine.alpha),
             blend: BlendMode::Normal,
             linear_filter: false,
         });
@@ -132,6 +134,7 @@ fn push_long_notes(
     lane: Lane,
 ) {
     for body in snapshot.visible_long_notes.iter().filter(|body| body.lane == lane) {
+        let start = commands.len();
         let top = play_object_y(layout.board, snapshot.lift, body.tail_y);
         let bottom = play_object_y(layout.board, snapshot.lift, body.head_y);
         commands.push(DrawCommand::Rect {
@@ -159,6 +162,7 @@ fn push_long_notes(
                 note_rect(layout, snapshot.lift, x, body.tail_y),
             );
         }
+        apply_draw_command_alpha(&mut commands[start..], body.alpha);
     }
 }
 

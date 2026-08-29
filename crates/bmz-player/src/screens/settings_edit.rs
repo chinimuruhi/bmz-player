@@ -3,19 +3,26 @@ use std::collections::HashSet;
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
 
+use crate::config::app_config::{AppConfig, AudioConfig, VideoConfig};
+use crate::config::app_settings_registry::{
+    AppSettingsChoices, AppSettingsEntryId, adjust_app_settings_value,
+};
 use crate::config::play_input::resolve_play_bindings;
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
-    DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig,
-    HispeedModeConfig, HsFixConfig, InputActionConfig, JudgeAlgorithmConfig, LaneConfig,
-    LaneEffectConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig, ReplaySlotRule,
-    ScratchDirectionConfig, SelectInputModeConfig, TargetOptionConfig,
+    DifficultyTableLevelDisplay, DoubleOptionConfig, FastSlowDisplayScope, GaugeAutoShiftConfig,
+    GaugeTypeConfig, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, InputActionConfig,
+    JudgeAlgorithmConfig, KeyModeConversionConfig, LaneConfig, LaneEffectConfig, ProfileConfig,
+    ProfileInputConfig, RandomOptionConfig, ReplaySlotRule, ScratchDirectionConfig,
+    SelectInputModeConfig, SevenToNinePattern, SevenToNineRuleMode, SevenToNineType,
+    TargetOptionConfig,
 };
 use crate::config::settings_registry::{
     SettingsEntryId, adjust_settings_value, eight_key_hispeed_lane, format_settings_value,
 };
 
 use crate::ln_policy::LnPolicySetting;
+use crate::select_options::SessionMode;
 
 /// 7KEY / 14KEY + スクラッチ向けの設定画面入力マッピング。
 #[derive(Debug, Clone)]
@@ -71,14 +78,8 @@ impl SettingsBindings {
             {
                 continue;
             }
-            match entry.action {
-                Some(InputActionConfig::SelectEnter) => {
-                    confirm.insert(entry.control.clone());
-                }
-                Some(InputActionConfig::E2) => {
-                    back.insert(entry.control.clone());
-                }
-                _ => {}
+            if entry.action == Some(InputActionConfig::E2) {
+                back.insert(entry.control.clone());
             }
         }
 
@@ -227,8 +228,10 @@ enum SettingsBaseline {
     OffsetUs(i64),
     F32(f32),
     U32(u32),
+    I32(i32),
     Bool(bool),
     JudgeAlgorithm(JudgeAlgorithmConfig),
+    FastSlowDisplayScope(FastSlowDisplayScope),
     RuleMode(RuleMode),
     LnModePolicy(LnPolicySetting),
     Gauge(GaugeTypeConfig),
@@ -242,10 +245,17 @@ enum SettingsBaseline {
     Assist(AssistOptionConfig),
     BgaMode(BgaModeConfig),
     BgaExpand(BgaExpandConfig),
+    SessionMode { value: Option<SessionMode>, auto_play: bool },
+    KeyModeConversion { value: KeyModeConversionConfig, double_option: DoubleOptionConfig },
+    SevenToNinePattern(SevenToNinePattern),
+    SevenToNineType(SevenToNineType),
+    SevenToNineRuleMode(SevenToNineRuleMode),
     HispeedMode(HispeedModeConfig),
     HispeedDirection(HispeedDirectionConfig),
     SelectInputMode(SelectInputModeConfig),
+    DifficultyTableLevelDisplay(DifficultyTableLevelDisplay),
     ReplaySlotRule(ReplaySlotRule),
+    Language(String),
 }
 
 /// 編集開始時点の値。キャンセル時に profile へ戻す。
@@ -255,11 +265,61 @@ pub struct SettingsEditSession {
     baseline: SettingsBaseline,
 }
 
+#[derive(Debug, Clone)]
+enum AppSettingsBaseline {
+    Audio(AudioConfig),
+    Video(VideoConfig),
+}
+
+/// `data/config.toml` の音声・映像設定を一項目ずつ編集するセッション。
+#[derive(Debug, Clone)]
+pub struct AppSettingsEditSession {
+    pub entry_id: AppSettingsEntryId,
+    baseline: AppSettingsBaseline,
+    choices: AppSettingsChoices,
+}
+
+impl AppSettingsEditSession {
+    pub fn capture(
+        config: &AppConfig,
+        entry_id: AppSettingsEntryId,
+        choices: AppSettingsChoices,
+    ) -> Self {
+        let baseline = if entry_id.is_audio() {
+            AppSettingsBaseline::Audio(config.audio.clone())
+        } else {
+            AppSettingsBaseline::Video(config.video.clone())
+        };
+        Self { entry_id, baseline, choices }
+    }
+
+    pub fn restore(&self, config: &mut AppConfig) {
+        match &self.baseline {
+            AppSettingsBaseline::Audio(value) => config.audio = value.clone(),
+            AppSettingsBaseline::Video(value) => config.video = value.clone(),
+        }
+    }
+
+    pub fn adjust(&self, config: &mut AppConfig, direction: i32) -> bool {
+        adjust_app_settings_value(config, self.entry_id, &self.choices, direction)
+    }
+}
+
+/// 選曲設定で現在編集中の保存先を表す。
+#[derive(Debug, Clone)]
+pub enum SelectSettingsEditSession {
+    Profile(SettingsEditSession),
+    App(AppSettingsEditSession),
+}
+
 impl SettingsEditSession {
     pub fn capture(profile: &ProfileConfig, entry_id: SettingsEntryId) -> Self {
         let baseline = match entry_id {
             SettingsEntryId::NormalizeChartVolume => {
                 SettingsBaseline::Bool(profile.audio_mix.normalize_chart_volume)
+            }
+            SettingsEntryId::NormalizeSystemBgmVolume => {
+                SettingsBaseline::Bool(profile.audio_mix.normalize_system_bgm_volume)
             }
             SettingsEntryId::MasterVolume => {
                 SettingsBaseline::Volume(profile.audio_mix.master_volume)
@@ -287,6 +347,12 @@ impl SettingsEditSession {
             SettingsEntryId::JudgeAlgorithm => {
                 SettingsBaseline::JudgeAlgorithm(profile.judge.judge_algorithm)
             }
+            SettingsEntryId::FastSlowDisplayScope => {
+                SettingsBaseline::FastSlowDisplayScope(profile.judge.fast_slow_display_scope)
+            }
+            SettingsEntryId::FastSlowDisplayThresholdMs => {
+                SettingsBaseline::U32(profile.judge.fast_slow_display_threshold_ms)
+            }
             SettingsEntryId::RuleMode => SettingsBaseline::RuleMode(profile.play.rule_mode),
             SettingsEntryId::LnModePolicy => {
                 SettingsBaseline::LnModePolicy(profile.play.ln_mode_policy)
@@ -309,11 +375,53 @@ impl SettingsEditSession {
             SettingsEntryId::Assist => SettingsBaseline::Assist(profile.play.assist),
             SettingsEntryId::BgaMode => SettingsBaseline::BgaMode(profile.play.bga),
             SettingsEntryId::BgaExpand => SettingsBaseline::BgaExpand(profile.play.bga_expand),
-            SettingsEntryId::AutoPlay => SettingsBaseline::Bool(profile.play.auto_play),
+            SettingsEntryId::SessionMode => SettingsBaseline::SessionMode {
+                value: profile.play.session_mode,
+                auto_play: profile.play.auto_play,
+            },
+            SettingsEntryId::KeyModeConversion => SettingsBaseline::KeyModeConversion {
+                value: profile.play.key_mode_conversion,
+                double_option: profile.play.double_option,
+            },
+            SettingsEntryId::SevenToNinePattern => {
+                SettingsBaseline::SevenToNinePattern(profile.play.seven_to_nine_pattern)
+            }
+            SettingsEntryId::SevenToNineType => {
+                SettingsBaseline::SevenToNineType(profile.play.seven_to_nine_type)
+            }
+            SettingsEntryId::SevenToNineRuleMode => {
+                SettingsBaseline::SevenToNineRuleMode(profile.play.seven_to_nine_rule_mode)
+            }
+            SettingsEntryId::PlayExitHoldMs => {
+                SettingsBaseline::U32(profile.play.play_exit_hold_ms)
+            }
+            SettingsEntryId::AssistExpandJudge
+            | SettingsEntryId::AssistJudgeArea
+            | SettingsEntryId::AssistMarkNote
+            | SettingsEntryId::AssistBpmGuide
+            | SettingsEntryId::AssistScrollMode
+            | SettingsEntryId::AssistLongNoteMode
+            | SettingsEntryId::AssistMineMode
+            | SettingsEntryId::AssistScrollSection
+            | SettingsEntryId::AssistScrollRate
+            | SettingsEntryId::AssistLongNoteRate
+            | SettingsEntryId::AssistExtraNoteDepth
+            | SettingsEntryId::AssistExtraNoteScratch
+            | SettingsEntryId::AssistExtraNoteType
+            | SettingsEntryId::AssistKeyPgreatRate
+            | SettingsEntryId::AssistKeyGreatRate
+            | SettingsEntryId::AssistKeyGoodRate
+            | SettingsEntryId::AssistScratchPgreatRate
+            | SettingsEntryId::AssistScratchGreatRate
+            | SettingsEntryId::AssistScratchGoodRate
+            | SettingsEntryId::AssistLongNoteMarginRate => {
+                SettingsBaseline::Assist(profile.play.assist)
+            }
             SettingsEntryId::MisslayerDurationMs => {
                 SettingsBaseline::U32(profile.play.misslayer_duration_ms)
             }
             SettingsEntryId::ShowLnTailCap => SettingsBaseline::Bool(profile.play.show_ln_tail_cap),
+            SettingsEntryId::GuideSe => SettingsBaseline::Bool(profile.play.guide_se),
             SettingsEntryId::Hispeed => SettingsBaseline::F32(profile.lane.hispeed),
             SettingsEntryId::HispeedMode => {
                 SettingsBaseline::HispeedMode(profile.lane.hispeed_mode)
@@ -321,13 +429,27 @@ impl SettingsEditSession {
             SettingsEntryId::HispeedStepNhs => SettingsBaseline::F32(profile.lane.hispeed_step_nhs),
             SettingsEntryId::HispeedStepFhs => SettingsBaseline::F32(profile.lane.hispeed_step_fhs),
             SettingsEntryId::Sudden => SettingsBaseline::U32(profile.lane.sudden),
+            SettingsEntryId::LiftEnabled => SettingsBaseline::Bool(profile.lane.lift_enabled),
             SettingsEntryId::Lift => SettingsBaseline::U32(profile.lane.lift),
+            SettingsEntryId::HispeedAutoAdjust => {
+                SettingsBaseline::Bool(profile.lane.hispeed_auto_adjust)
+            }
             SettingsEntryId::Hidden => SettingsBaseline::U32(profile.lane.hidden),
             SettingsEntryId::TargetGreenNumber => {
                 SettingsBaseline::U32(profile.lane.target_green_number)
             }
+            SettingsEntryId::NoteDisplayDurationMs => {
+                SettingsBaseline::U32(profile.lane.target_green_number)
+            }
+            SettingsEntryId::Constant => SettingsBaseline::Bool(profile.lane.constant_enabled),
+            SettingsEntryId::ConstantFadeMs => SettingsBaseline::I32(profile.lane.constant_fade_ms),
             SettingsEntryId::SelectInputMode => {
                 SettingsBaseline::SelectInputMode(profile.input.select_input_mode)
+            }
+            SettingsEntryId::DifficultyTableLevelDisplay => {
+                SettingsBaseline::DifficultyTableLevelDisplay(
+                    profile.select.difficulty_table_level_display,
+                )
             }
             SettingsEntryId::SelectRandomSelect => {
                 SettingsBaseline::Bool(profile.select.random_select)
@@ -399,6 +521,7 @@ impl SettingsEditSession {
                 )
             }
             SettingsEntryId::ReplayAutoSave => SettingsBaseline::Bool(profile.replay.auto_save),
+            SettingsEntryId::ReplayCompress => SettingsBaseline::Bool(profile.replay.compress),
             SettingsEntryId::ReplaySlot1Rule => {
                 SettingsBaseline::ReplaySlotRule(profile.replay.slot_rules[0])
             }
@@ -411,6 +534,8 @@ impl SettingsEditSession {
             SettingsEntryId::ReplaySlot4Rule => {
                 SettingsBaseline::ReplaySlotRule(profile.replay.slot_rules[3])
             }
+            SettingsEntryId::Language => SettingsBaseline::Language(profile.ui.language.clone()),
+            SettingsEntryId::ShowFps => SettingsBaseline::Bool(profile.ui.show_fps),
         };
         Self { entry_id, baseline }
     }
@@ -419,6 +544,9 @@ impl SettingsEditSession {
         match (&self.entry_id, &self.baseline) {
             (SettingsEntryId::NormalizeChartVolume, SettingsBaseline::Bool(value)) => {
                 profile.audio_mix.normalize_chart_volume = *value;
+            }
+            (SettingsEntryId::NormalizeSystemBgmVolume, SettingsBaseline::Bool(value)) => {
+                profile.audio_mix.normalize_system_bgm_volume = *value;
             }
             (SettingsEntryId::MasterVolume, SettingsBaseline::Volume(value)) => {
                 profile.audio_mix.master_volume = *value;
@@ -449,6 +577,15 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::JudgeAlgorithm, SettingsBaseline::JudgeAlgorithm(value)) => {
                 profile.judge.judge_algorithm = *value;
+            }
+            (
+                SettingsEntryId::FastSlowDisplayScope,
+                SettingsBaseline::FastSlowDisplayScope(value),
+            ) => {
+                profile.judge.fast_slow_display_scope = *value;
+            }
+            (SettingsEntryId::FastSlowDisplayThresholdMs, SettingsBaseline::U32(value)) => {
+                profile.judge.fast_slow_display_threshold_ms = *value;
             }
             (SettingsEntryId::RuleMode, SettingsBaseline::RuleMode(value)) => {
                 profile.play.rule_mode = *value;
@@ -495,14 +632,65 @@ impl SettingsEditSession {
             (SettingsEntryId::BgaExpand, SettingsBaseline::BgaExpand(value)) => {
                 profile.play.bga_expand = *value;
             }
-            (SettingsEntryId::AutoPlay, SettingsBaseline::Bool(value)) => {
-                profile.play.auto_play = *value;
+            (SettingsEntryId::SessionMode, SettingsBaseline::SessionMode { value, auto_play }) => {
+                profile.play.session_mode = *value;
+                profile.play.auto_play = *auto_play;
+            }
+            (
+                SettingsEntryId::KeyModeConversion,
+                SettingsBaseline::KeyModeConversion { value, double_option },
+            ) => {
+                profile.play.key_mode_conversion = *value;
+                profile.play.double_option = *double_option;
+            }
+            (SettingsEntryId::SevenToNinePattern, SettingsBaseline::SevenToNinePattern(value)) => {
+                profile.play.seven_to_nine_pattern = *value;
+            }
+            (SettingsEntryId::SevenToNineType, SettingsBaseline::SevenToNineType(value)) => {
+                profile.play.seven_to_nine_type = *value;
+            }
+            (
+                SettingsEntryId::SevenToNineRuleMode,
+                SettingsBaseline::SevenToNineRuleMode(value),
+            ) => {
+                profile.play.seven_to_nine_rule_mode = *value;
+            }
+            (SettingsEntryId::PlayExitHoldMs, SettingsBaseline::U32(value)) => {
+                profile.play.play_exit_hold_ms = *value;
+            }
+            (
+                SettingsEntryId::AssistExpandJudge
+                | SettingsEntryId::AssistJudgeArea
+                | SettingsEntryId::AssistMarkNote
+                | SettingsEntryId::AssistBpmGuide
+                | SettingsEntryId::AssistScrollMode
+                | SettingsEntryId::AssistLongNoteMode
+                | SettingsEntryId::AssistMineMode
+                | SettingsEntryId::AssistScrollSection
+                | SettingsEntryId::AssistScrollRate
+                | SettingsEntryId::AssistLongNoteRate
+                | SettingsEntryId::AssistExtraNoteDepth
+                | SettingsEntryId::AssistExtraNoteScratch
+                | SettingsEntryId::AssistExtraNoteType
+                | SettingsEntryId::AssistKeyPgreatRate
+                | SettingsEntryId::AssistKeyGreatRate
+                | SettingsEntryId::AssistKeyGoodRate
+                | SettingsEntryId::AssistScratchPgreatRate
+                | SettingsEntryId::AssistScratchGreatRate
+                | SettingsEntryId::AssistScratchGoodRate
+                | SettingsEntryId::AssistLongNoteMarginRate,
+                SettingsBaseline::Assist(value),
+            ) => {
+                profile.play.assist = *value;
             }
             (SettingsEntryId::MisslayerDurationMs, SettingsBaseline::U32(value)) => {
                 profile.play.misslayer_duration_ms = *value;
             }
             (SettingsEntryId::ShowLnTailCap, SettingsBaseline::Bool(value)) => {
                 profile.play.show_ln_tail_cap = *value;
+            }
+            (SettingsEntryId::GuideSe, SettingsBaseline::Bool(value)) => {
+                profile.play.guide_se = *value;
             }
             (SettingsEntryId::Hispeed, SettingsBaseline::F32(value)) => {
                 profile.lane.hispeed = *value;
@@ -519,8 +707,14 @@ impl SettingsEditSession {
             (SettingsEntryId::Sudden, SettingsBaseline::U32(value)) => {
                 profile.lane.sudden = *value;
             }
+            (SettingsEntryId::LiftEnabled, SettingsBaseline::Bool(value)) => {
+                profile.lane.lift_enabled = *value;
+            }
             (SettingsEntryId::Lift, SettingsBaseline::U32(value)) => {
                 profile.lane.lift = *value;
+            }
+            (SettingsEntryId::HispeedAutoAdjust, SettingsBaseline::Bool(value)) => {
+                profile.lane.hispeed_auto_adjust = *value;
             }
             (SettingsEntryId::Hidden, SettingsBaseline::U32(value)) => {
                 profile.lane.hidden = *value;
@@ -528,8 +722,23 @@ impl SettingsEditSession {
             (SettingsEntryId::TargetGreenNumber, SettingsBaseline::U32(value)) => {
                 profile.lane.target_green_number = *value;
             }
+            (SettingsEntryId::NoteDisplayDurationMs, SettingsBaseline::U32(value)) => {
+                profile.lane.target_green_number = *value;
+            }
+            (SettingsEntryId::Constant, SettingsBaseline::Bool(value)) => {
+                profile.lane.constant_enabled = *value;
+            }
+            (SettingsEntryId::ConstantFadeMs, SettingsBaseline::I32(value)) => {
+                profile.lane.constant_fade_ms = *value;
+            }
             (SettingsEntryId::SelectInputMode, SettingsBaseline::SelectInputMode(value)) => {
                 profile.input.select_input_mode = *value;
+            }
+            (
+                SettingsEntryId::DifficultyTableLevelDisplay,
+                SettingsBaseline::DifficultyTableLevelDisplay(value),
+            ) => {
+                profile.select.difficulty_table_level_display = *value;
             }
             (SettingsEntryId::SelectRandomSelect, SettingsBaseline::Bool(value)) => {
                 profile.select.random_select = *value;
@@ -603,6 +812,9 @@ impl SettingsEditSession {
             (SettingsEntryId::ReplayAutoSave, SettingsBaseline::Bool(value)) => {
                 profile.replay.auto_save = *value;
             }
+            (SettingsEntryId::ReplayCompress, SettingsBaseline::Bool(value)) => {
+                profile.replay.compress = *value;
+            }
             (SettingsEntryId::ReplaySlot1Rule, SettingsBaseline::ReplaySlotRule(value)) => {
                 profile.replay.slot_rules[0] = *value;
             }
@@ -614,6 +826,12 @@ impl SettingsEditSession {
             }
             (SettingsEntryId::ReplaySlot4Rule, SettingsBaseline::ReplaySlotRule(value)) => {
                 profile.replay.slot_rules[3] = *value;
+            }
+            (SettingsEntryId::Language, SettingsBaseline::Language(value)) => {
+                profile.ui.language.clone_from(value);
+            }
+            (SettingsEntryId::ShowFps, SettingsBaseline::Bool(value)) => {
+                profile.ui.show_fps = *value;
             }
             _ => {}
         }
@@ -635,6 +853,7 @@ pub fn adjust_settings_draft(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::app_config::AppConfig;
     use crate::config::profile_config::ProfileConfig;
 
     #[test]
@@ -703,6 +922,34 @@ mod tests {
         profile.audio_mix.normalize_chart_volume = false;
         normalize_session.restore(&mut profile);
         assert!(profile.audio_mix.normalize_chart_volume);
+
+        let system_bgm_session =
+            SettingsEditSession::capture(&profile, SettingsEntryId::NormalizeSystemBgmVolume);
+        profile.audio_mix.normalize_system_bgm_volume = false;
+        system_bgm_session.restore(&mut profile);
+        assert!(profile.audio_mix.normalize_system_bgm_volume);
+    }
+
+    #[test]
+    fn app_edit_session_restores_the_edited_config_section() {
+        let mut config = AppConfig::default();
+        let audio = AppSettingsEditSession::capture(
+            &config,
+            AppSettingsEntryId::AudioBufferSize,
+            AppSettingsChoices::None,
+        );
+        config.audio.buffer_size = 64;
+        audio.restore(&mut config);
+        assert_eq!(config.audio.buffer_size, 256);
+
+        let video = AppSettingsEditSession::capture(
+            &config,
+            AppSettingsEntryId::VideoTargetFps,
+            AppSettingsChoices::None,
+        );
+        config.video.target_fps = 0;
+        video.restore(&mut config);
+        assert_eq!(config.video.target_fps, 240);
     }
 
     #[test]
@@ -717,6 +964,15 @@ mod tests {
     #[test]
     fn edit_session_restore_reverts_input_and_replay_settings() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        let table_level_session =
+            SettingsEditSession::capture(&profile, SettingsEntryId::DifficultyTableLevelDisplay);
+        profile.select.difficulty_table_level_display = DifficultyTableLevelDisplay::Chart;
+        table_level_session.restore(&mut profile);
+        assert_eq!(
+            profile.select.difficulty_table_level_display,
+            DifficultyTableLevelDisplay::Table
+        );
+
         let analog_2p_session =
             SettingsEditSession::capture(&profile, SettingsEntryId::AnalogScratch2P);
         profile.input.gamepad2.analog_scratch = false;
@@ -734,5 +990,44 @@ mod tests {
         profile.replay.slot_rules[1] = ReplaySlotRule::ClearUpdate;
         replay_session.restore(&mut profile);
         assert_eq!(profile.replay.slot_rules[1], ReplaySlotRule::ScoreUpdate);
+    }
+
+    #[test]
+    fn edit_session_restore_reverts_new_dependent_settings() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+        let session_mode = SettingsEditSession::capture(&profile, SettingsEntryId::SessionMode);
+        assert!(adjust_settings_draft(&mut profile, &session_mode, 1));
+        assert!(adjust_settings_draft(&mut profile, &session_mode, 1));
+        assert_eq!(profile.play.session_mode, Some(SessionMode::Autoplay));
+        assert!(profile.play.auto_play);
+        session_mode.restore(&mut profile);
+        assert_eq!(profile.play.session_mode, Some(SessionMode::Normal));
+        assert!(!profile.play.auto_play);
+
+        profile.play.double_option = DoubleOptionConfig::Battle;
+        let conversion = SettingsEditSession::capture(&profile, SettingsEntryId::KeyModeConversion);
+        assert!(adjust_settings_draft(&mut profile, &conversion, 1));
+        assert_eq!(profile.play.double_option, DoubleOptionConfig::Off);
+        conversion.restore(&mut profile);
+        assert_eq!(profile.play.key_mode_conversion, KeyModeConversionConfig::Off);
+        assert_eq!(profile.play.double_option, DoubleOptionConfig::Battle);
+
+        let assist = SettingsEditSession::capture(&profile, SettingsEntryId::AssistScrollRate);
+        assert!(adjust_settings_draft(&mut profile, &assist, 5));
+        assist.restore(&mut profile);
+        assert!((profile.play.assist.scroll_rate - 0.5).abs() < f64::EPSILON);
+
+        let duration =
+            SettingsEditSession::capture(&profile, SettingsEntryId::NoteDisplayDurationMs);
+        assert!(adjust_settings_draft(&mut profile, &duration, 10));
+        assert_eq!(profile.lane.target_green_number, 306);
+        duration.restore(&mut profile);
+        assert_eq!(profile.lane.target_green_number, 300);
+
+        let language = SettingsEditSession::capture(&profile, SettingsEntryId::Language);
+        assert!(adjust_settings_draft(&mut profile, &language, 1));
+        language.restore(&mut profile);
+        assert_eq!(profile.ui.language, "ja");
     }
 }

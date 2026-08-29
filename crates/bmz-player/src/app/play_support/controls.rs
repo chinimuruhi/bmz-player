@@ -139,6 +139,30 @@ pub(in crate::app) fn play_control_hold_state_from_pressed_inputs(
     (e1_held, e2_held, e3_held)
 }
 
+pub(in crate::app) fn autoplay_replay_playback_rate_from_pressed_inputs(
+    pressed_inputs: &HashSet<(DeviceId, PhysicalControl)>,
+) -> u16 {
+    const SPEED_KEYS: [(&str, u16); 4] = [("1", 25), ("2", 50), ("3", 200), ("4", 300)];
+    SPEED_KEYS
+        .into_iter()
+        .find_map(|(control, rate)| {
+            pressed_inputs
+                .contains(&(
+                    W_KEYBOARD_DEVICE_ID,
+                    PhysicalControl::KeyboardKey(control.to_string()),
+                ))
+                .then_some(rate)
+        })
+        .unwrap_or(100)
+}
+
+pub(in crate::app) fn is_autoplay_replay_playback_rate_key(physical_key: PhysicalKey) -> bool {
+    matches!(
+        physical_key,
+        PhysicalKey::Code(KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 | KeyCode::Digit4)
+    )
+}
+
 pub(in crate::app) fn play_ready_blocked_by_control_holds(e1_held: bool, e2_held: bool) -> bool {
     e1_held || e2_held
 }
@@ -150,6 +174,20 @@ pub(in crate::app) fn play_ready_blocked_by_recent_control_hold(
     last_control_hold_at.is_some_and(|last_control_hold_at| {
         now.saturating_duration_since(last_control_hold_at) <= Duration::from_secs(1)
     })
+}
+
+pub(in crate::app) fn should_route_quick_retry_input(
+    pressed: bool,
+    repeat: bool,
+    play_ending_active: bool,
+) -> bool {
+    pressed && !repeat && play_ending_active
+}
+
+pub(in crate::app) fn play_exit_should_leave_practice(
+    practice_phase: Option<PracticePhase>,
+) -> bool {
+    practice_phase == Some(PracticePhase::Config)
 }
 
 pub(in crate::app) fn should_begin_play_fadeout_after_final_notes(
@@ -165,6 +203,23 @@ pub(in crate::app) fn should_begin_play_fadeout_after_final_notes(
         && play_state == bmz_gameplay::session::PlayState::Playing
         && final_notes_processed
         && (play_fadeout_after_final_notes_control(control, bindings) || control == "Escape")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::app) enum FinalNotesControlAction {
+    ReturnToPractice,
+    BeginResultFadeout,
+}
+
+pub(in crate::app) fn final_notes_control_action(
+    should_begin: bool,
+    practice_playing: bool,
+) -> Option<FinalNotesControlAction> {
+    should_begin.then_some(if practice_playing {
+        FinalNotesControlAction::ReturnToPractice
+    } else {
+        FinalNotesControlAction::BeginResultFadeout
+    })
 }
 
 pub(in crate::app) fn should_play_retire_sound_for_failed_transition(

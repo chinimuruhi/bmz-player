@@ -12,10 +12,15 @@ pub(in crate::ui) fn build_profile_settings_panel(
         ir_login,
         ir_device_key,
         profile_manager,
+        key_config,
         profile_root,
         unrestricted,
         text,
     } = context;
+
+    if !*open || !unrestricted {
+        key_config.listening = None;
+    }
 
     // ログインタスクの完了を反映。provider 設定が更新されたら保存する。
     let save_clicked = ir_login.poll(profile, text);
@@ -29,11 +34,13 @@ pub(in crate::ui) fn build_profile_settings_panel(
         ir_login,
         ir_device_key,
         profile_manager,
+        key_config,
         profile_root,
         unrestricted,
         text,
         save_clicked,
         save_app_config: false,
+        key_config_action: None,
     };
 
     localized_sized_panel_window(
@@ -64,7 +71,9 @@ pub(in crate::ui) fn build_profile_settings_panel(
             build_profile_judge_section(ui, &mut section);
             build_profile_play_section(ui, &mut section);
             build_profile_display_section(ui, &mut section);
+            build_profile_select_section(ui, &mut section);
             build_profile_input_section(ui, &mut section);
+            build_profile_key_config_section(ui, &mut section);
             build_profile_replay_section(ui, &mut section);
             build_profile_system_sound_section(ui, &mut section);
             build_profile_ir_section(ui, &mut section);
@@ -84,8 +93,12 @@ pub(in crate::ui) fn build_profile_settings_panel(
         *section.app_config = readonly;
         section.save_app_config = false;
     }
+    if !*open {
+        section.key_config.listening = None;
+    }
     ProfileSettingsPanelActions {
         save: section.save_clicked,
         save_app_config: section.save_app_config,
+        key_config_action: section.key_config_action,
     }
 }

@@ -162,6 +162,11 @@ pub(in crate::lua) fn parse_keylogger_destination_id(
     Some(("plain", lane, None))
 }
 
+pub(in crate::lua) fn parse_keylogger_chattering_destination_id(id: &str) -> Option<usize> {
+    let lane = id.strip_prefix("keylogger-chattering-alert-")?.parse::<usize>().ok()?;
+    (1..=9).contains(&lane).then_some(lane)
+}
+
 pub(in crate::lua) fn lua_object_id(entries: &[(Value, Value)]) -> Option<String> {
     entries.iter().find_map(|(key, value)| {
         if !matches!(key, Value::String(key) if key.to_string_lossy() == "id") {

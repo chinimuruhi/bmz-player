@@ -275,6 +275,37 @@ fn normalize_filepath_selection_maps_legacy_basename_to_relative_candidate() {
 }
 
 #[test]
+fn filepath_selection_neighbors_include_random_before_glob_candidates() {
+    let candidates = vec!["parts/light.png".to_string(), "parts/dark.png".to_string()];
+
+    assert_eq!(
+        next_filepath_selection(RANDOM_FILE_SELECTION, &candidates).as_deref(),
+        Some("parts/light.png")
+    );
+    assert_eq!(
+        previous_filepath_selection("parts/light.png", &candidates).as_deref(),
+        Some(RANDOM_FILE_SELECTION)
+    );
+    assert_eq!(
+        next_filepath_selection("parts/light.png", &candidates).as_deref(),
+        Some("parts/dark.png")
+    );
+    assert_eq!(previous_filepath_selection(RANDOM_FILE_SELECTION, &candidates), None);
+    assert_eq!(next_filepath_selection("parts/dark.png", &candidates), None);
+}
+
+#[test]
+fn filepath_selection_neighbors_accept_legacy_basename() {
+    let candidates = vec!["parts/light.png".to_string(), "parts/dark.png".to_string()];
+
+    assert_eq!(
+        previous_filepath_selection("dark.png", &candidates).as_deref(),
+        Some("parts/light.png")
+    );
+    assert_eq!(next_filepath_selection("unknown.png", &candidates), None);
+}
+
+#[test]
 fn property_default_uses_matching_def_name_or_first_item() {
     let prop = SkinPropertyDef {
         category: String::new(),
@@ -289,6 +320,43 @@ fn property_default_uses_matching_def_name_or_first_item() {
 
     let prop = SkinPropertyDef { def: "Missing".to_string(), ..prop };
     assert_eq!(property_default(&prop), "Light");
+}
+
+#[test]
+fn property_selection_neighbors_follow_item_order_and_stop_at_ends() {
+    let prop = SkinPropertyDef {
+        category: String::new(),
+        name: "Notes".to_string(),
+        item: vec![
+            bmz_render::skin::SkinPropertyItemDef { name: "Light".to_string(), op: 1 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Dark".to_string(), op: 2 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Color".to_string(), op: 3 },
+        ],
+        def: "Dark".to_string(),
+    };
+
+    assert_eq!(previous_property_selection(&prop, "Dark"), Some("Light"));
+    assert_eq!(next_property_selection(&prop, "Dark"), Some("Color"));
+    assert_eq!(previous_property_selection(&prop, "Light"), None);
+    assert_eq!(next_property_selection(&prop, "Color"), None);
+}
+
+#[test]
+fn property_selection_neighbors_accept_legacy_numeric_selection() {
+    let prop = SkinPropertyDef {
+        category: String::new(),
+        name: "Notes".to_string(),
+        item: vec![
+            bmz_render::skin::SkinPropertyItemDef { name: "Light".to_string(), op: 1 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Dark".to_string(), op: 2 },
+            bmz_render::skin::SkinPropertyItemDef { name: "Color".to_string(), op: 3 },
+        ],
+        def: "Dark".to_string(),
+    };
+
+    assert_eq!(previous_property_selection(&prop, "2"), Some("Light"));
+    assert_eq!(next_property_selection(&prop, "2"), Some("Color"));
+    assert_eq!(next_property_selection(&prop, "unknown"), None);
 }
 
 #[test]

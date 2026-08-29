@@ -86,3 +86,81 @@ pub(in crate::ui) fn build_score_import_section(
             }
         });
 }
+
+pub(in crate::ui) fn build_replay_import_section(
+    ui: &mut egui::Ui,
+    path: &mut String,
+    device_type: &mut InputDeviceKind,
+    overwrite: &mut bool,
+    status: &str,
+    error: &str,
+    progress: Option<ReplayImportProgress>,
+    request: &mut Option<ImportBeatorajaReplaysRequest>,
+    cancel: &mut bool,
+) {
+    egui::CollapsingHeader::new("beatoraja Replay Import (.brd)")
+        .id_salt("settings_replay_import")
+        .show(ui, |ui| {
+            ui.label("playerフォルダ、replayフォルダ、または単一の.brdファイルを指定します。");
+            ui.horizontal(|ui| {
+                ui.label("PATH");
+                ui.add(
+                    egui::TextEdit::singleline(path)
+                        .desired_width(260.0)
+                        .hint_text("/path/to/player or replay"),
+                );
+            });
+            ui.horizontal(|ui| {
+                if ui.button("フォルダを選択").clicked()
+                    && let Some(folder) = rfd::FileDialog::new().pick_folder()
+                {
+                    *path = folder.to_string_lossy().into_owned();
+                }
+                if ui.button(".brdを選択").clicked()
+                    && let Some(file) =
+                        rfd::FileDialog::new().add_filter("beatoraja Replay", &["brd"]).pick_file()
+                {
+                    *path = file.to_string_lossy().into_owned();
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("入力デバイス");
+                ui.selectable_value(device_type, InputDeviceKind::Keyboard, "Keyboard");
+                ui.selectable_value(device_type, InputDeviceKind::Controller, "Controller");
+            });
+            ui.checkbox(overwrite, "既存のローカルReplayスロットも上書きする");
+            if ui.add_enabled(progress.is_none(), egui::Button::new("Replayをインポート")).clicked()
+            {
+                let trimmed = path.trim();
+                if trimmed.is_empty() {
+                    *request = None;
+                } else {
+                    let mut next = ImportBeatorajaReplaysRequest::new(trimmed);
+                    next.overwrite_protected_slots = *overwrite;
+                    next.device_kind = *device_type;
+                    *request = Some(next);
+                }
+            }
+            if let Some(progress) = progress {
+                let fraction = if progress.total == 0 {
+                    0.0
+                } else {
+                    progress.done as f32 / progress.total as f32
+                };
+                ui.add(
+                    egui::ProgressBar::new(fraction)
+                        .show_percentage()
+                        .text(format!("{} / {}", progress.done, progress.total)),
+                );
+                if ui.button("インポートをキャンセル").clicked() {
+                    *cancel = true;
+                }
+            }
+            if !status.is_empty() {
+                ui.colored_label(egui::Color32::LIGHT_GREEN, status);
+            }
+            if !error.is_empty() {
+                ui.colored_label(egui::Color32::RED, error);
+            }
+        });
+}

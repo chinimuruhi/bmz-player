@@ -22,12 +22,18 @@ impl WinitApp {
     }
 
     pub(super) fn select_time(&self) -> TimeUs {
+        if !self.select.select_scene_timer_armed {
+            return TimeUs::default();
+        }
         let micros =
             self.select.select_scene_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
         TimeUs(micros)
     }
 
     pub(super) fn select_bar_time(&self) -> TimeUs {
+        if !self.select.select_scene_timer_armed {
+            return TimeUs::default();
+        }
         let micros =
             self.select.select_bar_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
         TimeUs(micros)
@@ -40,7 +46,8 @@ impl WinitApp {
     }
 
     pub(super) fn select_bar_scroll_progress(&self) -> f32 {
-        if self.select.select_bar_scroll_direction == 0
+        if !self.select.select_scene_timer_armed
+            || self.select.select_bar_scroll_direction == 0
             || self.select.select_bar_scroll_duration.is_zero()
         {
             return 0.0;
@@ -94,6 +101,9 @@ impl WinitApp {
     }
 
     pub(super) fn option_panel_time(&self) -> TimeUs {
+        if !self.select.select_scene_timer_armed {
+            return TimeUs::default();
+        }
         let micros =
             self.select.option_panel_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
         TimeUs(micros)
@@ -165,29 +175,122 @@ impl WinitApp {
     }
 
     pub(super) fn begin_settings_edit(&mut self, entry_id: SettingsEntryId) {
-        self.select.settings_edit =
-            Some(SettingsEditSession::capture(&self.boot.profile_config, entry_id));
+        self.select.settings_edit = Some(SelectSettingsEditSession::Profile(
+            SettingsEditSession::capture(&self.boot.profile_config, entry_id),
+        ));
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
         tracing::info!(?entry_id, "settings edit mode started");
+    }
+
+    pub(super) fn begin_app_settings_edit(&mut self, entry_id: AppSettingsEntryId) {
+        let choices = self.app_settings_choices(entry_id);
+        self.select.settings_edit = Some(SelectSettingsEditSession::App(
+            AppSettingsEditSession::capture(&self.boot.app_config, entry_id, choices),
+        ));
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        tracing::info!(?entry_id, "app settings edit mode started");
+    }
+
+    fn app_settings_choices(&self, entry_id: AppSettingsEntryId) -> AppSettingsChoices {
+        match entry_id {
+            AppSettingsEntryId::AudioBackend => {
+                AppSettingsChoices::AudioBackends(crate::audio::available_audio_backends())
+            }
+            AppSettingsEntryId::AudioOutputDevice | AppSettingsEntryId::AudioAsioDriver => {
+                let mut names = vec![String::new()];
+                names
+                    .extend(crate::audio::list_output_devices(&self.boot.app_config.audio.backend));
+                let configured = if entry_id == AppSettingsEntryId::AudioAsioDriver {
+                    &self.boot.app_config.audio.asio_driver
+                } else {
+                    &self.boot.app_config.audio.output_device
+                };
+                if !configured.is_empty() && !names.contains(configured) {
+                    names.push(configured.clone());
+                }
+                names.dedup();
+                AppSettingsChoices::Text(names)
+            }
+            AppSettingsEntryId::VideoMonitor => {
+                let mut names = vec![String::new()];
+                if let Some(window) = self.window.as_ref() {
+                    names.extend(
+                        window.available_monitors().map(|monitor| monitor_config_name(&monitor)),
+                    );
+                }
+                if !self.boot.app_config.video.monitor_name.is_empty()
+                    && !names.contains(&self.boot.app_config.video.monitor_name)
+                {
+                    names.push(self.boot.app_config.video.monitor_name.clone());
+                }
+                names.dedup();
+                AppSettingsChoices::Text(names)
+            }
+            AppSettingsEntryId::VideoRenderer => {
+                let values = bmz_render::available_wgpu_backends()
+                    .into_iter()
+                    .map(|backend| match backend {
+                        bmz_render::WgpuBackend::Auto => {
+                            crate::config::app_config::RendererBackend::Auto
+                        }
+                        bmz_render::WgpuBackend::Vulkan => {
+                            crate::config::app_config::RendererBackend::Vulkan
+                        }
+                        bmz_render::WgpuBackend::Metal => {
+                            crate::config::app_config::RendererBackend::Metal
+                        }
+                        bmz_render::WgpuBackend::Dx12 => {
+                            crate::config::app_config::RendererBackend::Dx12
+                        }
+                        bmz_render::WgpuBackend::Gl => {
+                            crate::config::app_config::RendererBackend::Gl
+                        }
+                    })
+                    .collect();
+                AppSettingsChoices::Renderers(values)
+            }
+            _ => AppSettingsChoices::None,
+        }
     }
 
     pub(super) fn cancel_settings_edit(&mut self) {
         let Some(session) = self.select.settings_edit.take() else {
             return;
         };
-        let entry_id = session.entry_id;
-        let score_context_before = SelectScoreContext::from_profile(&self.boot.profile_config);
-        session.restore(&mut self.boot.profile_config);
-        self.sync_select_settings_from_profile_if_needed(entry_id);
-        self.sync_changed_select_score_context(score_context_before);
+        match session {
+            SelectSettingsEditSession::Profile(session) => {
+                let entry_id = session.entry_id;
+                let score_context_before =
+                    SelectScoreContext::from_profile(&self.boot.profile_config);
+                session.restore(&mut self.boot.profile_config);
+                self.sync_select_settings_from_profile_if_needed(entry_id);
+                self.sync_changed_select_score_context(score_context_before);
+                tracing::info!(?entry_id, "settings edit cancelled");
+            }
+            SelectSettingsEditSession::App(session) => {
+                let entry_id = session.entry_id;
+                session.restore(&mut self.boot.app_config);
+                tracing::info!(?entry_id, "app settings edit cancelled");
+            }
+        }
         self.play_system_sound(crate::system_sound::SoundType::FolderClose);
-        tracing::info!(?entry_id, "settings edit cancelled");
     }
 
     pub(super) fn commit_settings_edit(&mut self) {
         let Some(session) = self.select.settings_edit.take() else {
             return;
         };
+        match session {
+            SelectSettingsEditSession::Profile(session) => {
+                self.commit_profile_settings_edit(session);
+            }
+            SelectSettingsEditSession::App(session) => {
+                self.commit_app_settings_edit(session);
+            }
+        }
+    }
+
+    fn commit_profile_settings_edit(&mut self, session: SettingsEditSession) {
         let entry_id = session.entry_id;
         self.boot.profile_config.updated_at = now_unix_seconds();
         match save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
@@ -205,6 +308,46 @@ impl WinitApp {
                 self.sync_select_settings_from_profile_if_needed(entry_id);
                 self.sync_changed_select_score_context(score_context_before);
             }
+        }
+    }
+
+    fn commit_app_settings_edit(&mut self, session: AppSettingsEditSession) {
+        let entry_id = session.entry_id;
+        match save_app_config(&self.boot.app_paths.config_toml, &self.boot.app_config) {
+            Ok(()) => {
+                if !entry_id.is_audio() {
+                    let window = self.window.clone();
+                    if let Some(window) = window {
+                        self.apply_egui_video_config(&window);
+                    }
+                }
+                self.reload_select_items();
+                self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+                tracing::info!(?entry_id, "app settings edit saved");
+            }
+            Err(error) => {
+                tracing::error!(%error, ?entry_id, "failed to save app settings");
+                session.restore(&mut self.boot.app_config);
+            }
+        }
+    }
+
+    pub(super) fn apply_select_audio_settings(&mut self) {
+        if let Err(error) = save_app_config(&self.boot.app_paths.config_toml, &self.boot.app_config)
+        {
+            tracing::error!(%error, "failed to save audio settings before apply");
+            let text = Localizer::new(self.boot.profile_config.ui.locale());
+            self.show_left_overlay_toast(text.text("settings-audio-apply-failed"));
+            return;
+        }
+        let applied = self.reopen_audio_output();
+        self.reload_select_items();
+        let text = Localizer::new(self.boot.profile_config.ui.locale());
+        if applied {
+            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+            self.show_left_overlay_toast(text.text("settings-audio-apply-success"));
+        } else {
+            self.show_left_overlay_toast(text.text("settings-audio-apply-failed"));
         }
     }
 
@@ -235,20 +378,11 @@ impl WinitApp {
             return;
         };
         let target = session.target;
-        self.suppress_select_analog_until_idle();
-        self.boot.profile_config.updated_at = now_unix_seconds();
-        match save_profile_config(&self.boot.profile_paths.profile_toml, &self.boot.profile_config)
-        {
-            Ok(()) => {
-                self.select.select_keys =
-                    SelectKeyBindings::from_profile(&self.boot.profile_config.input);
-                self.play_system_sound(crate::system_sound::SoundType::OptionChange);
-                tracing::info!(?target, "key config saved");
-            }
-            Err(error) => {
-                tracing::error!(%error, ?target, "failed to save key config");
-                session.cancel(&mut self.boot.profile_config);
-            }
+        if self.persist_key_config_edit_session(&session) {
+            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+            tracing::info!(?target, "key config saved");
+        } else {
+            self.suppress_select_analog_until_idle();
         }
     }
 
@@ -319,14 +453,32 @@ impl WinitApp {
         let Some(session) = self.select.settings_edit.as_ref() else {
             return;
         };
-        let entry_id = session.entry_id;
-        let delta = direction * crate::config::settings_registry::settings_adjust_step(entry_id);
-        let score_context_before = SelectScoreContext::from_profile(&self.boot.profile_config);
-        if adjust_settings_draft(&mut self.boot.profile_config, session, delta) {
-            self.sync_select_settings_from_profile_if_needed(entry_id);
-            self.sync_changed_select_score_context(score_context_before);
-            self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+        let profile_entry = match session {
+            SelectSettingsEditSession::Profile(session) => Some(session.entry_id),
+            SelectSettingsEditSession::App(_) => None,
+        };
+        let score_context_before =
+            profile_entry.map(|_| SelectScoreContext::from_profile(&self.boot.profile_config));
+        let changed = match session {
+            SelectSettingsEditSession::Profile(session) => {
+                let delta = direction
+                    * crate::config::settings_registry::settings_adjust_step(session.entry_id);
+                adjust_settings_draft(&mut self.boot.profile_config, session, delta)
+            }
+            SelectSettingsEditSession::App(session) => {
+                session.adjust(&mut self.boot.app_config, direction)
+            }
+        };
+        if !changed {
+            return;
         }
+        if let Some(entry_id) = profile_entry {
+            self.sync_select_settings_from_profile_if_needed(entry_id);
+            self.sync_changed_select_score_context(
+                score_context_before.expect("profile edit captured score context"),
+            );
+        }
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
     }
 
     pub(super) fn sync_select_settings_from_profile_if_needed(
@@ -352,6 +504,14 @@ impl WinitApp {
         }
         if SettingsEntryId::VOLUME_ENTRIES.contains(&entry_id) {
             self.sync_realtime_profile_settings();
+        }
+        if entry_id == SettingsEntryId::Language {
+            self.reload_select_items();
+        }
+        if entry_id == SettingsEntryId::ShowFps
+            && let Some(egui) = self.ui.egui.as_mut()
+        {
+            egui.set_show_fps(self.boot.profile_config.ui.show_fps);
         }
     }
 
@@ -385,10 +545,12 @@ impl WinitApp {
         &mut self,
         entry_id: SettingsEntryId,
     ) {
-        if !SettingsEntryId::PLAY_ENTRIES.contains(&entry_id) {
+        if !entry_id.is_play_setting() {
             return;
         }
         self.sync_select_play_options_from_profile();
+        self.invalidate_play_preload();
+        self.play.play_media_cache = None;
     }
 
     pub(super) fn sync_select_play_options_from_profile(&mut self) {
@@ -514,6 +676,10 @@ impl WinitApp {
                     self.begin_settings_edit(row.entry_id);
                     true
                 }
+                Some(SelectItem::AppConfig(row)) => {
+                    self.begin_app_settings_edit(row.entry_id);
+                    true
+                }
                 Some(SelectItem::KeyBinding(row)) => {
                     self.begin_key_config_edit(row.key_mode, row.target);
                     true
@@ -528,6 +694,10 @@ impl WinitApp {
                 }
                 Some(SelectItem::AdvancedSettings) => {
                     self.open_advanced_settings_from_select();
+                    true
+                }
+                Some(SelectItem::ApplyAudioSettings) => {
+                    self.apply_select_audio_settings();
                     true
                 }
                 _ => false,
@@ -607,6 +777,17 @@ impl WinitApp {
             true
         } else if self.select.select_keys.is_ui_key6(control) {
             self.select.double_option = self.select.double_option.cycle();
+            if matches!(
+                self.select.double_option,
+                DoubleOption::Battle | DoubleOption::BattleAutoScratch
+            ) && self.boot.profile_config.play.key_mode_conversion
+                != KeyModeConversionConfig::Off
+            {
+                self.boot.profile_config.play.key_mode_conversion = KeyModeConversionConfig::Off;
+                self.boot.profile_config.updated_at = now_unix_seconds();
+                self.invalidate_play_preload();
+                self.play.play_media_cache = None;
+            }
             tracing::info!(
                 double_option = self.select.double_option.as_str(),
                 "double option changed"
@@ -813,6 +994,13 @@ impl WinitApp {
                 SelectAction::ExitFolder => {
                     self.close_select_ir_battle();
                 }
+                SelectAction::OpenFolder => self.handle_select_open_folder_action(),
+                SelectAction::Reload => self.reload_from_select_context(),
+                SelectAction::AutoplayFolder => self.start_autoplay_folder_selected(),
+                SelectAction::OpenPrimaryIr => self.open_primary_ir_for_selected(),
+                SelectAction::OpenKeyConfig => self.execute_select_skin_event(13, 0),
+                SelectAction::CycleRival => self.cycle_active_rival(1),
+                SelectAction::OpenDocuments => self.open_selected_chart_documents(),
                 SelectAction::Move(select_move) => {
                     self.move_selection(select_move);
                     if matches!(
@@ -829,6 +1017,9 @@ impl WinitApp {
                 SelectAction::FavoriteSong
                 | SelectAction::FavoriteChart
                 | SelectAction::SameFolder
+                | SelectAction::ModeFilter
+                | SelectAction::Sort
+                | SelectAction::LnMode
                 | SelectAction::DifficultyFilter
                 | SelectAction::ReplayCycle
                 | SelectAction::ReplayPlay => {}
@@ -838,9 +1029,19 @@ impl WinitApp {
         match action {
             SelectAction::EnterOrPlay => self.enter_or_play_selected(),
             SelectAction::ExitFolder => self.exit_folder(),
+            SelectAction::OpenFolder => self.handle_select_open_folder_action(),
+            SelectAction::Reload => self.reload_from_select_context(),
+            SelectAction::AutoplayFolder => self.start_autoplay_folder_selected(),
+            SelectAction::OpenPrimaryIr => self.open_primary_ir_for_selected(),
+            SelectAction::OpenKeyConfig => self.execute_select_skin_event(13, 0),
+            SelectAction::CycleRival => self.cycle_active_rival(1),
+            SelectAction::OpenDocuments => self.open_selected_chart_documents(),
             SelectAction::FavoriteSong => self.toggle_favorite_song_selected(),
             SelectAction::FavoriteChart => self.toggle_favorite_chart_selected(),
             SelectAction::SameFolder => self.open_same_folder_for_selected(),
+            SelectAction::ModeFilter => self.cycle_select_mode_filter(1),
+            SelectAction::Sort => self.cycle_select_sort(1),
+            SelectAction::LnMode => self.cycle_select_ln_mode(1),
             SelectAction::DifficultyFilter => self.cycle_select_difficulty_filter(1),
             SelectAction::ReplayCycle => {
                 self.cycle_selected_replay_slot(1);

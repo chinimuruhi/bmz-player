@@ -85,6 +85,7 @@ pub(super) fn push_play_bar_line(
         append_skin_render_items(commands, &items);
     }
     apply_bar_line_alpha_offset(&mut commands[start..], skin_offsets);
+    apply_draw_command_alpha(&mut commands[start..], bar.alpha);
 }
 
 pub(super) fn push_play_aux_lines(
@@ -97,14 +98,16 @@ pub(super) fn push_play_aux_lines(
     lift: f32,
     skin_offsets: &SkinOffsetValues,
 ) {
-    if snapshot.practice_mode {
+    if snapshot.practice_preview {
         for line in &snapshot.time_lines {
             push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
                 skin.document_time_line_items(y, key_mode, skin_state)
             });
         }
     }
-    if snapshot.practice_mode || snapshot.bpm_guide {
+    let show_timing_guides =
+        snapshot.practice_preview || (snapshot.bpm_guide && !snapshot.practice_mode);
+    if show_timing_guides {
         for line in &snapshot.bpm_lines {
             push_play_aux_line(commands, skin, skin_state, line, skin_offsets, |skin, y| {
                 skin.document_bpm_line_items(y, key_mode, skin_state)
@@ -149,6 +152,8 @@ fn push_bpm_guide_label(
         caret: None,
         post_scale: Point { x: 1.0, y: 1.0 },
     });
+    let start = commands.len() - 1;
+    apply_draw_command_alpha(&mut commands[start..], line.alpha);
 }
 
 pub(super) fn push_judge_area(
@@ -219,6 +224,36 @@ pub(super) fn push_play_aux_line(
     let items = skin.apply_play_skin_global_offset(render(skin, line.y), skin_state);
     append_skin_render_items(commands, &items);
     apply_bar_line_alpha_offset(&mut commands[start..], skin_offsets);
+    apply_draw_command_alpha(&mut commands[start..], line.alpha);
+}
+
+pub(super) fn apply_draw_command_alpha(commands: &mut [DrawCommand], alpha: f32) {
+    let alpha = alpha.clamp(0.0, 1.0);
+    for command in commands {
+        match command {
+            DrawCommand::Image { tint, .. } | DrawCommand::RotatedImage { tint, .. } => {
+                tint.a *= alpha;
+            }
+            DrawCommand::Rect { color, .. } => color.a *= alpha,
+            DrawCommand::RectBatch { rects, .. } => {
+                for rect in Arc::make_mut(rects) {
+                    rect.color.a *= alpha;
+                }
+            }
+            DrawCommand::Text { style, caret, .. } => {
+                style.color.a *= alpha;
+                if let Some(outline) = &mut style.outline {
+                    outline.color.a *= alpha;
+                }
+                if let Some(shadow) = &mut style.shadow {
+                    shadow.color.a *= alpha;
+                }
+                if let Some(caret) = caret {
+                    caret.color.a *= alpha;
+                }
+            }
+        }
+    }
 }
 
 /// beatoraja `SkinObject.prepareColor` 相当。小節線コマンド列に alpha offset を加算する。
@@ -269,4 +304,51 @@ pub(super) fn judge_line_y(board: Rect, lift: f32) -> f32 {
     let lift_offset = lift.clamp(0.0, 1.0) * board.height;
     let raw = board.y + board.height * JUDGE_LINE_Y_RATIO - lift_offset;
     raw.max(board.y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bpm_snapshot(
+        practice_mode: bool,
+        practice_preview: bool,
+        bpm_guide: bool,
+    ) -> RenderSnapshot {
+        RenderSnapshot {
+            practice_mode,
+            practice_preview,
+            bpm_guide,
+            bpm_lines: vec![crate::snapshot::VisibleBarLine {
+                time: bmz_core::time::TimeUs(1_000_000),
+                y: 0.5,
+                alpha: 1.0,
+                label: "BPM180".to_string(),
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn aux_line_commands(snapshot: &RenderSnapshot) -> Vec<DrawCommand> {
+        let mut commands = Vec::new();
+        push_play_aux_lines(
+            &mut commands,
+            &SkinContext::default(),
+            &crate::skin::SkinDrawState::default(),
+            snapshot,
+            KeyMode::K7,
+            Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+            0.0,
+            &SkinOffsetValues::default(),
+        );
+        commands
+    }
+
+    #[test]
+    fn practice_guides_are_hidden_during_the_round() {
+        assert!(aux_line_commands(&bpm_snapshot(true, false, false)).is_empty());
+        assert!(aux_line_commands(&bpm_snapshot(true, false, true)).is_empty());
+        assert!(!aux_line_commands(&bpm_snapshot(true, true, false)).is_empty());
+        assert!(!aux_line_commands(&bpm_snapshot(false, false, true)).is_empty());
+    }
 }

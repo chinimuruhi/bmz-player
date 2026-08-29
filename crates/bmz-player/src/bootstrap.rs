@@ -85,7 +85,12 @@ impl BootstrappedApp {
 
 pub fn bootstrap() -> Result<BootstrappedApp> {
     let app_paths = resolve_app_paths()?;
-    app_paths.ensure_dirs()?;
+    bootstrap_with_paths(app_paths)
+}
+
+/// 起動前loggerと同じ解決済みpathを使って通常bootstrapを行う。
+pub fn bootstrap_with_paths(app_paths: AppPaths) -> Result<BootstrappedApp> {
+    app_paths.ensure_required_dirs()?;
 
     let mut app_config = load_or_create_app_config(&app_paths)?;
     if let Some(sample_root) = bundled_sample_song_root(&app_paths) {

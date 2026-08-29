@@ -80,6 +80,20 @@ impl MixerState {
         }
     }
 
+    pub fn apply_playback_rate_change(&mut self, change: crate::clock::PlaybackRateChange) {
+        self.playback_rate = f64::from(change.new_rate_percent) / 100.0;
+        for voice in &mut self.voices {
+            if !voice.started {
+                voice.sound.start_frame =
+                    crate::queue::retime_output_frame(voice.sound.start_frame, change);
+                voice.next_output_frame = voice.sound.start_frame;
+            }
+            if let Some(stop_at_frame) = voice.stop_at_frame.as_mut() {
+                *stop_at_frame = crate::queue::retime_output_frame(*stop_at_frame, change);
+            }
+        }
+    }
+
     pub fn stop_sound_with_fade_out(&mut self, id: bmz_core::ids::SoundId, fade_out_frames: u32) {
         if fade_out_frames == 0 {
             self.voices.retain(|voice| voice.sound.sound_id != id);

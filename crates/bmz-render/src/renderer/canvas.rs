@@ -212,7 +212,7 @@ impl CanvasViewport {
     }
 
     pub(super) fn transform_text_instances(self, instances: &mut [u8]) {
-        for instance in instances.chunks_exact_mut(TEXT_INSTANCE_BYTES) {
+        for instance in instances.as_chunks_mut::<TEXT_INSTANCE_BYTES>().0 {
             let x = f32::from_le_bytes(instance[0..4].try_into().unwrap());
             let y = f32::from_le_bytes(instance[4..8].try_into().unwrap());
             let width = f32::from_le_bytes(instance[8..12].try_into().unwrap());

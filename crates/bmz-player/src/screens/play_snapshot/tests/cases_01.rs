@@ -198,15 +198,15 @@ fn simple_scroll_time_line_range_handles_stop_tick_boundaries() {
 }
 
 #[test]
-fn fast_slow_filter_suppresses_timing_ms_only_for_threshold_scope() {
+fn fast_slow_filter_applies_threshold_only_to_pgreat() {
     use crate::config::profile_config::FastSlowDisplayScope;
-    let judgement = |judge, delta_us| {
+    let judgement = |judge, side, delta_us| {
         display_judgement(
             &JudgementEvent {
                 note_id: Some(NoteId(1)),
                 lane: Lane::Key1,
                 judge,
-                side: TimingSide::Fast,
+                side,
                 delta: TimeUs(delta_us),
                 time: TimeUs(1_000),
                 affects_score: true,
@@ -215,27 +215,54 @@ fn fast_slow_filter_suppresses_timing_ms_only_for_threshold_scope() {
         )
     };
 
-    // ThresholdMs: 閾値内 (|delta| < 5ms) は side だけでなく ±ms 表示も隠す。
+    // ThresholdMs: 閾値内の PGREAT は side だけでなく ±ms 表示も隠す。
     let mut snapshot = RenderSnapshot {
-        recent_judgements: vec![judgement(Judge::Great, -2_000)],
+        recent_judgements: vec![judgement(Judge::PGreat, TimingSide::Fast, -4_999)],
         ..RenderSnapshot::default()
     };
     apply_fast_slow_display_filter(&mut snapshot, 5, FastSlowDisplayScope::ThresholdMs);
     assert_eq!(snapshot.recent_judgements[0].side, None);
+    assert_eq!(snapshot.recent_judgements[0].text, "PGREAT");
     assert!(snapshot.recent_judgements[0].timing_ms_suppressed);
 
-    // ThresholdMs: 閾値外は両方表示。
+    // ThresholdMs: 閾値ちょうどの PGREAT は両方表示。
     let mut snapshot = RenderSnapshot {
-        recent_judgements: vec![judgement(Judge::Great, -8_000)],
+        recent_judgements: vec![judgement(Judge::PGreat, TimingSide::Fast, -5_000)],
         ..RenderSnapshot::default()
     };
     apply_fast_slow_display_filter(&mut snapshot, 5, FastSlowDisplayScope::ThresholdMs);
     assert_eq!(snapshot.recent_judgements[0].side, Some(TimingSide::Fast));
+    assert_eq!(snapshot.recent_judgements[0].text, "PGREAT FAST");
     assert!(!snapshot.recent_judgements[0].timing_ms_suppressed);
+
+    // ThresholdMs: GREAT 以下は閾値内でも FAST/SLOW と ±ms 表示を保持する。
+    for (judge, side, delta_us) in [
+        (Judge::Great, TimingSide::Fast, -2_000),
+        (Judge::Good, TimingSide::Slow, 2_000),
+        (Judge::Bad, TimingSide::Fast, -2_000),
+        (Judge::Poor, TimingSide::Slow, 2_000),
+        (Judge::EmptyPoor, TimingSide::Fast, -2_000),
+    ] {
+        let mut snapshot = RenderSnapshot {
+            recent_judgements: vec![judgement(judge, side, delta_us)],
+            ..RenderSnapshot::default()
+        };
+        apply_fast_slow_display_filter(&mut snapshot, 5, FastSlowDisplayScope::ThresholdMs);
+        assert_eq!(snapshot.recent_judgements[0].side, Some(side), "judge={judge:?}");
+        assert!(!snapshot.recent_judgements[0].timing_ms_suppressed, "judge={judge:?}");
+        assert!(
+            snapshot.recent_judgements[0].text.ends_with(match side {
+                TimingSide::Fast => " FAST",
+                TimingSide::Slow => " SLOW",
+            }),
+            "judge={judge:?} text={}",
+            snapshot.recent_judgements[0].text
+        );
+    }
 
     // Auto: 通常プレイの PGREAT は side を隠すが ±ms 表示は beatoraja 準拠で隠さない。
     let mut snapshot = RenderSnapshot {
-        recent_judgements: vec![judgement(Judge::PGreat, -2_000)],
+        recent_judgements: vec![judgement(Judge::PGreat, TimingSide::Fast, -2_000)],
         ..RenderSnapshot::default()
     };
     apply_fast_slow_display_filter(&mut snapshot, 5, FastSlowDisplayScope::Auto);
@@ -245,7 +272,7 @@ fn fast_slow_filter_suppresses_timing_ms_only_for_threshold_scope() {
     // Replay でも Auto は GREAT 以下表示として扱い、PGREAT side は隠す。
     let mut replay_snapshot = RenderSnapshot {
         replay_playback: true,
-        recent_judgements: vec![judgement(Judge::PGreat, -2_000)],
+        recent_judgements: vec![judgement(Judge::PGreat, TimingSide::Fast, -2_000)],
         ..RenderSnapshot::default()
     };
     apply_fast_slow_display_filter(&mut replay_snapshot, 5, FastSlowDisplayScope::Auto);
@@ -255,7 +282,7 @@ fn fast_slow_filter_suppresses_timing_ms_only_for_threshold_scope() {
     // ThresholdMs + 0ms は全判定表示なので、リプレイ PGREAT の FAST/SLOW も保持する。
     let mut replay_all_snapshot = RenderSnapshot {
         replay_playback: true,
-        recent_judgements: vec![judgement(Judge::PGreat, -2_000)],
+        recent_judgements: vec![judgement(Judge::PGreat, TimingSide::Fast, -2_000)],
         ..RenderSnapshot::default()
     };
     apply_fast_slow_display_filter(&mut replay_all_snapshot, 0, FastSlowDisplayScope::ThresholdMs);
@@ -282,6 +309,10 @@ fn bga_texture_ids_do_not_overlap_beatoraja_skin_ranges() {
 fn display_duration_uses_current_bpm_and_absolute_lane_range() {
     assert_eq!(display_duration_ms_for_bpm_hispeed(120.0, 1.0, 0.0, 0.0, 1.0).round() as i32, 2000);
     assert_eq!(display_duration_ms_for_bpm_hispeed(240.0, 1.0, 0.0, 0.0, 1.0).round() as i32, 1000);
+    assert_eq!(
+        display_duration_ms_for_bpm_hispeed(0.96, 1.0, 0.0, 0.0, 1.0).round() as i32,
+        250_000
+    );
     assert_eq!(display_duration_ms_for_bpm_hispeed(88.0, 2.75, 0.0, 0.0, 1.0).round() as i32, 992);
     assert_eq!(display_duration_ms_for_bpm_hispeed(88.0, 2.75, 0.59, 0.0, 1.0).round() as i32, 407);
     assert_eq!(
@@ -289,6 +320,17 @@ fn display_duration_uses_current_bpm_and_absolute_lane_range() {
         1100
     );
     assert_eq!(display_duration_ms_for_bpm_hispeed(120.0, 1.0, 0.0, 0.0, 2.0).round() as i32, 1000);
+    assert_eq!(
+        display_duration_ms_for_bpm_hispeed(
+            effective_bpm_for_playback_rate(120.0, 200) as f32,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+        .round() as i32,
+        1000
+    );
 }
 
 #[test]

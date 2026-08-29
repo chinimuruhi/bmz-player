@@ -25,6 +25,7 @@ pub struct SkinDrawState {
     pub rhythm_timer_ms: Option<i32>,
     pub quarter_note_elapsed_ms: Option<i32>,
     pub key_mode: KeyMode,
+    pub skin_attempt: SkinAttemptState,
     pub select_bar_elapsed_ms: i32,
     pub select_option_panel_elapsed_ms: i32,
     pub select_option_panel_off_elapsed_ms: [Option<i32>; 6],
@@ -44,10 +45,16 @@ pub struct SkinDrawState {
     /// Resultでは互換値、Play/SelectではBMZ拡張として、現在または開始予定の
     /// 固定レーン配置を画面共通で公開する。
     pub random_lane_refs: [u8; SKIN_RANDOM_LANE_REF_COUNT],
-    /// Resultで実効譜面にLNが含まれるか。NoneはResult以外。
-    pub result_has_long_notes: Option<bool>,
+    /// 現在対象の譜面にLNが含まれるか。Noneは譜面未選択・未確定。
+    pub chart_has_long_notes: Option<bool>,
     /// Resultの実効LN種別imageset index (0=LN, 1=CN, 2=HCN)。
     pub result_ln_mode_index: Option<usize>,
+    /// BMZ extension: frozen scoring rule mode (0=BEATORAJA, 1=LR2ORAJA, 2=DX).
+    pub rule_mode_index: usize,
+    /// BMZ extension: Select profile LN setting before chart normalization.
+    pub ln_policy_setting_index: Option<usize>,
+    /// BMZ extension: chart/attempt score-key LN policy after normalization.
+    pub ln_score_policy_index: Option<usize>,
     pub select_gauge_index: usize,
     pub select_gauge_auto_shift_index: usize,
     pub select_bottom_shiftable_gauge_index: usize,
@@ -59,8 +66,10 @@ pub struct SkinDrawState {
     pub assist_mine_mode: i64,
     pub assist_scroll_mode: i64,
     pub assist_long_note_mode: i64,
+    pub guide_se_enabled: bool,
+    pub constant_enabled: bool,
     /// BMZ extension: exact select session mode index.
-    /// 0=NORMAL, 1=AUTOPLAY, 2=AUTO BATTLE, 3=BATTLE.
+    /// 0=NORMAL, 1=PRACTICE, 2=AUTOPLAY, 3=AUTO BATTLE, 4=G-BATTLE.
     pub select_session_mode_index: usize,
     pub select_mode_index: usize,
     pub select_difficulty_filter_index: usize,
@@ -315,6 +324,8 @@ pub struct SkinDrawState {
     pub keylogger_event_ms: [[Option<i32>; 16]; LANE_COUNT],
     pub keylogger_event_judge: [[u8; 16]; LANE_COUNT],
     pub keylogger_event_fast_slow: [[u8; 16]; LANE_COUNT],
+    /// display lane別のチャタリング警告開始時刻からの経過ms。
+    pub keylogger_chattering_ms: [Option<i32>; LANE_COUNT],
     pub keylogger_exclude_cool: bool,
     /// 過去ベスト max combo (ref 172)。
     pub best_max_combo: Option<u32>,
@@ -433,6 +444,7 @@ impl Default for SkinDrawState {
             rhythm_timer_ms: None,
             quarter_note_elapsed_ms: None,
             key_mode: KeyMode::default(),
+            skin_attempt: SkinAttemptState::default(),
             select_bar_elapsed_ms: 0,
             select_option_panel_elapsed_ms: 0,
             select_option_panel_off_elapsed_ms: [None; 6],
@@ -448,8 +460,11 @@ impl Default for SkinDrawState {
             result_extended_arrange_index: 0,
             result_extended_arrange_2p_index: 0,
             random_lane_refs: [0; SKIN_RANDOM_LANE_REF_COUNT],
-            result_has_long_notes: None,
+            chart_has_long_notes: None,
             result_ln_mode_index: None,
+            rule_mode_index: 0,
+            ln_policy_setting_index: None,
+            ln_score_policy_index: None,
             select_gauge_index: 2,
             select_gauge_auto_shift_index: 0,
             select_bottom_shiftable_gauge_index: 0,
@@ -461,6 +476,8 @@ impl Default for SkinDrawState {
             assist_mine_mode: 0,
             assist_scroll_mode: 0,
             assist_long_note_mode: 0,
+            guide_se_enabled: false,
+            constant_enabled: false,
             select_session_mode_index: 0,
             select_mode_index: 0,
             select_difficulty_filter_index: 0,
@@ -603,6 +620,7 @@ impl Default for SkinDrawState {
             keylogger_event_ms: [[None; 16]; LANE_COUNT],
             keylogger_event_judge: [[0; 16]; LANE_COUNT],
             keylogger_event_fast_slow: [[0; 16]; LANE_COUNT],
+            keylogger_chattering_ms: [None; LANE_COUNT],
             keylogger_exclude_cool: false,
             best_max_combo: None,
             target_max_combo: None,

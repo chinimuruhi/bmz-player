@@ -1,19 +1,201 @@
 use super::*;
+use crate::app::play_flow_practice::{
+    PracticeGamepadAction, apply_session_mode_start_policy, practice_analog_cursor_delta,
+    practice_gamepad_action,
+};
 use crate::app::scene_state::playback_overlay_suffix;
 
 #[test]
-fn playback_overlay_suffix_distinguishes_all_modes() {
-    assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, false), None);
-    assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, false), Some("autoplay"));
-    assert_eq!(
-        playback_overlay_suffix(SessionMode::AutoplayBattle, true, false),
-        Some("auto battle")
+fn decide_launch_promotes_only_staged_practice_config() {
+    assert!(DecideLaunch::Play.into_practice_session().is_none());
+
+    let staged = PracticeSession {
+        chart_id: 42,
+        chart_title: "Practice".to_string(),
+        chart_sha256: [7; 32],
+        property: Default::default(),
+        phase: PracticePhase::Config,
+        max_end_time_ms: 120_000,
+        last_graph: Arc::new(Default::default()),
+        graph_start_time_ms: 0,
+        is_double: false,
+        cursor: 0,
+        preview_time_ms: None,
+        battle_target: None,
+    };
+    let promoted = DecideLaunch::practice(staged).into_practice_session().unwrap();
+
+    assert_eq!(promoted.chart_id, 42);
+    assert_eq!(promoted.phase, PracticePhase::Config);
+}
+
+#[test]
+fn decide_launch_keeps_large_practice_state_out_of_line() {
+    assert!(
+        std::mem::size_of::<DecideLaunch>() <= std::mem::size_of::<usize>() * 2,
+        "DecideLaunch should remain pointer-sized instead of embedding PracticeSession"
     );
 }
 
 #[test]
+fn battle_target_start_policy_preserves_every_session_mode() {
+    for session_mode in SessionMode::VALUES {
+        let mut options = PlayStartOptions {
+            session_mode,
+            battle_target: Some(crate::screens::play_start::BattleTarget {
+                provider: "test".to_string(),
+                score_id: "score".to_string(),
+                player_id: "player".to_string(),
+                player_name: "RIVAL".to_string(),
+                rank: 1,
+                ex_score: 1234,
+                gauge: None,
+                playback: crate::screens::play_start::BattleTargetPlayback::Seed {
+                    arrange: ArrangeOption::Normal,
+                    arrange_2p: ArrangeOption::Normal,
+                    double_option: DoubleOption::Off,
+                    packed_seed: None,
+                },
+            }),
+            ..Default::default()
+        };
+
+        apply_session_mode_start_policy(&mut options);
+
+        assert_eq!(options.session_mode, session_mode);
+        assert_eq!(options.autoplay, session_mode == SessionMode::AutoplayBattle);
+        assert_eq!(
+            options.resolved_target,
+            Some(ResolvedTarget { name: "RIVAL".to_string(), ex_score: 1234 })
+        );
+    }
+}
+
+fn practice_gamepad_test_input(key_mode: KeyMode) -> PlayOptionInput {
+    let entry =
+        |control: &str, lane, scratch_direction| bmz_gameplay::input::binding::BindingEntry {
+            device: None,
+            control: PhysicalControl::GamepadButton(control.to_string()),
+            lane,
+            scratch_direction,
+        };
+    PlayOptionInput {
+        key_mode,
+        binding: LaneBinding {
+            entries: vec![
+                entry("Button1", Lane::Key1, None),
+                entry("Button2", Lane::Key2, None),
+                entry("Button3", Lane::Key3, None),
+                entry("Button4", Lane::Key4, None),
+                entry("Axis1+", Lane::Scratch, Some(ScratchDirection::Down)),
+                entry("Axis1-", Lane::Scratch, Some(ScratchDirection::Up)),
+            ],
+        },
+        scratch_binding: LaneBinding { entries: Vec::new() },
+        action_bindings: Vec::new(),
+    }
+}
+
+#[test]
+fn practice_gamepad_uses_play_lanes_for_horizontal_controls() {
+    let input = practice_gamepad_test_input(KeyMode::K7);
+    let action = |button: &str| {
+        practice_gamepad_action(
+            DeviceId(16),
+            &PhysicalControl::GamepadButton(button.to_string()),
+            false,
+            Some(&input),
+        )
+    };
+
+    assert_eq!(action("Button1"), PracticeGamepadAction::Adjust(true));
+    assert_eq!(action("Button2"), PracticeGamepadAction::Adjust(false));
+    assert_eq!(action("Button3"), PracticeGamepadAction::Adjust(true));
+    assert_eq!(action("Button4"), PracticeGamepadAction::Adjust(false));
+    assert_eq!(action("Button9"), PracticeGamepadAction::Ignore);
+}
+
+#[test]
+fn practice_gamepad_scratch_moves_cursor_without_double_counting_analog_press() {
+    let input = practice_gamepad_test_input(KeyMode::K7);
+    let down = PhysicalControl::GamepadButton("Axis1+".to_string());
+    let up = PhysicalControl::GamepadButton("Axis1-".to_string());
+
+    assert_eq!(
+        practice_gamepad_action(DeviceId(16), &down, false, Some(&input)),
+        PracticeGamepadAction::Move(true)
+    );
+    assert_eq!(
+        practice_gamepad_action(DeviceId(16), &up, false, Some(&input)),
+        PracticeGamepadAction::Move(false)
+    );
+    assert_eq!(
+        practice_gamepad_action(DeviceId(16), &down, true, Some(&input)),
+        PracticeGamepadAction::Ignore
+    );
+    assert_eq!(practice_analog_cursor_delta(DeviceId(16), "Axis1", 4, Some(&input)), Some(4));
+    assert_eq!(practice_analog_cursor_delta(DeviceId(16), "Axis1", -3, Some(&input)), Some(-3));
+}
+
+#[test]
+fn practice_gamepad_dp_normalizes_second_player_key_parity() {
+    let input = PlayOptionInput {
+        key_mode: KeyMode::K14,
+        binding: LaneBinding {
+            entries: vec![
+                bmz_gameplay::input::binding::BindingEntry {
+                    device: Some(DeviceId(17)),
+                    control: PhysicalControl::GamepadButton("Button1".to_string()),
+                    lane: Lane::Key8,
+                    scratch_direction: None,
+                },
+                bmz_gameplay::input::binding::BindingEntry {
+                    device: Some(DeviceId(17)),
+                    control: PhysicalControl::GamepadButton("Button2".to_string()),
+                    lane: Lane::Key9,
+                    scratch_direction: None,
+                },
+            ],
+        },
+        scratch_binding: LaneBinding { entries: Vec::new() },
+        action_bindings: Vec::new(),
+    };
+
+    assert_eq!(
+        practice_gamepad_action(
+            DeviceId(17),
+            &PhysicalControl::GamepadButton("Button1".to_string()),
+            false,
+            Some(&input),
+        ),
+        PracticeGamepadAction::Adjust(true)
+    );
+    assert_eq!(
+        practice_gamepad_action(
+            DeviceId(17),
+            &PhysicalControl::GamepadButton("Button2".to_string()),
+            false,
+            Some(&input),
+        ),
+        PracticeGamepadAction::Adjust(false)
+    );
+}
+
+#[test]
+fn playback_overlay_suffix_exposes_each_non_normal_session_mode() {
+    assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, false), None);
+    assert_eq!(playback_overlay_suffix(SessionMode::Practice, false, false), Some("PRACTICE"));
+    assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, false), Some("AUTOPLAY"));
+    assert_eq!(
+        playback_overlay_suffix(SessionMode::AutoplayBattle, true, false),
+        Some("AUTO BATTLE")
+    );
+    assert_eq!(playback_overlay_suffix(SessionMode::GBattle, false, false), Some("G-BATTLE"));
+}
+
+#[test]
 fn playback_overlay_suffix_uses_effective_playback_flags() {
-    assert_eq!(playback_overlay_suffix(SessionMode::Normal, true, false), Some("autoplay"));
+    assert_eq!(playback_overlay_suffix(SessionMode::Normal, true, false), Some("AUTOPLAY"));
     assert_eq!(playback_overlay_suffix(SessionMode::Normal, false, true), Some("replay"));
     assert_eq!(playback_overlay_suffix(SessionMode::Autoplay, true, true), Some("replay"));
 }
@@ -33,6 +215,34 @@ fn session_mode_profile_migrates_legacy_autoplay_and_persists_autoplay() {
     assert!(profile.play.auto_play);
     let serialized = toml::to_string(&profile).unwrap();
     assert!(serialized.contains(r#"session_mode = "Autoplay""#));
+}
+
+#[test]
+fn session_mode_profile_persists_practice_without_legacy_autoplay() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut options = select_play_options_from_profile(&profile.play);
+    options.session_mode = SessionMode::Practice;
+
+    apply_current_play_options_to_profile(&mut profile, None, None, options, 2);
+
+    assert_eq!(profile.play.session_mode, Some(SessionMode::Practice));
+    assert!(!profile.play.auto_play);
+    let serialized = toml::to_string(&profile).unwrap();
+    assert!(serialized.contains(r#"session_mode = "Practice""#));
+}
+
+#[test]
+fn session_mode_profile_persists_g_battle_without_legacy_autoplay() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut options = select_play_options_from_profile(&profile.play);
+    options.session_mode = SessionMode::GBattle;
+
+    apply_current_play_options_to_profile(&mut profile, None, None, options, 2);
+
+    assert_eq!(profile.play.session_mode, Some(SessionMode::GBattle));
+    assert!(!profile.play.auto_play);
+    let serialized = toml::to_string(&profile).unwrap();
+    assert!(serialized.contains(r#"session_mode = "GBattle""#));
 }
 
 #[test]

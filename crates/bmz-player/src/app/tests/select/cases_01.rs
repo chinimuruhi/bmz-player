@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::profile_config::BindingConfigEntry;
 
 #[test]
 fn operating_time_is_applied_to_select_snapshot() {
@@ -308,6 +309,22 @@ fn select_action_maps_configured_lane_keys() {
 #[test]
 fn select_action_maps_collection_keys() {
     let keys = default_select_keys();
+    for (key, expected) in [
+        (KeyCode::Digit1, SelectAction::ModeFilter),
+        (KeyCode::Digit2, SelectAction::Sort),
+        (KeyCode::Digit3, SelectAction::LnMode),
+        (KeyCode::Digit4, SelectAction::ReplayCycle),
+        (KeyCode::Numpad4, SelectAction::ReplayCycle),
+        (KeyCode::Digit8, SelectAction::SameFolder),
+        (KeyCode::Numpad8, SelectAction::SameFolder),
+        (KeyCode::Digit9, SelectAction::OpenDocuments),
+        (KeyCode::Numpad9, SelectAction::OpenDocuments),
+    ] {
+        assert_eq!(
+            select_action(PhysicalKey::Code(key), ElementState::Pressed, false, &keys),
+            Some(expected),
+        );
+    }
     assert_eq!(
         select_action(PhysicalKey::Code(KeyCode::F8), ElementState::Pressed, false, &keys),
         Some(SelectAction::FavoriteSong)
@@ -317,17 +334,147 @@ fn select_action_maps_collection_keys() {
         Some(SelectAction::FavoriteChart)
     );
     assert_eq!(
-        select_action(PhysicalKey::Code(KeyCode::Numpad8), ElementState::Pressed, false, &keys),
-        Some(SelectAction::SameFolder)
-    );
-    assert_eq!(
-        select_action(PhysicalKey::Code(KeyCode::Numpad4), ElementState::Pressed, false, &keys),
-        Some(SelectAction::ReplayCycle)
-    );
-    assert_eq!(
         select_action(PhysicalKey::Code(KeyCode::Numpad5), ElementState::Pressed, false, &keys),
         Some(SelectAction::ReplayPlay)
     );
+}
+
+#[test]
+fn select_action_maps_configurable_shortcuts() {
+    let keys = default_select_keys();
+    for (key, expected) in [
+        (KeyCode::F3, SelectAction::OpenFolder),
+        (KeyCode::F5, SelectAction::Reload),
+        (KeyCode::F10, SelectAction::AutoplayFolder),
+        (KeyCode::F11, SelectAction::OpenPrimaryIr),
+        (KeyCode::Digit6, SelectAction::OpenKeyConfig),
+        (KeyCode::Digit7, SelectAction::CycleRival),
+        (KeyCode::Numpad7, SelectAction::CycleRival),
+        (KeyCode::Numpad9, SelectAction::OpenDocuments),
+    ] {
+        assert_eq!(
+            select_action(PhysicalKey::Code(key), ElementState::Pressed, false, &keys),
+            Some(expected),
+        );
+    }
+    assert!(keys.is_screenshot("F12"));
+}
+
+#[test]
+fn configurable_key_config_shortcut_replaces_digit_six() {
+    let mut input = crate::config::play_input::default_profile_input();
+    apply_play_binding(
+        &mut input,
+        KeyMode::K7,
+        KeyBindingTarget::Action {
+            action: InputActionConfig::SelectOpenKeyConfig,
+            slot: KeyBindingSlot::KeyboardPrimary,
+        },
+        "A",
+    )
+    .unwrap();
+    let keys = SelectKeyBindings::from_profile(&input);
+
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::KeyA), ElementState::Pressed, false, &keys),
+        Some(SelectAction::OpenKeyConfig),
+    );
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::Digit6), ElementState::Pressed, false, &keys),
+        None,
+    );
+}
+
+#[test]
+fn configurable_select_shortcut_replaces_its_default_key() {
+    let mut input = crate::config::play_input::default_profile_input();
+    apply_play_binding(
+        &mut input,
+        KeyMode::K7,
+        KeyBindingTarget::Action {
+            action: InputActionConfig::SelectOpenFolder,
+            slot: KeyBindingSlot::KeyboardPrimary,
+        },
+        "A",
+    )
+    .unwrap();
+    let keys = SelectKeyBindings::from_profile(&input);
+
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::KeyA), ElementState::Pressed, false, &keys),
+        Some(SelectAction::OpenFolder),
+    );
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::F3), ElementState::Pressed, false, &keys),
+        None,
+    );
+}
+
+#[test]
+fn configurable_mode_filter_shortcut_replaces_digit_one() {
+    let mut input = crate::config::play_input::default_profile_input();
+    apply_play_binding(
+        &mut input,
+        KeyMode::K7,
+        KeyBindingTarget::Action {
+            action: InputActionConfig::SelectModeFilter,
+            slot: KeyBindingSlot::KeyboardPrimary,
+        },
+        "A",
+    )
+    .unwrap();
+    let keys = SelectKeyBindings::from_profile(&input);
+
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::KeyA), ElementState::Pressed, false, &keys),
+        Some(SelectAction::ModeFilter),
+    );
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::Digit1), ElementState::Pressed, false, &keys),
+        None,
+    );
+}
+
+#[test]
+fn primary_ir_page_url_uses_provider_specific_course_hash() {
+    let identity = PrimaryIrPageIdentity::Course {
+        canonical_hash: Some("canonical".to_string()),
+        rian_hash_v1: Some("rian".to_string()),
+    };
+    let mut generic = crate::config::profile_config::IrProviderConfig::custom();
+    generic.base_url = "https://ir.example.test/".to_string();
+    assert_eq!(
+        primary_ir_page_url(&generic, &identity).unwrap(),
+        "https://ir.example.test/courses/canonical"
+    );
+
+    let mut rian = crate::config::profile_config::IrProviderConfig::rian_ir();
+    rian.base_url = "https://rian.example.test".to_string();
+    let url = primary_ir_page_url(&rian, &identity).unwrap();
+    assert!(url.contains("rian"));
+    assert!(!url.contains("canonical"));
+}
+
+#[test]
+fn deprecated_select_enter_and_option_bga_bindings_are_ignored() {
+    let mut input = crate::config::play_input::default_profile_input();
+    for action in [InputActionConfig::SelectEnter, InputActionConfig::SelectOptionBga] {
+        input.ui.bindings.push(BindingConfigEntry {
+            device: "keyboard".to_string(),
+            control: "A".to_string(),
+            keyboard_slot: None,
+            lane: None,
+            action: Some(action),
+            scratch: None,
+        });
+    }
+    let keys = SelectKeyBindings::from_profile(&input);
+
+    assert_eq!(
+        select_action(PhysicalKey::Code(KeyCode::KeyA), ElementState::Pressed, false, &keys),
+        None,
+    );
+    assert_ne!(keys.cycle_bga(), Some("A"));
 }
 
 #[test]

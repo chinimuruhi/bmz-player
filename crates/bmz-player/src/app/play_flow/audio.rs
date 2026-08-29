@@ -7,17 +7,17 @@ impl WinitApp {
         }
         self.audio.audio_output_open_attempted = true;
 
-        match AudioRuntime::open(&self.boot.app_config.audio) {
+        match AudioRuntime::open(&self.boot.app_config.audio).and_then(|runtime| {
+            runtime.play()?;
+            Ok(runtime)
+        }) {
             Ok(runtime) => {
                 self.install_system_audio(&runtime, None);
-                if let Err(error) = runtime.play() {
-                    tracing::warn!(%error, "failed to start shared audio output stream");
-                }
                 self.audio.audio_runtime = Some(runtime);
                 tracing::info!("audio output opened after window initialization");
             }
             Err(error) => {
-                tracing::warn!(%error, "failed to open shared audio output; running without audio");
+                tracing::warn!(%error, "failed to open audio output; running without audio");
             }
         }
     }
@@ -215,6 +215,7 @@ impl WinitApp {
             self.audio.system_sound = Some(system_sound_manager_from_catalog(
                 &self.audio.system_sound_catalog,
                 &system_audio,
+                self.boot.profile_config.audio_mix.normalize_system_bgm_volume,
             ));
         }
         if !self.select.select_assets.has_preview() {
@@ -225,31 +226,58 @@ impl WinitApp {
         self.audio.system_audio = Some(system_audio);
     }
 
-    pub(super) fn reopen_audio_output(&mut self) {
+    pub(super) fn reopen_audio_output(&mut self) -> bool {
         if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             tracing::warn!("ignoring audio apply while a play session is active");
-            return;
+            return false;
         }
 
+        let previous_config =
+            self.audio.audio_runtime.as_ref().map(|runtime| runtime.config().clone());
         let system_engine = self.audio.system_audio.as_ref().map(crate::audio::SystemAudio::engine);
         self.audio.draining_audio = None;
         self.audio.system_audio = None;
         self.audio.audio_runtime = None;
 
-        match AudioRuntime::open(&self.boot.app_config.audio) {
+        match AudioRuntime::open(&self.boot.app_config.audio).and_then(|runtime| {
+            runtime.play()?;
+            Ok(runtime)
+        }) {
             Ok(runtime) => {
-                self.install_system_audio(&runtime, system_engine);
-                if let Err(error) = runtime.play() {
-                    tracing::warn!(%error, "failed to start shared audio output stream");
-                }
+                self.install_system_audio(&runtime, system_engine.clone());
                 self.audio.audio_runtime = Some(runtime);
                 tracing::info!("audio output reopened with current settings");
+                true
             }
             Err(error) => {
-                tracing::error!(
-                    %error,
-                    "failed to reopen audio output; audio disabled until restart"
-                );
+                tracing::error!(%error, "failed to reopen audio output with current settings");
+                let Some(previous_config) = previous_config else {
+                    tracing::error!("no previous audio settings are available for recovery");
+                    return false;
+                };
+                self.boot.app_config.audio = previous_config.clone();
+                if let Err(save_error) =
+                    save_app_config(&self.boot.app_paths.config_toml, &self.boot.app_config)
+                {
+                    tracing::error!(%save_error, "failed to restore previous audio settings on disk");
+                }
+                match AudioRuntime::open(&previous_config).and_then(|runtime| {
+                    runtime.play()?;
+                    Ok(runtime)
+                }) {
+                    Ok(runtime) => {
+                        self.install_system_audio(&runtime, system_engine);
+                        self.audio.audio_runtime = Some(runtime);
+                        tracing::warn!("restored previous audio output after apply failure");
+                    }
+                    Err(restore_error) => {
+                        tracing::error!(
+                            %restore_error,
+                            "failed to restore previous audio output; audio disabled until restart"
+                        );
+                    }
+                }
+                false
             }
         }
     }

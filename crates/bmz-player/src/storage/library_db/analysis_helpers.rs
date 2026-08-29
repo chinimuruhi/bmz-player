@@ -51,7 +51,7 @@ pub(super) fn decode_distribution_compact(value: &str) -> Option<Vec<ChartDistri
         return None;
     }
     let mut out = Vec::with_capacity(value.len() / 14);
-    for chunk in value.as_bytes().chunks_exact(14) {
+    for chunk in value.as_bytes().as_chunks::<14>().0 {
         out.push(ChartDistributionSecond {
             scratch_long_heads: parse_base36_2(&chunk[0..2])?,
             scratch_long_bodies: parse_base36_2(&chunk[2..4])?,

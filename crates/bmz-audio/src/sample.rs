@@ -44,6 +44,56 @@ impl SampleRegion {
         self.source.sample_stereo(self.start_frame + frame)
     }
 
+    /// Mixes consecutive frames from this region into an interleaved stereo buffer.
+    ///
+    /// Keeping the channel dispatch and region lookup outside the frame loop makes
+    /// offline analyzers substantially cheaper without changing sample order.
+    pub(crate) fn mix_stereo_into(
+        &self,
+        source_frame: usize,
+        gain: f32,
+        output: &mut [f32],
+    ) -> usize {
+        debug_assert_eq!(output.len() % 2, 0);
+        let frame_count = output.len() / 2;
+        let mixed_frames = frame_count.min(self.frame_count().saturating_sub(source_frame));
+        if mixed_frames == 0 {
+            return 0;
+        }
+
+        let absolute_start = self.start_frame + source_frame;
+        match self.source.channels {
+            0 => 0,
+            1 => {
+                let source = &self.source.frames[absolute_start..absolute_start + mixed_frames];
+                for (output, sample) in output.chunks_exact_mut(2).zip(source) {
+                    let sample = *sample * gain;
+                    output[0] += sample;
+                    output[1] += sample;
+                }
+                mixed_frames
+            }
+            2 => {
+                let source_start = absolute_start * 2;
+                let source = &self.source.frames[source_start..source_start + mixed_frames * 2];
+                for (output, source) in output.chunks_exact_mut(2).zip(source.chunks_exact(2)) {
+                    output[0] += source[0] * gain;
+                    output[1] += source[1] * gain;
+                }
+                mixed_frames
+            }
+            channels => {
+                let channels = channels as usize;
+                for (frame, output) in output.chunks_exact_mut(2).take(mixed_frames).enumerate() {
+                    let source = (absolute_start + frame) * channels;
+                    output[0] += self.source.frames[source] * gain;
+                    output[1] += self.source.frames[source + 1] * gain;
+                }
+                mixed_frames
+            }
+        }
+    }
+
     pub fn sample_stereo_linear(&self, position: f64) -> (f32, f32) {
         let frame = position.floor().max(0.0) as usize;
         let frac = (position - frame as f64) as f32;
@@ -248,6 +298,30 @@ mod tests {
 
         assert_eq!(bank.get(SoundId(2)).unwrap().sample_stereo(0), (0.5, 0.5));
         assert!(bank.get(SoundId(1)).is_none());
+    }
+
+    #[test]
+    fn sample_region_mixes_consecutive_frames_into_stereo_output() {
+        let mut mono_bank = SampleBank::default();
+        mono_bank.insert(
+            SoundId(1),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![0.5, 1.0, -0.5] },
+        );
+        let mut mono_output = vec![0.25; 4];
+        let mixed = mono_bank.get(SoundId(1)).unwrap().mix_stereo_into(1, 0.5, &mut mono_output);
+        assert_eq!(mixed, 2);
+        assert_eq!(mono_output, vec![0.75, 0.75, 0.0, 0.0]);
+
+        let mut stereo_bank = SampleBank::default();
+        stereo_bank.insert(
+            SoundId(2),
+            DecodedSample { channels: 2, sample_rate: 48_000, frames: vec![0.1, 0.2, 0.3, 0.4] },
+        );
+        let mut stereo_output = vec![1.0; 4];
+        let mixed =
+            stereo_bank.get(SoundId(2)).unwrap().mix_stereo_into(0, 2.0, &mut stereo_output);
+        assert_eq!(mixed, 2);
+        assert_eq!(stereo_output, vec![1.2, 1.4, 1.6, 1.8]);
     }
 
     #[test]

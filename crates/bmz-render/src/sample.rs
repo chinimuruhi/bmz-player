@@ -41,6 +41,7 @@ pub fn sample_select_scene() -> AppSceneSnapshot {
         current_fps: 60,
         operating_time_ms: 12_345,
         skin_input: Default::default(),
+        skin_attempt: Default::default(),
         skin_offsets: Default::default(),
         selection_time: TimeUs(345_000),
         option_panel_time: TimeUs(0),
@@ -55,6 +56,8 @@ pub fn sample_select_scene() -> AppSceneSnapshot {
         selected_title: "Sample BMS".to_string(),
         hispeed: 2.0,
         note_display_duration_ms: Some(1_000),
+        guide_se_enabled: false,
+        constant_enabled: false,
         rows,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
@@ -79,6 +82,9 @@ pub fn sample_select_scene() -> AppSceneSnapshot {
         random_mix_options: [0, 0, 0, 10, 0, 0, 5],
         select_sort: "TITLE".to_string(),
         select_ln_mode: "LN".to_string(),
+        rule_mode_index: 0,
+        ln_policy_setting_index: 0,
+        ln_score_policy_index: None,
         judge_algorithm: "Combo".to_string(),
         bga: "ON".to_string(),
         judge_timing_offset_ms: 0,
@@ -137,6 +143,7 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
             lane,
             time: TimeUs(12_500_000 + index as i64 * 80_000),
             y: 0.18 + index as f32 * 0.08,
+            alpha: 1.0,
             kind: NoteVisualKind::Tap,
             processed_judge: None,
         });
@@ -145,17 +152,20 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
         lane: Lane::Key2,
         time: TimeUs(13_200_000),
         y: 0.86,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
     snapshot.bar_lines.push(VisibleBarLine {
         time: TimeUs(12_000_000),
         y: 0.25,
+        alpha: 1.0,
         label: String::new(),
     });
     snapshot.bar_lines.push(VisibleBarLine {
         time: TimeUs(13_000_000),
         y: 0.78,
+        alpha: 1.0,
         label: String::new(),
     });
     // ホールド中のロングノート（Key4）と上空に伸びるロングノート（Key6）
@@ -164,6 +174,7 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
         mode: LongNoteMode::Ln,
         head_y: 0.0,
         tail_y: 0.45,
+        alpha: 1.0,
         body_state: LongBodyState::Processing,
     });
     snapshot.visible_long_notes.push(VisibleLongNote {
@@ -171,6 +182,7 @@ pub fn sample_play_scene() -> AppSceneSnapshot {
         mode: LongNoteMode::Hcn,
         head_y: 0.3,
         tail_y: 0.82,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
     snapshot.recent_judgements.push(DisplayJudgement {
@@ -194,10 +206,13 @@ pub fn sample_result_scene() -> AppSceneSnapshot {
         target_name: "RANK AAA".to_string(),
         current_fps: 60,
         skin_input: Default::default(),
+        skin_attempt: Default::default(),
         skin_offsets: Default::default(),
+        mouse_position: None,
         hispeed_auto_adjust: false,
         clear_type: bmz_core::clear::ClearType::Normal,
         result_failed: false,
+        autoplay: false,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
         double_option: "OFF".to_string(),
@@ -221,6 +236,8 @@ pub fn sample_result_scene() -> AppSceneSnapshot {
         key_mode: bmz_core::lane::KeyMode::K7,
         has_long_notes: true,
         ln_mode_index: 1,
+        rule_mode_index: 0,
+        ln_score_policy_index: Some(0),
         result_gauge_graph_type: bmz_core::clear::GaugeType::Normal as i32,
         result_panel: 0,
         favorite_chart: false,

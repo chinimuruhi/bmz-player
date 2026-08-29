@@ -127,9 +127,13 @@ impl WinitApp {
         //   ときはスキャン済み候補から再抽選する。
         // - 空なら scan を省略し、`default_sound_dir` だけにフォールバックする。
         let system_sound_catalog = system_sound_catalog_from_boot(&boot);
-        let system_sound = system_audio
-            .as_ref()
-            .map(|audio| system_sound_manager_from_catalog(&system_sound_catalog, audio));
+        let system_sound = system_audio.as_ref().map(|audio| {
+            system_sound_manager_from_catalog(
+                &system_sound_catalog,
+                audio,
+                boot.profile_config.audio_mix.normalize_system_bgm_volume,
+            )
+        });
         let select_preview =
             system_audio.as_ref().map(|audio| SelectChartPreview::new(audio.engine()));
         let select_assets =
@@ -147,6 +151,7 @@ impl WinitApp {
                 lua_runtime_state_for_result(
                     false,
                     None,
+                    false,
                     false,
                     KeyMode::default(),
                     BTreeMap::new(),
@@ -229,6 +234,7 @@ impl WinitApp {
                 select_analog_scroll_buffer: 0,
                 select_analog_last_tick_at: None,
                 select_analog_suppress_until_idle: false,
+                select_scene_timer_armed: false,
                 select_scene_started_at: now,
                 select_bar_started_at: now,
                 option_panel_started_at: now,
@@ -239,7 +245,6 @@ impl WinitApp {
                 settings_edit: None,
                 key_config_edit: None,
                 search: SelectSearchRuntime::new(now),
-                last_cursor_position: None,
                 select_slider_dragging_type: None,
             },
             play: PlayRuntimeState {
@@ -306,6 +311,7 @@ impl WinitApp {
             jobs: AppJobs {
                 table_fetch,
                 pending_song_scan: None,
+                pending_replay_import: None,
                 queued_song_scans: VecDeque::new(),
                 pending_chart_download: None,
                 song_scan_progress: None,
@@ -369,8 +375,10 @@ impl WinitApp {
                 device_events_reconfigure_pending: false,
                 focused: true,
                 last_cursor_action_at: now,
+                last_cursor_position: None,
                 cursor_visible: true,
             },
+            course_editor_cache: course_editor::CourseEditorDataCache::default(),
         };
         if options.boot_result_sample {
             tracing::info!("booting directly into synthetic result screen");

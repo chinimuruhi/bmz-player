@@ -99,9 +99,13 @@ impl SelectIrRanking {
             self.clear();
         }
         while let Ok((result_context, sha256, requested_at, result)) = self.receiver.try_recv() {
-            if self.in_flight.as_ref().is_some_and(|(context, in_flight_sha, _)| {
-                context == &result_context && *in_flight_sha == sha256
-            }) {
+            if self.in_flight.as_ref().is_some_and(
+                |(context, in_flight_sha, in_flight_requested_at)| {
+                    context == &result_context
+                        && *in_flight_sha == sha256
+                        && *in_flight_requested_at == requested_at
+                },
+            ) {
                 self.in_flight = None;
             }
             if result_context != self.context {
@@ -289,24 +293,10 @@ impl SelectIrRanking {
             );
             return;
         };
-        let (
-            rival,
-            rival_ex_scores,
-            global_battle_entries,
-            self_and_rivals_battle_entries,
-            battle_entries_loaded,
-        ) = self
+        let (rival, rival_ex_scores) = self
             .cache
             .get(&sha256)
-            .map(|entry| {
-                (
-                    entry.rival.clone(),
-                    entry.rival_ex_scores.clone(),
-                    entry.global_battle_entries.clone(),
-                    entry.self_and_rivals_battle_entries.clone(),
-                    entry.battle_entries_loaded,
-                )
-            })
+            .map(|entry| (entry.rival.clone(), entry.rival_ex_scores.clone()))
             .unwrap_or_default();
         self.insert_entry(
             sha256,
@@ -317,13 +307,19 @@ impl SelectIrRanking {
                     .get(&sha256)
                     .and_then(|entry| entry.self_and_rivals.clone()),
                 rival,
-                global_battle_entries,
-                self_and_rivals_battle_entries,
-                battle_entries_loaded,
+                // Result の表示用 ranking は G-BATTLE に必要な score identity を
+                // 持たない。古い候補を残さず、Select 復帰時に完全な ranking を
+                // 取得し直す。
+                global_battle_entries: Vec::new(),
+                self_and_rivals_battle_entries: Vec::new(),
+                battle_entries_loaded: false,
                 global_ex_scores: result_ranking_ex_scores(ranking),
                 rival_ex_scores,
                 completed_at: Instant::now(),
             },
         );
+        // プレイした譜面は既に選曲カーソルが安定しているため、通常のカーソル移動用
+        // debounce を待たず、Select に戻った最初の update で再取得する。
+        self.pending = Some((sha256, Instant::now() - FETCH_DEBOUNCE));
     }
 }

@@ -29,7 +29,7 @@
     <binary>bmz-player</binary>
   </provides>
   <releases>
-    <release version="0.2.1" date="2026-08-12" />
+    <release version="0.3.0" date="2026-08-28" />
   </releases>
   <content_rating type="oars-1.1" />
 </component>

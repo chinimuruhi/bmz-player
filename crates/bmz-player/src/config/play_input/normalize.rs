@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::profile_config::GamepadScratchConfig;
+use crate::config::profile_config::{GamepadScratchConfig, InputActionConfig};
 
 pub fn normalize_profile_input(input: &mut ProfileInputConfig) {
     migrate_legacy_analog_scratch_config(input);
@@ -16,6 +16,90 @@ pub fn normalize_profile_input(input: &mut ProfileInputConfig) {
     normalize_play_map_keys(&mut input.play);
     if input.ui.bindings.is_empty() {
         input.ui.bindings = crate::config::profile_config::default_ui_bindings();
+    }
+    migrate_configurable_shortcut_bindings(&mut input.ui);
+}
+
+fn migrate_configurable_shortcut_bindings(ui: &mut crate::config::profile_config::UiInputConfig) {
+    use crate::config::profile_config::{
+        CONFIGURABLE_SHORTCUT_MIGRATIONS, UI_INPUT_BINDING_VERSION,
+        default_configurable_shortcut_bindings,
+    };
+
+    if ui.version >= UI_INPUT_BINDING_VERSION {
+        return;
+    }
+    let defaults = default_configurable_shortcut_bindings();
+    for &(version, actions) in CONFIGURABLE_SHORTCUT_MIGRATIONS {
+        if ui.version >= version {
+            continue;
+        }
+        for &action in actions {
+            if ui.bindings.iter().any(|entry| entry.action == Some(action)) {
+                continue;
+            }
+            ui.bindings
+                .extend(defaults.iter().filter(|entry| entry.action == Some(action)).cloned());
+        }
+    }
+    if ui.version < 3 {
+        migrate_select_digit_shortcuts(ui, &defaults);
+    }
+    ui.version = UI_INPUT_BINDING_VERSION;
+}
+
+fn migrate_select_digit_shortcuts(
+    ui: &mut crate::config::profile_config::UiInputConfig,
+    defaults: &[BindingConfigEntry],
+) {
+    use InputActionConfig::{SelectOpenDocuments, SelectReplayCycle, SelectSameFolder};
+
+    // ReplayCycle / SameFolder previously had a runtime Numpad fallback. Materialize
+    // those defaults while adding the top-row companion so a later explicit clear
+    // remains cleared once the fallback is removed.
+    for (action, top_row, numpad) in
+        [(SelectReplayCycle, "4", "Numpad4"), (SelectSameFolder, "8", "Numpad8")]
+    {
+        let has_action = ui.bindings.iter().any(|entry| entry.action == Some(action));
+        let has_legacy_default = ui.bindings.iter().any(|entry| {
+            entry.action == Some(action) && entry.device == "keyboard" && entry.control == numpad
+        });
+        if !has_action {
+            add_default_shortcut(ui, defaults, action, top_row);
+            add_default_shortcut(ui, defaults, action, numpad);
+        } else if has_legacy_default {
+            add_default_shortcut(ui, defaults, action, top_row);
+        }
+    }
+
+    // OpenDocuments was already a fully configurable action. Add the top-row
+    // companion only when the old Numpad9 default is still present, preserving a
+    // deliberate clear or replacement made on an older profile.
+    let has_legacy_documents_default = ui.bindings.iter().any(|entry| {
+        entry.action == Some(SelectOpenDocuments)
+            && entry.device == "keyboard"
+            && entry.control == "Numpad9"
+    });
+    if has_legacy_documents_default {
+        add_default_shortcut(ui, defaults, SelectOpenDocuments, "9");
+    }
+}
+
+fn add_default_shortcut(
+    ui: &mut crate::config::profile_config::UiInputConfig,
+    defaults: &[BindingConfigEntry],
+    action: InputActionConfig,
+    control: &str,
+) {
+    if ui.bindings.iter().any(|entry| {
+        entry.action == Some(action) && entry.device == "keyboard" && entry.control == control
+    }) {
+        return;
+    }
+    if let Some(entry) = defaults.iter().find(|entry| {
+        entry.action == Some(action) && entry.device == "keyboard" && entry.control == control
+    }) {
+        ui.bindings.push(entry.clone());
     }
 }
 
@@ -51,6 +135,7 @@ pub fn default_profile_input() -> ProfileInputConfig {
         select_input_mode: crate::config::profile_config::SelectInputModeConfig::Key7Key14,
         start_key: None,
         ui: crate::config::profile_config::UiInputConfig {
+            version: crate::config::profile_config::UI_INPUT_BINDING_VERSION,
             bindings: crate::config::profile_config::default_ui_bindings(),
         },
         play,

@@ -254,7 +254,7 @@ pub(super) fn push_select_title_text(
 ) {
     let is_folder = row.map(|r| r.is_folder).unwrap_or(false);
     let in_library = row.map(|r| r.in_library).unwrap_or(true);
-    let title = display_title(row.map(|row| row.title.as_str()).unwrap_or_default());
+    let title = display_title(row.map(SelectRowSnapshot::display_bar_text).unwrap_or_default());
     let color = if is_folder {
         if selected { Color::rgb(0.98, 0.88, 0.55) } else { Color::rgb(0.62, 0.54, 0.26) }
     } else if !in_library {

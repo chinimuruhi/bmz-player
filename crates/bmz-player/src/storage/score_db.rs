@@ -18,8 +18,8 @@ use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use super::common::{configure_connection, hash_to_hex, hex_to_hash};
 pub use super::course_score_db::{
-    CourseBestScore, CourseReplayRecord, CourseReplaySlotRecord, CourseScoreChartRecord,
-    CourseScoreEntry, CourseScoreInsert,
+    CourseBestScore, CourseReplayRecord, CourseReplaySlotRecord, CourseReplaySlotSource,
+    CourseScoreChartRecord, CourseScoreEntry, CourseScoreInsert,
 };
 use crate::config::profile_config::ReplaySlotRule;
 use crate::ln_policy::LnScorePolicy;
@@ -469,11 +469,16 @@ pub struct ReplaySlotRecord {
     pub rule: ReplaySlotRule,
     pub replay_path: String,
     pub played_at: i64,
-    pub ex_score: u32,
-    pub bp: u32,
-    pub cb: u32,
-    pub max_combo: u32,
-    pub clear_rank: u8,
+    /// Imported replay files do not contain result metrics. `None` prevents a
+    /// fabricated zero from affecting the configured replacement rule.
+    pub ex_score: Option<u32>,
+    pub bp: Option<u32>,
+    pub cb: Option<u32>,
+    pub max_combo: Option<u32>,
+    pub clear_rank: Option<u8>,
+    pub source_kind: ScoreSourceKind,
+    pub source_path: String,
+    pub source_fingerprint: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]

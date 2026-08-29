@@ -64,16 +64,29 @@ fn device_kind_for_control(control: &PhysicalControl) -> InputDeviceKind {
 fn estimate_audio_time(timestamp: &DeviceTimestamp, ctx: &InputTimingContext<'_>) -> TimeUs {
     let base = match (*timestamp, ctx.timestamp_anchor) {
         (DeviceTimestamp::MonotonicNs(event_ns), Some(anchor)) => {
-            let delta_us = if event_ns >= anchor.monotonic_ns {
-                ((event_ns - anchor.monotonic_ns) / 1_000) as i64
+            let wall_delta_us = if event_ns >= anchor.monotonic_ns {
+                u128_to_i64_saturating((event_ns - anchor.monotonic_ns) / 1_000)
             } else {
-                -(((anchor.monotonic_ns - event_ns) / 1_000) as i64)
+                -u128_to_i64_saturating((anchor.monotonic_ns - event_ns) / 1_000)
             };
-            TimeUs(anchor.audio_time.0 + delta_us)
+            let chart_delta_us = scale_wall_delta_to_chart_time(
+                wall_delta_us,
+                ctx.audio_clock.playback_rate_percent(),
+            );
+            TimeUs(anchor.audio_time.0.saturating_add(chart_delta_us))
         }
         _ => ctx.audio_clock.now(),
     };
-    TimeUs(base.0 + ctx.offsets.input_offset_us)
+    TimeUs(base.0.saturating_add(ctx.offsets.input_offset_us))
+}
+
+fn u128_to_i64_saturating(value: u128) -> i64 {
+    value.min(i64::MAX as u128) as i64
+}
+
+fn scale_wall_delta_to_chart_time(delta_us: i64, playback_rate_percent: u16) -> i64 {
+    ((i128::from(delta_us) * i128::from(playback_rate_percent)) / 100)
+        .clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64
 }
 
 pub fn keyboard_control(name: impl Into<String>) -> PhysicalControl {
@@ -127,6 +140,37 @@ mod tests {
 
         assert_eq!(input.time, TimeUs(10_750));
         assert_eq!(input.device_kind, InputDeviceKind::Keyboard);
+    }
+
+    #[test]
+    fn timestamp_anchor_scales_wall_time_at_practice_playback_rates() {
+        for (rate, expected_after, expected_before) in [
+            (50, TimeUs(11_000), TimeUs(9_000)),
+            (100, TimeUs(12_000), TimeUs(8_000)),
+            (200, TimeUs(14_000), TimeUs(6_000)),
+        ] {
+            let mut clock = AudioClock::stopped(48_000);
+            let _ = clock.set_playback_rate_percent(rate);
+            let ctx = InputTimingContext {
+                audio_clock: &clock,
+                offsets: PlayOffsets { input_offset_us: 0, visual_offset_us: 0 },
+                timestamp_anchor: Some(InputTimestampAnchor {
+                    monotonic_ns: 10_000_000,
+                    audio_time: TimeUs(10_000),
+                }),
+            };
+
+            assert_eq!(
+                estimate_audio_time(&DeviceTimestamp::MonotonicNs(12_000_000), &ctx),
+                expected_after,
+                "rate={rate}"
+            );
+            assert_eq!(
+                estimate_audio_time(&DeviceTimestamp::MonotonicNs(8_000_000), &ctx),
+                expected_before,
+                "rate={rate}"
+            );
+        }
     }
 
     #[test]

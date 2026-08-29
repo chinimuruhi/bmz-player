@@ -95,10 +95,11 @@ pub(in crate::skin) fn duration_refs_available(state: &SkinDrawState) -> bool {
 }
 
 pub(in crate::skin) fn state_duration_number_ms(state: &SkinDrawState) -> i64 {
-    state
-        .duration_green_ms
-        .map(green_duration_to_duration)
-        .unwrap_or_else(|| state.total_duration_ms.max(0) as i64)
+    if state.total_duration_ms > 0 {
+        i64::from(state.total_duration_ms)
+    } else {
+        state.duration_green_ms.map(green_duration_to_duration).unwrap_or(0)
+    }
 }
 
 pub(in crate::skin) fn state_duration_green_number_ms(state: &SkinDrawState) -> i64 {

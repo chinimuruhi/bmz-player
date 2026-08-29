@@ -5,6 +5,7 @@ pub(super) struct NoteArrangeEngine {
     pub(super) rng: ArrangeRng,
     pub(super) groups: Vec<NoteArrangeGroup>,
     pub(super) s_random_scheme: SRandomScheme,
+    pub(super) h_random_threshold_ms: Option<u32>,
 }
 
 impl NoteArrangeEngine {
@@ -14,12 +15,14 @@ impl NoteArrangeEngine {
         groups: &[Vec<usize>],
         legacy_seed: bool,
         s_random_scheme: SRandomScheme,
+        h_random_threshold_ms: Option<u32>,
     ) -> Self {
         Self {
             arrange,
             rng: ArrangeRng::new(seed, legacy_seed),
             groups: groups.iter().map(|lanes| NoteArrangeGroup::new(lanes)).collect(),
             s_random_scheme,
+            h_random_threshold_ms,
         }
     }
 
@@ -31,8 +34,14 @@ impl NoteArrangeEngine {
     ) {
         let time = notes.first().map(|note| note.time).unwrap_or(TimeUs(0));
         for group in &mut self.groups {
-            let map =
-                group.randomize(notes, time, self.arrange, self.s_random_scheme, &mut self.rng);
+            let map = group.randomize(
+                notes,
+                time,
+                self.arrange,
+                self.s_random_scheme,
+                self.h_random_threshold_ms,
+                &mut self.rng,
+            );
             for note in notes.iter_mut() {
                 let source = note.lane.index();
                 let Some(&dest) = map.get(&source) else {
@@ -64,7 +73,7 @@ pub(super) struct NoteArrangeGroup {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct LaneHistory {
-    pub(super) last_frame: Option<i64>,
+    pub(super) last_time: Option<TimeUs>,
     pub(super) rapid_streak: u16,
 }
 
@@ -82,25 +91,31 @@ struct LmCandidate {
     gap: i64,
 }
 
-pub(super) fn logical_frame_120(time: TimeUs) -> i64 {
-    let scaled = i128::from(time.0) * 120;
-    scaled.div_euclid(1_000_000) as i64
+pub(super) fn lm_interval_frames_120(previous_time: TimeUs, current_time: TimeUs) -> i64 {
+    let elapsed_us = (i128::from(current_time.0) - i128::from(previous_time.0)).max(0);
+    // LMの譜面時刻は整数msとして扱われ、その経過時間を120 Hzフレームへ切り下げる。
+    // 絶対時刻を個別にフレーム化してから引くと端数位相で切り上がり、BPM 255/260の
+    // 16分が6F補正から外れるため、経過時間を先に整数msへ切り下げる。
+    let elapsed_ms = elapsed_us.div_euclid(1_000);
+    (elapsed_ms * 120).div_euclid(1_000) as i64
 }
 
-pub(super) fn next_lane_history(history: LaneHistory, current_frame: i64) -> (LaneHistory, i64) {
-    let Some(last_frame) = history.last_frame else {
-        return (LaneHistory { last_frame: Some(current_frame), rapid_streak: 1 }, i64::MAX);
+pub(super) fn next_lane_history(history: LaneHistory, current_time: TimeUs) -> (LaneHistory, i64) {
+    let Some(last_time) = history.last_time else {
+        return (LaneHistory { last_time: Some(current_time), rapid_streak: 1 }, i64::MAX);
     };
 
-    debug_assert!(current_frame >= last_frame, "arrange timelines must be time-sorted");
-    let gap =
-        if current_frame >= last_frame { current_frame.saturating_sub(last_frame) } else { 0 };
+    debug_assert!(current_time >= last_time, "arrange timelines must be time-sorted");
+    let gap = lm_interval_frames_120(last_time, current_time);
     let rapid_streak = if gap > 8 { 1 } else { history.rapid_streak.saturating_add(1) };
-    (LaneHistory { last_frame: Some(current_frame), rapid_streak }, gap)
+    (LaneHistory { last_time: Some(current_time), rapid_streak }, gap)
 }
 
-pub(super) fn classify_lm_candidate(history: LaneHistory, current_frame: i64) -> LmCandidateClass {
-    let (next, gap) = next_lane_history(history, current_frame);
+pub(super) fn classify_lm_candidate(
+    history: LaneHistory,
+    current_time: TimeUs,
+) -> LmCandidateClass {
+    let (next, gap) = next_lane_history(history, current_time);
     if gap <= 6 && next.rapid_streak >= 2 {
         LmCandidateClass::TwoPlusWithin6F
     } else if gap <= 7 && next.rapid_streak >= 3 {
@@ -137,6 +152,7 @@ impl NoteArrangeGroup {
         time: TimeUs,
         arrange: ArrangeOption,
         s_random_scheme: SRandomScheme,
+        h_random_threshold_ms: Option<u32>,
         rng: &mut ArrangeRng,
     ) -> std::collections::HashMap<usize, usize> {
         if self.lanes.is_empty() {
@@ -164,7 +180,9 @@ impl NoteArrangeGroup {
         let threshold = match arrange {
             ArrangeOption::SRandom => TimeUs(40_000),
             ArrangeOption::SRandomEx => TimeUs(40_000),
-            ArrangeOption::HRandom | ArrangeOption::AllScratch => TimeUs(100_000),
+            ArrangeOption::HRandom | ArrangeOption::AllScratch => {
+                TimeUs(i64::from(h_random_threshold_ms.unwrap_or(100)) * 1_000)
+            }
             _ => TimeUs(40_000),
         };
         map.extend(self.time_based_shuffle(notes, time, threshold, rng, changeable, assignable));
@@ -207,16 +225,15 @@ impl NoteArrangeGroup {
             return map;
         }
 
-        let current_frame = logical_frame_120(time);
         let mut safe = Vec::new();
         let mut four_plus = Vec::new();
         let mut three_plus = Vec::new();
         let mut two_plus = Vec::new();
         for lane in assignable.iter().copied() {
             let history = self.lane_history[lane];
-            let (_, gap) = next_lane_history(history, current_frame);
+            let (_, gap) = next_lane_history(history, time);
             let candidate = LmCandidate { lane, gap };
-            match classify_lm_candidate(history, current_frame) {
+            match classify_lm_candidate(history, time) {
                 LmCandidateClass::Safe => safe.push(candidate),
                 LmCandidateClass::FourPlusWithin8F => four_plus.push(candidate),
                 LmCandidateClass::ThreePlusWithin7F => three_plus.push(candidate),
@@ -258,8 +275,7 @@ impl NoteArrangeGroup {
         // represented once here even if it contains multiple objects at the same timeline.
         for source in note_lanes {
             if let Some(&dest) = map.get(&source) {
-                self.lane_history[dest] =
-                    next_lane_history(self.lane_history[dest], current_frame).0;
+                self.lane_history[dest] = next_lane_history(self.lane_history[dest], time).0;
             }
         }
         map

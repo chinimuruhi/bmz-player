@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn result_document_state_maps_canvas_mouse_position_to_skin_pixels() {
+    let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
+        panic!("sample result scene");
+    };
+    let document: SkinDocument =
+        serde_json::from_str(r#"{ "type": 7, "w": 200, "h": 100 }"#).unwrap();
+
+    let unavailable = result_skin_draw_state_for_document(&snapshot, &document);
+    assert_eq!(unavailable.mouse_x, None);
+    assert_eq!(unavailable.mouse_y, None);
+
+    snapshot.mouse_position = Some((0.25, 0.75));
+    let hovered = result_skin_draw_state_for_document(&snapshot, &document);
+    assert_eq!(hovered.mouse_x, Some(50.0));
+    assert_eq!(hovered.mouse_y, Some(25.0));
+}
+
+#[test]
+fn result_skin_state_exposes_autoplay_options() {
+    let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
+        panic!("sample result scene");
+    };
+
+    let normal = build_result_skin_draw_state(&snapshot, 0);
+    assert!(!normal.autoplay);
+    assert!(crate::skin::test_skin_ops(&[32], &[], &normal));
+    assert!(!crate::skin::test_skin_ops(&[33], &[], &normal));
+
+    snapshot.autoplay = true;
+    let autoplay = build_result_skin_draw_state(&snapshot, 0);
+    assert!(autoplay.autoplay);
+    assert!(!crate::skin::test_skin_ops(&[32], &[], &autoplay));
+    assert!(crate::skin::test_skin_ops(&[33], &[], &autoplay));
+}
+
+#[test]
 fn result_skin_state_keeps_clear_failed_flag_separate_from_clear_type() {
     let AppSceneSnapshot::Result(mut snapshot) = crate::sample::sample_result_scene() else {
         panic!("sample result scene");
@@ -180,7 +216,9 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
         target_name: String::new(),
         current_fps: 0,
         skin_input: Default::default(),
+        skin_attempt: Default::default(),
         skin_offsets: Default::default(),
+        mouse_position: None,
         hispeed_auto_adjust: false,
         assist_flags: [false; 7],
         assist_extra_note_depth: 0,
@@ -189,6 +227,7 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
         assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
+        autoplay: false,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
         double_option: "OFF".to_string(),
@@ -212,6 +251,8 @@ fn result_plan_renders_gaugegraph_from_result_graph_data() {
         key_mode: bmz_core::lane::KeyMode::default(),
         has_long_notes: false,
         ln_mode_index: 0,
+        rule_mode_index: 0,
+        ln_score_policy_index: Some(0),
         result_gauge_graph_type: bmz_core::clear::GaugeType::AssistEasy as i32,
         result_panel: 0,
         favorite_chart: false,
@@ -335,7 +376,9 @@ fn result_plan_renders_timing_distribution_from_result_graph_data() {
         target_name: String::new(),
         current_fps: 0,
         skin_input: Default::default(),
+        skin_attempt: Default::default(),
         skin_offsets: Default::default(),
+        mouse_position: None,
         hispeed_auto_adjust: false,
         assist_flags: [false; 7],
         assist_extra_note_depth: 0,
@@ -344,6 +387,7 @@ fn result_plan_renders_timing_distribution_from_result_graph_data() {
         assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
+        autoplay: false,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
         double_option: "OFF".to_string(),
@@ -367,6 +411,8 @@ fn result_plan_renders_timing_distribution_from_result_graph_data() {
         key_mode: bmz_core::lane::KeyMode::default(),
         has_long_notes: false,
         ln_mode_index: 0,
+        rule_mode_index: 0,
+        ln_score_policy_index: Some(0),
         result_gauge_graph_type: bmz_core::clear::GaugeType::Normal as i32,
         result_panel: 0,
         favorite_chart: false,
@@ -454,6 +500,7 @@ fn play_plan_uses_supplied_skin_context() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -543,7 +590,12 @@ fn play_skin_document_renders_bar_lines_in_note_area() {
     };
     let skin = SkinContext::from_manifest_and_document(manifest, document, [source_texture]);
     let mut snapshot = RenderSnapshot::default();
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -651,7 +703,12 @@ fn play_skin_document_applies_bar_line_offset_height_and_alpha() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 3, a: -50, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -675,7 +732,12 @@ fn default_play_bar_line_applies_height_and_alpha_offset() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 4, a: -128, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
 
@@ -724,7 +786,12 @@ fn play_skin_document_applies_declared_notes_offset_to_bar_lines() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 5, a: -50, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -763,7 +830,12 @@ fn play_skin_document_without_group_does_not_fallback_to_bar_line_rect() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { h: 4, a: -128, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),
@@ -813,7 +885,12 @@ fn play_skin_document_applies_bar_line_alpha_after_global_offset() {
         SKIN_OFFSET_BAR_LINE,
         crate::skin_offset::SkinOffsetValue { a: -64, ..Default::default() },
     );
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(1_000), y: 0.5, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene_with_skin(
         &AppSceneSnapshot::Play(snapshot),

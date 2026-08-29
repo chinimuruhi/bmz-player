@@ -3,11 +3,23 @@ use super::*;
 pub fn settings_adjust_step(id: SettingsEntryId) -> i32 {
     match id {
         SettingsEntryId::InputOffsetMs | SettingsEntryId::VisualOffsetMs => 1,
+        SettingsEntryId::PlayExitHoldMs => 100,
         SettingsEntryId::Sudden | SettingsEntryId::Lift | SettingsEntryId::Hidden => 25,
         SettingsEntryId::TargetGreenNumber => 10,
+        SettingsEntryId::NoteDisplayDurationMs => 10,
+        SettingsEntryId::ConstantFadeMs => 10,
         SettingsEntryId::MisslayerDurationMs => 50,
         SettingsEntryId::AnalogScratchThreshold1P | SettingsEntryId::AnalogScratchThreshold2P => 10,
         SettingsEntryId::RandomMixMaxBpm | SettingsEntryId::RandomMixMinBpm => 10,
+        SettingsEntryId::AssistScrollRate
+        | SettingsEntryId::AssistLongNoteRate
+        | SettingsEntryId::AssistKeyPgreatRate
+        | SettingsEntryId::AssistKeyGreatRate
+        | SettingsEntryId::AssistKeyGoodRate
+        | SettingsEntryId::AssistScratchPgreatRate
+        | SettingsEntryId::AssistScratchGreatRate
+        | SettingsEntryId::AssistScratchGoodRate
+        | SettingsEntryId::AssistLongNoteMarginRate => 5,
         _ => 1,
     }
 }
@@ -16,6 +28,9 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
     match id {
         SettingsEntryId::NormalizeChartVolume => {
             format_bool_on_off(profile.audio_mix.normalize_chart_volume)
+        }
+        SettingsEntryId::NormalizeSystemBgmVolume => {
+            format_bool_on_off(profile.audio_mix.normalize_system_bgm_volume)
         }
         SettingsEntryId::MasterVolume => format!("{}", profile.audio_mix.master_volume),
         SettingsEntryId::KeyVolume => format!("{}", profile.audio_mix.key_volume),
@@ -33,6 +48,13 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
             format_bool_on_off(profile.judge.visual_offset_auto_adjust)
         }
         SettingsEntryId::JudgeAlgorithm => format_judge_algorithm(profile.judge.judge_algorithm),
+        SettingsEntryId::FastSlowDisplayScope => match profile.judge.fast_slow_display_scope {
+            FastSlowDisplayScope::Auto => "AUTO".to_string(),
+            FastSlowDisplayScope::ThresholdMs => "THRESHOLD".to_string(),
+        },
+        SettingsEntryId::FastSlowDisplayThresholdMs => {
+            format!("{} ms", profile.judge.fast_slow_display_threshold_ms)
+        }
         SettingsEntryId::RuleMode => format_rule_mode(profile.play.rule_mode),
         SettingsEntryId::LnModePolicy => profile.play.ln_mode_policy.display_label().to_string(),
         SettingsEntryId::Gauge => format_gauge(profile.play.gauge),
@@ -49,8 +71,87 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::Assist => format_assist(profile.play.assist),
         SettingsEntryId::BgaMode => format_bga_mode(profile.play.bga),
         SettingsEntryId::BgaExpand => format_bga_expand(profile.play.bga_expand),
-        SettingsEntryId::AutoPlay => format_bool_on_off(profile.play.auto_play),
+        SettingsEntryId::SessionMode => profile
+            .play
+            .session_mode
+            .unwrap_or(if profile.play.auto_play {
+                SessionMode::Autoplay
+            } else {
+                SessionMode::Normal
+            })
+            .as_str()
+            .to_string(),
+        SettingsEntryId::KeyModeConversion => profile.play.key_mode_conversion.as_str().to_string(),
+        SettingsEntryId::SevenToNinePattern => {
+            profile.play.seven_to_nine_pattern.label().to_string()
+        }
+        SettingsEntryId::SevenToNineType => profile.play.seven_to_nine_type.label().to_string(),
+        SettingsEntryId::SevenToNineRuleMode => {
+            profile.play.seven_to_nine_rule_mode.as_str().to_string()
+        }
+        SettingsEntryId::PlayExitHoldMs => format!("{} ms", profile.play.play_exit_hold_ms),
+        SettingsEntryId::AssistExpandJudge => format_bool_on_off(profile.play.assist.expand_judge),
+        SettingsEntryId::AssistJudgeArea => format_bool_on_off(profile.play.assist.judge_area),
+        SettingsEntryId::AssistMarkNote => format_bool_on_off(profile.play.assist.mark_note),
+        SettingsEntryId::AssistBpmGuide => format_bool_on_off(profile.play.assist.bpm_guide),
+        SettingsEntryId::AssistScrollMode => match profile.play.assist.scroll_mode {
+            AssistScrollMode::Off => "OFF",
+            AssistScrollMode::Remove => "REMOVE (CONSTANT)",
+            AssistScrollMode::Add => "ADD",
+        }
+        .to_string(),
+        SettingsEntryId::AssistLongNoteMode => match profile.play.assist.long_note_mode {
+            AssistLongNoteMode::Off => "OFF",
+            AssistLongNoteMode::Remove => "REMOVE (LEGACY NOTE)",
+            AssistLongNoteMode::AddLn => "ADD LN",
+            AssistLongNoteMode::AddCn => "ADD CN",
+            AssistLongNoteMode::AddHcn => "ADD HCN",
+            AssistLongNoteMode::AddAll => "ADD ALL",
+        }
+        .to_string(),
+        SettingsEntryId::AssistMineMode => match profile.play.assist.mine_mode {
+            AssistMineMode::Off => "OFF",
+            AssistMineMode::Remove => "REMOVE (NO MINE)",
+            AssistMineMode::AddRandom => "ADD RANDOM",
+            AssistMineMode::AddNear => "ADD NEAR",
+            AssistMineMode::AddBlank => "ADD BLANK",
+        }
+        .to_string(),
+        SettingsEntryId::AssistScrollSection => profile.play.assist.scroll_section.to_string(),
+        SettingsEntryId::AssistScrollRate => {
+            format!("{}%", (profile.play.assist.scroll_rate * 100.0).round() as i32)
+        }
+        SettingsEntryId::AssistLongNoteRate => {
+            format!("{}%", (profile.play.assist.long_note_rate * 100.0).round() as i32)
+        }
+        SettingsEntryId::AssistExtraNoteDepth => profile.play.assist.extra_note_depth.to_string(),
+        SettingsEntryId::AssistExtraNoteScratch => {
+            format_bool_on_off(profile.play.assist.extra_note_scratch)
+        }
+        SettingsEntryId::AssistExtraNoteType => profile.play.assist.extra_note_type.to_string(),
+        SettingsEntryId::AssistKeyPgreatRate => {
+            format!("{}%", profile.play.assist.key_pgreat_rate)
+        }
+        SettingsEntryId::AssistKeyGreatRate => {
+            format!("{}%", profile.play.assist.key_great_rate)
+        }
+        SettingsEntryId::AssistKeyGoodRate => {
+            format!("{}%", profile.play.assist.key_good_rate)
+        }
+        SettingsEntryId::AssistScratchPgreatRate => {
+            format!("{}%", profile.play.assist.scratch_pgreat_rate)
+        }
+        SettingsEntryId::AssistScratchGreatRate => {
+            format!("{}%", profile.play.assist.scratch_great_rate)
+        }
+        SettingsEntryId::AssistScratchGoodRate => {
+            format!("{}%", profile.play.assist.scratch_good_rate)
+        }
+        SettingsEntryId::AssistLongNoteMarginRate => {
+            format!("{}%", profile.play.assist.long_note_margin_rate)
+        }
         SettingsEntryId::ShowLnTailCap => format_bool_on_off(profile.play.show_ln_tail_cap),
+        SettingsEntryId::GuideSe => format_bool_on_off(profile.play.guide_se),
         SettingsEntryId::MisslayerDurationMs => {
             format!("{} ms", profile.play.misslayer_duration_ms)
         }
@@ -59,9 +160,21 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::HispeedStepNhs => format!("{:.2}", profile.lane.hispeed_step_nhs),
         SettingsEntryId::HispeedStepFhs => format!("{:.2}", profile.lane.hispeed_step_fhs),
         SettingsEntryId::Sudden => format_lane_unit(profile.lane.sudden),
+        SettingsEntryId::LiftEnabled => format_bool_on_off(profile.lane.lift_enabled),
         SettingsEntryId::Lift => format_lane_unit(profile.lane.lift),
+        SettingsEntryId::HispeedAutoAdjust => format_bool_on_off(profile.lane.hispeed_auto_adjust),
         SettingsEntryId::Hidden => format_lane_unit(profile.lane.hidden),
         SettingsEntryId::TargetGreenNumber => format!("{}", profile.lane.target_green_number),
+        SettingsEntryId::NoteDisplayDurationMs => {
+            format!(
+                "{} ms",
+                crate::config::play::duration_ms_from_green_number(
+                    profile.lane.target_green_number.max(1),
+                )
+            )
+        }
+        SettingsEntryId::Constant => format_bool_on_off(profile.lane.constant_enabled),
+        SettingsEntryId::ConstantFadeMs => format!("{} ms", profile.lane.constant_fade_ms),
         SettingsEntryId::SelectInputMode => {
             profile.input.select_input_mode.display_label().to_string()
         }
@@ -110,6 +223,13 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
                 .expect("8K key lane has a hispeed direction"),
             )
         }
+        SettingsEntryId::DifficultyTableLevelDisplay => {
+            match profile.select.difficulty_table_level_display {
+                DifficultyTableLevelDisplay::Table => "TABLE LEVEL",
+                DifficultyTableLevelDisplay::Chart => "CHART LEVEL",
+            }
+            .to_string()
+        }
         SettingsEntryId::SelectRandomSelect => format_bool_on_off(profile.select.random_select),
         SettingsEntryId::RandomMixTargetLevel => {
             format_random_mix_level(profile.select.random_mix.target_level, "OFF")
@@ -135,10 +255,13 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
             if value == 0 { "RANDOM".to_string() } else { format!("{value} STAGE") }
         }
         SettingsEntryId::ReplayAutoSave => format_bool_on_off(profile.replay.auto_save),
+        SettingsEntryId::ReplayCompress => format_bool_on_off(profile.replay.compress),
         SettingsEntryId::ReplaySlot1Rule => format_replay_slot_rule(profile.replay.slot_rules[0]),
         SettingsEntryId::ReplaySlot2Rule => format_replay_slot_rule(profile.replay.slot_rules[1]),
         SettingsEntryId::ReplaySlot3Rule => format_replay_slot_rule(profile.replay.slot_rules[2]),
         SettingsEntryId::ReplaySlot4Rule => format_replay_slot_rule(profile.replay.slot_rules[3]),
+        SettingsEntryId::Language => profile.ui.locale().native_name().to_string(),
+        SettingsEntryId::ShowFps => format_bool_on_off(profile.ui.show_fps),
     }
 }
 

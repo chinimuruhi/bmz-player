@@ -51,9 +51,10 @@ fn bundled_default_select_displays_all_session_modes() {
 
     for (id, label) in [
         ("option_assist_0", "NORMAL"),
-        ("option_assist_1", "AUTOPLAY"),
-        ("option_assist_2", "AUTO BATTLE"),
-        ("option_assist_3", "BATTLE"),
+        ("option_assist_1", "PRACTICE"),
+        ("option_assist_2", "AUTOPLAY"),
+        ("option_assist_3", "AUTO BATTLE"),
+        ("option_assist_4", "G-BATTLE"),
     ] {
         assert!(
             decoded.document.text.iter().any(|text| text.id == id && text.constant_text == label),
@@ -62,13 +63,35 @@ fn bundled_default_select_displays_all_session_modes() {
         );
     }
 
-    for index in 0..4 {
+    for index in 0..5 {
         let draw = format!("event_index({SKIN_REF_BMZ_SELECT_SESSION_MODE}) == {index}");
         assert!(decoded.document.destination.iter().any(|entry| matches!(
             entry,
             DestinationListEntry::Single(destination)
                 if destination.id == "panel_img" && destination.draw == draw
         )));
+    }
+}
+
+#[test]
+fn bundled_default_select_labels_hs_fix_in_event_index_order() {
+    let app_paths = test_app_paths();
+    let path = default_skin_document_path_from_paths(&app_paths, SkinKind::Select);
+    let decoded = decode_beatoraja_skin(&path, SkinKind::Select)
+        .unwrap_or_else(|error| panic!("failed to decode {}: {error:#}", path.display()));
+
+    for (id, label) in [
+        ("option_hsfix_0", "OFF"),
+        ("option_hsfix_1", "START BPM"),
+        ("option_hsfix_2", "MAX BPM"),
+        ("option_hsfix_3", "MAIN BPM"),
+        ("option_hsfix_4", "MIN BPM"),
+    ] {
+        assert!(
+            decoded.document.text.iter().any(|text| text.id == id && text.constant_text == label),
+            "{} should decode {id} as {label}",
+            path.display()
+        );
     }
 }
 
@@ -307,8 +330,29 @@ fn play_skin_selection_for_returns_per_mode_fields() {
 
     let battle5 = play_skin_selection_for_session(&skin, KeyMode::K5, SessionMode::AutoplayBattle);
     assert_eq!(battle5.path, "battle5.json");
+    assert_eq!(battle5.key_mode, KeyMode::K5);
     let battle7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::AutoplayBattle);
     assert_eq!(battle7.path, "battle7.json");
+    assert_eq!(battle7.key_mode, KeyMode::K7);
+    let g_battle7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::GBattle);
+    assert_eq!(g_battle7.path, "battle7.json");
+    assert_eq!(g_battle7.key_mode, KeyMode::K7);
+
+    skin.battle5.clear();
+    skin.battle7.clear();
+    let fallback5 =
+        play_skin_selection_for_session(&skin, KeyMode::K5, SessionMode::AutoplayBattle);
+    assert_eq!(fallback5.path, "skin5.json");
+    assert_eq!(fallback5.key_mode, KeyMode::K5);
+    assert!(fallback5.options.contains_key("a"));
+    let fallback7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::GBattle);
+    assert_eq!(fallback7.path, "skin7.json");
+    assert_eq!(fallback7.key_mode, KeyMode::K7);
+    assert!(fallback7.options.contains_key("b"));
+
+    let practice7 = play_skin_selection_for_session(&skin, KeyMode::K7, SessionMode::Practice);
+    assert_eq!(practice7.path, "skin7.json");
+    assert!(practice7.options.contains_key("b"));
     assert_eq!(
         play_skin_selection_for_session(&skin, KeyMode::K14, SessionMode::Normal).path,
         "skin14.json"

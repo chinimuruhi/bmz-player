@@ -69,6 +69,8 @@ pub struct IrSyncJobFilter<'a> {
     pub provider_key: &'a str,
     pub account_id: &'a str,
     pub kind: IrJobKind,
+    /// `Some` の場合は、その Result attempt の job だけを同期する。
+    pub local_score_id: Option<i64>,
 }
 
 impl IrSyncThrottle {
@@ -201,6 +203,15 @@ mod tests {
             Some(std::time::Duration::from_millis(3_100))
         );
         assert_eq!(IrSyncThrottle::none().job_delay(), None);
+    }
+
+    #[test]
+    fn score_submission_requests_the_default_ranking_limit() {
+        let options = default_score_submit_options();
+
+        assert_eq!(options.ranking_scopes, vec![IrRankingScope::Global]);
+        assert_eq!(options.ranking_limit, crate::ir::types::default_ranking_limit());
+        assert_eq!(options.ranking_limit, 100);
     }
 
     #[test]

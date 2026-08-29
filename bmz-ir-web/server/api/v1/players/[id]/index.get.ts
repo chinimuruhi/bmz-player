@@ -1,6 +1,7 @@
-import { desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { getQuery } from 'h3'
 import { db, schema } from 'hub:db'
+import { resolveIrUser } from '../../../../utils/auth'
 
 export default defineEventHandler(async (event) => {
   const playerId = getRouterParam(event, 'id')
@@ -24,6 +25,36 @@ export default defineEventHandler(async (event) => {
   if (!profile) {
     throw createError({ statusCode: 404, statusMessage: 'Player not found' })
   }
+
+  const user = await resolveIrUser(event)
+  const isSelf = user?.id === playerId
+  const [outgoingRelationship, incomingRelationship] =
+    user && !isSelf
+      ? await Promise.all([
+          db
+            .select({ ownerPlayerId: schema.rivalRelationships.ownerPlayerId })
+            .from(schema.rivalRelationships)
+            .where(
+              and(
+                eq(schema.rivalRelationships.ownerPlayerId, user.id),
+                eq(schema.rivalRelationships.targetPlayerId, playerId),
+                eq(schema.rivalRelationships.relationType, 'rival'),
+              ),
+            )
+            .limit(1),
+          db
+            .select({ ownerPlayerId: schema.rivalRelationships.ownerPlayerId })
+            .from(schema.rivalRelationships)
+            .where(
+              and(
+                eq(schema.rivalRelationships.ownerPlayerId, playerId),
+                eq(schema.rivalRelationships.targetPlayerId, user.id),
+                eq(schema.rivalRelationships.relationType, 'rival'),
+              ),
+            )
+            .limit(1),
+        ])
+      : [[], []]
 
   const bests = await db
     .select({
@@ -67,6 +98,11 @@ export default defineEventHandler(async (event) => {
 
   return {
     player: profile,
+    relationship: {
+      is_self: isSelf,
+      is_rival: outgoingRelationship.length > 0,
+      is_rivaled_by: incomingRelationship.length > 0,
+    },
     best_scores: bests.map((row) => ({
       ...row,
       chart: chartMap.get(row.chart_sha256) ?? null,

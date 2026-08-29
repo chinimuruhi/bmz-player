@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::cli::CourseCommand;
 use crate::config::app_config::AppConfig;
-use crate::config::load::{load_app_config, load_profile_config};
+use crate::config::load::load_app_config;
 use crate::paths::{AppPaths, resolve_app_paths, resolve_profile_paths};
 use crate::storage::common::hash_to_hex;
 use crate::storage::library_db::LibraryDatabase;
@@ -12,16 +12,20 @@ use crate::storage::migration::{migrate_library_db, migrate_score_db};
 use crate::storage::score_db::ScoreDatabase;
 
 pub fn run_course_command(cmd: CourseCommand) -> Result<()> {
+    let app_paths = resolve_app_paths()?;
+    run_course_command_with_paths(cmd, &app_paths)
+}
+
+pub fn run_course_command_with_paths(cmd: CourseCommand, app_paths: &AppPaths) -> Result<()> {
     match cmd {
-        CourseCommand::Import { path } => import_courses(Path::new(&path)),
-        CourseCommand::List => list_courses(),
-        CourseCommand::History { course_id, limit } => course_history(course_id, limit),
-        CourseCommand::Attempt { score_id } => course_attempt(score_id),
+        CourseCommand::Import { path } => import_courses(app_paths, Path::new(&path)),
+        CourseCommand::List => list_courses(app_paths),
+        CourseCommand::History { course_id, limit } => course_history(app_paths, course_id, limit),
+        CourseCommand::Attempt { score_id } => course_attempt(app_paths, score_id),
     }
 }
 
-fn import_courses(path: &Path) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn import_courses(app_paths: &AppPaths, path: &Path) -> Result<()> {
     app_paths.ensure_dirs()?;
     migrate_library_db(&app_paths.library_db)?;
     let mut library_db = LibraryDatabase::open(&app_paths.library_db)?;
@@ -63,8 +67,7 @@ fn import_courses(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn list_courses() -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn list_courses(app_paths: &AppPaths) -> Result<()> {
     migrate_library_db(&app_paths.library_db)?;
     let library_db = LibraryDatabase::open(&app_paths.library_db)?;
     let courses = library_db.list_courses()?;
@@ -90,55 +93,38 @@ fn list_courses() -> Result<()> {
     Ok(())
 }
 
-fn course_history(course_id: i64, limit: u32) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn course_history(app_paths: &AppPaths, course_id: i64, limit: u32) -> Result<()> {
     migrate_library_db(&app_paths.library_db)?;
     let library_db = LibraryDatabase::open(&app_paths.library_db)?;
-    let score_db = open_active_score_db(&app_paths)?;
-    let (ln_policy_setting, rule_mode) = active_course_score_context(&app_paths)?;
+    let score_db = open_active_score_db(app_paths)?;
 
     let course = library_db
         .course_by_id(course_id)?
         .ok_or_else(|| anyhow::anyhow!("course id {course_id} not found"))?;
     let identity = crate::ir::course_payload::course_identity_from_stored(&library_db, &course)
         .ok_or_else(|| anyhow::anyhow!("course id {course_id} has unresolved chart sha256"))?;
-    let ln_policy = crate::screens::select_model::normalized_course_ln_policy_for_definition(
-        &library_db,
-        &course.definition,
-        ln_policy_setting,
-    )?;
-
-    let entries = score_db.list_recent_course_scores(
-        &identity.course_hash,
-        ln_policy,
-        rule_mode,
-        limit,
-        0,
-    )?;
+    let entries =
+        score_db.list_recent_course_scores_all_contexts(&identity.course_hash, limit, 0)?;
     if entries.is_empty() {
         println!(
-            "No attempts stored for course [{}] {} (id {}, ln_policy={}, rule_mode={}).",
+            "No attempts stored for course [{}] {} (id {}).",
             kind_label(course.definition.kind),
             course.definition.title,
             course_id,
-            ln_policy.as_str(),
-            rule_mode.as_str(),
         );
         return Ok(());
     }
 
     println!(
-        "[{}] {} — {} stored attempt(s) for ln_policy={}, rule_mode={} (showing up to {}):",
+        "[{}] {} — {} stored attempt(s) across all LN/rule contexts (showing up to {}):",
         kind_label(course.definition.kind),
         course.definition.title,
         entries.len(),
-        ln_policy.as_str(),
-        rule_mode.as_str(),
         limit,
     );
     println!(
-        "  {:<5}  {:<19}  {:>7}  {:>7}  {:<12}  {:>8}  TROPHIES",
-        "ID", "PLAYED AT (UTC)", "EX", "MAX EX", "CLEAR", "MAXCOMBO",
+        "  {:<5}  {:<19}  {:<8}  {:<10}  {:>7}  {:>7}  {:<12}  {:>8}  TROPHIES",
+        "ID", "PLAYED AT (UTC)", "LN", "RULE", "EX", "MAX EX", "CLEAR", "MAXCOMBO",
     );
     for entry in entries {
         let played_at = format_unix_utc(entry.played_at);
@@ -148,9 +134,11 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
             entry.achieved_trophies.join(",")
         };
         println!(
-            "  {:<5}  {:<19}  {:>7}  {:>7}  {:<12}  {:>8}  {}",
+            "  {:<5}  {:<19}  {:<8}  {:<10}  {:>7}  {:>7}  {:<12}  {:>8}  {}",
             entry.course_score_id,
             played_at,
+            entry.ln_policy.as_str(),
+            entry.rule_mode.as_str(),
             entry.ex_score,
             entry.max_ex_score,
             entry.clear_type,
@@ -161,9 +149,8 @@ fn course_history(course_id: i64, limit: u32) -> Result<()> {
     Ok(())
 }
 
-fn course_attempt(score_id: i64) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
-    let score_db = open_active_score_db(&app_paths)?;
+fn course_attempt(app_paths: &AppPaths, score_id: i64) -> Result<()> {
+    let score_db = open_active_score_db(app_paths)?;
 
     let entry = score_db
         .course_score_entry_by_id(score_id)?
@@ -245,27 +232,6 @@ fn open_active_score_db(app_paths: &AppPaths) -> Result<ScoreDatabase> {
     profile_paths.ensure_dirs()?;
     migrate_score_db(&profile_paths.score_db)?;
     ScoreDatabase::open(&profile_paths.score_db)
-}
-
-fn active_course_score_context(
-    app_paths: &AppPaths,
-) -> Result<(crate::ln_policy::LnPolicySetting, bmz_gameplay::rule::RuleMode)> {
-    let app_config = if app_paths.config_toml.exists() {
-        load_app_config(&app_paths.config_toml)
-            .with_context(|| format!("failed to load {}", app_paths.config_toml.display()))?
-    } else {
-        AppConfig::default()
-    };
-    let profile_paths = resolve_profile_paths(app_paths, &app_config.active_profile)?;
-    if !profile_paths.profile_toml.exists() {
-        return Ok((
-            crate::ln_policy::LnPolicySetting::AutoLn,
-            bmz_gameplay::rule::RuleMode::Beatoraja,
-        ));
-    }
-    let profile = load_profile_config(&profile_paths.profile_toml)
-        .with_context(|| format!("failed to load {}", profile_paths.profile_toml.display()))?;
-    Ok((profile.play.ln_mode_policy, profile.play.rule_mode))
 }
 
 fn kind_label(kind: bmz_core::course::CourseKind) -> &'static str {

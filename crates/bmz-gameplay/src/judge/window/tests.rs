@@ -4,6 +4,28 @@ fn base_window() -> JudgeWindow {
     JudgeWindow::symmetric(16_000, 40_000, 80_000, 120_000, 500_000, 200_000, 16_000)
 }
 
+#[test]
+fn playback_rate_scales_chart_windows_to_keep_wall_time_fixed() {
+    let windows = JudgeWindows {
+        note: base_window(),
+        scratch: base_window(),
+        long_note_end: base_window(),
+        long_scratch_end: base_window(),
+        long_note_release_margin_us: 200_000,
+        long_scratch_release_margin_us: 150_000,
+    };
+
+    let slow = scale_judge_windows_for_playback_rate(windows, 50);
+    let fast = scale_judge_windows_for_playback_rate(windows, 200);
+
+    assert_eq!(slow.note.pgreat_us, 8_000);
+    assert_eq!(slow.note.empty_poor_fast_us, 250_000);
+    assert_eq!(slow.long_note_release_margin_us, 100_000);
+    assert_eq!(fast.note.pgreat_us, 32_000);
+    assert_eq!(fast.note.empty_poor_fast_us, 1_000_000);
+    assert_eq!(fast.long_scratch_release_margin_us, 300_000);
+}
+
 fn rank_spec(value: i32, kind: JudgeRankKind) -> JudgeRankSpec {
     JudgeRankSpec { value, kind }
 }

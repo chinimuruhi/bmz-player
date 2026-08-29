@@ -330,19 +330,49 @@ macro_rules! skin_document_render_select_render_methods {
         fn select_draw_state<'a>(
             &self,
             snapshot: &'a SelectSnapshot,
-            dynamic_timers: Option<&mut DynamicTimerRuntime>,
+            mut dynamic_timers: Option<&mut DynamicTimerRuntime>,
         ) -> (SkinDrawState, Option<&'a SelectRowSnapshot>) {
             let selected_row =
                 snapshot.rows.iter().find(|row| row.index == snapshot.selected_index);
+            let selected_chart_has_long_notes = selected_row
+                .filter(|row| {
+                    !snapshot.in_settings
+                        && row.kind == SelectRowKind::Song
+                        && !row.is_folder
+                        && row.in_library
+                })
+                .map(|row| row.has_long_notes);
+            let selected_chart = selected_row.filter(|row| {
+                !snapshot.in_settings
+                    && row.kind == SelectRowKind::Song
+                    && !row.is_folder
+                    && row.in_library
+            });
+            let mut skin_attempt = snapshot.skin_attempt;
+            if let Some(row) = selected_chart {
+                skin_attempt.source_key_mode = skin_attempt.source_key_mode.or(row.chart_key_mode);
+                skin_attempt.effective_key_mode =
+                    skin_attempt.effective_key_mode.or(row.chart_key_mode);
+                skin_attempt.source_ln_profile_bits =
+                    skin_attempt.source_ln_profile_bits.or(row.source_ln_profile_bits);
+                skin_attempt.has_bga = skin_attempt.has_bga.or(Some(row.has_bga));
+                skin_attempt.has_random_sequence =
+                    skin_attempt.has_random_sequence.or(Some(row.has_random));
+            }
             let mouse_position = snapshot.mouse_position.map(|(x, y)| {
                 (x.clamp(0.0, 1.0) * self.w as f32, (1.0 - y.clamp(0.0, 1.0)) * self.h as f32)
             });
-            let duration_green_ms = snapshot.note_display_duration_ms;
+            let duration_ms = snapshot.note_display_duration_ms;
+            let duration_green_ms = duration_ms.map(duration_to_green_number_ms);
             let elapsed_ms =
                 (snapshot.time.0 / 1_000).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+            let start_input_ms = dynamic_timers.as_deref_mut().map_or_else(
+                || skin_start_input_elapsed_ms(elapsed_ms, self.input),
+                |runtime| runtime.start_input_elapsed_ms(elapsed_ms, self.input),
+            );
             let mut state = SkinDrawState {
                 elapsed_ms,
-                start_input_ms: skin_start_input_elapsed_ms(elapsed_ms, self.input),
+                start_input_ms,
                 current_fps: snapshot.current_fps,
                 operating_time_ms: snapshot.operating_time_ms,
                 logical_input_held: snapshot.skin_input.held,
@@ -360,6 +390,7 @@ macro_rules! skin_document_render_select_render_methods {
                     },
                 ),
                 select_option_panel: snapshot.option_panel,
+                skin_attempt,
                 select_arrange_index: select_arrange_index(&snapshot.arrange),
                 select_arrange_2p_index: select_arrange_index(&snapshot.arrange_2p),
                 select_extended_arrange_index: extended_arrange_index(&snapshot.arrange),
@@ -388,20 +419,22 @@ macro_rules! skin_document_render_select_render_methods {
                 assist_mine_mode: snapshot.assist_mine_mode,
                 assist_scroll_mode: snapshot.assist_scroll_mode,
                 assist_long_note_mode: snapshot.assist_long_note_mode,
+                guide_se_enabled: snapshot.guide_se_enabled,
+                constant_enabled: snapshot.constant_enabled,
                 select_session_mode_index: select_session_mode_index(&snapshot.assist),
                 select_mode_index: select_mode_index(&snapshot.select_mode),
                 select_difficulty_filter_index: snapshot.select_difficulty_filter as usize,
                 random_mix_options: snapshot.random_mix_options,
                 select_sort_index: select_sort_index(&snapshot.select_sort),
                 select_ln_mode_index: select_ln_mode_index(&snapshot.select_ln_mode),
+                rule_mode_index: snapshot.rule_mode_index,
+                ln_policy_setting_index: Some(snapshot.ln_policy_setting_index),
+                ln_score_policy_index: snapshot.ln_score_policy_index,
                 select_judge_algorithm_index: select_judge_algorithm_index(
                     &snapshot.judge_algorithm,
                 ),
                 hispeed: snapshot.hispeed,
-                total_duration_ms: duration_green_ms
-                    .map(green_duration_to_duration)
-                    .unwrap_or(0)
-                    .min(i32::MAX as i64) as i32,
+                total_duration_ms: duration_ms.unwrap_or(0),
                 duration_green_ms,
                 select_scroll_progress: select_scroll_progress(snapshot),
                 select_master_volume: snapshot.master_volume,
@@ -409,6 +442,7 @@ macro_rules! skin_document_render_select_render_methods {
                 select_bgm_volume: snapshot.bgm_volume,
                 select_has_banner: snapshot.banner_image,
                 select_has_document: selected_row.is_some_and(|row| row.has_document),
+                chart_has_long_notes: selected_chart_has_long_notes,
                 has_stagefile: snapshot.stage_background,
                 has_backbmp: snapshot.backbmp_image,
                 select_folder_song_count: selected_row.and_then(select_row_folder_song_count),

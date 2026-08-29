@@ -51,9 +51,10 @@ pub struct StorePlayResultRequest {
     pub seed_scheme: String,
     pub s_random_scheme: SRandomScheme,
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
     pub arrange_pattern: Option<Vec<u8>>,
     /// false の場合は beatoraja の `updateScore=false` と同様に、
-    /// クリアランプとプレイ回数だけを更新する。
+    /// クリアランプ・回数・profile 全体統計だけを更新する。
     pub update_score: bool,
     pub mode: StorePlayResultMode,
 }
@@ -139,7 +140,12 @@ pub fn store_play_result(
             )
             .with_randomization(arrange_seed_2p, bms_random_choices.clone())
             .with_seed_scheme(request.seed_scheme.clone())
-            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p);
+            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p)
+            .with_playback_metadata(
+                request.applied_double_option,
+                result.gauge_type,
+                request.h_random_threshold_ms,
+            );
             let hash = save_replay_with_hash(&path, &replay)?;
             (format!("replay/{file_name}"), Some(hash))
         } else {
@@ -213,7 +219,12 @@ pub fn store_play_result(
             )
             .with_randomization(arrange_seed_2p, bms_random_choices.clone())
             .with_seed_scheme(request.seed_scheme.clone())
-            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p);
+            .with_s_random_schemes(request.s_random_scheme, request.s_random_scheme_2p)
+            .with_playback_metadata(
+                request.applied_double_option,
+                result.gauge_type,
+                request.h_random_threshold_ms,
+            );
             save_replay(&path, &replay)?;
             let rel_path = format!("replay/{file_name}");
             score_db.upsert_replay_slot(&ReplaySlotRecord {
@@ -225,11 +236,14 @@ pub fn store_play_result(
                 rule,
                 replay_path: rel_path.clone(),
                 played_at: request.played_at,
-                ex_score: candidate.ex_score,
-                bp: candidate.bp,
-                cb: candidate.cb,
-                max_combo: candidate.max_combo,
-                clear_rank: candidate.clear_rank,
+                ex_score: Some(candidate.ex_score),
+                bp: Some(candidate.bp),
+                cb: Some(candidate.cb),
+                max_combo: Some(candidate.max_combo),
+                clear_rank: Some(candidate.clear_rank),
+                source_kind: super::score_db::ScoreSourceKind::Local,
+                source_path: String::new(),
+                source_fingerprint: String::new(),
             })?;
             slot_paths[slot_index] = Some(rel_path);
         }
@@ -278,11 +292,14 @@ pub fn save_existing_replay_to_slot(
         rule: ReplaySlotRule::Always,
         replay_path: rel_path.clone(),
         played_at: stored.played_at,
-        ex_score: candidate.ex_score,
-        bp: candidate.bp,
-        cb: candidate.cb,
-        max_combo: candidate.max_combo,
-        clear_rank: candidate.clear_rank,
+        ex_score: Some(candidate.ex_score),
+        bp: Some(candidate.bp),
+        cb: Some(candidate.cb),
+        max_combo: Some(candidate.max_combo),
+        clear_rank: Some(candidate.clear_rank),
+        source_kind: super::score_db::ScoreSourceKind::Local,
+        source_path: String::new(),
+        source_fingerprint: String::new(),
     })?;
     Ok(Some(rel_path))
 }
@@ -313,7 +330,7 @@ fn evaluate_slot_update(
     prev: Option<&ReplaySlotRecord>,
     next: &CandidateMetrics,
 ) -> bool {
-    let prev_metrics = prev.map(|p| (p.ex_score, p.bp, p.max_combo, p.clear_rank));
+    let prev_metrics = prev.and_then(|p| Some((p.ex_score?, p.bp?, p.max_combo?, p.clear_rank?)));
     slot_rule_passes(rule, prev_metrics, next)
 }
 

@@ -108,7 +108,7 @@ async fn sync_cli_jobs_with_filter(
                     profile_root,
                     logs_dir,
                     ir_config,
-                    IrSyncJobFilter { provider_key, account_id, kind },
+                    IrSyncJobFilter { provider_key, account_id, kind, local_score_id: None },
                     now_unix_seconds(),
                     1,
                     ignore_retry_backoff,

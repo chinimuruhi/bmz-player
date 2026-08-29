@@ -6,13 +6,27 @@ fn time_for_logical_frame(frame: i64) -> i64 {
 }
 
 fn sequence_chart(key_mode: KeyMode, lane: Lane, frames: &[i64]) -> PlayableChart {
+    let times: Vec<i64> = frames.iter().map(|&frame| time_for_logical_frame(frame)).collect();
+    sequence_chart_at_times(key_mode, lane, &times)
+}
+
+fn sequence_chart_at_times(key_mode: KeyMode, lane: Lane, times: &[i64]) -> PlayableChart {
     let mut result = chart();
     result.metadata.key_mode = key_mode;
-    for (index, &frame) in frames.iter().enumerate() {
-        let time = time_for_logical_frame(frame);
+    for (index, &time) in times.iter().enumerate() {
         result.lane_notes[lane.index()].push(note((index + 1) as u32, lane, time));
     }
     result
+}
+
+fn sequence_chart_with_interval(
+    key_mode: KeyMode,
+    lane: Lane,
+    note_count: usize,
+    interval_us: i64,
+) -> PlayableChart {
+    let times: Vec<i64> = (0..note_count).map(|index| index as i64 * interval_us).collect();
+    sequence_chart_at_times(key_mode, lane, &times)
 }
 
 fn lane_for_id(chart: &PlayableChart, id: u32) -> Lane {
@@ -30,83 +44,119 @@ fn lanes_for_id_range(chart: &PlayableChart, ids: std::ops::RangeInclusive<u32>)
 }
 
 #[test]
-fn logical_frame_120_uses_absolute_integer_time_with_euclidean_division() {
-    assert_eq!(logical_frame_120(TimeUs(0)), 0);
-    assert_eq!(logical_frame_120(TimeUs(1)), 0);
-    assert_eq!(logical_frame_120(TimeUs(8_333)), 0);
-    assert_eq!(logical_frame_120(TimeUs(8_334)), 1);
-
-    for (frames, boundary_us) in [(6, 50_000), (7, 58_334), (8, 66_667)] {
-        assert_eq!(logical_frame_120(TimeUs(boundary_us - 1)), frames - 1);
-        assert_eq!(logical_frame_120(TimeUs(boundary_us)), frames);
-        assert_eq!(logical_frame_120(TimeUs(boundary_us + 1)), frames);
+fn lm_interval_frames_truncates_elapsed_milliseconds_before_120hz_conversion() {
+    for (elapsed_us, expected_frames) in [
+        (0, 0),
+        (8_999, 0),
+        (9_000, 1),
+        (49_999, 5),
+        (50_000, 6),
+        (58_999, 6),
+        (59_000, 7),
+        (66_999, 7),
+        (67_000, 8),
+        (74_999, 8),
+        (75_000, 9),
+    ] {
+        assert_eq!(
+            lm_interval_frames_120(TimeUs(0), TimeUs(elapsed_us)),
+            expected_frames,
+            "elapsed_us={elapsed_us}"
+        );
+        assert_eq!(
+            lm_interval_frames_120(TimeUs(123_456_789), TimeUs(123_456_789 + elapsed_us)),
+            expected_frames,
+            "offset elapsed_us={elapsed_us}"
+        );
     }
 
-    assert_eq!(logical_frame_120(TimeUs(-1)), -1);
-    assert_eq!(logical_frame_120(TimeUs(-8_333)), -1);
-    assert_eq!(logical_frame_120(TimeUs(-8_334)), -2);
-    assert_eq!(logical_frame_120(TimeUs(-50_000)), -6);
-
-    for time in [i64::MIN, i64::MAX] {
-        let expected = (i128::from(time) * 120).div_euclid(1_000_000) as i64;
-        assert_eq!(logical_frame_120(TimeUs(time)), expected);
-    }
+    assert_eq!(lm_interval_frames_120(TimeUs(1), TimeUs(0)), 0);
+    let full_range_frames = ((i128::from(i64::MAX) - i128::from(i64::MIN)).div_euclid(1_000) * 120)
+        .div_euclid(1_000) as i64;
+    assert_eq!(lm_interval_frames_120(TimeUs(i64::MIN), TimeUs(i64::MAX)), full_range_frames);
 }
 
 #[test]
 fn lm_candidate_classification_matches_inclusive_6f_7f_8f_boundaries() {
     assert_eq!(
-        classify_lm_candidate(LaneHistory { last_frame: Some(10), rapid_streak: 1 }, 16,),
+        classify_lm_candidate(
+            LaneHistory { last_time: Some(TimeUs(0)), rapid_streak: 1 },
+            TimeUs(58_999),
+        ),
         LmCandidateClass::TwoPlusWithin6F
     );
     assert_eq!(
-        classify_lm_candidate(LaneHistory { last_frame: Some(10), rapid_streak: 1 }, 17,),
+        classify_lm_candidate(
+            LaneHistory { last_time: Some(TimeUs(0)), rapid_streak: 1 },
+            TimeUs(59_000),
+        ),
         LmCandidateClass::Safe
     );
     assert_eq!(
-        classify_lm_candidate(LaneHistory { last_frame: Some(10), rapid_streak: 2 }, 17,),
+        classify_lm_candidate(
+            LaneHistory { last_time: Some(TimeUs(0)), rapid_streak: 2 },
+            TimeUs(66_999),
+        ),
         LmCandidateClass::ThreePlusWithin7F
     );
     assert_eq!(
-        classify_lm_candidate(LaneHistory { last_frame: Some(10), rapid_streak: 2 }, 18,),
+        classify_lm_candidate(
+            LaneHistory { last_time: Some(TimeUs(0)), rapid_streak: 2 },
+            TimeUs(67_000),
+        ),
         LmCandidateClass::Safe
     );
     assert_eq!(
-        classify_lm_candidate(LaneHistory { last_frame: Some(10), rapid_streak: 3 }, 18,),
+        classify_lm_candidate(
+            LaneHistory { last_time: Some(TimeUs(0)), rapid_streak: 3 },
+            TimeUs(74_999),
+        ),
         LmCandidateClass::FourPlusWithin8F
     );
 
-    let (reset, gap) =
-        next_lane_history(LaneHistory { last_frame: Some(10), rapid_streak: u16::MAX }, 19);
+    let (reset, gap) = next_lane_history(
+        LaneHistory { last_time: Some(TimeUs(0)), rapid_streak: u16::MAX },
+        TimeUs(75_000),
+    );
     assert_eq!(gap, 9);
     assert_eq!(reset.rapid_streak, 1);
-    assert_eq!(classify_lm_candidate(reset, 28), LmCandidateClass::Safe);
-    let (saturated, _) =
-        next_lane_history(LaneHistory { last_frame: Some(20), rapid_streak: u16::MAX }, 28);
+    assert_eq!(classify_lm_candidate(reset, TimeUs(150_000)), LmCandidateClass::Safe);
+    let (saturated, _) = next_lane_history(
+        LaneHistory { last_time: Some(TimeUs(0)), rapid_streak: u16::MAX },
+        TimeUs(74_999),
+    );
     assert_eq!(saturated.rapid_streak, u16::MAX);
 }
 
 #[test]
-fn bpm255_sixteenths_quantize_to_sixteen_7f_and_one_8f_intervals() {
-    let frames: Vec<i64> =
-        (0_i64..=17).map(|index| logical_frame_120(TimeUs(index * 1_000_000 / 17))).collect();
-    let deltas: Vec<i64> = frames.windows(2).map(|window| window[1] - window[0]).collect();
+fn bpm255_and_bpm260_sixteenths_receive_the_6f_double_correction() {
+    let bpm255_times: Vec<_> = (0_i64..=17).map(|index| TimeUs(index * 1_000_000 / 17)).collect();
+    let bpm260_times: Vec<_> = (0_i64..=13).map(|index| TimeUs(index * 750_000 / 13)).collect();
 
-    assert_eq!(deltas.iter().filter(|&&delta| delta == 7).count(), 16);
-    assert_eq!(deltas.iter().filter(|&&delta| delta == 8).count(), 1);
-    assert_eq!(deltas.iter().sum::<i64>(), 120);
-    assert!(deltas.iter().all(|&delta| matches!(delta, 7 | 8)));
+    for (bpm, times) in [(255, bpm255_times), (260, bpm260_times)] {
+        let frames: Vec<_> =
+            times.windows(2).map(|window| lm_interval_frames_120(window[0], window[1])).collect();
+        assert!(frames.iter().all(|&frames| frames == 6), "bpm={bpm}: {frames:?}");
+
+        let raw_times: Vec<_> = times.into_iter().map(|time| time.0).collect();
+        for seed in [0, 1, 42, 0x00ff_ffff] {
+            let mut chart = sequence_chart_at_times(KeyMode::K7, Lane::Key1, &raw_times);
+            apply_arrange(&mut chart, ArrangeOption::SRandom, Some(seed), None);
+            let lanes = lanes_for_id_range(&chart, 1..=raw_times.len() as u32);
+            assert!(lanes.windows(2).all(|window| window[0] != window[1]), "bpm={bpm} seed={seed}");
+        }
+    }
 }
 
 #[test]
 fn lm_correction_avoids_6f_doubles_7f_triples_and_8f_quadruples_when_safe() {
     for seed in [0, 1, 42, 0x00ff_ffff] {
-        let mut six = sequence_chart(KeyMode::K7, Lane::Key1, &[120, 126, 132, 138, 144, 150]);
+        let mut six = sequence_chart_with_interval(KeyMode::K7, Lane::Key1, 6, 58_000);
         apply_arrange(&mut six, ArrangeOption::SRandom, Some(seed), None);
         let six_lanes = lanes_for_id_range(&six, 1..=6);
         assert!(six_lanes.windows(2).all(|window| window[0] != window[1]), "seed={seed}");
 
-        let mut seven = sequence_chart(KeyMode::K7, Lane::Key1, &[120, 127, 134, 141, 148, 155]);
+        let mut seven = sequence_chart_with_interval(KeyMode::K7, Lane::Key1, 6, 66_000);
         apply_arrange(&mut seven, ArrangeOption::SRandom, Some(seed), None);
         let seven_lanes = lanes_for_id_range(&seven, 1..=6);
         assert!(
@@ -116,7 +166,7 @@ fn lm_correction_avoids_6f_doubles_7f_triples_and_8f_quadruples_when_safe() {
             "seed={seed}"
         );
 
-        let mut eight = sequence_chart(KeyMode::K7, Lane::Key1, &[120, 128, 136, 144, 152, 160]);
+        let mut eight = sequence_chart_with_interval(KeyMode::K7, Lane::Key1, 6, 74_000);
         apply_arrange(&mut eight, ArrangeOption::SRandom, Some(seed), None);
         let eight_lanes = lanes_for_id_range(&eight, 1..=6);
         assert!(
@@ -135,12 +185,12 @@ fn lm_candidate_shortage_relaxes_8f_then_7f_then_6f_and_keeps_a_bijection() {
         let mut group = NoteArrangeGroup::new(&lanes.map(Lane::index));
         group.active_ln.insert(Lane::Key4.index(), Lane::Key4.index());
         group.lane_history[Lane::Key1.index()] =
-            LaneHistory { last_frame: Some(92), rapid_streak: 3 };
+            LaneHistory { last_time: Some(TimeUs(933_000)), rapid_streak: 3 };
         group.lane_history[Lane::Key2.index()] =
-            LaneHistory { last_frame: Some(93), rapid_streak: 2 };
+            LaneHistory { last_time: Some(TimeUs(941_000)), rapid_streak: 2 };
         group.lane_history[Lane::Key3.index()] =
-            LaneHistory { last_frame: Some(94), rapid_streak: 1 };
-        let time = time_for_logical_frame(100);
+            LaneHistory { last_time: Some(TimeUs(942_000)), rapid_streak: 1 };
+        let time = 1_000_000;
         let notes: Vec<_> = lanes[..note_count]
             .iter()
             .enumerate()
@@ -163,9 +213,11 @@ fn lm_candidate_shortage_relaxes_8f_then_7f_then_6f_and_keeps_a_bijection() {
 fn lm_violation_bucket_prefers_the_destination_with_the_larger_gap() {
     let lanes = [Lane::Key1.index(), Lane::Key2.index()];
     let mut group = NoteArrangeGroup::new(&lanes);
-    group.lane_history[Lane::Key1.index()] = LaneHistory { last_frame: Some(94), rapid_streak: 1 };
-    group.lane_history[Lane::Key2.index()] = LaneHistory { last_frame: Some(95), rapid_streak: 1 };
-    let time = time_for_logical_frame(100);
+    group.lane_history[Lane::Key1.index()] =
+        LaneHistory { last_time: Some(TimeUs(950_000)), rapid_streak: 1 };
+    group.lane_history[Lane::Key2.index()] =
+        LaneHistory { last_time: Some(TimeUs(958_000)), rapid_streak: 1 };
+    let time = 1_000_000;
     let notes = [note(1, Lane::Key1, time)];
     let mut rng = ArrangeRng::new(42, false);
 
@@ -237,6 +289,7 @@ events = []
         replay.lane_shuffle_pattern.as_deref(),
         replay.uses_legacy_seed_scheme(),
         scheme,
+        None,
     );
 
     assert_eq!(
@@ -267,6 +320,7 @@ fn rng_and_s_random_scheme_combinations_are_deterministic_and_independent() {
                 None,
                 legacy_rng,
                 scheme,
+                None,
             );
             let second_applied = apply_arrange_internal(
                 &mut second,
@@ -275,6 +329,7 @@ fn rng_and_s_random_scheme_combinations_are_deterministic_and_independent() {
                 None,
                 legacy_rng,
                 scheme,
+                None,
             );
 
             assert_eq!(lanes_for_notes(&first), lanes_for_notes(&second));
@@ -290,7 +345,7 @@ fn lm_120hz_v1_has_fixed_golden_rng_order_and_is_deterministic() {
     let expected = vec![
         (NoteId(1), Lane::Key3),
         (NoteId(2), Lane::Key5),
-        (NoteId(3), Lane::Key1),
+        (NoteId(3), Lane::Key6),
         (NoteId(4), Lane::Key7),
         (NoteId(5), Lane::Key2),
         (NoteId(6), Lane::Scratch),
@@ -308,6 +363,7 @@ fn lm_120hz_v1_has_fixed_golden_rng_order_and_is_deterministic() {
             None,
             false,
             SRandomScheme::Lm120HzV1,
+            None,
         );
         assert_eq!(applied.s_random_scheme, SRandomScheme::Lm120HzV1);
         assert_eq!(lanes_for_notes(&actual), expected);
@@ -331,6 +387,7 @@ fn arranged_dp_chart(seed_1p: i64, seed_2p: i64) -> PlayableChart {
         false,
         SRandomScheme::Lm120HzV1,
         Some(SRandomScheme::Lm120HzV1),
+        None,
         None,
     );
     assert_eq!(applied.seed, Some(seed_1p));
@@ -483,6 +540,7 @@ fn lm_s_random_keeps_a_complete_bijection_in_every_supported_key_mode() {
                 SRandomScheme::Lm120HzV1,
                 None,
                 None,
+                None,
             );
         } else {
             apply_arrange(&mut result, ArrangeOption::SRandom, Some(11), None);
@@ -506,5 +564,5 @@ fn lm_same_source_objects_on_one_timeline_update_history_once() {
     let destination = map[&Lane::Key1.index()];
 
     assert_eq!(group.lane_history[destination].rapid_streak, 1);
-    assert_eq!(group.lane_history[destination].last_frame, Some(120));
+    assert_eq!(group.lane_history[destination].last_time, Some(TimeUs(time)));
 }

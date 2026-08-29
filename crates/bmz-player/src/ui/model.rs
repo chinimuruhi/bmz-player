@@ -274,6 +274,8 @@ pub struct EguiOutput {
     pub save_app_config: bool,
     /// プロファイル設定 (`ProfileConfig`) の保存が要求されたか。
     pub save_profile_config: bool,
+    /// eguiキー設定から要求された割り当て変更。
+    pub key_config_action: Option<EguiKeyConfigAction>,
     /// profile.toml からスキン設定を再読込して未保存変更を戻す要求。
     pub reset_skin_config: bool,
     /// スキン設定値のうち、再読込や即時反映が必要な対象。
@@ -285,6 +287,8 @@ pub struct EguiOutput {
     /// 難易度表の取得要求。空なら取得しない。
     pub table_fetch_urls: Vec<String>,
     pub score_import_request: Option<ScoreImportRequest>,
+    pub replay_import_request: Option<ImportBeatorajaReplaysRequest>,
+    pub cancel_replay_import: bool,
     /// 現在の設定で音声出力(cpal ストリーム)を開き直す要求。
     pub apply_audio_output: bool,
     pub check_for_update: bool,
@@ -297,13 +301,13 @@ pub struct EguiOutput {
 
 pub struct SelectCourseBuilderData<'a> {
     pub definition: &'a mut bmz_core::course::CourseDefinition,
-    pub key_mode: Option<bmz_core::lane::KeyMode>,
     pub max_entries: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectCourseBuilderAction {
     Remove(usize),
+    Move { from: usize, to: usize },
     Undo,
     Save,
     Cancel,
@@ -329,7 +333,6 @@ pub struct CourseEditorChart {
 #[derive(Debug, Clone)]
 pub enum CourseEditorAction {
     Save(bmz_core::course::CourseDefinition),
-    SaveAndTest(bmz_core::course::CourseDefinition),
     Delete(i64),
     Export { path: PathBuf, definition: bmz_core::course::CourseDefinition },
     Import { path: PathBuf },
@@ -340,8 +343,6 @@ pub(super) struct CourseEditorUiState {
     pub(super) selected_course_id: Option<i64>,
     pub(super) draft: Option<bmz_core::course::CourseDefinition>,
     pub(super) search_query: String,
-    pub(super) import_path: String,
-    pub(super) export_path: String,
     pub(super) status: String,
     pub(super) error: bool,
 }
@@ -393,6 +394,8 @@ pub struct EguiLayer {
     pub(super) show_settings: bool,
     /// プロファイル設定パネルの開閉状態。
     pub(super) show_profile_settings: bool,
+    /// プロファイル設定内のキー設定UIと入力待受状態。
+    pub(super) key_config: EguiKeyConfigUiState,
     /// スキン設定パネルの開閉状態。
     pub(super) show_skin: bool,
     /// ローカルのコース/段位作成・編集パネル。
@@ -416,6 +419,12 @@ pub struct EguiLayer {
     pub(super) score_import_device_type: InputDeviceKind,
     pub(super) score_import_status: String,
     pub(super) score_import_error: String,
+    pub(super) replay_import_path: String,
+    pub(super) replay_import_device_type: InputDeviceKind,
+    pub(super) replay_import_overwrite: bool,
+    pub(super) replay_import_status: String,
+    pub(super) replay_import_error: String,
+    pub(super) replay_import_progress: Option<ReplayImportProgress>,
     /// 本体設定パネル: 出力デバイス選択用の列挙キャッシュ。
     pub(super) audio_device_picker: AudioDevicePickerState,
     /// 本体設定パネル: OBS scene list 取得状態。
@@ -428,6 +437,58 @@ pub struct EguiLayer {
     pub(super) profile_manager: ProfileManagerUiState,
     /// BMZ メニュー: OS のファイルマネージャでディレクトリを開いた直近結果。
     pub(super) directory_open_status: Option<DirectoryOpenStatus>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum EguiKeyConfigSection {
+    #[default]
+    Common,
+    KeyMode(KeyMode),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct EguiKeyConfigListenTarget {
+    pub(super) key_mode: KeyMode,
+    pub(super) target: KeyBindingTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct EguiKeyConfigStatus {
+    pub(super) message: String,
+    pub(super) error: bool,
+}
+
+#[derive(Debug)]
+pub(super) struct EguiKeyConfigUiState {
+    pub(super) section: EguiKeyConfigSection,
+    pub(super) slot: KeyBindingSlot,
+    pub(super) listening: Option<EguiKeyConfigListenTarget>,
+    pub(super) status: Option<EguiKeyConfigStatus>,
+}
+
+impl Default for EguiKeyConfigUiState {
+    fn default() -> Self {
+        Self {
+            section: EguiKeyConfigSection::Common,
+            slot: KeyBindingSlot::KeyboardPrimary,
+            listening: None,
+            status: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EguiKeyConfigAction {
+    Bind { key_mode: KeyMode, target: KeyBindingTarget, control: String },
+    Clear { key_mode: KeyMode, target: KeyBindingTarget },
+    ToggleEightKeyHispeed { entry_id: SettingsEntryId },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EguiKeyConfigInput {
+    NotHandled,
+    Consumed,
+    Action(EguiKeyConfigAction),
 }
 
 #[derive(Debug, Clone)]

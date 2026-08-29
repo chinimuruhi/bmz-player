@@ -125,6 +125,7 @@ fn random2_arranges_only_dp_second_player_lanes() {
         SRandomScheme::Lm120HzV1,
         None,
         None,
+        None,
     );
 
     assert_eq!(applied.arrange, ArrangeOption::Normal);
@@ -154,6 +155,7 @@ fn recorded_sp_pattern_does_not_gain_a_second_player_seed() {
         None,
         false,
         SRandomScheme::Lm120HzV1,
+        None,
         None,
         Some(&pattern),
     );
@@ -420,6 +422,7 @@ fn legacy_s_random_and_non_target_arranges_match_pre_lm_head_goldens() {
             None,
             legacy_seed,
             SRandomScheme::Legacy40MsV1,
+            None,
         );
         let actual: Vec<_> = lanes_for_notes(&chart).into_iter().map(|(_, lane)| lane).collect();
         assert_eq!(actual, expected, "{arrange:?} legacy_rng={legacy_seed}");
@@ -433,6 +436,7 @@ fn legacy_s_random_and_non_target_arranges_match_pre_lm_head_goldens() {
                 None,
                 legacy_seed,
                 SRandomScheme::Lm120HzV1,
+                None,
             );
             assert_eq!(lanes_for_notes(&with_lm_scheme), lanes_for_notes(&chart));
         }

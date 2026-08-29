@@ -101,6 +101,13 @@ profile policy を適用した後の effective LN mode を指す。
 - CN / HCN の始点を見逃した場合、beatoraja と同じく始点と対応する終点の両方を
   その時点で POOR にする。終点時刻まで追加 POOR を遅延させない。
 - CN / HCN の終点を離して判定する場合は通常ノート窓ではなく long-note end 窓を使う。
+- 方向付きスクラッチ CN / HCN (BSS) は、始点と同じ方向の Release が long-note end 窓内なら
+  その Release で終点を判定する。beatoraja はこの Release を無視して逆方向 Press を待つが、
+  BMZ はスクラッチを止める操作だけでも終点を取れるよう、ここを意図的に変更している。
+- 上記 Release の直後 30ms 以内（30ms ちょうどを含む）に来た最初の逆方向 Press は 1 回だけ
+  消費し、通常ノート、Mine、フォールバックキー音へ流さない。別方向の Press または 30ms 超過後の
+  Press は通常どおり処理する。Release を伴わず逆方向 Press で終点を取る場合は、終点だけを判定し、
+  同じ入力を直後の通常ノートへ流さない。
 - CN / HCN を離さず終点を通過した場合の見逃し確定時刻は、long-note end の
   BAD 終端ではなく通常ノートの late BAD 終端を使う。
 - 9K の beatoraja PMS と DX POP には 200ms の release margin がある。BAD / POOR 相当の

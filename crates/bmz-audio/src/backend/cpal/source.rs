@@ -18,7 +18,17 @@ impl CpalOutput {
 
 impl CpalSharedOutput {
     pub fn play(&self) -> Result<(), CpalBackendError> {
-        self.inner.stream.play().map_err(CpalBackendError::PlayStream)?;
+        match &self.inner.stream {
+            CpalOutputStream::Cpal(stream) => {
+                stream.play().map_err(CpalBackendError::PlayStream)?;
+            }
+            #[cfg(windows)]
+            CpalOutputStream::WasapiExclusive(stream) => {
+                stream
+                    .play()
+                    .map_err(|error| CpalBackendError::WasapiExclusive(error.to_string()))?;
+            }
+        }
         Ok(())
     }
 
@@ -60,6 +70,21 @@ impl CpalSharedOutput {
         #[cfg(windows)]
         {
             self.inner._low_latency_guard.as_ref().map(|guard| guard.info().client_period_frames)
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    }
+
+    /// WASAPI 排他モードの実効 endpoint buffer frames。
+    pub fn exclusive_buffer_frames(&self) -> Option<u32> {
+        #[cfg(windows)]
+        {
+            match &self.inner.stream {
+                CpalOutputStream::WasapiExclusive(stream) => Some(stream.info().buffer_frames),
+                CpalOutputStream::Cpal(_) => None,
+            }
         }
         #[cfg(not(windows))]
         {
@@ -201,8 +226,11 @@ impl CpalCommandedOutputSource {
         self.clock.start(chart_zero_time);
     }
 
-    pub fn set_playback_rate_percent(&mut self, rate: u16) {
-        self.clock.set_playback_rate_percent(rate);
+    pub fn set_playback_rate_percent(
+        &mut self,
+        rate: u16,
+    ) -> Option<crate::clock::PlaybackRateChange> {
+        self.clock.set_playback_rate_percent(rate)
     }
 
     pub fn pause(&mut self) {

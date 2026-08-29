@@ -15,6 +15,9 @@ Options:
   --out-dir DIR           Output directory (default: dist/macos).
   --app-name NAME         App bundle name (default: BMZ Player).
   --bundle-id ID          CFBundleIdentifier (default: net.hyrorre.bmz-player).
+  --minimum-system-version VERSION
+                          Set the macOS deployment target (x64 default: 10.13;
+                          Apple Silicon default: 11.0).
   --bundle-dylibs         Copy non-system dylib dependencies into Contents/Frameworks.
                           Automatically ad-hoc signs unless --sign/--ad-hoc-sign is set.
   --skip-rust-license-report
@@ -28,6 +31,8 @@ Environment:
   BMZ_MACOS_APP_NAME      Default app name override.
   BMZ_MACOS_BUNDLE_ID     Default bundle id override.
   BMZ_MACOS_OUT_DIR       Default output directory override.
+  BMZ_MACOS_DEPLOYMENT_TARGET
+                          Default minimum macOS version override.
   BMZ_CODESIGN_IDENTITY   Default signing identity override.
   BMZ_BUNDLE_DYLIBS=1     Same as --bundle-dylibs.
   BMZ_PACKAGE_SMOKE=1     Same as --smoke.
@@ -206,6 +211,75 @@ verify_bundled_dylib_dependencies() {
   [[ "${missing}" -eq 0 ]] || die "bundled dylib dependency verification failed"
 }
 
+version_lte() {
+  local actual="$1"
+  local limit="$2"
+  awk -v actual="${actual}" -v limit="${limit}" '
+    BEGIN {
+      actual_count = split(actual, actual_parts, ".")
+      limit_count = split(limit, limit_parts, ".")
+      count = actual_count > limit_count ? actual_count : limit_count
+      for (i = 1; i <= count; i++) {
+        actual_part = i <= actual_count ? actual_parts[i] + 0 : 0
+        limit_part = i <= limit_count ? limit_parts[i] + 0 : 0
+        if (actual_part < limit_part) exit 0
+        if (actual_part > limit_part) exit 1
+      }
+      exit 0
+    }
+  '
+}
+
+macho_minimum_version() {
+  local binary="$1"
+  vtool -show-build "${binary}" | awk '
+    $1 == "minos" { print $2; exit }
+    $1 == "version" { print $2; exit }
+  '
+}
+
+verify_macos_deployment_target() {
+  local executable="$1"
+  local frameworks_dir="$2"
+  local expected="$3"
+  need_command file
+  need_command nm
+  need_command vtool
+
+  local check_items=("${executable}")
+  if [[ -d "${frameworks_dir}" ]]; then
+    while IFS= read -r -d '' file_path; do
+      if file "${file_path}" | grep -q 'Mach-O'; then
+        check_items+=("${file_path}")
+      fi
+    done < <(find "${frameworks_dir}" -type f -print0)
+  fi
+
+  local item minos invalid=0
+  for item in "${check_items[@]}"; do
+    minos="$(macho_minimum_version "${item}")"
+    if [[ -z "${minos}" ]]; then
+      echo "error: ${item} has no macOS deployment target" >&2
+      invalid=1
+      continue
+    fi
+    if ! version_lte "${minos}" "${expected}"; then
+      echo "error: ${item} requires macOS ${minos}, expected ${expected} or older" >&2
+      invalid=1
+      continue
+    fi
+    if nm -u "${item}" | grep -Eq \
+      '_(AVCaptureDeviceTypeContinuityCamera|AudioHardware(Create|Destroy)ProcessTap|SecTrustEvaluateWithError)$'; then
+      echo "error: ${item} imports an unsupported newer macOS API" >&2
+      invalid=1
+      continue
+    fi
+    echo "==> Verified $(basename "${item}"): macOS ${minos}+"
+  done
+
+  [[ "${invalid}" -eq 0 ]] || die "macOS deployment target verification failed"
+}
+
 write_info_plist() {
   local plist="$1"
   local executable="$2"
@@ -213,6 +287,7 @@ write_info_plist() {
   local app_name="$4"
   local bundle_id="$5"
   local version="$6"
+  local minimum_system_version="$7"
 
   cat > "${plist}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -242,7 +317,7 @@ write_info_plist() {
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.games</string>
   <key>LSMinimumSystemVersion</key>
-  <string>10.13</string>
+  <string>${minimum_system_version}</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key>
@@ -291,6 +366,7 @@ main() {
   local out_dir="${BMZ_MACOS_OUT_DIR:-${root}/dist/macos}"
   local app_name="${BMZ_MACOS_APP_NAME:-BMZ Player}"
   local bundle_id="${BMZ_MACOS_BUNDLE_ID:-net.hyrorre.bmz-player}"
+  local minimum_system_version="${BMZ_MACOS_DEPLOYMENT_TARGET:-}"
   local bundle_dylibs="${BMZ_BUNDLE_DYLIBS:-0}"
   local sign_identity="${BMZ_CODESIGN_IDENTITY:-}"
   local smoke="${BMZ_PACKAGE_SMOKE:-0}"
@@ -327,6 +403,11 @@ main() {
         [[ $# -gt 0 ]] || die "--bundle-id requires a value"
         bundle_id="$1"
         ;;
+      --minimum-system-version)
+        shift
+        [[ $# -gt 0 ]] || die "--minimum-system-version requires a value"
+        minimum_system_version="$1"
+        ;;
       --bundle-dylibs)
         bundle_dylibs=1
         ;;
@@ -354,6 +435,22 @@ main() {
     esac
     shift
   done
+
+  if [[ -z "${minimum_system_version}" ]]; then
+    if [[ "${target_triple}" == "aarch64-apple-darwin" || \
+      ( -z "${target_triple}" && "$(uname -m)" == "arm64" ) ]]; then
+      minimum_system_version="11.0"
+    else
+      minimum_system_version="10.13"
+    fi
+  fi
+  [[ "${minimum_system_version}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || \
+    die "invalid minimum system version: ${minimum_system_version}"
+  if [[ "${target_triple}" == "aarch64-apple-darwin" ]] && \
+    ! version_lte "11.0" "${minimum_system_version}"; then
+    die "Apple Silicon requires a minimum system version of 11.0 or newer"
+  fi
+  export MACOSX_DEPLOYMENT_TARGET="${minimum_system_version}"
 
   if [[ "${bundle_dylibs}" == "1" && -z "${sign_identity}" ]]; then
     sign_identity="-"
@@ -431,7 +528,14 @@ main() {
   copy_file "${root}/assets/app-icon/bmz-player.icns" "${resources_dir}/bmz-player.icns"
   prune_macos_resource_markers "${resources_dir}"
 
-  write_info_plist "${contents_dir}/Info.plist" "bmz-player" "bmz-player.icns" "${app_name}" "${bundle_id}" "${version}"
+  write_info_plist \
+    "${contents_dir}/Info.plist" \
+    "bmz-player" \
+    "bmz-player.icns" \
+    "${app_name}" \
+    "${bundle_id}" \
+    "${version}" \
+    "${minimum_system_version}"
   printf 'APPL????' > "${contents_dir}/PkgInfo"
   plutil -lint "${contents_dir}/Info.plist" >/dev/null
 
@@ -441,6 +545,12 @@ main() {
     echo "==> Verifying bundled dylib dependencies"
     verify_bundled_dylib_dependencies "${macos_dir}/bmz-player" "${frameworks_dir}"
   fi
+
+  echo "==> Verifying macOS ${minimum_system_version} deployment target"
+  verify_macos_deployment_target \
+    "${macos_dir}/bmz-player" \
+    "${frameworks_dir}" \
+    "${minimum_system_version}"
 
   if [[ -n "${sign_identity}" ]]; then
     echo "==> Signing bundle (${sign_identity})"

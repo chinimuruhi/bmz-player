@@ -12,6 +12,14 @@ pub fn apply_placeholder_session_visuals(
     options: &PlaySessionOptions,
 ) {
     let play_config_key_mode = play_config_key_mode(key_mode, options);
+    let rule_key_mode = if key_mode == KeyMode::K9
+        && options.key_mode_conversion == KeyModeConversionConfig::SevenToNine
+        && options.seven_to_nine_rule_mode == SevenToNineRuleMode::Keys7
+    {
+        KeyMode::K7
+    } else {
+        key_mode
+    };
     let mode_config = profile.play_mode_config(play_config_key_mode);
     let hs_fix = options.hs_fix;
     let gauge_type =
@@ -29,7 +37,7 @@ pub fn apply_placeholder_session_visuals(
         bottom_shiftable_gauge_from_config(profile.play.bottom_shiftable_gauge)
     };
     let gauge_property =
-        options.gauge_property.unwrap_or_else(|| GaugeProperty::from_keymode(key_mode));
+        options.gauge_property.unwrap_or_else(|| GaugeProperty::from_keymode(rule_key_mode));
     // TOTAL は譜面パース前で不明だが、init/max/border は TOTAL 非依存なので
     // ノーツ数由来のデフォルト TOTAL で代用して問題ない。
     let rule_mode = profile.play.rule_mode;
@@ -42,7 +50,7 @@ pub fn apply_placeholder_session_visuals(
             snapshot.total_notes,
             gauge_property,
             rule_mode,
-            key_mode,
+            rule_key_mode,
         )
     } else {
         GaugeState::new_with_property_and_rule_mode_and_keymode(
@@ -51,7 +59,7 @@ pub fn apply_placeholder_session_visuals(
             snapshot.total_notes,
             gauge_property,
             rule_mode,
-            key_mode,
+            rule_key_mode,
         )
     };
     gauge.set_bottom_shiftable_gauge(bottom_shiftable_gauge);
@@ -91,6 +99,7 @@ pub fn apply_placeholder_session_visuals(
             snapshot.lane_cover,
             snapshot.lift,
             snapshot.now_bpm,
+            options.playback_rate_percent,
         )
     };
     snapshot.lanecover_enabled = lanecover_enabled_from_mode_config(&mode_config);
@@ -104,7 +113,7 @@ pub fn apply_placeholder_session_visuals(
     // session 構築時と同じく基準 BPM = initial_bpm (decide snapshot の now_bpm)。
     snapshot.main_bpm = snapshot.now_bpm;
     snapshot.fs_threshold_ms =
-        bmz_render::chart_graph::rm_skin_fs_threshold_ms(snapshot.judge_rank, key_mode);
+        bmz_render::chart_graph::rm_skin_fs_threshold_ms(snapshot.judge_rank, rule_key_mode);
     snapshot.judge_timing_offset_ms = (play_offsets_from_profile_for_mode(
         profile,
         play_config_key_mode,
@@ -113,10 +122,11 @@ pub fn apply_placeholder_session_visuals(
         / 1_000) as i32;
     snapshot.judge_timing_auto_adjust = profile.judge.visual_offset_auto_adjust;
     let replay_playback = options.replay_player.is_some();
+    snapshot.practice_mode = options.session_mode.is_practice();
     snapshot.autoplay = !replay_playback
+        && !snapshot.practice_mode
         && (options.session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     snapshot.replay_playback = replay_playback;
-    snapshot.practice_mode = options.practice_mode;
     snapshot.assist_flags = options.assist.flags();
     snapshot.assist_extra_note_depth = options.assist.extra_note_depth;
     snapshot.assist_mine_mode = options.assist.mine_mode as i64;
@@ -147,7 +157,10 @@ pub fn apply_placeholder_session_visuals(
 
     snapshot.note_display_duration_ms =
         crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(
-            snapshot.now_bpm,
+            crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+                f64::from(snapshot.now_bpm),
+                options.playback_rate_percent,
+            ) as f32,
             snapshot.hispeed,
             snapshot.lane_cover,
             snapshot.lift,
@@ -156,7 +169,7 @@ pub fn apply_placeholder_session_visuals(
         .round()
         .clamp(0.0, i32::MAX as f32) as i32;
 
-    let initial_bpm = snapshot.now_bpm.max(1.0);
+    let initial_bpm = snapshot.now_bpm;
     let max_bpm = snapshot.max_bpm.max(initial_bpm);
     snapshot.adjusted_cover_progress = bmz_render::chart_graph::compute_adjusted_cover_progress(
         snapshot.hidden_enabled,
@@ -215,14 +228,19 @@ pub fn build_game_session_with_input_backend(
     let battle_opponent_chart = options.opponent_chart.clone();
     let chart_key_mode = chart.metadata.key_mode;
     let play_config_key_mode = play_config_key_mode(chart_key_mode, &options);
-    let battle_presentation = session_mode.is_battle()
+    let battle_presentation = (session_mode.is_battle() || battle_opponent_options.is_some())
         && matches!(
             (play_config_key_mode, chart_key_mode),
             (KeyMode::K5, KeyMode::K10) | (KeyMode::K7, KeyMode::K14)
         );
     let mode_config = profile.play_mode_config(play_config_key_mode);
     let hs_fix = options.hs_fix;
-    let primary_key_mode = if battle_presentation {
+    let seven_to_nine_7k_rule = chart_key_mode == KeyMode::K9
+        && options.key_mode_conversion == KeyModeConversionConfig::SevenToNine
+        && options.seven_to_nine_rule_mode == SevenToNineRuleMode::Keys7;
+    let primary_key_mode = if seven_to_nine_7k_rule {
+        KeyMode::K7
+    } else if battle_presentation {
         match chart_key_mode {
             KeyMode::K10 => KeyMode::K5,
             KeyMode::K14 => KeyMode::K7,
@@ -234,6 +252,12 @@ pub fn build_game_session_with_input_backend(
     let display_only_lane_mask =
         if battle_presentation { second_player_lane_mask() } else { [false; LANE_COUNT] };
     let replay_lane_mask = None;
+    let replay_lane_projection = seven_to_nine_7k_rule.then(|| {
+        seven_to_nine_replay_lane_projection(
+            options.seven_to_nine_pattern,
+            options.seven_to_nine_type,
+        )
+    });
     let gauge_type =
         options.gauge_override.unwrap_or_else(|| gauge_type_from_config(profile.play.gauge));
     let gauge_auto_shift = if options.gauge_auto_shift != GaugeAutoShiftMode::Off {
@@ -255,9 +279,24 @@ pub fn build_game_session_with_input_backend(
     let is_replay = replay_player.is_some();
     let is_full_replay = is_replay && replay_lane_mask.is_none();
     let autoplay_enabled = !is_replay
+        && !session_mode.is_practice()
         && (session_mode.primary_autoplay() || profile.play.auto_play || options.autoplay);
     let autoplay = if autoplay_enabled {
         Some(AutoplayController::default())
+    } else if session_mode == SessionMode::GBattle
+        && battle_presentation
+        && battle_opponent_options.is_none()
+    {
+        let mut lanes = Lane::ALL
+            .into_iter()
+            .filter(|lane| display_only_lane_mask[lane.index()])
+            .collect::<Vec<_>>();
+        if options.double_option == DoubleOption::BattleAutoScratch
+            && !lanes.contains(&Lane::Scratch)
+        {
+            lanes.push(Lane::Scratch);
+        }
+        Some(AutoplayController::for_lanes(&lanes))
     } else if options.double_option == DoubleOption::BattleAutoScratch {
         Some(AutoplayController::for_lanes(&[Lane::Scratch, Lane::Scratch2]))
     } else {
@@ -270,7 +309,6 @@ pub fn build_game_session_with_input_backend(
         } else {
             None
         };
-    let key_mode = chart.metadata.key_mode;
     // `chart` is built from the source file and already has the selected LN
     // policy, course override, and double option applied.  Derive the gameplay
     // denominator here instead of using the policy-independent library count.
@@ -285,7 +323,7 @@ pub fn build_game_session_with_input_backend(
         translator: Box::new(DefaultInputTranslator {
             binding: lane_binding_for_chart_with_slots(
                 &profile.input,
-                key_mode,
+                play_config_key_mode,
                 options.gamepad_slots,
             ),
         }),
@@ -319,6 +357,7 @@ pub fn build_game_session_with_input_backend(
             &chart,
             &timing_map,
             hs_fix,
+            options.playback_rate_percent,
         )
     };
 
@@ -401,17 +440,20 @@ pub fn build_game_session_with_input_backend(
             );
             bmz_gameplay::session::BattleOpponentSession {
                 judge: JudgeEngine::new_with_window_set_algorithm_and_keymode(
-                    judge_windows_for_rule_mode_and_keymode(
-                        base_judge_windows,
-                        judge_percent_at_time_for_keymode(
-                            chart.metadata.judge_rank_spec,
-                            &chart.judge_rank_events,
-                            TimeUs(0),
-                            key_mode,
+                    scale_judge_windows_for_playback_rate(
+                        judge_windows_for_rule_mode_and_keymode(
+                            base_judge_windows,
+                            judge_percent_at_time_for_keymode(
+                                chart.metadata.judge_rank_spec,
+                                &chart.judge_rank_events,
+                                TimeUs(0),
+                                key_mode,
+                                rule_mode,
+                            ),
                             rule_mode,
+                            key_mode,
                         ),
-                        rule_mode,
-                        key_mode,
+                        options.playback_rate_percent,
                     ),
                     rule_mode,
                     judge_algorithm_from_config(profile.judge.judge_algorithm),
@@ -436,10 +478,11 @@ pub fn build_game_session_with_input_backend(
             }
         });
 
-    GameSession {
-        gauge,
-        opponent_gauge,
-        judge: JudgeEngine::new_with_window_set_algorithm_and_keymode(
+    let mut audio_clock = AudioClock::stopped(options.sample_rate);
+    let _ = audio_clock.set_playback_rate_percent(options.playback_rate_percent);
+
+    let mut judge = JudgeEngine::new_with_window_set_algorithm_and_keymode(
+        scale_judge_windows_for_playback_rate(
             judge_windows_for_rule_mode_and_keymode(
                 base_judge_windows,
                 judge_percent_at_time_for_keymode(
@@ -452,14 +495,24 @@ pub fn build_game_session_with_input_backend(
                 rule_mode,
                 primary_key_mode,
             ),
-            rule_mode,
-            judge_algorithm_from_config(profile.judge.judge_algorithm),
-            primary_key_mode,
+            options.playback_rate_percent,
         ),
+        rule_mode,
+        judge_algorithm_from_config(profile.judge.judge_algorithm),
+        primary_key_mode,
+    );
+    if let Some(projection) = &replay_lane_projection {
+        judge.set_scratch_lane_mask(projection.playback_scratch_lane_mask);
+    }
+
+    GameSession {
+        gauge,
+        opponent_gauge,
+        judge,
         base_judge_window,
         base_judge_windows,
         rule_mode,
-        audio_clock: AudioClock::stopped(options.sample_rate),
+        audio_clock,
         chart,
         play_config_key_mode,
         primary_key_mode,
@@ -475,6 +528,7 @@ pub fn build_game_session_with_input_backend(
         course_max_combo: initial_course_combo,
         replay_recorder: ReplayRecorder::default(),
         replay_player,
+        replay_lane_projection,
         replay_lane_mask,
         display_only_lane_mask,
         autoplay,
@@ -506,6 +560,10 @@ pub fn build_game_session_with_input_backend(
         hispeed,
         hispeed_mode,
         target_green_number,
+        constant_enabled: mode_config.constant_enabled
+            && session_mode != crate::select_options::SessionMode::Practice,
+        constant_fade_ms: mode_config.constant_fade_ms,
+        guide_se_enabled: profile.play.guide_se,
         hsfix_base_bpm,
         lift,
         lane_cover,
@@ -528,6 +586,7 @@ pub fn build_game_session_with_input_backend(
         hsfix_index: hsfix_index_from_option(hs_fix),
         input_timestamp_anchor: None,
         pending_mine_hits: Vec::new(),
+        session_mode_index: crate::skin_extension::session_mode_index(session_mode) as u8,
         state: PlayState::Ready,
         last_hcn_gauge_at: None,
     }
@@ -621,12 +680,16 @@ pub(super) fn initial_hispeed_for_mode(
     chart: &PlayableChart,
     timing_map: &bmz_chart::timing::TimingMap,
     hs_fix: HsFixOption,
+    playback_rate_percent: u16,
 ) -> f32 {
     if hispeed_mode == HispeedMode::Normal {
         return clamp_hispeed(mode_config.hispeed);
     }
 
-    let now_bpm = hsfix_base_bpm_for_chart(chart, timing_map, hs_fix);
+    let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+        hsfix_base_bpm_for_chart(chart, timing_map, hs_fix),
+        playback_rate_percent,
+    );
     let scroll_multiplier =
         crate::screens::play_snapshot::current_scroll_multiplier(chart, timing_map, TimeUs(0));
     let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
@@ -663,7 +726,6 @@ pub(super) fn hsfix_base_bpm_for_chart(
             .fold(chart.metadata.initial_bpm, f64::max),
         HsFixOption::MainBpm => main_bpm_for_chart(chart, timing_map),
     }
-    .max(1.0)
 }
 
 pub(super) fn main_bpm_for_chart(
@@ -673,7 +735,7 @@ pub(super) fn main_bpm_for_chart(
     let mut counted = std::collections::HashSet::new();
     let mut counts: Vec<(f64, u32)> = Vec::new();
     for note in chart.lane_notes.iter().flatten() {
-        if note.kind == NoteKind::Mine {
+        if matches!(note.kind, NoteKind::Invisible | NoteKind::Mine) {
             continue;
         }
         counted.insert(note.id);
@@ -713,21 +775,26 @@ pub(super) fn placeholder_hispeed_for_mode(
     lane_cover: f32,
     lift: f32,
     now_bpm: f32,
+    playback_rate_percent: u16,
 ) -> f32 {
     if hispeed_mode == HispeedMode::Normal {
         return clamp_hispeed(mode_config.hispeed);
     }
 
     let visible_max = crate::config::play::visible_lane_fraction(lane_cover, lift);
+    let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+        f64::from(now_bpm),
+        playback_rate_percent,
+    );
     clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
         target_green_number as f32,
         visible_max,
-        now_bpm.max(1.0) as f64,
+        now_bpm,
         1.0,
     ))
 }
 
-pub(super) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeAlgorithm {
+pub(crate) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeAlgorithm {
     match value {
         JudgeAlgorithmConfig::Combo => JudgeAlgorithm::Combo,
         JudgeAlgorithmConfig::Duration => JudgeAlgorithm::Duration,

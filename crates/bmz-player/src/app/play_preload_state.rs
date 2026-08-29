@@ -42,6 +42,7 @@ pub(super) struct PlayMediaCache {
     pub(super) chart: Option<std::sync::Arc<PlayableChart>>,
     pub(super) opponent_chart: Option<std::sync::Arc<PlayableChart>>,
     pub(super) source_ln_profile: Option<crate::ln_policy::ChartLnProfile>,
+    pub(super) skin_attempt: Option<bmz_render::snapshot::SkinAttemptState>,
     pub(super) chart_length_ms: u64,
     pub(super) render_snapshot_cache:
         Option<crate::screens::play_snapshot::PlayRenderSnapshotCache>,

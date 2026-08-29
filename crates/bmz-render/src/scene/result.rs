@@ -161,8 +161,12 @@ pub struct ResultSnapshot {
     /// beatoraja NUMBER_CURRENT_FPS (20)。
     pub current_fps: u32,
     pub skin_input: SkinLogicalInputSnapshot,
+    pub skin_attempt: SkinAttemptState,
     /// 現在のリザルトスキンスロットに設定された destination offset。
     pub skin_offsets: SkinOffsetValues,
+    /// Result skin mouse position in normalized skin-canvas coordinates.
+    /// The origin is the top-left corner.
+    pub mouse_position: Option<(f32, f32)>,
     /// beatoraja image/index ref 342。
     pub hispeed_auto_adjust: bool,
     pub clear_type: ClearType,
@@ -171,6 +175,8 @@ pub struct ResultSnapshot {
     /// コース曲間リザルトでは clear lamp 表示用の `clear_type` を NoPlay に丸める一方、
     /// 背景や CLEAR/FAILED 演出は実プレイ結果に合わせるため分けて持つ。
     pub result_failed: bool,
+    /// BMZ extension: result skin でも OPTION_AUTOPLAYON/OFF (33/32) を公開する。
+    pub autoplay: bool,
     pub arrange: String,
     pub arrange_2p: String,
     pub double_option: String,
@@ -184,7 +190,8 @@ pub struct ResultSnapshot {
     pub gauge_type: i32,
     pub total_notes: u32,
     pub duration_ms: i32,
-    /// NUMBER_DURATION/NUMBER_DURATION_GREEN に渡す緑数字 ms。
+    /// NUMBER_DURATION に渡す設定済みノーツ表示時間 ms。
+    /// NUMBER_DURATION_GREEN は描画state構築時にこの値から導出する。
     pub note_display_duration_ms: Option<i32>,
     pub initial_bpm: f32,
     pub min_bpm: f32,
@@ -197,6 +204,10 @@ pub struct ResultSnapshot {
     pub has_long_notes: bool,
     /// 実効LN種別のimageset index (0=LN, 1=CN, 2=HCN)。
     pub ln_mode_index: usize,
+    /// BMZ extension: frozen scoring rule mode index for this attempt.
+    pub rule_mode_index: usize,
+    /// BMZ extension: normalized LN policy index stored in this attempt's score key.
+    pub ln_score_policy_index: Option<usize>,
     pub result_gauge_graph_type: i32,
     /// Lua Result スキンの展開パネル (0=非表示、1=IR、2=グラフ)。
     pub result_panel: i32,

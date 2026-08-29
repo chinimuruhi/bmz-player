@@ -106,17 +106,33 @@ pub struct AssistRuntime {
     pub long_note_mode: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReplayLaneProjection {
+    /// Physical/chart lane to the source replay lane. `None` omits inputs on
+    /// presentation-only lanes from the saved source-mode replay.
+    pub record_to_source: [Option<Lane>; LANE_COUNT],
+    /// Source replay lane to the physical/chart lane for fixed mappings.
+    pub playback_to_chart: [Lane; LANE_COUNT],
+    /// Candidate chart lanes for a projected source scratch. Dynamic 7K-to-9K
+    /// modes select the closest pending scratch note from this set.
+    pub playback_scratch_lane_mask: [bool; LANE_COUNT],
+    pub active_playback_scratch_lane: Option<Lane>,
+}
+
 impl AssistRuntime {
     /// EX SCORE・BP・コンボ等の通常スコアを更新できるか。
     ///
     /// beatoraja の `updateScore=false` は結果全体を破棄する指定ではなく、
-    /// クリアランプだけを更新する指定として扱われる。
+    /// 数値ベストを更新せず、クリアランプ・回数・統計だけを更新する指定として扱われる。
     pub const fn score_update_enabled(self) -> bool {
         matches!(self.level, AssistLevel::None)
     }
 }
 
 pub struct GameSession {
+    /// SessionMode is owned by the app crate; keep its stable skin/API index so
+    /// Result can preserve the mode even when a battle target is attached.
+    pub session_mode_index: u8,
     pub chart: Arc<PlayableChart>,
     /// Source chart mode used to select per-key player presentation settings.
     /// BATTLE can expand the rendered chart to K10/K14 while this remains K5/K7.
@@ -154,6 +170,9 @@ pub struct GameSession {
     pub opponent_gauge: Option<GaugeState>,
     pub replay_recorder: ReplayRecorder,
     pub replay_player: Option<ReplayPlayer>,
+    /// Optional source-mode replay normalization used by presentation-only
+    /// key-mode conversions such as score-eligible 7K-to-9K.
+    pub replay_lane_projection: Option<ReplayLaneProjection>,
     /// Some の場合、リプレイが担当するレーンだけ true。
     /// 通常リプレイの None は従来通り全レーンをリプレイが占有する。
     pub replay_lane_mask: Option<[bool; LANE_COUNT]>,
@@ -210,6 +229,9 @@ pub struct GameSession {
     pub hispeed: f32,
     pub hispeed_mode: HispeedMode,
     pub target_green_number: u32,
+    pub constant_enabled: bool,
+    pub constant_fade_ms: i32,
+    pub guide_se_enabled: bool,
     /// Floating hispeed の曲開始前基準 BPM。曲開始後は現在 BPM で再計算する。
     pub hsfix_base_bpm: f64,
     pub lift: f32,
@@ -409,7 +431,25 @@ impl AutoKeysoundScheduler {
 
 pub fn compute_frame_times(session: &GameSession) -> FrameTimes {
     let audio_now = session.audio_clock.now();
-    let audio_schedule_until = TimeUs(audio_now.0 + AUDIO_SCHEDULE_AHEAD_US);
+    let schedule_ahead_us = audio_schedule_ahead_us(session.audio_clock.playback_rate_percent());
+    let audio_schedule_until = TimeUs(audio_now.0.saturating_add(schedule_ahead_us));
     FrameTimes { audio_now, audio_schedule_until }
+}
+
+fn audio_schedule_ahead_us(playback_rate_percent: u16) -> i64 {
+    ((i128::from(AUDIO_SCHEDULE_AHEAD_US) * i128::from(playback_rate_percent)) / 100)
+        .clamp(0, i128::from(i64::MAX)) as i64
+}
+
+#[cfg(test)]
+mod frame_time_tests {
+    use super::*;
+
+    #[test]
+    fn audio_schedule_horizon_preserves_wall_time_across_playback_rates() {
+        assert_eq!(audio_schedule_ahead_us(25), 25_000);
+        assert_eq!(audio_schedule_ahead_us(100), 100_000);
+        assert_eq!(audio_schedule_ahead_us(300), 300_000);
+    }
 }
 use super::*;

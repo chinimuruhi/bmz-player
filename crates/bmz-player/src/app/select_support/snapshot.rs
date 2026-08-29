@@ -61,6 +61,8 @@ pub(in crate::app) fn select_visible_item_indices(
 
 struct SelectSnapshotRowContext<'a> {
     profile: &'a ProfileConfig,
+    app_config: &'a AppConfig,
+    in_difficulty_table_level: bool,
     key_config_edit: Option<&'a KeyConfigEditSession>,
     chart_distributions: &'a HashMap<i64, Vec<ChartDistributionSecond>>,
     select_ir: Option<&'a crate::screens::select_ir::SelectIrRanking>,
@@ -75,13 +77,37 @@ pub(in crate::app) fn select_snapshot_rows(
     key_config_edit: Option<&KeyConfigEditSession>,
     chart_distributions: &HashMap<i64, Vec<ChartDistributionSecond>>,
 ) -> Vec<SelectRowSnapshot> {
+    let app_config = AppConfig::default();
     select_snapshot_rows_with_rival(
         items,
         selected_index,
         visible_limit,
         profile,
+        &app_config,
+        false,
         key_config_edit,
         chart_distributions,
+        None,
+    )
+}
+
+#[cfg(test)]
+pub(in crate::app) fn select_snapshot_rows_in_difficulty_table_level(
+    items: &[SelectItem],
+    selected_index: usize,
+    visible_limit: usize,
+    profile: &ProfileConfig,
+) -> Vec<SelectRowSnapshot> {
+    let app_config = AppConfig::default();
+    select_snapshot_rows_with_rival(
+        items,
+        selected_index,
+        visible_limit,
+        profile,
+        &app_config,
+        true,
+        None,
+        &HashMap::new(),
         None,
     )
 }
@@ -91,12 +117,20 @@ pub(in crate::app) fn select_snapshot_rows_with_rival(
     selected_index: usize,
     visible_limit: usize,
     profile: &ProfileConfig,
+    app_config: &AppConfig,
+    in_difficulty_table_level: bool,
     key_config_edit: Option<&KeyConfigEditSession>,
     chart_distributions: &HashMap<i64, Vec<ChartDistributionSecond>>,
     select_ir: Option<&crate::screens::select_ir::SelectIrRanking>,
 ) -> Vec<SelectRowSnapshot> {
-    let context =
-        SelectSnapshotRowContext { profile, key_config_edit, chart_distributions, select_ir };
+    let context = SelectSnapshotRowContext {
+        profile,
+        app_config,
+        in_difficulty_table_level,
+        key_config_edit,
+        chart_distributions,
+        select_ir,
+    };
     select_visible_item_indices(items.len(), selected_index, visible_limit)
         .into_iter()
         .map(|index| select_snapshot_row(index, &items[index], &context))
@@ -130,7 +164,13 @@ fn select_snapshot_row(
         },
         SelectItem::Config(row) => {
             let value = row.value_text(context.profile);
-            select_config_snapshot(index, row.label().to_string(), value)
+            let description = row.description_text(context.profile);
+            select_config_snapshot(index, row.label().to_string(), value, description)
+        }
+        SelectItem::AppConfig(row) => {
+            let value = row.value_text(context.app_config, context.profile.ui.locale());
+            let description = row.description_text(context.profile);
+            select_config_snapshot(index, row.label().to_string(), value, description)
         }
         SelectItem::KeyBinding(row) => {
             let value = context
@@ -138,7 +178,8 @@ fn select_snapshot_row(
                 .filter(|session| session.key_mode == row.key_mode && session.target == row.target)
                 .map(|session| session.preview_value(context.profile))
                 .unwrap_or_else(|| row.value_text(context.profile));
-            select_config_snapshot(index, row.label(), value)
+            let description = row.description_text(context.profile);
+            select_config_snapshot(index, row.label(), value, description)
         }
         SelectItem::SettingsBack => select_navigation_snapshot(
             index,
@@ -157,6 +198,12 @@ fn select_snapshot_row(
             context.profile,
             "select-advanced-settings",
             bmz_render::scene::SelectRowKind::SettingsFolder,
+        ),
+        SelectItem::ApplyAudioSettings => select_settings_action_snapshot(
+            index,
+            context.profile,
+            "settings-audio-apply",
+            "settings-audio-apply-help",
         ),
     }
 }
@@ -203,6 +250,15 @@ fn select_chart_snapshot(
         })
         .map(|score| i64::from(score.clear_type).clamp(0, ClearType::Max as i64) as usize)
         .unwrap_or(0);
+    let table_level = if context.in_difficulty_table_level
+        && context.profile.select.difficulty_table_level_display
+            == crate::config::profile_config::DifficultyTableLevelDisplay::Chart
+        && chart.is_some_and(|chart| !chart.play_level.trim().is_empty())
+    {
+        String::new()
+    } else {
+        row.table_level.clone()
+    };
 
     SelectRowSnapshot {
         index: index as u32,
@@ -212,7 +268,7 @@ fn select_chart_snapshot(
         genre: chart.map(|chart| chart.genre.clone()).unwrap_or_default(),
         difficulty_name: chart.map(|chart| chart.difficulty_name.clone()).unwrap_or_default(),
         play_level: chart.map(|chart| chart.play_level.clone()).unwrap_or_default(),
-        table_level: row.table_level.clone(),
+        table_level,
         table_text_primary: row.table_text.table_name.clone(),
         table_text_secondary: row.table_text.table_level.clone(),
         table_text_fallback: row.table_text.table_full.clone(),
@@ -237,8 +293,12 @@ fn select_chart_snapshot(
         favorite_chart: row.favorite_chart,
         favorite_song: row.favorite_song,
         has_document: row.has_document,
+        has_bga: chart.is_some_and(|chart| chart.has_bga),
         has_long_notes: chart.is_some_and(|chart| chart.has_long_notes),
         has_mines: chart.is_some_and(|chart| chart.has_mines),
+        has_random: chart.is_some_and(|chart| chart.has_bms_random),
+        source_ln_profile_bits: chart
+            .map(|chart| crate::skin_extension::source_ln_profile_bits(chart.ln_profile)),
         chart_normal_notes: analysis
             .map(|analysis| analysis.normal_notes)
             .unwrap_or_else(|| chart.map(|chart| chart.total_notes).unwrap_or(0)),
@@ -313,10 +373,18 @@ fn select_course_snapshot(index: usize, row: &SelectCourseRow) -> SelectRowSnaps
     }
 }
 
-fn select_config_snapshot(index: usize, title: String, value: String) -> SelectRowSnapshot {
+fn select_config_snapshot(
+    index: usize,
+    title: String,
+    value: String,
+    description: String,
+) -> SelectRowSnapshot {
+    let bar_text = format!("{title} [{value}]");
     SelectRowSnapshot {
         index: index as u32,
         title,
+        bar_text,
+        subtitle: description,
         artist: value.clone(),
         play_level: value,
         kind: bmz_render::scene::SelectRowKind::Config,
@@ -335,6 +403,22 @@ fn select_navigation_snapshot(
         title: Localizer::new(profile.ui.locale()).text(title_id),
         is_folder: true,
         kind,
+        ..SelectRowSnapshot::default()
+    }
+}
+
+fn select_settings_action_snapshot(
+    index: usize,
+    profile: &ProfileConfig,
+    title_id: &str,
+    description_id: &str,
+) -> SelectRowSnapshot {
+    let text = Localizer::new(profile.ui.locale());
+    SelectRowSnapshot {
+        index: index as u32,
+        title: text.text(title_id),
+        subtitle: text.text(description_id),
+        kind: bmz_render::scene::SelectRowKind::SettingsFolder,
         ..SelectRowSnapshot::default()
     }
 }

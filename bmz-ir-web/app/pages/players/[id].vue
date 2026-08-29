@@ -5,6 +5,11 @@ interface PlayerDetail {
     display_name: string
     bio: string | null
   }
+  relationship: {
+    is_self: boolean
+    is_rival: boolean
+    is_rivaled_by: boolean
+  }
   best_scores: {
     score_id: string
     chart_sha256: string
@@ -32,15 +37,50 @@ interface PlayerDetail {
 const route = useRoute()
 const playerId = computed(() => String(route.params.id ?? ''))
 const localePath = useLocalePath()
+const { user } = useUserSession()
 const { t } = useI18n()
 const { formatDateTime } = useLocaleFormat()
 const { translateApiError } = useApiError()
+const toast = useToast()
+const rivalUpdating = ref(false)
 const { data, pending, error } = await useFetch<PlayerDetail>(
   () => `/api/v1/players/${playerId.value}`,
 )
 const errorDescription = computed(() =>
   error.value ? translateApiError(error.value, 'errors.playerLoadFailed') : '',
 )
+
+const canManageRival = computed(() =>
+  Boolean(user.value && data.value && !data.value.relationship.is_self),
+)
+
+async function toggleRival() {
+  if (!data.value || !canManageRival.value) return
+  rivalUpdating.value = true
+  const adding = !data.value.relationship.is_rival
+  try {
+    await $fetch('/api/v1/rivals', {
+      method: 'POST',
+      body: { target_player_id: data.value.player.id, action: adding ? 'add' : 'remove' },
+    })
+    data.value.relationship.is_rival = adding
+    toast.add({
+      title: adding ? t('rivals.added') : t('rivals.removed'),
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    })
+  } catch (requestError) {
+    toast.add({
+      title: t('rivals.updateFailed'),
+      description: translateApiError(requestError, 'errors.rivalUpdateFailed'),
+      color: 'error',
+      icon: 'i-lucide-circle-alert',
+    })
+  } finally {
+    rivalUpdating.value = false
+  }
+}
+
 useSeoMeta({ title: () => data.value?.player.display_name ?? t('players.player') })
 </script>
 
@@ -60,15 +100,43 @@ useSeoMeta({ title: () => data.value?.player.display_name ?? t('players.player')
           <p v-if="data.player.bio" class="mt-2 whitespace-pre-line text-sm text-neutral-300">
             {{ data.player.bio }}
           </p>
-          <UButton
-            class="mt-4"
-            color="neutral"
-            icon="i-lucide-calendar-days"
-            :to="{ path: localePath('/daily'), query: { player: data.player.id, mode: 'all' } }"
-            variant="subtle"
-          >
-            {{ t('nav.daily') }}
-          </UButton>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <UButton
+              color="neutral"
+              icon="i-lucide-calendar-days"
+              :to="{ path: localePath('/daily'), query: { player: data.player.id, mode: 'all' } }"
+              variant="subtle"
+            >
+              {{ t('nav.daily') }}
+            </UButton>
+            <UButton
+              v-if="canManageRival"
+              :color="data.relationship.is_rival ? 'error' : 'primary'"
+              :icon="data.relationship.is_rival ? 'i-lucide-user-minus' : 'i-lucide-user-plus'"
+              :loading="rivalUpdating"
+              variant="subtle"
+              @click="toggleRival"
+            >
+              {{ data.relationship.is_rival ? t('rivals.remove') : t('rivals.add') }}
+            </UButton>
+            <UButton
+              v-if="data.relationship.is_rival"
+              color="warning"
+              icon="i-lucide-git-compare-arrows"
+              :to="{ path: localePath('/rivals'), query: { player: data.player.id } }"
+              variant="subtle"
+            >
+              {{ t('rivals.compare') }}
+            </UButton>
+            <UBadge
+              v-if="data.relationship.is_rivaled_by"
+              color="warning"
+              icon="i-lucide-eye"
+              variant="subtle"
+            >
+              {{ t('rivals.rivaledBy') }}
+            </UBadge>
+          </div>
         </div>
 
         <h2 class="mb-3 text-lg font-medium">{{ t('players.bestScores') }}</h2>

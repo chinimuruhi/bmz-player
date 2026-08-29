@@ -30,7 +30,8 @@ mod parse;
 use help::parse_beatoraja_replay_flag;
 pub use help::{app_help_text, args_request_help};
 pub use model::{
-    Command, CourseCommand, IrCommand, ProfileCommand, RivalAction, SongsCommand, TableCommand,
+    Command, CourseCommand, IrCommand, ProfileCommand, ReplayCommand, RivalAction, SongsCommand,
+    TableCommand,
 };
 pub use options::AppOptions;
 pub use parse::parse_command;

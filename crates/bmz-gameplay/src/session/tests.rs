@@ -13,7 +13,7 @@ use crate::input::backend::NullInputBackend;
 use crate::input::binding::LaneBinding;
 use crate::input::system::InputSystem;
 use crate::input::translator::DefaultInputTranslator;
-use crate::judge::model::JudgeWindow;
+use crate::judge::model::{JudgeWindow, ScratchPressSuppression};
 
 use super::*;
 use crate::score::scored_note_count;
@@ -145,6 +145,7 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
     let timing_map =
         TimingMap::from_chart_timing_events(chart.metadata.initial_bpm, &chart.timing_events);
     GameSession {
+        session_mode_index: 0,
         chart: Arc::clone(&chart),
         play_config_key_mode: chart.metadata.key_mode,
         primary_key_mode: chart.metadata.key_mode,
@@ -179,6 +180,7 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         opponent_gauge: None,
         replay_recorder: ReplayRecorder::default(),
         replay_player: None,
+        replay_lane_projection: None,
         replay_lane_mask: None,
         display_only_lane_mask: [false; LANE_COUNT],
         autoplay: Some(AutoplayController::default()),
@@ -217,6 +219,9 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
         hispeed: 2.0,
         hispeed_mode: HispeedMode::Normal,
         target_green_number: 300,
+        constant_enabled: false,
+        constant_fade_ms: 100,
+        guide_se_enabled: false,
         hsfix_base_bpm: 120.0,
         lift: 0.0,
         lane_cover: 0.0,

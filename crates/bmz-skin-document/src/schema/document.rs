@@ -89,6 +89,11 @@ pub struct SkinDocument {
     #[serde(default)]
     pub judge: Vec<SkinJudgeDef>,
     pub bga: Option<SkinBgaDef>,
+    /// beatoraja play skin の Practice 設定表示領域。
+    ///
+    /// 表示内容自体は app 側 egui が担うが、同じ id の destination 座標を
+    /// 初期ウィンドウ位置として利用する。
+    pub practice: Option<SkinPracticeDef>,
     pub songlist: Option<SkinSongListDef>,
     #[serde(default)]
     pub destination: Vec<DestinationListEntry>,
@@ -161,6 +166,18 @@ pub struct SkinDocument {
     /// リザルト描画時のみ plan 側が設定する timingdistributiongraph 用の固定分布。
     #[serde(skip, default)]
     pub result_timing_distribution: ResultTimingDistribution,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct SkinPracticeDef {
+    #[serde(default, deserialize_with = "deserialize_skin_id")]
+    pub id: String,
+    #[serde(default = "default_practice_visible_items", rename = "visibleItems")]
+    pub visible_items: i32,
+}
+
+fn default_practice_visible_items() -> i32 {
+    10
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]

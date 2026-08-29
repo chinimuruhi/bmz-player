@@ -58,6 +58,10 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
     assert_eq!(play.target, TargetOptionConfig::None);
     assert_eq!(play.rule_mode, RuleMode::Beatoraja);
     assert_eq!(play.ln_mode_policy, LnPolicySetting::AutoLn);
+    assert_eq!(play.key_mode_conversion, KeyModeConversionConfig::Off);
+    assert_eq!(play.seven_to_nine_pattern, SevenToNinePattern::Sc9Key1To7);
+    assert_eq!(play.seven_to_nine_type, SevenToNineType::Fixed);
+    assert_eq!(play.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys7);
     assert!(!play.seven_to_six);
     assert_eq!(play.bga, BgaModeConfig::On);
     assert_eq!(play.bga_expand, BgaExpandConfig::KeepAspect);
@@ -67,14 +71,39 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
 }
 
 #[test]
-fn seven_to_six_roundtrips_in_play_defaults() {
+fn key_mode_conversion_roundtrips_in_play_defaults() {
     let mut play = ProfileConfig::new_default("default", "Default", 0).play;
-    play.seven_to_six = true;
+    play.key_mode_conversion = KeyModeConversionConfig::SevenToNine;
+    play.seven_to_nine_pattern = SevenToNinePattern::Sc1Key3To9;
+    play.seven_to_nine_type = SevenToNineType::Alternation;
+    play.seven_to_nine_rule_mode = SevenToNineRuleMode::Keys9;
 
     let encoded = toml::to_string(&play).unwrap();
     let decoded: PlayDefaultsConfig = toml::from_str(&encoded).unwrap();
 
-    assert!(decoded.seven_to_six);
+    assert_eq!(decoded.key_mode_conversion, KeyModeConversionConfig::SevenToNine);
+    assert_eq!(decoded.seven_to_nine_pattern, SevenToNinePattern::Sc1Key3To9);
+    assert_eq!(decoded.seven_to_nine_type, SevenToNineType::Alternation);
+    assert_eq!(decoded.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys9);
+}
+
+#[test]
+fn legacy_seven_to_six_migrates_to_key_mode_conversion() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 0);
+    profile.play.seven_to_six = true;
+
+    profile.migrate_legacy_key_mode_conversion();
+
+    assert_eq!(profile.play.key_mode_conversion, KeyModeConversionConfig::SevenToSix);
+    assert!(!profile.play.seven_to_six);
+}
+
+#[test]
+fn seven_to_nine_type_cycles_in_beatoraja_order() {
+    assert_eq!(SevenToNineType::Fixed.next(true), SevenToNineType::NoMashing);
+    assert_eq!(SevenToNineType::NoMashing.next(true), SevenToNineType::Alternation);
+    assert_eq!(SevenToNineType::Alternation.next(true), SevenToNineType::Fixed);
+    assert_eq!(SevenToNineType::Fixed.next(false), SevenToNineType::Alternation);
 }
 
 #[test]
@@ -209,6 +238,7 @@ fn select_state_uses_defaults_for_old_profiles() {
     assert_eq!(select.mode_filter, "ALL");
     assert_eq!(select.difficulty_filter, "ALL");
     assert_eq!(select.sort, "TITLE");
+    assert_eq!(select.difficulty_table_level_display, DifficultyTableLevelDisplay::Table);
     assert!(!select.random_select);
     assert_eq!(select.random_mix, RandomMixConfig::default());
 }
@@ -219,6 +249,7 @@ fn select_state_roundtrips_through_toml() {
         mode_filter: "7K".to_string(),
         difficulty_filter: "HYPER".to_string(),
         sort: "LEVEL".to_string(),
+        difficulty_table_level_display: DifficultyTableLevelDisplay::Chart,
         random_select: true,
         random_mix: RandomMixConfig {
             target_level: 12,
@@ -237,6 +268,7 @@ fn select_state_roundtrips_through_toml() {
     assert_eq!(parsed.mode_filter, "7K");
     assert_eq!(parsed.difficulty_filter, "HYPER");
     assert_eq!(parsed.sort, "LEVEL");
+    assert_eq!(parsed.difficulty_table_level_display, DifficultyTableLevelDisplay::Chart);
     assert!(parsed.random_select);
     assert_eq!(parsed.random_mix.target_level, 12);
     assert_eq!(parsed.random_mix.stages, 4);
@@ -346,6 +378,7 @@ fn default_profile_uses_normalized_quieter_audio_and_prefetches_ir_rankings() {
 
     assert_eq!(profile.audio_mix.master_volume, 50);
     assert!(profile.audio_mix.normalize_chart_volume);
+    assert!(profile.audio_mix.normalize_system_bgm_volume);
     assert_eq!(profile.audio_mix.key_volume, 50);
     assert_eq!(profile.audio_mix.bgm_volume, 50);
     assert_eq!(profile.audio_mix.preview_volume, 50);
@@ -355,6 +388,23 @@ fn default_profile_uses_normalized_quieter_audio_and_prefetches_ir_rankings() {
     assert!(profile.ir.prefetch_rival_ranking_on_score_submit);
     assert_eq!(profile.ir.providers[0], IrProviderConfig::bmz_ir());
     assert_eq!(profile.ir.providers[1], IrProviderConfig::rian_ir());
+}
+
+#[test]
+fn existing_audio_mix_defaults_system_bgm_normalization_on() {
+    let audio_mix: AudioMixConfig = toml::from_str(
+        r#"
+        master_volume = 50
+        key_volume = 50
+        bgm_volume = 50
+        preview_volume = 50
+        system_bgm_volume = 50
+        system_se_volume = 50
+        "#,
+    )
+    .unwrap();
+
+    assert!(audio_mix.normalize_system_bgm_volume);
 }
 
 #[test]
@@ -562,6 +612,7 @@ fn replay_slot_rule_empty_string_disables_slot() {
 
             [audio_mix]
             normalize_chart_volume = true
+            normalize_system_bgm_volume = true
             master_volume = 50
             key_volume = 50
             bgm_volume = 50
@@ -580,6 +631,7 @@ fn replay_slot_rule_empty_string_disables_slot() {
     assert_eq!(profile.replay.slot_rules[3], ReplaySlotRule::Disabled);
     assert!(profile.ir.prefetch_global_ranking_on_score_submit);
     assert!(profile.ir.prefetch_rival_ranking_on_score_submit);
+    assert!(profile.audio_mix.normalize_system_bgm_volume);
 }
 
 #[test]
@@ -601,6 +653,171 @@ fn default_gamepad_ui_bindings_use_thumb_buttons_without_dpad_enter_back() {
             && matches!(entry.control.as_str(), "DPadLeft" | "DPadRight")
             && matches!(entry.action, Some(InputActionConfig::E2 | InputActionConfig::SelectEnter))
     }));
+    assert!(!bindings.iter().any(|entry| {
+        matches!(
+            entry.action,
+            Some(InputActionConfig::SelectEnter | InputActionConfig::SelectOptionBga)
+        )
+    }));
+    for (control, action) in [
+        ("F3", InputActionConfig::SelectOpenFolder),
+        ("F5", InputActionConfig::SelectReload),
+        ("F10", InputActionConfig::SelectAutoplayFolder),
+        ("F11", InputActionConfig::SelectOpenIr),
+        ("1", InputActionConfig::SelectModeFilter),
+        ("2", InputActionConfig::SelectSort),
+        ("3", InputActionConfig::SelectLnMode),
+        ("4", InputActionConfig::SelectReplayCycle),
+        ("6", InputActionConfig::SelectOpenKeyConfig),
+        ("F12", InputActionConfig::Screenshot),
+        ("7", InputActionConfig::SelectRivalCycle),
+        ("Numpad7", InputActionConfig::SelectRivalCycle),
+        ("8", InputActionConfig::SelectSameFolder),
+        ("Numpad8", InputActionConfig::SelectSameFolder),
+        ("9", InputActionConfig::SelectOpenDocuments),
+        ("Numpad9", InputActionConfig::SelectOpenDocuments),
+        ("Numpad4", InputActionConfig::SelectReplayCycle),
+    ] {
+        assert!(bindings.iter().any(|entry| {
+            entry.device == "keyboard" && entry.control == control && entry.action == Some(action)
+        }));
+    }
+}
+
+#[test]
+fn input_normalization_migrates_shortcuts_once_and_preserves_later_clears() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 0;
+    input.ui.bindings.retain(|entry| {
+        !entry.action.is_some_and(|action| CONFIGURABLE_SHORTCUT_ACTIONS.contains(&action))
+    });
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    assert_eq!(input.ui.version, UI_INPUT_BINDING_VERSION);
+    for &action in CONFIGURABLE_SHORTCUT_ACTIONS {
+        assert!(input.ui.bindings.iter().any(|entry| entry.action == Some(action)));
+    }
+
+    input.ui.bindings.retain(|entry| entry.action != Some(InputActionConfig::Screenshot));
+    crate::config::play_input::normalize_profile_input(&mut input);
+    assert!(
+        !input
+            .ui
+            .bindings
+            .iter()
+            .any(|entry| { entry.action == Some(InputActionConfig::Screenshot) })
+    );
+}
+
+#[test]
+fn input_normalization_adds_later_shortcuts_without_restoring_v1_clears() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 1;
+    input.ui.bindings.retain(|entry| {
+        !matches!(
+            entry.action,
+            Some(InputActionConfig::SelectOpenKeyConfig | InputActionConfig::Screenshot)
+        )
+    });
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    assert_eq!(input.ui.version, UI_INPUT_BINDING_VERSION);
+    assert!(input.ui.bindings.iter().any(|entry| {
+        entry.device == "keyboard"
+            && entry.control == "6"
+            && entry.action == Some(InputActionConfig::SelectOpenKeyConfig)
+    }));
+    for action in [
+        InputActionConfig::SelectModeFilter,
+        InputActionConfig::SelectSort,
+        InputActionConfig::SelectLnMode,
+        InputActionConfig::SelectReplayCycle,
+        InputActionConfig::SelectSameFolder,
+    ] {
+        assert!(input.ui.bindings.iter().any(|entry| entry.action == Some(action)));
+    }
+    assert!(
+        !input.ui.bindings.iter().any(|entry| entry.action == Some(InputActionConfig::Screenshot))
+    );
+}
+
+#[test]
+fn input_normalization_adds_top_row_companions_to_v2_numpad_defaults() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 2;
+    input.ui.bindings.retain(|entry| {
+        !matches!(
+            entry.action,
+            Some(
+                InputActionConfig::SelectModeFilter
+                    | InputActionConfig::SelectSort
+                    | InputActionConfig::SelectLnMode
+            )
+        ) && !matches!(
+            (entry.control.as_str(), entry.action),
+            ("4", Some(InputActionConfig::SelectReplayCycle))
+                | ("8", Some(InputActionConfig::SelectSameFolder))
+                | ("9", Some(InputActionConfig::SelectOpenDocuments))
+        )
+    });
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    for (control, action) in [
+        ("1", InputActionConfig::SelectModeFilter),
+        ("2", InputActionConfig::SelectSort),
+        ("3", InputActionConfig::SelectLnMode),
+        ("4", InputActionConfig::SelectReplayCycle),
+        ("Numpad4", InputActionConfig::SelectReplayCycle),
+        ("8", InputActionConfig::SelectSameFolder),
+        ("Numpad8", InputActionConfig::SelectSameFolder),
+        ("9", InputActionConfig::SelectOpenDocuments),
+        ("Numpad9", InputActionConfig::SelectOpenDocuments),
+    ] {
+        assert!(input.ui.bindings.iter().any(|entry| {
+            entry.device == "keyboard" && entry.control == control && entry.action == Some(action)
+        }));
+    }
+}
+
+#[test]
+fn input_normalization_preserves_v2_custom_digit_shortcuts() {
+    let mut input = crate::config::play_input::default_profile_input();
+    input.ui.version = 2;
+    for (action, control) in [
+        (InputActionConfig::SelectReplayCycle, "A"),
+        (InputActionConfig::SelectSameFolder, "B"),
+        (InputActionConfig::SelectOpenDocuments, "G"),
+    ] {
+        input.ui.bindings.retain(|entry| entry.action != Some(action));
+        input.ui.bindings.push(BindingConfigEntry {
+            device: "keyboard".to_string(),
+            control: control.to_string(),
+            keyboard_slot: None,
+            lane: None,
+            action: Some(action),
+            scratch: None,
+        });
+    }
+
+    crate::config::play_input::normalize_profile_input(&mut input);
+
+    for (action, control) in [
+        (InputActionConfig::SelectReplayCycle, "A"),
+        (InputActionConfig::SelectSameFolder, "B"),
+        (InputActionConfig::SelectOpenDocuments, "G"),
+    ] {
+        let controls = input
+            .ui
+            .bindings
+            .iter()
+            .filter(|entry| entry.action == Some(action))
+            .map(|entry| entry.control.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(controls, vec![control]);
+    }
 }
 
 #[test]

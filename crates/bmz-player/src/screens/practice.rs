@@ -8,6 +8,8 @@ use bmz_chart::practice::apply_practice_section;
 use bmz_core::clear::GaugeType;
 use bmz_core::time::TimeUs;
 use bmz_gameplay::gauge::{GaugeProperty, GaugeState};
+use bmz_gameplay::judge::window::judge_rank_spec_to_percent_optional_for_keymode_and_rule_mode;
+use bmz_gameplay::rule::RuleMode;
 use bmz_render::snapshot::ResultGraphSnapshot;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,6 +17,10 @@ use std::sync::Arc;
 use crate::config::profile_config::GaugeTypeConfig;
 use crate::paths::ProfilePaths;
 use crate::select_options::ArrangeOption;
+
+const PRACTICE_PROPERTY_FORMAT_VERSION: u32 = 1;
+const PRACTICE_PLAYBACK_RATE_MIN: u16 = 50;
+const PRACTICE_PLAYBACK_RATE_MAX: u16 = 200;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -92,6 +98,8 @@ pub enum PracticeGraphType {
 /// Persisted / editable practice settings for one chart (SHA-256).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PracticeProperty {
+    #[serde(default)]
+    pub format_version: u32,
     pub start_time_ms: u32,
     pub end_time_ms: u32,
     pub gauge: PracticeGaugeType,
@@ -114,6 +122,7 @@ pub struct PracticeProperty {
 impl Default for PracticeProperty {
     fn default() -> Self {
         Self {
+            format_version: PRACTICE_PROPERTY_FORMAT_VERSION,
             start_time_ms: 0,
             end_time_ms: 10_000,
             gauge: PracticeGaugeType::Normal,
@@ -151,6 +160,10 @@ pub struct PracticeSession {
     pub graph_start_time_ms: u32,
     pub is_double: bool,
     pub cursor: usize,
+    /// `last_play_snapshot` に反映済みの設定中プレビュー時刻。
+    pub preview_time_ms: Option<u32>,
+    /// KEY4 の相手選択から PRACTICE を開始した場合に、各練習ラウンドへ引き継ぐ相手。
+    pub battle_target: Option<crate::screens::play_start::BattleTarget>,
 }
 
 /// CLI-only overrides applied when entering practice from the command line.
@@ -169,6 +182,7 @@ pub fn load_practice_property(
     chart_sha256: &[u8; 32],
     chart: &PlayableChart,
     profile_gauge: GaugeTypeConfig,
+    rule_mode: RuleMode,
     cli: &PracticeCliOverrides,
 ) -> Result<PracticeProperty> {
     let path = practice_property_path(profile_paths, chart_sha256);
@@ -184,10 +198,12 @@ pub fn load_practice_property(
 
     if !loaded_from_file {
         property.end_time_ms = default_end_time_ms(chart);
-        property.judgerank = chart.metadata.judge_rank.unwrap_or(100);
+        property.judgerank = practice_judgerank_percent(chart, rule_mode);
         if profile_gauge != GaugeTypeConfig::AutoShift {
             property.gauge = profile_gauge.into();
         }
+    } else {
+        migrate_legacy_practice_property(&mut property, chart, rule_mode);
     }
     property
         .gauge_category
@@ -205,6 +221,35 @@ pub fn load_practice_property(
     clamp_practice_property(&mut property, chart);
 
     Ok(property)
+}
+
+fn practice_judgerank_percent(chart: &PlayableChart, rule_mode: RuleMode) -> i32 {
+    judge_rank_spec_to_percent_optional_for_keymode_and_rule_mode(
+        chart.metadata.judge_rank_spec,
+        chart.metadata.key_mode,
+        rule_mode,
+    )
+}
+
+fn migrate_legacy_practice_property(
+    property: &mut PracticeProperty,
+    chart: &PlayableChart,
+    rule_mode: RuleMode,
+) {
+    if property.format_version >= PRACTICE_PROPERTY_FORMAT_VERSION {
+        return;
+    }
+
+    // BMZ の旧形式は初回値に BMS の生 #RANK / #DEFEXRANK を保存し、
+    // 次回開始時に BMSON の倍率 (%) として再解釈していた。譜面由来の
+    // 旧初期値と一致する場合だけ移行し、ユーザーが変更した値は保持する。
+    if let Some(spec) = chart.metadata.judge_rank_spec
+        && matches!(spec.kind, JudgeRankKind::BmsRank | JudgeRankKind::DefExRank)
+        && property.judgerank == spec.value.clamp(1, 400)
+    {
+        property.judgerank = practice_judgerank_percent(chart, rule_mode);
+    }
+    property.format_version = PRACTICE_PROPERTY_FORMAT_VERSION;
 }
 
 pub fn save_practice_property(
@@ -269,8 +314,9 @@ pub fn clamp_practice_property(property: &mut PracticeProperty, chart: &Playable
         property.end_time_ms.clamp(property.start_time_ms.saturating_add(1000), max_end);
     property.judgerank = property.judgerank.clamp(1, 400);
     property.start_gauge = property.start_gauge.clamp(1, 100);
-    property.playback_rate_percent =
-        bmz_audio::clock::clamp_playback_rate_percent(property.playback_rate_percent);
+    property.playback_rate_percent = property
+        .playback_rate_percent
+        .clamp(PRACTICE_PLAYBACK_RATE_MIN, PRACTICE_PLAYBACK_RATE_MAX);
     if let Some(total) = property.total.as_mut() {
         *total = total.clamp(10.0, 5000.0);
     }
@@ -280,9 +326,62 @@ pub fn practice_field_count(is_double: bool) -> usize {
     if is_double { 12 } else { 10 }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PracticeCursorTarget {
+    Field(usize),
+    Start,
+    Leave,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PracticeCursorAction {
+    None,
+    Start,
+    Leave,
+}
+
+pub fn practice_cursor_count(is_double: bool) -> usize {
+    practice_field_count(is_double) + 2
+}
+
+pub fn practice_start_cursor(is_double: bool) -> usize {
+    practice_field_count(is_double)
+}
+
+pub fn practice_leave_cursor(is_double: bool) -> usize {
+    practice_field_count(is_double) + 1
+}
+
+pub fn practice_cursor_target(cursor: usize, is_double: bool) -> PracticeCursorTarget {
+    let field_count = practice_field_count(is_double);
+    match cursor % practice_cursor_count(is_double) {
+        index if index < field_count => PracticeCursorTarget::Field(index),
+        index if index == field_count => PracticeCursorTarget::Start,
+        _ => PracticeCursorTarget::Leave,
+    }
+}
+
 pub fn move_practice_cursor(cursor: &mut usize, is_double: bool, forward: bool) {
-    let count = practice_field_count(is_double);
+    let count = practice_cursor_count(is_double);
     *cursor = (*cursor + if forward { 1 } else { count - 1 }) % count;
+}
+
+pub fn apply_practice_cursor_horizontal(
+    property: &mut PracticeProperty,
+    cursor: usize,
+    is_double: bool,
+    increment: bool,
+    max_end_time_ms: u32,
+) -> PracticeCursorAction {
+    match practice_cursor_target(cursor, is_double) {
+        PracticeCursorTarget::Field(field) => {
+            adjust_practice_selected_field(property, field, is_double, increment, max_end_time_ms);
+            PracticeCursorAction::None
+        }
+        PracticeCursorTarget::Start if increment => PracticeCursorAction::Start,
+        PracticeCursorTarget::Leave if increment => PracticeCursorAction::Leave,
+        PracticeCursorTarget::Start | PracticeCursorTarget::Leave => PracticeCursorAction::None,
+    }
 }
 
 pub fn adjust_practice_selected_field(
@@ -327,7 +426,9 @@ pub fn adjust_practice_selected_field(
         }
         7 => {
             let value = i32::from(property.playback_rate_percent) + direction * 5;
-            property.playback_rate_percent = value.clamp(50, 200) as u16;
+            property.playback_rate_percent = value
+                .clamp(i32::from(PRACTICE_PLAYBACK_RATE_MIN), i32::from(PRACTICE_PLAYBACK_RATE_MAX))
+                as u16;
         }
         8 => cycle_graph_type(&mut property.graph_type, increment),
         9 => cycle_arrange(&mut property.arrange, increment),
@@ -399,6 +500,10 @@ mod tests {
             identity: ChartIdentity { file_md5: [0; 16], file_sha256: [1; 32] },
             metadata: ChartMetadata {
                 judge_rank: Some(150),
+                judge_rank_spec: Some(JudgeRankSpec {
+                    value: 150,
+                    kind: JudgeRankKind::BmsonJudgeRank,
+                }),
                 total: Some(250.0),
                 ..Default::default()
             },
@@ -448,6 +553,7 @@ mod tests {
             &chart.identity.file_sha256,
             &chart,
             GaugeTypeConfig::Hard,
+            RuleMode::Beatoraja,
             &PracticeCliOverrides { start_time_ms: Some(5000), end_time_ms: None },
         )
         .unwrap();
@@ -457,5 +563,116 @@ mod tests {
         assert_eq!(property.gauge, PracticeGaugeType::Hard);
         assert_eq!(property.total, Some(250.0));
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn practice_judgerank_normalizes_source_rank_kinds() {
+        let mut chart = empty_chart(120_000);
+        for (key_mode, spec, expected) in [
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 3, kind: JudgeRankKind::BmsRank },
+                100,
+            ),
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 2, kind: JudgeRankKind::BmsRank },
+                75,
+            ),
+            (
+                bmz_core::lane::KeyMode::K9,
+                JudgeRankSpec { value: 2, kind: JudgeRankKind::BmsRank },
+                70,
+            ),
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 125, kind: JudgeRankKind::DefExRank },
+                93,
+            ),
+            (
+                bmz_core::lane::KeyMode::K7,
+                JudgeRankSpec { value: 125, kind: JudgeRankKind::BmsonJudgeRank },
+                125,
+            ),
+        ] {
+            chart.metadata.key_mode = key_mode;
+            chart.metadata.judge_rank_spec = Some(spec);
+            assert_eq!(practice_judgerank_percent(&chart, RuleMode::Beatoraja), expected);
+        }
+    }
+
+    #[test]
+    fn legacy_practice_judgerank_migrates_only_unchanged_source_default() {
+        let mut chart = empty_chart(120_000);
+        chart.metadata.judge_rank_spec =
+            Some(JudgeRankSpec { value: 3, kind: JudgeRankKind::BmsRank });
+
+        let mut legacy_default =
+            PracticeProperty { format_version: 0, judgerank: 3, ..Default::default() };
+        migrate_legacy_practice_property(&mut legacy_default, &chart, RuleMode::Beatoraja);
+        assert_eq!(legacy_default.judgerank, 100);
+        assert_eq!(legacy_default.format_version, PRACTICE_PROPERTY_FORMAT_VERSION);
+
+        let mut customized =
+            PracticeProperty { format_version: 0, judgerank: 2, ..Default::default() };
+        migrate_legacy_practice_property(&mut customized, &chart, RuleMode::Beatoraja);
+        assert_eq!(customized.judgerank, 2);
+        assert_eq!(customized.format_version, PRACTICE_PROPERTY_FORMAT_VERSION);
+    }
+
+    #[test]
+    fn practice_cursor_includes_start_and_leave_actions() {
+        assert_eq!(practice_cursor_count(false), 12);
+        assert_eq!(practice_cursor_target(9, false), PracticeCursorTarget::Field(9));
+        assert_eq!(practice_cursor_target(10, false), PracticeCursorTarget::Start);
+        assert_eq!(practice_cursor_target(11, false), PracticeCursorTarget::Leave);
+        assert_eq!(practice_cursor_count(true), 14);
+        assert_eq!(practice_cursor_target(12, true), PracticeCursorTarget::Start);
+        assert_eq!(practice_cursor_target(13, true), PracticeCursorTarget::Leave);
+    }
+
+    #[test]
+    fn practice_cursor_wraps_across_action_rows() {
+        let mut cursor = 0;
+        move_practice_cursor(&mut cursor, false, false);
+        assert_eq!(practice_cursor_target(cursor, false), PracticeCursorTarget::Leave);
+        move_practice_cursor(&mut cursor, false, true);
+        assert_eq!(practice_cursor_target(cursor, false), PracticeCursorTarget::Field(0));
+    }
+
+    #[test]
+    fn practice_action_rows_activate_only_in_the_increment_direction() {
+        let mut property = PracticeProperty::default();
+        let start = practice_start_cursor(false);
+        let leave = practice_leave_cursor(false);
+
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, start, false, true, 120_000),
+            PracticeCursorAction::Start
+        );
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, start, false, false, 120_000),
+            PracticeCursorAction::None
+        );
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, leave, false, true, 120_000),
+            PracticeCursorAction::Leave
+        );
+        assert_eq!(
+            apply_practice_cursor_horizontal(&mut property, leave, false, false, 120_000),
+            PracticeCursorAction::None
+        );
+    }
+
+    #[test]
+    fn practice_playback_rate_remains_limited_to_fifty_through_two_hundred_percent() {
+        let chart = empty_chart(120_000);
+        let mut slow = PracticeProperty { playback_rate_percent: 25, ..Default::default() };
+        clamp_practice_property(&mut slow, &chart);
+        assert_eq!(slow.playback_rate_percent, 50);
+
+        let mut fast = PracticeProperty { playback_rate_percent: 300, ..Default::default() };
+        clamp_practice_property(&mut fast, &chart);
+        assert_eq!(fast.playback_rate_percent, 200);
     }
 }

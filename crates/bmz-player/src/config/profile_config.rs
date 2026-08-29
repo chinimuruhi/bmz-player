@@ -28,6 +28,15 @@ pub use preferences::*;
 pub use schema::*;
 pub use skin_ir::*;
 
+impl ProfileConfig {
+    pub fn migrate_legacy_key_mode_conversion(&mut self) {
+        if self.play.seven_to_six && self.play.key_mode_conversion == KeyModeConversionConfig::Off {
+            self.play.key_mode_conversion = KeyModeConversionConfig::SevenToSix;
+        }
+        self.play.seven_to_six = false;
+    }
+}
+
 #[cfg(test)]
 #[path = "profile_config/tests.rs"]
 mod tests;

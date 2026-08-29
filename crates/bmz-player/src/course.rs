@@ -9,6 +9,8 @@ enum BeatorajaCourseFile {
     Many(Vec<BeatorajaCourse>),
 }
 
+pub(crate) const LOCAL_COURSE_MAX_ENTRIES: usize = 10;
+
 #[derive(Debug, Deserialize)]
 struct BeatorajaCourse {
     #[serde(default)]
@@ -90,6 +92,14 @@ pub fn parse_beatoraja_course_json(source: &str, json: &str) -> Result<Vec<Cours
         .collect()
 }
 
+pub(crate) fn next_local_course_key<'a>(keys: impl IntoIterator<Item = &'a str>) -> String {
+    let keys = keys.into_iter().collect::<std::collections::HashSet<_>>();
+    (1..)
+        .map(|index| format!("local-course-{index}"))
+        .find(|candidate| !keys.contains(candidate.as_str()))
+        .expect("course key sequence is finite in practice")
+}
+
 pub fn serialize_beatoraja_course_json(courses: &[CourseDefinition]) -> Result<String> {
     let exported = courses
         .iter()
@@ -104,7 +114,7 @@ pub fn serialize_beatoraja_course_json(courses: &[CourseDefinition]) -> Result<S
                     sha256: entry.sha256.as_deref(),
                 })
                 .collect(),
-            constraint: exported_constraint_names(&course.constraints),
+            constraint: exported_local_constraint_names(&course.constraints),
             trophy: course
                 .trophies
                 .iter()
@@ -120,7 +130,7 @@ pub fn serialize_beatoraja_course_json(courses: &[CourseDefinition]) -> Result<S
     serde_json::to_string_pretty(&exported).map_err(Into::into)
 }
 
-fn exported_constraint_names(constraints: &CourseConstraints) -> Vec<&'static str> {
+fn exported_local_constraint_names(constraints: &CourseConstraints) -> Vec<&'static str> {
     use bmz_core::course::{
         CourseClassConstraint, CourseGaugeConstraint, CourseJudgeConstraint, CourseLnConstraint,
         CourseSpeedConstraint,
@@ -128,32 +138,39 @@ fn exported_constraint_names(constraints: &CourseConstraints) -> Vec<&'static st
     let mut names = Vec::new();
     match constraints.class {
         CourseClassConstraint::None => {}
-        CourseClassConstraint::Grade => names.push("grade"),
-        CourseClassConstraint::GradeMirrorAllowed => names.push("grade_mirror"),
-        CourseClassConstraint::GradeRandomAllowed => names.push("grade_random"),
+        CourseClassConstraint::Grade => names.push("CLASS"),
+        CourseClassConstraint::GradeMirrorAllowed => names.push("MIRROR"),
+        CourseClassConstraint::GradeRandomAllowed => names.push("RANDOM"),
     }
     if constraints.speed == CourseSpeedConstraint::NoSpeed {
-        names.push("no_speed");
+        names.push("NO_SPEED");
     }
     match constraints.judge {
         CourseJudgeConstraint::Normal => {}
-        CourseJudgeConstraint::NoGood => names.push("no_good"),
-        CourseJudgeConstraint::NoGreat => names.push("no_great"),
+        CourseJudgeConstraint::NoGood => names.push("NO_GOOD"),
+        CourseJudgeConstraint::NoGreat => names.push("NO_GREAT"),
     }
     match constraints.gauge {
-        CourseGaugeConstraint::Default | CourseGaugeConstraint::Keys24 => {}
-        CourseGaugeConstraint::Lr2 => names.push("gauge_lr2"),
-        CourseGaugeConstraint::Keys5 => names.push("gauge_5k"),
-        CourseGaugeConstraint::Keys7 => names.push("gauge_7k"),
-        CourseGaugeConstraint::Keys9 => names.push("gauge_9k"),
+        CourseGaugeConstraint::Default => {}
+        CourseGaugeConstraint::Lr2 => names.push("GAUGE_LR2"),
+        CourseGaugeConstraint::Keys5 => names.push("GAUGE_5KEYS"),
+        CourseGaugeConstraint::Keys7 => names.push("GAUGE_7KEYS"),
+        CourseGaugeConstraint::Keys9 => names.push("GAUGE_9KEYS"),
+        CourseGaugeConstraint::Keys24 => names.push("GAUGE_24KEYS"),
     }
     match constraints.ln {
         CourseLnConstraint::Default => {}
-        CourseLnConstraint::Ln => names.push("ln"),
-        CourseLnConstraint::Cn => names.push("cn"),
-        CourseLnConstraint::Hcn => names.push("hcn"),
+        CourseLnConstraint::Ln => names.push("LN"),
+        CourseLnConstraint::Cn => names.push("CN"),
+        CourseLnConstraint::Hcn => names.push("HCN"),
     }
     names
+}
+
+pub fn normalize_course_definition(definition: &mut CourseDefinition) {
+    definition.kind = CourseDefinition::derive_kind_from_constraints(&definition.constraints);
+    definition.constraints.source_constraints =
+        definition.constraints.canonical_names().into_iter().map(str::to_string).collect();
 }
 
 fn convert_beatoraja_course(
@@ -214,7 +231,7 @@ fn convert_beatoraja_course(
         })
         .collect();
 
-    Ok(CourseDefinition {
+    let mut definition = CourseDefinition {
         key: format!("{source}#{index}"),
         title,
         kind,
@@ -222,7 +239,9 @@ fn convert_beatoraja_course(
         constraints,
         trophies,
         release: course.release,
-    })
+    };
+    normalize_course_definition(&mut definition);
+    Ok(definition)
 }
 
 fn normalize_hash(hash: String, expected_len: usize) -> Option<String> {
@@ -238,6 +257,11 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn local_course_key_uses_first_available_sequence_number() {
+        assert_eq!(next_local_course_key(["local-course-1", "local-course-3"]), "local-course-2");
+    }
 
     #[test]
     fn parses_beatoraja_course_array() {
@@ -266,6 +290,49 @@ mod tests {
     }
 
     #[test]
+    fn parses_beatoraja_local_course_constraints() {
+        let json = r#"[{
+          "name": "Local Dan",
+          "constraint": ["MIRROR", "NO_SPEED", "GAUGE_24KEYS", "HCN"],
+          "hash": [{"title":"Song", "md5":"00112233445566778899aabbccddeeff"}],
+          "trophy": [],
+          "release": false
+        }]"#;
+
+        let courses = parse_beatoraja_course_json("course/local.json", json).unwrap();
+
+        assert_eq!(courses[0].kind, CourseKind::Dan);
+        assert_eq!(courses[0].constraints.class, CourseClassConstraint::GradeMirrorAllowed);
+        assert_eq!(courses[0].constraints.gauge, CourseGaugeConstraint::Keys24);
+        assert_eq!(
+            courses[0].constraints.source_constraints,
+            ["grade_mirror", "no_speed", "gauge_24k", "hcn"]
+        );
+        assert!(!courses[0].release);
+    }
+
+    #[test]
+    fn serializes_beatoraja_local_course_constraint_names() {
+        let mut definition = parse_beatoraja_course_json(
+            "course/local.json",
+            r#"[{"name":"Local","constraint":["RANDOM","NO_GREAT","GAUGE_24KEYS","CN"],"hash":[{"title":"Song","md5":"00112233445566778899aabbccddeeff"}],"trophy":[],"release":false}]"#,
+        )
+        .unwrap()
+        .remove(0);
+        normalize_course_definition(&mut definition);
+
+        let json = serialize_beatoraja_course_json(&[definition]).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            value[0]["constraint"],
+            serde_json::json!(["RANDOM", "NO_GREAT", "GAUGE_24KEYS", "CN"])
+        );
+        assert_eq!(value[0]["trophy"], serde_json::json!([]));
+        assert_eq!(value[0]["release"], false);
+    }
+
+    #[test]
     fn parses_single_course_and_normalizes_defaults() {
         let json = r#"{"hash":[{"sha256":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}]}"#;
 
@@ -273,6 +340,7 @@ mod tests {
 
         assert_eq!(courses[0].title, "No Course Title");
         assert_eq!(courses[0].kind, CourseKind::Course);
+        assert!(courses[0].release);
         assert_eq!(courses[0].entries[0].title_hint, "course 1");
         assert_eq!(
             courses[0].entries[0].sha256.as_deref(),

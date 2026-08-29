@@ -24,6 +24,7 @@ export default defineI18nLocale(() =>
         courses: '코스',
         players: '플레이어',
         daily: '오늘의 성과',
+        rivals: '라이벌',
         profile: '프로필',
         settings: '계정 설정',
         logout: '로그아웃',

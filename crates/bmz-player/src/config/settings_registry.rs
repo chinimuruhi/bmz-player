@@ -1,21 +1,29 @@
-use super::play::{TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN, clamp_hispeed};
+use super::play::{
+    CONSTANT_FADE_MAX_MS, CONSTANT_FADE_MIN_MS, TARGET_GREEN_NUMBER_MAX, TARGET_GREEN_NUMBER_MIN,
+    clamp_hispeed,
+};
 use super::profile_config::{
-    AssistOptionConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
-    DoubleOptionConfig, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX, HISPEED_STEP_MIN,
-    HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, JudgeAlgorithmConfig, LaneConfig,
-    LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX, RandomOptionConfig, ReplaySlotRule,
-    SelectInputModeConfig, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
-    normalize_hispeed_step,
+    AssistLongNoteMode, AssistMineMode, AssistOptionConfig, AssistScrollMode, BgaExpandConfig,
+    BgaModeConfig, BottomShiftableGaugeConfig, DifficultyTableLevelDisplay, DoubleOptionConfig,
+    FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX,
+    HISPEED_STEP_MIN, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, JudgeAlgorithmConfig,
+    KeyModeConversionConfig, LaneConfig, LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX,
+    RandomOptionConfig, ReplaySlotRule, SelectInputModeConfig, SevenToNinePattern,
+    SevenToNineRuleMode, SevenToNineType, TargetOptionConfig, default_hispeed_step_fhs,
+    default_hispeed_step_nhs, normalize_hispeed_step,
 };
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
 
+use crate::i18n::AppLocale;
 use crate::ln_policy::LnPolicySetting;
+use crate::select_options::SessionMode;
 
 /// ゲーム内設定で編集可能な profile.toml 項目。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SettingsEntryId {
     NormalizeChartVolume,
+    NormalizeSystemBgmVolume,
     MasterVolume,
     KeyVolume,
     BgmVolume,
@@ -26,6 +34,8 @@ pub enum SettingsEntryId {
     VisualOffsetMs,
     VisualOffsetAutoAdjust,
     JudgeAlgorithm,
+    FastSlowDisplayScope,
+    FastSlowDisplayThresholdMs,
     RuleMode,
     LnModePolicy,
     Gauge,
@@ -40,17 +50,48 @@ pub enum SettingsEntryId {
     Assist,
     BgaMode,
     BgaExpand,
-    AutoPlay,
+    SessionMode,
+    KeyModeConversion,
+    SevenToNinePattern,
+    SevenToNineType,
+    SevenToNineRuleMode,
+    PlayExitHoldMs,
+    AssistExpandJudge,
+    AssistJudgeArea,
+    AssistMarkNote,
+    AssistBpmGuide,
+    AssistScrollMode,
+    AssistLongNoteMode,
+    AssistMineMode,
+    AssistScrollSection,
+    AssistScrollRate,
+    AssistLongNoteRate,
+    AssistExtraNoteDepth,
+    AssistExtraNoteScratch,
+    AssistExtraNoteType,
+    AssistKeyPgreatRate,
+    AssistKeyGreatRate,
+    AssistKeyGoodRate,
+    AssistScratchPgreatRate,
+    AssistScratchGreatRate,
+    AssistScratchGoodRate,
+    AssistLongNoteMarginRate,
     MisslayerDurationMs,
     ShowLnTailCap,
+    GuideSe,
     Hispeed,
     HispeedMode,
     HispeedStepNhs,
     HispeedStepFhs,
     Sudden,
+    LiftEnabled,
     Lift,
+    HispeedAutoAdjust,
     Hidden,
     TargetGreenNumber,
+    NoteDisplayDurationMs,
+    Constant,
+    ConstantFadeMs,
     SelectInputMode,
     AnalogScratch1P,
     AnalogScratchSensitivity1P,
@@ -69,6 +110,7 @@ pub enum SettingsEntryId {
     Hispeed8Key6,
     Hispeed8Key7,
     Hispeed8Key8,
+    DifficultyTableLevelDisplay,
     SelectRandomSelect,
     RandomMixTargetLevel,
     RandomMixMaxLevel,
@@ -78,15 +120,19 @@ pub enum SettingsEntryId {
     RandomMixMinBpm,
     RandomMixStages,
     ReplayAutoSave,
+    ReplayCompress,
     ReplaySlot1Rule,
     ReplaySlot2Rule,
     ReplaySlot3Rule,
     ReplaySlot4Rule,
+    Language,
+    ShowFps,
 }
 
 impl SettingsEntryId {
     pub const VOLUME_ENTRIES: &'static [Self] = &[
         Self::NormalizeChartVolume,
+        Self::NormalizeSystemBgmVolume,
         Self::MasterVolume,
         Self::KeyVolume,
         Self::BgmVolume,
@@ -100,9 +146,12 @@ impl SettingsEntryId {
         Self::VisualOffsetMs,
         Self::VisualOffsetAutoAdjust,
         Self::JudgeAlgorithm,
+        Self::FastSlowDisplayScope,
+        Self::FastSlowDisplayThresholdMs,
     ];
 
-    // `Assist` は設定値を保持したまま、仕様確定までUIからのみ除外する。
+    // 旧単一行の `Assist` はLEGACY NOTEだけを切り替えるため一覧から除外し、
+    // 個別項目は下位のASSISTフォルダで公開する。
     pub const PLAY_ENTRIES: &'static [Self] = &[
         Self::Gauge,
         Self::RuleMode,
@@ -117,9 +166,44 @@ impl SettingsEntryId {
         Self::LaneEffect,
         Self::BgaMode,
         Self::BgaExpand,
-        Self::AutoPlay,
+        Self::SessionMode,
+        Self::KeyModeConversion,
         Self::MisslayerDurationMs,
+        Self::PlayExitHoldMs,
         Self::ShowLnTailCap,
+        Self::GuideSe,
+    ];
+
+    pub const SEVEN_TO_NINE_ENTRIES: &'static [Self] =
+        &[Self::SevenToNinePattern, Self::SevenToNineType, Self::SevenToNineRuleMode];
+
+    pub const ASSIST_ENTRIES: &'static [Self] = &[
+        Self::AssistExpandJudge,
+        Self::AssistJudgeArea,
+        Self::AssistMarkNote,
+        Self::AssistBpmGuide,
+        Self::AssistScrollMode,
+        Self::AssistLongNoteMode,
+        Self::AssistMineMode,
+    ];
+
+    pub const ASSIST_NOTE_ENTRIES: &'static [Self] = &[
+        Self::AssistScrollSection,
+        Self::AssistScrollRate,
+        Self::AssistLongNoteRate,
+        Self::AssistExtraNoteDepth,
+        Self::AssistExtraNoteScratch,
+        Self::AssistExtraNoteType,
+    ];
+
+    pub const ASSIST_JUDGE_ENTRIES: &'static [Self] = &[
+        Self::AssistKeyPgreatRate,
+        Self::AssistKeyGreatRate,
+        Self::AssistKeyGoodRate,
+        Self::AssistScratchPgreatRate,
+        Self::AssistScratchGreatRate,
+        Self::AssistScratchGoodRate,
+        Self::AssistLongNoteMarginRate,
     ];
 
     pub const DISPLAY_ENTRIES: &'static [Self] = &[
@@ -128,9 +212,14 @@ impl SettingsEntryId {
         Self::HispeedStepNhs,
         Self::HispeedStepFhs,
         Self::Sudden,
+        Self::LiftEnabled,
         Self::Lift,
+        Self::HispeedAutoAdjust,
         Self::Hidden,
         Self::TargetGreenNumber,
+        Self::NoteDisplayDurationMs,
+        Self::Constant,
+        Self::ConstantFadeMs,
     ];
 
     pub const INPUT_ENTRIES: &'static [Self] = &[
@@ -147,6 +236,7 @@ impl SettingsEntryId {
     ];
 
     pub const SELECT_ENTRIES: &'static [Self] = &[
+        Self::DifficultyTableLevelDisplay,
         Self::SelectRandomSelect,
         Self::RandomMixTargetLevel,
         Self::RandomMixMaxLevel,
@@ -170,15 +260,27 @@ impl SettingsEntryId {
 
     pub const REPLAY_ENTRIES: &'static [Self] = &[
         Self::ReplayAutoSave,
+        Self::ReplayCompress,
         Self::ReplaySlot1Rule,
         Self::ReplaySlot2Rule,
         Self::ReplaySlot3Rule,
         Self::ReplaySlot4Rule,
     ];
 
+    pub const UI_ENTRIES: &'static [Self] = &[Self::Language, Self::ShowFps];
+
+    pub fn is_play_setting(self) -> bool {
+        Self::PLAY_ENTRIES.contains(&self)
+            || Self::SEVEN_TO_NINE_ENTRIES.contains(&self)
+            || Self::ASSIST_ENTRIES.contains(&self)
+            || Self::ASSIST_NOTE_ENTRIES.contains(&self)
+            || Self::ASSIST_JUDGE_ENTRIES.contains(&self)
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::NormalizeChartVolume => "NORMALIZE",
+            Self::NormalizeSystemBgmVolume => "SYS BGM NORM",
             Self::MasterVolume => "MASTER",
             Self::KeyVolume => "KEY",
             Self::BgmVolume => "BGM",
@@ -189,6 +291,8 @@ impl SettingsEntryId {
             Self::VisualOffsetMs => "VISUAL OFFSET",
             Self::VisualOffsetAutoAdjust => "AUTO ADJUST",
             Self::JudgeAlgorithm => "JUDGE ALGO",
+            Self::FastSlowDisplayScope => "FAST/SLOW MODE",
+            Self::FastSlowDisplayThresholdMs => "FAST/SLOW LIMIT",
             Self::RuleMode => "RULE MODE",
             Self::LnModePolicy => "LN MODE",
             Self::Gauge => "GAUGE",
@@ -203,17 +307,48 @@ impl SettingsEntryId {
             Self::Assist => "ASSIST",
             Self::BgaMode => "BGA",
             Self::BgaExpand => "BGA FIT",
-            Self::AutoPlay => "AUTO PLAY",
+            Self::SessionMode => "SESSION MODE",
+            Self::KeyModeConversion => "KEY CONVERSION",
+            Self::SevenToNinePattern => "7K TO 9K PATTERN",
+            Self::SevenToNineType => "7K TO 9K TYPE",
+            Self::SevenToNineRuleMode => "7K TO 9K RULE",
+            Self::PlayExitHoldMs => "PLAY EXIT HOLD",
+            Self::AssistExpandJudge => "EXPAND JUDGE",
+            Self::AssistJudgeArea => "JUDGE AREA",
+            Self::AssistMarkNote => "MARK NOTE",
+            Self::AssistBpmGuide => "BPM GUIDE",
+            Self::AssistScrollMode => "SCROLL",
+            Self::AssistLongNoteMode => "LONGNOTE",
+            Self::AssistMineMode => "MINE",
+            Self::AssistScrollSection => "SCROLL SECTION",
+            Self::AssistScrollRate => "SCROLL RATE",
+            Self::AssistLongNoteRate => "LONGNOTE RATE",
+            Self::AssistExtraNoteDepth => "EXTRA NOTE DEPTH",
+            Self::AssistExtraNoteScratch => "EXTRA NOTE SCRATCH",
+            Self::AssistExtraNoteType => "EXTRA NOTE TYPE",
+            Self::AssistKeyPgreatRate => "KEY PGREAT",
+            Self::AssistKeyGreatRate => "KEY GREAT",
+            Self::AssistKeyGoodRate => "KEY GOOD",
+            Self::AssistScratchPgreatRate => "SCRATCH PGREAT",
+            Self::AssistScratchGreatRate => "SCRATCH GREAT",
+            Self::AssistScratchGoodRate => "SCRATCH GOOD",
+            Self::AssistLongNoteMarginRate => "LN MARGIN",
             Self::MisslayerDurationMs => "MISSLAYER",
             Self::ShowLnTailCap => "LN TAIL CAP",
+            Self::GuideSe => "GUIDE SE",
             Self::Hispeed => "HISPEED",
             Self::HispeedMode => "HS MODE",
             Self::HispeedStepNhs => "HS STEP NHS",
             Self::HispeedStepFhs => "HS STEP FHS",
             Self::Sudden => "SUDDEN+",
+            Self::LiftEnabled => "LIFT ENABLED",
             Self::Lift => "LIFT",
+            Self::HispeedAutoAdjust => "HS AUTO ADJUST",
             Self::Hidden => "HIDDEN",
             Self::TargetGreenNumber => "GREEN NO.",
+            Self::NoteDisplayDurationMs => "DURATION",
+            Self::Constant => "CONSTANT",
+            Self::ConstantFadeMs => "CONSTANT FADE",
             Self::SelectInputMode => "SELECT INPUT",
             Self::AnalogScratch1P => "1P ANALOG SCRATCH",
             Self::AnalogScratchSensitivity1P => "1P ANALOG SENS",
@@ -232,6 +367,7 @@ impl SettingsEntryId {
             Self::Hispeed8Key6 => "KEY 6 HS DIRECTION",
             Self::Hispeed8Key7 => "KEY 7 HS DIRECTION",
             Self::Hispeed8Key8 => "KEY 8 HS DIRECTION",
+            Self::DifficultyTableLevelDisplay => "TABLE LEVEL DISPLAY",
             Self::SelectRandomSelect => "RANDOM SELECT",
             Self::RandomMixTargetLevel => "MIX TARGET LEVEL",
             Self::RandomMixMaxLevel => "MIX MAX LEVEL",
@@ -241,10 +377,136 @@ impl SettingsEntryId {
             Self::RandomMixMinBpm => "MIX MIN BPM",
             Self::RandomMixStages => "MIX STAGES",
             Self::ReplayAutoSave => "REPLAY SAVE",
+            Self::ReplayCompress => "REPLAY COMPRESS",
             Self::ReplaySlot1Rule => "REPLAY 1",
             Self::ReplaySlot2Rule => "REPLAY 2",
             Self::ReplaySlot3Rule => "REPLAY 3",
             Self::ReplaySlot4Rule => "REPLAY 4",
+            Self::Language => "LANGUAGE",
+            Self::ShowFps => "SHOW FPS",
+        }
+    }
+
+    /// 選曲スキンの詳細欄へ表示する、設定項目自体の説明文キー。
+    pub const fn description_key(self) -> &'static str {
+        match self {
+            Self::NormalizeChartVolume => "settings-entry-description-normalize-chart-volume",
+            Self::NormalizeSystemBgmVolume => {
+                "settings-entry-description-normalize-system-bgm-volume"
+            }
+            Self::MasterVolume => "settings-entry-description-master-volume",
+            Self::KeyVolume => "settings-entry-description-key-volume",
+            Self::BgmVolume => "settings-entry-description-bgm-volume",
+            Self::PreviewVolume => "settings-entry-description-preview-volume",
+            Self::SystemBgmVolume => "settings-entry-description-system-bgm-volume",
+            Self::SystemSeVolume => "settings-entry-description-system-se-volume",
+            Self::InputOffsetMs => "settings-entry-description-input-offset",
+            Self::VisualOffsetMs => "settings-entry-description-visual-offset",
+            Self::VisualOffsetAutoAdjust => "settings-entry-description-visual-offset-auto-adjust",
+            Self::JudgeAlgorithm => "settings-entry-description-judge-algorithm",
+            Self::FastSlowDisplayScope => "settings-entry-description-fast-slow-display-scope",
+            Self::FastSlowDisplayThresholdMs => {
+                "settings-entry-description-fast-slow-display-threshold"
+            }
+            Self::RuleMode => "settings-entry-description-rule-mode",
+            Self::LnModePolicy => "settings-entry-description-ln-mode-policy",
+            Self::Gauge => "settings-entry-description-gauge",
+            Self::GaugeAutoShift => "settings-entry-description-gauge-auto-shift",
+            Self::BottomShiftableGauge => "settings-entry-description-bottom-shiftable-gauge",
+            Self::Random | Self::Random2 => "settings-entry-description-random",
+            Self::DoubleOption => "settings-entry-description-double-option",
+            Self::HsFix => "settings-entry-description-hs-fix",
+            Self::Target => "settings-entry-description-target",
+            Self::LaneEffect => "settings-entry-description-lane-effect",
+            Self::Assist => "settings-entry-description-assist",
+            Self::BgaMode => "settings-entry-description-bga-mode",
+            Self::BgaExpand => "settings-entry-description-bga-expand",
+            Self::SessionMode => "settings-entry-description-session-mode",
+            Self::KeyModeConversion => "settings-entry-description-key-mode-conversion",
+            Self::SevenToNinePattern => "settings-entry-description-seven-to-nine-pattern",
+            Self::SevenToNineType => "settings-entry-description-seven-to-nine-type",
+            Self::SevenToNineRuleMode => "settings-entry-description-seven-to-nine-rule-mode",
+            Self::PlayExitHoldMs => "settings-entry-description-play-exit-hold",
+            Self::AssistExpandJudge => "settings-entry-description-assist-expand-judge",
+            Self::AssistJudgeArea => "settings-entry-description-assist-judge-area",
+            Self::AssistMarkNote => "settings-entry-description-assist-mark-note",
+            Self::AssistBpmGuide => "settings-entry-description-assist-bpm-guide",
+            Self::AssistScrollMode => "settings-entry-description-assist-scroll-mode",
+            Self::AssistLongNoteMode => "settings-entry-description-assist-long-note-mode",
+            Self::AssistMineMode => "settings-entry-description-assist-mine-mode",
+            Self::AssistScrollSection => "settings-entry-description-assist-scroll-section",
+            Self::AssistScrollRate => "settings-entry-description-assist-scroll-rate",
+            Self::AssistLongNoteRate => "settings-entry-description-assist-long-note-rate",
+            Self::AssistExtraNoteDepth => "settings-entry-description-assist-extra-note-depth",
+            Self::AssistExtraNoteScratch => "settings-entry-description-assist-extra-note-scratch",
+            Self::AssistExtraNoteType => "settings-entry-description-assist-extra-note-type",
+            Self::AssistKeyPgreatRate | Self::AssistKeyGreatRate | Self::AssistKeyGoodRate => {
+                "settings-entry-description-assist-key-judge-rate"
+            }
+            Self::AssistScratchPgreatRate
+            | Self::AssistScratchGreatRate
+            | Self::AssistScratchGoodRate => "settings-entry-description-assist-scratch-judge-rate",
+            Self::AssistLongNoteMarginRate => {
+                "settings-entry-description-assist-long-note-margin-rate"
+            }
+            Self::MisslayerDurationMs => "settings-entry-description-misslayer-duration",
+            Self::ShowLnTailCap => "settings-entry-description-show-ln-tail-cap",
+            Self::GuideSe => "settings-entry-description-guide-se",
+            Self::Hispeed => "settings-entry-description-hispeed",
+            Self::HispeedMode => "settings-entry-description-hispeed-mode",
+            Self::HispeedStepNhs => "settings-entry-description-hispeed-step-nhs",
+            Self::HispeedStepFhs => "settings-entry-description-hispeed-step-fhs",
+            Self::Sudden => "settings-entry-description-sudden",
+            Self::LiftEnabled => "settings-entry-description-lift-enabled",
+            Self::Lift => "settings-entry-description-lift",
+            Self::HispeedAutoAdjust => "settings-entry-description-hispeed-auto-adjust",
+            Self::Hidden => "settings-entry-description-hidden",
+            Self::TargetGreenNumber => "settings-entry-description-target-green-number",
+            Self::NoteDisplayDurationMs => "settings-entry-description-note-display-duration",
+            Self::Constant => "settings-entry-description-constant",
+            Self::ConstantFadeMs => "settings-entry-description-constant-fade",
+            Self::SelectInputMode => "settings-entry-description-select-input-mode",
+            Self::AnalogScratch1P | Self::AnalogScratch2P => {
+                "settings-entry-description-analog-scratch"
+            }
+            Self::AnalogScratchSensitivity1P | Self::AnalogScratchSensitivity2P => {
+                "settings-entry-description-analog-scratch-sensitivity"
+            }
+            Self::AnalogScratchThreshold1P | Self::AnalogScratchThreshold2P => {
+                "settings-entry-description-analog-scratch-threshold"
+            }
+            Self::AnalogTicksPerScroll => "settings-entry-description-analog-ticks-per-scroll",
+            Self::KeyboardReleaseBounceMs => "settings-entry-description-keyboard-release-bounce",
+            Self::ControllerReleaseBounceMs => {
+                "settings-entry-description-controller-release-bounce"
+            }
+            Self::Hispeed8Key1
+            | Self::Hispeed8Key2
+            | Self::Hispeed8Key3
+            | Self::Hispeed8Key4
+            | Self::Hispeed8Key5
+            | Self::Hispeed8Key6
+            | Self::Hispeed8Key7
+            | Self::Hispeed8Key8 => "settings-entry-description-hispeed-direction",
+            Self::DifficultyTableLevelDisplay => {
+                "settings-entry-description-difficulty-table-level-display"
+            }
+            Self::SelectRandomSelect => "settings-entry-description-random-select",
+            Self::RandomMixTargetLevel => "settings-entry-description-random-mix-target-level",
+            Self::RandomMixMaxLevel => "settings-entry-description-random-mix-max-level",
+            Self::RandomMixMinLevel => "settings-entry-description-random-mix-min-level",
+            Self::RandomMixBpmRange => "settings-entry-description-random-mix-bpm-range",
+            Self::RandomMixMaxBpm => "settings-entry-description-random-mix-max-bpm",
+            Self::RandomMixMinBpm => "settings-entry-description-random-mix-min-bpm",
+            Self::RandomMixStages => "settings-entry-description-random-mix-stages",
+            Self::ReplayAutoSave => "settings-entry-description-replay-auto-save",
+            Self::ReplayCompress => "settings-entry-description-replay-compress",
+            Self::ReplaySlot1Rule
+            | Self::ReplaySlot2Rule
+            | Self::ReplaySlot3Rule
+            | Self::ReplaySlot4Rule => "settings-entry-description-replay-slot-rule",
+            Self::Language => "settings-entry-description-language",
+            Self::ShowFps => "settings-entry-description-show-fps",
         }
     }
 }
@@ -270,6 +532,13 @@ mod tests {
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::NormalizeChartVolume, 1));
         assert!(!profile.audio_mix.normalize_chart_volume);
         assert_eq!(format_settings_value(&profile, SettingsEntryId::NormalizeChartVolume), "OFF");
+        assert!(profile.audio_mix.normalize_system_bgm_volume);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::NormalizeSystemBgmVolume, 1,));
+        assert!(!profile.audio_mix.normalize_system_bgm_volume);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::NormalizeSystemBgmVolume),
+            "OFF"
+        );
         profile.audio_mix.master_volume = 98;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::MasterVolume, 5));
         assert_eq!(profile.audio_mix.master_volume, 100);
@@ -388,11 +657,84 @@ mod tests {
     }
 
     #[test]
-    fn auto_play_toggles() {
+    fn session_mode_cycles_and_mirrors_legacy_auto_play() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
         assert!(!profile.play.auto_play);
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AutoPlay, 1));
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SessionMode, 1));
+        assert_eq!(profile.play.session_mode, Some(SessionMode::Practice));
+        assert!(!profile.play.auto_play);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SessionMode, 1));
+        assert_eq!(profile.play.session_mode, Some(SessionMode::Autoplay));
         assert!(profile.play.auto_play);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::SessionMode), "AUTOPLAY");
+    }
+
+    #[test]
+    fn key_mode_conversion_clears_dp_option_and_cycles_conversion_details() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        profile.play.double_option = DoubleOptionConfig::Battle;
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::KeyModeConversion, 1));
+        assert_eq!(profile.play.key_mode_conversion, KeyModeConversionConfig::SpToDp);
+        assert_eq!(profile.play.double_option, DoubleOptionConfig::Off);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::KeyModeConversion), "SP TO DP");
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SevenToNinePattern, 1));
+        assert_eq!(profile.play.seven_to_nine_pattern, SevenToNinePattern::Sc9Key2To8);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SevenToNineType, 1));
+        assert_eq!(profile.play.seven_to_nine_type, SevenToNineType::NoMashing);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SevenToNineRuleMode, 1));
+        assert_eq!(profile.play.seven_to_nine_rule_mode, SevenToNineRuleMode::Keys9);
+    }
+
+    #[test]
+    fn assist_entries_edit_individual_fields() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AssistExpandJudge, 1));
+        assert!(profile.play.assist.expand_judge);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AssistScrollMode, 1));
+        assert_eq!(profile.play.assist.scroll_mode, AssistScrollMode::Remove);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AssistScrollRate, 5));
+        assert!((profile.play.assist.scroll_rate - 0.55).abs() < f64::EPSILON);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::AssistScrollRate), "55%");
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::AssistKeyPgreatRate, -5));
+        assert_eq!(profile.play.assist.key_pgreat_rate, 395);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::AssistKeyPgreatRate), "395%");
+    }
+
+    #[test]
+    fn additional_scalar_settings_adjust_and_format() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::FastSlowDisplayScope, 1));
+        assert_eq!(profile.judge.fast_slow_display_scope, FastSlowDisplayScope::ThresholdMs);
+        assert!(adjust_settings_value(
+            &mut profile,
+            SettingsEntryId::FastSlowDisplayThresholdMs,
+            5,
+        ));
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::FastSlowDisplayThresholdMs),
+            "5 ms"
+        );
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::LiftEnabled, 1));
+        assert!(!profile.lane.lift_enabled);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedAutoAdjust, 1));
+        assert!(!profile.lane.hispeed_auto_adjust);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::ReplayCompress, 1));
+        assert!(profile.replay.compress);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::ShowFps, 1));
+        assert!(profile.ui.show_fps);
+
+        let initial_locale = profile.ui.locale();
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::Language, 1));
+        assert_ne!(profile.ui.locale(), initial_locale);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::Language),
+            profile.ui.locale().native_name()
+        );
     }
 
     #[test]
@@ -413,9 +755,24 @@ mod tests {
     #[test]
     fn adjust_green_number_misslayer_and_analog_settings() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
-        profile.lane.target_green_number = 995;
+        profile.lane.target_green_number = 5_995;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::TargetGreenNumber, 10));
-        assert_eq!(profile.lane.target_green_number, 999);
+        assert_eq!(profile.lane.target_green_number, 6_000);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::NoteDisplayDurationMs),
+            "10000 ms"
+        );
+
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::NoteDisplayDurationMs, -10,));
+        assert_eq!(profile.lane.target_green_number, 5_994);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::NoteDisplayDurationMs),
+            "9990 ms"
+        );
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::Constant, 1));
+        assert!(profile.lane.constant_enabled);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::GuideSe, 1));
+        assert!(profile.play.guide_se);
 
         profile.play.misslayer_duration_ms = 4_980;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::MisslayerDurationMs, 50));
@@ -499,6 +856,29 @@ mod tests {
         assert_eq!(profile.select.random_mix.max_bpm, 990);
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::RandomMixStages, -5,));
         assert_eq!(format_settings_value(&profile, SettingsEntryId::RandomMixStages), "RANDOM");
+    }
+
+    #[test]
+    fn difficulty_table_level_display_cycles_between_table_and_chart() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::DifficultyTableLevelDisplay),
+            "TABLE LEVEL"
+        );
+
+        assert!(adjust_settings_value(
+            &mut profile,
+            SettingsEntryId::DifficultyTableLevelDisplay,
+            1,
+        ));
+        assert_eq!(
+            profile.select.difficulty_table_level_display,
+            DifficultyTableLevelDisplay::Chart
+        );
+        assert_eq!(
+            format_settings_value(&profile, SettingsEntryId::DifficultyTableLevelDisplay),
+            "CHART LEVEL"
+        );
     }
 
     #[test]

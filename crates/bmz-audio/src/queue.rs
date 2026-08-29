@@ -97,6 +97,23 @@ impl ScheduledSoundQueue {
             }
         }
     }
+
+    pub fn apply_playback_rate_change(&mut self, change: crate::clock::PlaybackRateChange) {
+        for sound in &mut self.sounds {
+            sound.start_frame = retime_output_frame(sound.start_frame, change);
+        }
+        self.sounds.sort_by_key(|sound| (sound.start_frame, sound.sound_id.0));
+    }
+}
+
+pub(crate) fn retime_output_frame(frame: u64, change: crate::clock::PlaybackRateChange) -> u64 {
+    if frame <= change.anchor_output_frame {
+        return frame;
+    }
+    let distance = frame - change.anchor_output_frame;
+    let scaled = u128::from(distance).saturating_mul(u128::from(change.old_rate_percent))
+        / u128::from(change.new_rate_percent);
+    change.anchor_output_frame.saturating_add(scaled.min(u128::from(u64::MAX)) as u64)
 }
 
 impl AudioScheduler for ScheduledSoundQueue {
@@ -125,6 +142,37 @@ mod tests {
         assert_eq!(queue.len(), 1);
         assert_eq!(queue.drain_until_frame(20)[0].sound_id.0, 2);
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn playback_rate_change_retimes_future_sounds_around_anchor() {
+        let mut queue = ScheduledSoundQueue::new();
+        queue.schedule(sound(50, 1));
+        queue.schedule(sound(400, 2));
+
+        queue.apply_playback_rate_change(crate::clock::PlaybackRateChange {
+            anchor_output_frame: 100,
+            old_rate_percent: 100,
+            new_rate_percent: 300,
+        });
+
+        assert_eq!(queue.drain_until_frame(99)[0].start_frame, 50);
+        assert_eq!(queue.drain_until_frame(200)[0].start_frame, 200);
+    }
+
+    #[test]
+    fn playback_rate_change_expands_future_schedule_when_slowing_down() {
+        assert_eq!(
+            retime_output_frame(
+                200,
+                crate::clock::PlaybackRateChange {
+                    anchor_output_frame: 100,
+                    old_rate_percent: 100,
+                    new_rate_percent: 25,
+                },
+            ),
+            500
+        );
     }
 
     fn sound(start_frame: u64, sound_id: u32) -> ScheduledSound {

@@ -16,6 +16,33 @@ fn skin_difficulty_code_matches_numeric_and_case_insensitive_names() {
 }
 
 #[test]
+fn play_skin_state_carries_frozen_rule_and_ln_score_policy() {
+    let snapshot = RenderSnapshot {
+        has_long_notes: Some(true),
+        rule_mode_index: 2,
+        ln_score_policy_index: Some(4),
+        ..RenderSnapshot::default()
+    };
+
+    let state = play::build_play_skin_state(&snapshot, &SkinContext::default(), 0);
+
+    assert_eq!(state.rule_mode_index, 2);
+    assert_eq!(state.ln_score_policy_index, Some(4));
+    assert_eq!(state.ln_policy_setting_index, None);
+    assert_eq!(state.chart_has_long_notes, Some(true));
+    assert!(crate::skin::test_skin_ops(&[173], &[], &state));
+    assert!(!crate::skin::test_skin_ops(&[172], &[], &state));
+
+    let no_ln_state = play::build_play_skin_state(
+        &RenderSnapshot { has_long_notes: Some(false), ..RenderSnapshot::default() },
+        &SkinContext::default(),
+        0,
+    );
+    assert!(crate::skin::test_skin_ops(&[172], &[], &no_ln_state));
+    assert!(!crate::skin::test_skin_ops(&[173], &[], &no_ln_state));
+}
+
+#[test]
 fn lr2_judgetimer_limits_bomb_judgements() {
     assert!(judge_starts_bomb(Some(0), 1));
     assert!(judge_starts_bomb(Some(1), 1));
@@ -32,6 +59,7 @@ fn play_plan_renders_long_note_body() {
         mode: bmz_chart::model::LongNoteMode::Ln,
         head_y: 0.1,
         tail_y: 0.7,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
 
@@ -57,6 +85,7 @@ fn play_plan_colors_long_note_body_by_mode() {
         mode: LongNoteMode::Cn,
         head_y: 0.1,
         tail_y: 0.7,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
     snapshot.visible_long_notes.push(VisibleLongNote {
@@ -64,6 +93,7 @@ fn play_plan_colors_long_note_body_by_mode() {
         mode: LongNoteMode::Hcn,
         head_y: 0.1,
         tail_y: 0.7,
+        alpha: 1.0,
         body_state: LongBodyState::Inactive,
     });
 
@@ -84,10 +114,16 @@ fn play_plan_includes_lanes_notes_and_bar_lines() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
-    snapshot.bar_lines.push(VisibleBarLine { time: TimeUs(900), y: 0.25, label: String::new() });
+    snapshot.bar_lines.push(VisibleBarLine {
+        time: TimeUs(900),
+        y: 0.25,
+        alpha: 1.0,
+        label: String::new(),
+    });
 
     let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
 
@@ -96,6 +132,27 @@ fn play_plan_includes_lanes_notes_and_bar_lines() {
         command,
         DrawCommand::Image { texture, tint, .. }
             if *texture == DEFAULT_NOTE_TEXTURE && *tint == skin_image_tint(Lane::Key1)
+    )));
+}
+
+#[test]
+fn play_plan_applies_constant_fade_alpha_to_notes() {
+    let mut snapshot = RenderSnapshot::default();
+    snapshot.visible_notes[Lane::Key1.index()].push(VisibleNote {
+        lane: Lane::Key1,
+        time: TimeUs(1_000),
+        y: 0.5,
+        alpha: 0.25,
+        kind: NoteVisualKind::Tap,
+        processed_judge: None,
+    });
+
+    let plan = DrawPlan::from_scene(&AppSceneSnapshot::Play(snapshot));
+
+    assert!(plan.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Image { texture, tint, .. }
+            if *texture == DEFAULT_NOTE_TEXTURE && approx_eq(tint.a, 0.25)
     )));
 }
 
@@ -112,6 +169,7 @@ fn play_plan_renders_judge_area_and_processed_note_fallback() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: Some(Judge::PGreat),
     });
@@ -135,6 +193,7 @@ fn play_plan_uses_note_textures_by_lane() {
         lane: Lane::Scratch,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -142,6 +201,7 @@ fn play_plan_uses_note_textures_by_lane() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -149,6 +209,7 @@ fn play_plan_uses_note_textures_by_lane() {
         lane: Lane::Key2,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -204,7 +265,9 @@ fn result_plan_uses_skin_document_for_result_and_course_result_types() {
             target_name: String::new(),
             current_fps: 0,
             skin_input: Default::default(),
+            skin_attempt: Default::default(),
             skin_offsets: Default::default(),
+            mouse_position: None,
             hispeed_auto_adjust: false,
             assist_flags: [false; 7],
             assist_extra_note_depth: 0,
@@ -213,6 +276,7 @@ fn result_plan_uses_skin_document_for_result_and_course_result_types() {
             assist_long_note_mode: 0,
             clear_type: ClearType::Normal,
             result_failed: false,
+            autoplay: false,
             arrange: "NORMAL".to_string(),
             arrange_2p: "NORMAL".to_string(),
             double_option: "OFF".to_string(),
@@ -236,6 +300,8 @@ fn result_plan_uses_skin_document_for_result_and_course_result_types() {
             key_mode: bmz_core::lane::KeyMode::default(),
             has_long_notes: false,
             ln_mode_index: 0,
+            rule_mode_index: 0,
+            ln_score_policy_index: Some(0),
             result_gauge_graph_type: bmz_core::clear::GaugeType::Normal as i32,
             result_panel: 0,
             favorite_chart: false,
@@ -438,7 +504,9 @@ fn result_plan_supplies_result_judge_graph_data_to_skin_document() {
         target_name: String::new(),
         current_fps: 0,
         skin_input: Default::default(),
+        skin_attempt: Default::default(),
         skin_offsets: Default::default(),
+        mouse_position: None,
         hispeed_auto_adjust: false,
         assist_flags: [false; 7],
         assist_extra_note_depth: 0,
@@ -447,6 +515,7 @@ fn result_plan_supplies_result_judge_graph_data_to_skin_document() {
         assist_long_note_mode: 0,
         clear_type: ClearType::Normal,
         result_failed: false,
+        autoplay: false,
         arrange: "NORMAL".to_string(),
         arrange_2p: "NORMAL".to_string(),
         double_option: "OFF".to_string(),
@@ -470,6 +539,8 @@ fn result_plan_supplies_result_judge_graph_data_to_skin_document() {
         key_mode: bmz_core::lane::KeyMode::default(),
         has_long_notes: false,
         ln_mode_index: 0,
+        rule_mode_index: 0,
+        ln_score_policy_index: Some(0),
         result_gauge_graph_type: bmz_core::clear::GaugeType::Normal as i32,
         result_panel: 0,
         favorite_chart: false,
@@ -610,9 +681,13 @@ fn result_skin_state_maps_effective_long_note_state() {
     };
     snapshot.has_long_notes = true;
     snapshot.ln_mode_index = 2;
+    snapshot.rule_mode_index = 1;
+    snapshot.ln_score_policy_index = Some(5);
 
     let state = build_result_skin_draw_state(&snapshot, 0);
 
-    assert_eq!(state.result_has_long_notes, Some(true));
+    assert_eq!(state.chart_has_long_notes, Some(true));
     assert_eq!(state.result_ln_mode_index, Some(2));
+    assert_eq!(state.rule_mode_index, 1);
+    assert_eq!(state.ln_score_policy_index, Some(5));
 }

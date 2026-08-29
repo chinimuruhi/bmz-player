@@ -23,6 +23,8 @@ fn egui_scene_name(scene_kind: AppSceneKind) -> &'static str {
 fn practice_panel_context(
     practice: Option<&mut PracticeSession>,
     media_ready: bool,
+    input_enabled: bool,
+    default_position: Option<(f32, f32)>,
 ) -> Option<PracticePanelContext<'_>> {
     let practice = practice.filter(|practice| practice.phase == PracticePhase::Config)?;
     Some(PracticePanelContext {
@@ -33,13 +35,36 @@ fn practice_panel_context(
         cursor: &mut practice.cursor,
         chart_title: &practice.chart_title,
         media_ready,
+        input_enabled,
         max_end_time_ms: practice.max_end_time_ms,
+        default_position,
     })
 }
 
 impl WinitApp {
     pub(super) fn restart_select_scene_timers(&mut self) {
         let now = Instant::now();
+        self.select.select_scene_timer_armed = false;
+        self.select.select_scene_started_at = now;
+        self.restart_select_bar_timer_without_scroll(now);
+        self.select.option_panel_started_at = now;
+        self.select.option_panel_off_started_at = [None; 6];
+    }
+
+    pub(super) fn arm_select_scene_timers_after_render(
+        &mut self,
+        select_view: bool,
+        render_status: Option<RenderSurfaceStatus>,
+    ) {
+        if !should_arm_select_scene_timers(
+            select_view,
+            self.select.select_scene_timer_armed,
+            render_status,
+        ) {
+            return;
+        }
+        let now = Instant::now();
+        self.select.select_scene_timer_armed = true;
         self.select.select_scene_started_at = now;
         self.restart_select_bar_timer_without_scroll(now);
         self.select.option_panel_started_at = now;
@@ -122,6 +147,7 @@ impl WinitApp {
         // Select IR is consumed by the select skin snapshot. Keep its debounce,
         // request, and completion handling moving while the hidden menu uses an idle frame.
         self.update_egui_select_ir(scene_kind);
+        self.update_egui_course_editor_data(scene_kind);
         if self.run_idle_egui_frame_if_available(&window, scene_kind, scene) {
             return;
         }
@@ -131,12 +157,16 @@ impl WinitApp {
         // コース graph は egui を Option から取り出した後、clone せず参照で渡す。
         let course_result = self.result.finished_course.as_ref();
         let course_preview = self.egui_course_preview(scene_kind);
-        let course_editor = self.egui_course_editor_data();
-        let select_course_builder_key_mode =
-            self.select.course_builder.as_ref().and_then(|builder| builder.key_mode);
+        let course_editor = &self.course_editor_cache.data;
         let practice_media_ready = self.practice_media_ready();
-        let mut practice_panel_ctx =
-            practice_panel_context(self.play.practice_session.as_mut(), practice_media_ready);
+        let practice_input_enabled = self.play.play_ending.is_none();
+        let practice_default_position = self.renderer.play_skin_practice_position();
+        let mut practice_panel_ctx = practice_panel_context(
+            self.play.practice_session.as_mut(),
+            practice_media_ready,
+            practice_input_enabled,
+            practice_default_position,
+        );
         let result_ir_panel = self.result.result_ir.as_mut();
         let update_dialog = self.jobs.update_prompt.as_ref().map(UpdatePrompt::as_dialog);
         let obs_connection_status = self
@@ -168,12 +198,11 @@ impl WinitApp {
                 skin_catalog: &self.skin.skin_catalog,
                 course_result,
                 course_preview: course_preview.as_ref(),
-                course_editor: &course_editor,
+                course_editor,
                 select_course_builder: self.select.course_builder.as_mut().map(|builder| {
                     SelectCourseBuilderData {
                         definition: &mut builder.definition,
-                        key_mode: select_course_builder_key_mode,
-                        max_entries: crate::app::select_course_builder::SELECT_COURSE_MAX_ENTRIES,
+                        max_entries: crate::course::LOCAL_COURSE_MAX_ENTRIES,
                     }
                 }),
                 practice: practice_panel_ctx.as_mut(),
@@ -386,36 +415,46 @@ impl WinitApp {
         }
     }
 
-    fn egui_course_editor_data(&self) -> CourseEditorData {
-        let Some(egui) = self.ui.egui.as_ref().filter(|egui| egui.course_editor_visible()) else {
-            return CourseEditorData::default();
-        };
-        let courses = self
-            .boot
-            .library_db
-            .list_courses()
+    fn update_egui_course_editor_data(&mut self, scene_kind: AppSceneKind) {
+        let query = self
+            .ui
+            .egui
+            .as_ref()
+            .filter(|egui| scene_kind == AppSceneKind::Select && egui.course_editor_visible())
+            .map(|egui| egui.course_editor_search_query().trim().to_string());
+        let visible = query.is_some();
+        let query = query.unwrap_or_default();
+        let (reload_courses, reload_charts) =
+            self.course_editor_cache.reload_requirements(visible, &query);
+
+        if reload_courses {
+            let courses = self
+                .boot
+                .library_db
+                .list_courses()
+                .unwrap_or_else(|error| {
+                    tracing::error!(%error, "failed to load courses for editor");
+                    Vec::new()
+                })
+                .into_iter()
+                .filter(|course| {
+                    course.definition.constraints.gauge
+                        != bmz_core::course::CourseGaugeConstraint::Keys24
+                })
+                .collect();
+            self.course_editor_cache.set_courses(courses);
+        }
+
+        if reload_charts {
+            let charts = if query.is_empty() {
+                self.boot.library_db.list_charts(200, 0)
+            } else {
+                self.boot.library_db.search_charts_limited(&query, 200)
+            }
             .unwrap_or_else(|error| {
-                tracing::error!(%error, "failed to load courses for editor");
+                tracing::error!(%error, query, "failed to search charts for course editor");
                 Vec::new()
             })
-            .into_iter()
-            .filter(|course| {
-                course.definition.constraints.gauge
-                    != bmz_core::course::CourseGaugeConstraint::Keys24
-            })
-            .collect();
-        let query = egui.course_editor_search_query().trim();
-        let mut charts = if query.is_empty() {
-            self.boot.library_db.list_charts(200, 0)
-        } else {
-            self.boot.library_db.search_charts(query)
-        }
-        .unwrap_or_else(|error| {
-            tracing::error!(%error, query, "failed to search charts for course editor");
-            Vec::new()
-        });
-        charts.truncate(200);
-        let charts = charts
             .into_iter()
             .filter(|chart| !chart.mode.contains("24") && !chart.mode.contains("48"))
             .map(|chart| CourseEditorChart {
@@ -428,7 +467,8 @@ impl WinitApp {
                 sha256: crate::storage::common::hash_to_hex(&chart.sha256),
             })
             .collect();
-        CourseEditorData { courses, charts }
+            self.course_editor_cache.set_charts(query, charts);
+        }
     }
 
     fn update_egui_select_ir(&mut self, scene_kind: AppSceneKind) {
@@ -494,12 +534,17 @@ impl WinitApp {
         self.apply_egui_profile_changes(&profile_before);
         self.apply_egui_input_config(window, &profile_before.app_input);
         self.renderer.set_egui_frame(output.frame);
+        if let Some(action) = output.key_config_action {
+            self.apply_egui_key_config_action(action);
+        }
         if output.practice_leave {
-            self.leave_practice();
+            self.stop_play_like_escape("practice egui leave requested");
             return;
         }
         if output.practice_start {
             self.start_practice_round();
+        } else {
+            self.refresh_practice_preview_snapshot();
         }
         if let Some(action) = output.course_editor_action {
             self.apply_course_editor_action(action);
@@ -543,6 +588,12 @@ impl WinitApp {
         if let Some(request) = output.score_import_request {
             self.import_external_scores(request);
         }
+        if let Some(request) = output.replay_import_request {
+            self.spawn_beatoraja_replay_import(request);
+        }
+        if output.cancel_replay_import {
+            self.cancel_beatoraja_replay_import();
+        }
         if output.save_profile_config {
             match save_profile_config(
                 &self.boot.profile_paths.profile_toml,
@@ -573,7 +624,13 @@ impl WinitApp {
         }
         self.sync_changed_select_play_options_from_profile(&before.play);
         self.sync_changed_select_score_context(SelectScoreContext::from_play(&before.play));
-        if before.play.seven_to_six != self.boot.profile_config.play.seven_to_six {
+        if before.play.key_mode_conversion != self.boot.profile_config.play.key_mode_conversion
+            || before.play.seven_to_nine_pattern
+                != self.boot.profile_config.play.seven_to_nine_pattern
+            || before.play.seven_to_nine_type != self.boot.profile_config.play.seven_to_nine_type
+            || before.play.seven_to_nine_rule_mode
+                != self.boot.profile_config.play.seven_to_nine_rule_mode
+        {
             self.invalidate_play_preload();
             self.play.play_media_cache = None;
         }
@@ -585,7 +642,7 @@ impl WinitApp {
         self.sync_discord_presence_config();
     }
 
-    fn apply_egui_video_config(&mut self, window: &Window) {
+    pub(super) fn apply_egui_video_config(&mut self, window: &Window) {
         self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
         self.renderer
             .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video));
@@ -846,5 +903,31 @@ impl WinitApp {
             tracing::info!(reason, "saved app config on exit");
         }
         self.integrations.exit_configs_saved = true;
+    }
+}
+
+fn should_arm_select_scene_timers(
+    select_view: bool,
+    timer_armed: bool,
+    render_status: Option<RenderSurfaceStatus>,
+) -> bool {
+    select_view && !timer_armed && render_status == Some(RenderSurfaceStatus::Rendered)
+}
+
+#[cfg(test)]
+mod select_scene_timer_tests {
+    use super::{RenderSurfaceStatus, should_arm_select_scene_timers};
+
+    #[test]
+    fn select_timer_arms_only_after_first_rendered_surface() {
+        assert!(!should_arm_select_scene_timers(
+            true,
+            false,
+            Some(RenderSurfaceStatus::Reconfigured)
+        ));
+        assert!(!should_arm_select_scene_timers(true, false, Some(RenderSurfaceStatus::TimedOut)));
+        assert!(should_arm_select_scene_timers(true, false, Some(RenderSurfaceStatus::Rendered)));
+        assert!(!should_arm_select_scene_timers(true, true, Some(RenderSurfaceStatus::Rendered)));
+        assert!(!should_arm_select_scene_timers(false, false, Some(RenderSurfaceStatus::Rendered)));
     }
 }

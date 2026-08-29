@@ -272,8 +272,10 @@ pub enum SessionMode {
     #[default]
     #[serde(alias = "GhostBattle")]
     Normal,
+    Practice,
     Autoplay,
     AutoplayBattle,
+    GBattle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -371,6 +373,14 @@ impl DoubleOptionScoreBucket {
             Self::Off => "Off",
             Self::Battle => "Battle",
             Self::BattleAutoScratch => "BattleAutoScratch",
+        }
+    }
+
+    pub const fn as_double_option(self) -> DoubleOption {
+        match self {
+            Self::Off => DoubleOption::Off,
+            Self::Battle => DoubleOption::Battle,
+            Self::BattleAutoScratch => DoubleOption::BattleAutoScratch,
         }
     }
 
@@ -537,11 +547,19 @@ mod tests {
 
     #[test]
     fn session_mode_cycles_in_select_order() {
-        assert_eq!(SessionMode::Normal.cycle(), SessionMode::Autoplay);
+        assert_eq!(SessionMode::Normal.cycle(), SessionMode::Practice);
+        assert_eq!(SessionMode::Practice.cycle(), SessionMode::Autoplay);
         assert_eq!(SessionMode::Autoplay.cycle(), SessionMode::AutoplayBattle);
-        assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::Normal);
+        assert_eq!(SessionMode::AutoplayBattle.cycle(), SessionMode::GBattle);
+        assert_eq!(SessionMode::GBattle.cycle(), SessionMode::Normal);
+        assert!(SessionMode::Practice.is_practice());
+        assert!(!SessionMode::Practice.primary_autoplay());
+        assert!(!SessionMode::Practice.score_save_enabled());
         assert!(SessionMode::AutoplayBattle.primary_autoplay());
         assert!(!SessionMode::AutoplayBattle.score_save_enabled());
+        assert!(!SessionMode::GBattle.primary_autoplay());
+        assert!(SessionMode::GBattle.is_battle());
+        assert!(SessionMode::GBattle.score_save_enabled());
     }
 
     #[test]
@@ -557,33 +575,46 @@ mod tests {
 }
 
 impl SessionMode {
-    pub const VALUES: [Self; 3] = [Self::Normal, Self::Autoplay, Self::AutoplayBattle];
+    pub const VALUES: [Self; 5] =
+        [Self::Normal, Self::Practice, Self::Autoplay, Self::AutoplayBattle, Self::GBattle];
 
     pub fn cycle(self) -> Self {
         match self {
-            Self::Normal => Self::Autoplay,
+            Self::Normal => Self::Practice,
+            Self::Practice => Self::Autoplay,
             Self::Autoplay => Self::AutoplayBattle,
-            Self::AutoplayBattle => Self::Normal,
+            Self::AutoplayBattle => Self::GBattle,
+            Self::GBattle => Self::Normal,
         }
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Normal => "NORMAL",
+            Self::Practice => "PRACTICE",
             Self::Autoplay => "AUTOPLAY",
             Self::AutoplayBattle => "AUTOPLAY BATTLE",
+            Self::GBattle => "G-BATTLE",
         }
+    }
+
+    pub const fn is_practice(self) -> bool {
+        matches!(self, Self::Practice)
     }
 
     pub const fn primary_autoplay(self) -> bool {
         matches!(self, Self::Autoplay | Self::AutoplayBattle)
     }
 
+    pub const fn uses_battle_skin(self) -> bool {
+        matches!(self, Self::AutoplayBattle | Self::GBattle)
+    }
+
     pub const fn is_battle(self) -> bool {
-        matches!(self, Self::AutoplayBattle)
+        self.uses_battle_skin()
     }
 
     pub const fn score_save_enabled(self) -> bool {
-        matches!(self, Self::Normal)
+        matches!(self, Self::Normal | Self::GBattle)
     }
 }

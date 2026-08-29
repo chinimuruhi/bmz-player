@@ -23,9 +23,7 @@ impl WinitApp {
         self.play.last_play_snapshot = None;
         self.reload_select_items();
         self.sync_select_holds_from_pressed_controls();
-        let now = Instant::now();
-        self.select.select_scene_started_at = now;
-        self.restart_select_bar_timer_without_scroll(now);
+        self.restart_select_scene_timers();
     }
 
     pub(super) fn decide_scene_duration(&self) -> Duration {
@@ -57,9 +55,15 @@ impl WinitApp {
         finishmargin.max(skin_duration_ms(remaining_ms))
     }
 
-    pub(super) fn play_fadeout_duration(&self) -> Duration {
+    pub(super) fn play_fadeout_duration(&self, completion: PlayEndingCompletion) -> Duration {
         let declared_ms =
             self.renderer.play_skin_document().map(|document| document.fadeout).unwrap_or(0).max(0);
+        if matches!(
+            completion,
+            PlayEndingCompletion::PracticeConfig | PlayEndingCompletion::PracticeLeave
+        ) {
+            return practice_play_fadeout_duration_for_skin(declared_ms);
+        }
         play_fadeout_duration_for_skin(
             declared_ms,
             self.renderer.play_skin_timer_animation_duration_ms(2),
@@ -90,6 +94,12 @@ impl WinitApp {
             duration
         }
     }
+}
+
+/// beatoraja の Practice は timer 2 の destination 長ではなく、skin header の
+/// `fadeout` 宣言だけを状態遷移の待ち時間に使う。
+pub(super) fn practice_play_fadeout_duration_for_skin(declared_ms: i32) -> Duration {
+    skin_duration_ms(declared_ms.max(0))
 }
 
 pub(super) fn play_fadeout_duration_for_skin(

@@ -409,6 +409,159 @@ fn cn_release_uses_long_note_end_window() {
 }
 
 #[test]
+fn opposite_scratch_direction_finishes_bss() {
+    let mut chart = chart_with_lane_long_start(Lane::Scratch, TimeUs(1_000_000), TimeUs(2_000_000));
+    chart.long_notes[0].mode = Some(LongNoteMode::Cn);
+    let mut engine = JudgeEngine::new_with_window_set(
+        crate::judge::window::beatoraja_judge_windows_for_keymode(KeyMode::K7),
+        RuleMode::Beatoraja,
+    );
+    let mut start = press_lane_at(Lane::Scratch, TimeUs(1_000_000));
+    start.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+    let mut end = press_lane_at(Lane::Scratch, TimeUs(2_000_000));
+    end.scratch_direction = Some(bmz_core::input::ScratchDirection::Up);
+
+    let start_outcome = engine.process_input(&chart, start);
+    let end_outcome = engine.process_input(&chart, end);
+
+    assert_eq!(start_outcome.events[0].judge, Judge::PGreat);
+    assert_eq!(end_outcome.events[0].note_id, Some(NoteId(2)));
+    assert_eq!(end_outcome.events[0].judge, Judge::PGreat);
+    assert!(engine.lanes[Lane::Scratch.index()].active_long.is_none());
+}
+
+#[test]
+fn bss_release_suppresses_immediate_reverse_before_following_pgreat_note() {
+    for mode in [LongNoteMode::Cn, LongNoteMode::Hcn] {
+        let mut chart =
+            chart_with_lane_long_start(Lane::Scratch, TimeUs(1_000_000), TimeUs(2_000_000));
+        chart.long_notes[0].mode = Some(mode);
+        chart.lane_notes[Lane::Scratch.index()].push(NoteEvent {
+            id: NoteId(3),
+            lane: Lane::Scratch,
+            kind: NoteKind::Tap,
+            tick: Default::default(),
+            time: TimeUs(2_020_000),
+            sound: None,
+            layered_sounds: Vec::new(),
+            damage: None,
+        });
+        chart.total_notes = 3;
+        chart.end_time = TimeUs(2_020_000);
+        let mut engine = JudgeEngine::new_with_window_set(
+            crate::judge::window::beatoraja_judge_windows_for_keymode(KeyMode::K7),
+            RuleMode::Beatoraja,
+        );
+        let mut start = press_lane_at(Lane::Scratch, TimeUs(1_000_000));
+        start.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+        let mut release = release_lane_at(Lane::Scratch, TimeUs(2_000_000));
+        release.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+        let mut reverse = press_lane_at(Lane::Scratch, TimeUs(2_001_000));
+        reverse.scratch_direction = Some(bmz_core::input::ScratchDirection::Up);
+        let mut next = press_lane_at(Lane::Scratch, TimeUs(2_020_000));
+        next.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+
+        engine.process_input(&chart, start);
+        let release_outcome = engine.process_input(&chart, release);
+        assert_eq!(release_outcome.events.len(), 1);
+        assert_eq!(release_outcome.events[0].note_id, Some(NoteId(2)));
+        assert_eq!(release_outcome.events[0].judge, Judge::PGreat);
+        assert!(engine.lanes[Lane::Scratch.index()].active_long.is_none());
+
+        let reverse_outcome = engine.process_input(&chart, reverse);
+        assert!(reverse_outcome.events.is_empty());
+        assert!(reverse_outcome.consumed_input);
+        assert_eq!(engine.judged_notes.get(&NoteId(3)), None);
+
+        let next_outcome = engine.process_input(&chart, next);
+        assert_eq!(next_outcome.events.len(), 1);
+        assert_eq!(next_outcome.events[0].note_id, Some(NoteId(3)));
+        assert_eq!(next_outcome.events[0].judge, Judge::PGreat);
+    }
+}
+
+#[test]
+fn bss_reverse_press_suppression_expires_after_thirty_milliseconds() {
+    for (delay_us, suppressed) in [(30_000, true), (30_001, false)] {
+        let reverse_time = TimeUs(2_000_000 + delay_us);
+        let mut chart =
+            chart_with_lane_long_start(Lane::Scratch, TimeUs(1_000_000), TimeUs(2_000_000));
+        chart.long_notes[0].mode = Some(LongNoteMode::Cn);
+        chart.lane_notes[Lane::Scratch.index()].push(NoteEvent {
+            id: NoteId(3),
+            lane: Lane::Scratch,
+            kind: NoteKind::Tap,
+            tick: Default::default(),
+            time: reverse_time,
+            sound: None,
+            layered_sounds: Vec::new(),
+            damage: None,
+        });
+        let mut engine = JudgeEngine::new_with_window_set(
+            crate::judge::window::beatoraja_judge_windows_for_keymode(KeyMode::K7),
+            RuleMode::Beatoraja,
+        );
+        let mut start = press_lane_at(Lane::Scratch, TimeUs(1_000_000));
+        start.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+        let mut release = release_lane_at(Lane::Scratch, TimeUs(2_000_000));
+        release.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+        let mut reverse = press_lane_at(Lane::Scratch, reverse_time);
+        reverse.scratch_direction = Some(bmz_core::input::ScratchDirection::Up);
+
+        engine.process_input(&chart, start);
+        engine.process_input(&chart, release);
+        let reverse_outcome = engine.process_input(&chart, reverse);
+
+        assert!(reverse_outcome.consumed_input);
+        assert_eq!(reverse_outcome.events.is_empty(), suppressed);
+        assert_eq!(engine.judged_notes.get(&NoteId(3)).is_none(), suppressed);
+    }
+}
+
+#[test]
+fn bss_early_same_direction_release_still_fails() {
+    for mode in [LongNoteMode::Cn, LongNoteMode::Hcn] {
+        let mut chart =
+            chart_with_lane_long_start(Lane::Scratch, TimeUs(1_000_000), TimeUs(2_000_000));
+        chart.long_notes[0].mode = Some(mode);
+        let mut engine = JudgeEngine::new_with_window_set(
+            crate::judge::window::beatoraja_judge_windows_for_keymode(KeyMode::K7),
+            RuleMode::Beatoraja,
+        );
+        let mut start = press_lane_at(Lane::Scratch, TimeUs(1_000_000));
+        start.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+        let mut release = release_lane_at(Lane::Scratch, TimeUs(1_700_000));
+        release.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+
+        engine.process_input(&chart, start);
+        let release_outcome = engine.process_input(&chart, release);
+
+        assert_eq!(release_outcome.events.len(), 1);
+        assert_eq!(release_outcome.events[0].note_id, Some(NoteId(2)));
+        assert_eq!(release_outcome.events[0].judge, Judge::Poor);
+        assert!(engine.lanes[Lane::Scratch.index()].active_long.is_none());
+        assert!(engine.lanes[Lane::Scratch.index()].scratch_press_suppression.is_none());
+    }
+}
+
+#[test]
+fn releasing_inactive_scratch_direction_keeps_bss_held() {
+    let mut chart = chart_with_lane_long_start(Lane::Scratch, TimeUs(1_000_000), TimeUs(2_000_000));
+    chart.long_notes[0].mode = Some(LongNoteMode::Cn);
+    let mut engine = JudgeEngine::new(windows());
+    let mut start = press_lane_at(Lane::Scratch, TimeUs(1_000_000));
+    start.scratch_direction = Some(bmz_core::input::ScratchDirection::Down);
+    let mut wrong_release = release_lane_at(Lane::Scratch, TimeUs(1_500_000));
+    wrong_release.scratch_direction = Some(bmz_core::input::ScratchDirection::Up);
+
+    engine.process_input(&chart, start);
+    let outcome = engine.process_input(&chart, wrong_release);
+
+    assert!(outcome.events.is_empty());
+    assert!(engine.lanes[Lane::Scratch.index()].active_long.is_some());
+}
+
+#[test]
 fn dx_9key_ln_early_bad_release_can_be_cancelled_during_margin() {
     let chart = chart_with_long_start(TimeUs(1_000_000), TimeUs(2_000_000));
     let mut engine = JudgeEngine::new_with_window_set_algorithm_and_keymode(

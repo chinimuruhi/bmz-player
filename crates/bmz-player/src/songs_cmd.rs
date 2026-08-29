@@ -6,7 +6,7 @@ use crate::cli::SongsCommand;
 use crate::config::app_config::PathEntry;
 use crate::config::load::load_app_config;
 use crate::config::save::save_app_config;
-use crate::paths::{normalize_library_path, resolve_app_paths};
+use crate::paths::{AppPaths, normalize_library_path, resolve_app_paths};
 use crate::storage::library_db::LibraryDatabase;
 use crate::storage::migration::migrate_library_db;
 use crate::storage::scan::{
@@ -14,11 +14,22 @@ use crate::storage::scan::{
 };
 
 pub fn run_songs_command(cmd: SongsCommand) -> Result<()> {
+    let app_paths = resolve_app_paths()?;
+    run_songs_command_with_paths(cmd, &app_paths)
+}
+
+pub fn run_songs_command_with_paths(cmd: SongsCommand, app_paths: &AppPaths) -> Result<()> {
     match cmd {
-        SongsCommand::Add { path, recursive, enabled } => add_song_root(&path, recursive, enabled),
-        SongsCommand::List => list_song_roots(),
-        SongsCommand::Load { target } => load_songs(target.as_deref(), false),
-        SongsCommand::Reload { target } => load_songs(target.as_deref(), true),
+        SongsCommand::Add { path, recursive, enabled } => {
+            add_song_root(app_paths, &path, recursive, enabled)
+        }
+        SongsCommand::List => list_song_roots(app_paths),
+        SongsCommand::Load { target, use_everything } => {
+            load_songs(app_paths, target.as_deref(), false, use_everything)
+        }
+        SongsCommand::Reload { target, use_everything } => {
+            load_songs(app_paths, target.as_deref(), true, use_everything)
+        }
     }
 }
 
@@ -116,8 +127,7 @@ fn root_folder_name(path: &str) -> &str {
     Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path)
 }
 
-fn add_song_root(path: &str, recursive: bool, enabled: bool) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn add_song_root(app_paths: &AppPaths, path: &str, recursive: bool, enabled: bool) -> Result<()> {
     app_paths.ensure_dirs()?;
 
     let mut app_config = if app_paths.config_toml.exists() {
@@ -136,9 +146,7 @@ fn add_song_root(path: &str, recursive: bool, enabled: bool) -> Result<()> {
     Ok(())
 }
 
-fn list_song_roots() -> Result<()> {
-    let app_paths = resolve_app_paths()?;
-
+fn list_song_roots(app_paths: &AppPaths) -> Result<()> {
     let app_config = if app_paths.config_toml.exists() {
         load_app_config(&app_paths.config_toml)?
     } else {
@@ -158,8 +166,12 @@ fn list_song_roots() -> Result<()> {
     Ok(())
 }
 
-fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
-    let app_paths = resolve_app_paths()?;
+fn load_songs(
+    app_paths: &AppPaths,
+    target: Option<&str>,
+    force: bool,
+    use_everything: Option<bool>,
+) -> Result<()> {
     app_paths.ensure_dirs()?;
 
     let app_config = if app_paths.config_toml.exists() {
@@ -178,9 +190,15 @@ fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
+    let mut scan_config = app_config.scan.clone();
+    if let Some(use_everything) = use_everything {
+        scan_config.use_everything = use_everything;
+    }
+
     let verb = if force { "Reloading" } else { "Scanning" };
-    println!("{verb} {} root(s)...", roots.len());
-    let report = scan_songs(&mut library_db, &roots, &app_config.scan, now, force)
+    let discovery = if scan_config.use_everything { "everything" } else { "native" };
+    println!("{verb} {} root(s) with {discovery} discovery...", roots.len());
+    let report = scan_songs(&mut library_db, &roots, &scan_config, now, force)
         .with_context(|| format!("failed to scan song roots (force={force})"))?;
 
     let s = &report.summary;
@@ -201,6 +219,10 @@ fn load_songs(target: Option<&str>, force: bool) -> Result<()> {
     println!(
         "Timing: total={}ms discovery={}ms fingerprint={}ms skip={}ms parse={}ms write={}ms",
         t.total_ms, t.discovery_ms, t.fingerprint_ms, t.skip_check_ms, t.parse_ms, t.write_ms
+    );
+    println!(
+        "Discovery backends: everything={} native={} fallback={}",
+        s.everything_discovery_roots, s.native_discovery_roots, s.everything_fallback_roots
     );
 
     for issue in &report.discovery_issues {

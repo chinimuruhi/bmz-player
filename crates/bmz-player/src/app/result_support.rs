@@ -454,6 +454,7 @@ pub(super) fn lua_runtime_state_for_result(
     table_song: bool,
     ir_name: Option<&str>,
     score_save_enabled: bool,
+    autoplay: bool,
     key_mode: KeyMode,
     mut number_values: BTreeMap<i32, i32>,
     player_name: &str,
@@ -465,6 +466,8 @@ pub(super) fn lua_runtime_state_for_result(
     option_values.insert(51, ir_online);
     option_values.insert(60, !score_save_enabled);
     option_values.insert(61, score_save_enabled);
+    option_values.insert(32, !autoplay);
+    option_values.insert(33, autoplay);
     for option in 160..=164 {
         option_values.insert(option, result_key_mode_option_matches(option, key_mode));
     }
@@ -486,11 +489,17 @@ pub(super) fn lua_runtime_state_for_play(
     key_mode: KeyMode,
     previous_best_ex_score: Option<u32>,
     player_name: &str,
+    skin_attempt: bmz_render::snapshot::SkinAttemptState,
 ) -> bmz_skin::LuaLoadRuntimeState {
     let replay_playback = options.replay_player.is_some();
-    let autoplay = !replay_playback && (profile_autoplay || options.autoplay);
-    let score_save_enabled =
-        !autoplay && !replay_playback && !options.practice_mode && !options.score_save_disabled;
+    let practice_mode = options.session_mode.is_practice();
+    let autoplay = !replay_playback
+        && !practice_mode
+        && (options.session_mode.primary_autoplay() || profile_autoplay || options.autoplay);
+    let score_save_enabled = options.session_mode.score_save_enabled()
+        && !autoplay
+        && !replay_playback
+        && !options.score_save_disabled;
     let mut option_values = BTreeMap::from([
         (32, !autoplay),
         (33, autoplay),
@@ -498,23 +507,109 @@ pub(super) fn lua_runtime_state_for_play(
         (61, score_save_enabled),
         (82, !autoplay && !replay_playback),
         (84, replay_playback),
-        (1080, options.practice_mode),
+        (1080, practice_mode),
         (bmz_render::skin::SKIN_OPTION_BMZ_FIRST_PLAY, previous_best_ex_score.is_none()),
     ]);
     // beatorajaのPracticePlayerは保存済みベストを読まず、highscoreを0にする。
     // 初回判定optionは実際の保存履歴から独立して保持する。
     let previous_best_ex_score =
-        if options.practice_mode { 0 } else { previous_best_ex_score.unwrap_or(0) };
+        if practice_mode { 0 } else { previous_best_ex_score.unwrap_or(0) };
     let mut number_values = BTreeMap::from([
         (150, i32::try_from(previous_best_ex_score).unwrap_or(i32::MAX)),
         (170, i32::try_from(previous_best_ex_score).unwrap_or(i32::MAX)),
     ]);
     extend_bmz_key_mode_lua_state(&mut number_values, &mut option_values, key_mode);
-    bmz_skin::LuaLoadRuntimeState {
+    let mut runtime_state = bmz_skin::LuaLoadRuntimeState {
         number_values,
         text_values: BTreeMap::from([(2, player_name.to_string())]),
         option_values,
         ..Default::default()
+    };
+    apply_skin_attempt_lua_load_state(&mut runtime_state, skin_attempt);
+    runtime_state
+}
+
+pub(super) fn apply_skin_attempt_lua_load_state(
+    runtime_state: &mut bmz_skin::LuaLoadRuntimeState,
+    attempt: bmz_render::snapshot::SkinAttemptState,
+) {
+    use bmz_render::skin::*;
+    use bmz_render::snapshot::{
+        SKIN_SOURCE_LN_DEFINED_CN_BIT, SKIN_SOURCE_LN_DEFINED_HCN_BIT,
+        SKIN_SOURCE_LN_DEFINED_LN_BIT, SKIN_SOURCE_LN_UNDEFINED_BIT,
+    };
+
+    if let Some(mode) = attempt.effective_key_mode {
+        extend_bmz_key_mode_lua_state(
+            &mut runtime_state.number_values,
+            &mut runtime_state.option_values,
+            mode,
+        );
+    }
+    if let Some(mode) = attempt.source_key_mode {
+        let value = bmz_key_mode_number(mode);
+        runtime_state.number_values.insert(SKIN_REF_BMZ_SOURCE_KEY_MODE, value);
+        runtime_state.event_index_values.insert(SKIN_REF_BMZ_SOURCE_KEY_MODE, value);
+        for option in SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE..=SKIN_OPTION_BMZ_SOURCE_KEY_MODE_LAST {
+            let effective_option =
+                SKIN_OPTION_BMZ_KEY_MODE_BASE + option - SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE;
+            runtime_state
+                .option_values
+                .insert(option, bmz_key_mode_option_matches(effective_option, mode));
+        }
+    }
+    runtime_state.option_values.insert(SKIN_OPTION_BMZ_SEVEN_TO_SIX, attempt.seven_to_six);
+    for (ref_id, value) in [
+        (360, i32::from(attempt.seven_to_nine_pattern)),
+        (361, i32::from(attempt.seven_to_nine_type)),
+    ] {
+        runtime_state.number_values.insert(ref_id, value);
+        runtime_state.event_index_values.insert(ref_id, value);
+    }
+
+    if let Some(bits) = attempt.source_ln_profile_bits {
+        runtime_state.number_values.insert(SKIN_REF_BMZ_SOURCE_LN_PROFILE, i32::from(bits));
+        runtime_state.event_index_values.insert(SKIN_REF_BMZ_SOURCE_LN_PROFILE, i32::from(bits));
+        runtime_state
+            .option_values
+            .insert(SKIN_OPTION_BMZ_SOURCE_LN_UNDEFINED, bits & SKIN_SOURCE_LN_UNDEFINED_BIT != 0);
+        runtime_state.option_values.insert(
+            SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_LN,
+            bits & SKIN_SOURCE_LN_DEFINED_LN_BIT != 0,
+        );
+        runtime_state.option_values.insert(
+            SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_CN,
+            bits & SKIN_SOURCE_LN_DEFINED_CN_BIT != 0,
+        );
+        runtime_state.option_values.insert(
+            SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_HCN,
+            bits & SKIN_SOURCE_LN_DEFINED_HCN_BIT != 0,
+        );
+        runtime_state.option_values.insert(SKIN_OPTION_BMZ_SOURCE_LN_MIXED, bits.count_ones() > 1);
+        runtime_state.option_values.insert(SKIN_OPTION_BMZ_SOURCE_LN_PROFILE_AVAILABLE, true);
+    }
+
+    for (ref_id, value) in [
+        (SKIN_REF_BMZ_SELECT_SESSION_MODE, attempt.session_mode_index),
+        (54, attempt.double_option_index),
+        (55, attempt.hsfix_index),
+        (78, attempt.gauge_auto_shift_index),
+        (308, attempt.ln_mode_index),
+        (340, attempt.judge_algorithm_index),
+        (341, attempt.bottom_shiftable_gauge_index),
+    ] {
+        if let Some(value) = value.and_then(|value| i32::try_from(value).ok()) {
+            runtime_state.number_values.insert(ref_id, value);
+            runtime_state.event_index_values.insert(ref_id, value);
+        }
+    }
+    if let Some(has_bga) = attempt.has_bga {
+        runtime_state.option_values.insert(170, !has_bga);
+        runtime_state.option_values.insert(171, has_bga);
+    }
+    if let Some(has_random) = attempt.has_random_sequence {
+        runtime_state.option_values.insert(178, !has_random);
+        runtime_state.option_values.insert(179, has_random);
     }
 }
 

@@ -161,7 +161,7 @@ impl WinitApp {
 
     pub(super) fn cursor_position_normalized(&self) -> Option<(f32, f32)> {
         let window = self.window.as_ref()?;
-        let position = self.select.last_cursor_position?;
+        let position = self.ui.last_cursor_position?;
         let size = window.inner_size();
         if size.width == 0 || size.height == 0 {
             return None;
@@ -304,16 +304,21 @@ impl WinitApp {
                 self.commit_settings_edit();
                 return;
             }
-            if let Some(entry_id) =
+            let selected_setting =
                 self.select.select_items.get(row_index as usize).and_then(|item| match item {
-                    SelectItem::Config(row) => Some(row.entry_id),
+                    SelectItem::Config(row) => Some((Some(row.entry_id), None)),
+                    SelectItem::AppConfig(row) => Some((None, Some(row.entry_id))),
                     _ => None,
-                })
-            {
+                });
+            if let Some((profile_entry, app_entry)) = selected_setting {
                 self.select.selected_index = row_index as usize;
                 self.reset_selected_replay_slot();
                 self.restart_select_bar_timer_without_scroll(Instant::now());
-                self.begin_settings_edit(entry_id);
+                if let Some(entry_id) = profile_entry {
+                    self.begin_settings_edit(entry_id);
+                } else if let Some(entry_id) = app_entry {
+                    self.begin_app_settings_edit(entry_id);
+                }
                 return;
             }
         }

@@ -1,8 +1,13 @@
 use super::*;
+use crate::config::profile_config::SevenToNinePattern;
 
 impl WinitApp {
     pub(super) fn execute_select_skin_event(&mut self, event_id: i32, arg: i32) {
         match event_id {
+            // beatoraja EventFactory: difficulty / skin config / documents.
+            10 => self.cycle_select_difficulty_filter(arg),
+            14 => self.open_skin_settings_from_select(),
+            17 => self.open_selected_chart_documents(),
             SKIN_EVENT_IR_SCOPE_GLOBAL => {
                 self.select_select_ir_scope(
                     crate::screens::select_ir::SelectIrRankingScope::Global,
@@ -17,6 +22,8 @@ impl WinitApp {
                 self.toggle_select_ir_scope();
             }
             SKIN_EVENT_DAILY_STATISTICS_RESET => self.reset_daily_statistics(),
+            // beatoraja EventFactory: open key configuration.
+            13 => self.open_key_config_from_select(),
             // beatoraja EventFactory: play / autoplay / practice.
             15 => {
                 self.set_session_mode(SessionMode::Normal);
@@ -27,11 +34,8 @@ impl WinitApp {
                 self.enter_or_play_selected();
             }
             315 => {
-                if self.select.course_builder.is_some() {
-                    self.show_select_course_builder_chart_required();
-                } else if let Some(chart_id) = self.currently_selected_chart_id() {
-                    self.enter_practice(chart_id, PracticeCliOverrides::default());
-                }
+                self.set_session_mode(SessionMode::Practice);
+                self.enter_or_play_selected();
             }
             // beatoraja event 19 starts the currently selected replay slot.
             19 => {
@@ -52,8 +56,15 @@ impl WinitApp {
             43 => self.cycle_select_arrange_2p(arg),
             54 => self.cycle_select_double_option(arg),
             55 => self.cycle_select_hs_fix(arg),
+            57 => self.adjust_select_hispeed(arg),
+            59 => self.adjust_select_note_display_duration(arg),
             72 => self.cycle_select_bga(arg),
             73 => self.cycle_select_bga_expand(arg),
+            74 => {
+                if self.adjust_visual_offset_ms(if arg >= 0 { 1 } else { -1 }) {
+                    self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+                }
+            }
             75 => {
                 self.toggle_visual_offset_auto_adjust();
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
@@ -63,6 +74,10 @@ impl WinitApp {
             78 => self.cycle_select_gauge_auto_shift(arg),
             89 => self.toggle_favorite_song_selected(),
             90 => self.toggle_favorite_chart_selected(),
+            210 => self.open_primary_ir_for_selected(),
+            211 => self.reload_from_select_context(),
+            212 => self.open_selected_chart_folder(),
+            213 => self.open_selected_chart_download_sites(),
             341 => self.cycle_select_bottom_shiftable_gauge(arg),
             340 => self.cycle_select_judge_algorithm(arg),
             308 => self.cycle_select_ln_mode(arg),
@@ -117,6 +132,19 @@ impl WinitApp {
                 self.play_system_sound(crate::system_sound::SoundType::OptionChange);
             }
             344 => self.cycle_chart_replication_mode(arg),
+            343 => {
+                self.boot.profile_config.play.guide_se = !self.boot.profile_config.play.guide_se;
+                self.boot.profile_config.updated_at = now_unix_seconds();
+                self.invalidate_play_preload();
+                self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+            }
+            350 => self.cycle_extra_note_depth(arg),
+            351 => self.cycle_assist_mine_mode(arg),
+            352 => self.cycle_assist_scroll_mode(arg),
+            353 => self.cycle_assist_long_note_mode(arg),
+            360 => self.cycle_seven_to_nine_pattern(arg),
+            361 => self.cycle_seven_to_nine_type(arg),
+            400 => self.toggle_select_constant(),
             _ => {
                 tracing::debug!(event_id, arg, "unsupported select skin event");
             }
@@ -191,7 +219,56 @@ impl WinitApp {
     pub(super) fn cycle_select_double_option(&mut self, arg: i32) {
         self.select.double_option =
             cycle_double_option_with_direction(self.select.double_option, arg);
+        if matches!(
+            self.select.double_option,
+            DoubleOption::Battle | DoubleOption::BattleAutoScratch
+        ) && self.boot.profile_config.play.key_mode_conversion != KeyModeConversionConfig::Off
+        {
+            self.boot.profile_config.play.key_mode_conversion = KeyModeConversionConfig::Off;
+            self.boot.profile_config.updated_at = now_unix_seconds();
+            self.invalidate_play_preload();
+            self.play.play_media_cache = None;
+        }
         tracing::info!(double_option = self.select.double_option.as_str(), "double option changed");
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_seven_to_nine_pattern(&mut self, arg: i32) {
+        let current = if self.boot.profile_config.play.key_mode_conversion
+            == KeyModeConversionConfig::SevenToNine
+        {
+            self.boot.profile_config.play.seven_to_nine_pattern.value()
+        } else {
+            0
+        };
+        let next = if arg >= 0 {
+            (current + 1) % 7
+        } else if current == 0 {
+            6
+        } else {
+            current - 1
+        };
+        if next == 0 {
+            self.boot.profile_config.play.key_mode_conversion = KeyModeConversionConfig::Off;
+        } else if let Ok(pattern) = SevenToNinePattern::try_from(next) {
+            self.boot.profile_config.play.key_mode_conversion =
+                KeyModeConversionConfig::SevenToNine;
+            self.boot.profile_config.play.seven_to_nine_pattern = pattern;
+            self.boot.profile_config.play.double_option = DoubleOptionConfig::Off;
+            self.select.double_option = DoubleOption::Off;
+        }
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.invalidate_play_preload();
+        self.play.play_media_cache = None;
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_seven_to_nine_type(&mut self, arg: i32) {
+        self.boot.profile_config.play.seven_to_nine_type =
+            self.boot.profile_config.play.seven_to_nine_type.next(arg >= 0);
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.invalidate_play_preload();
+        self.play.play_media_cache = None;
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
     }
 
@@ -390,4 +467,103 @@ impl WinitApp {
         tracing::info!(slot, ?next, "select replay autosave rule changed");
         self.play_system_sound(crate::system_sound::SoundType::OptionChange);
     }
+
+    pub(super) fn adjust_select_hispeed(&mut self, arg: i32) {
+        if !self.begin_selected_play_mode_edit() {
+            return;
+        }
+        let mode = match self.select.hs_fix_option {
+            HsFixOption::Off => HispeedMode::Normal,
+            HsFixOption::StartBpm
+            | HsFixOption::MaxBpm
+            | HsFixOption::MainBpm
+            | HsFixOption::MinBpm => HispeedMode::Floating,
+        };
+        let step = hispeed_step_for_profile(&self.boot.profile_config, mode);
+        let change = if arg >= 0 { HispeedChange::Up } else { HispeedChange::Down };
+        let current = self.boot.profile_config.lane.hispeed;
+        let next = adjusted_hispeed(current, change, step);
+        if next == current {
+            return;
+        }
+        self.boot.profile_config.lane.hispeed = next;
+        self.finish_selected_play_mode_edit();
+        self.sync_realtime_profile_settings();
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn adjust_select_note_display_duration(&mut self, arg: i32) {
+        if !self.begin_selected_play_mode_edit() {
+            return;
+        }
+        let current = self.boot.profile_config.lane.target_green_number;
+        let next = crate::config::play::adjust_green_number_by_duration_ms(
+            current,
+            if arg >= 0 { 1 } else { -1 },
+        );
+        if next == current {
+            return;
+        }
+        self.boot.profile_config.lane.target_green_number = next;
+        self.finish_selected_play_mode_edit();
+        self.sync_realtime_profile_settings();
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn cycle_extra_note_depth(&mut self, arg: i32) {
+        let current = self.boot.profile_config.play.assist.extra_note_depth.min(3);
+        self.boot.profile_config.play.assist.extra_note_depth = cycle_u8(current, 4, arg >= 0);
+        self.finish_global_assist_event();
+    }
+
+    pub(super) fn cycle_assist_mine_mode(&mut self, arg: i32) {
+        use crate::config::profile_config::AssistMineMode::*;
+        let values = [Off, Remove, AddRandom, AddNear, AddBlank];
+        self.boot.profile_config.play.assist.mine_mode =
+            cycle_copy(values, self.boot.profile_config.play.assist.mine_mode, arg >= 0);
+        self.finish_global_assist_event();
+    }
+
+    pub(super) fn cycle_assist_scroll_mode(&mut self, arg: i32) {
+        use crate::config::profile_config::AssistScrollMode::*;
+        let values = [Off, Remove, Add];
+        self.boot.profile_config.play.assist.scroll_mode =
+            cycle_copy(values, self.boot.profile_config.play.assist.scroll_mode, arg >= 0);
+        self.finish_global_assist_event();
+    }
+
+    pub(super) fn cycle_assist_long_note_mode(&mut self, arg: i32) {
+        use crate::config::profile_config::AssistLongNoteMode::*;
+        let values = [Off, Remove, AddLn, AddCn, AddHcn, AddAll];
+        self.boot.profile_config.play.assist.long_note_mode =
+            cycle_copy(values, self.boot.profile_config.play.assist.long_note_mode, arg >= 0);
+        self.finish_global_assist_event();
+    }
+
+    fn finish_global_assist_event(&mut self) {
+        self.boot.profile_config.updated_at = now_unix_seconds();
+        self.invalidate_play_preload();
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+
+    pub(super) fn toggle_select_constant(&mut self) {
+        if !self.begin_selected_play_mode_edit() {
+            return;
+        }
+        self.boot.profile_config.lane.constant_enabled =
+            !self.boot.profile_config.lane.constant_enabled;
+        self.finish_selected_play_mode_edit();
+        self.sync_realtime_profile_settings();
+        self.play_system_sound(crate::system_sound::SoundType::OptionChange);
+    }
+}
+
+fn cycle_u8(current: u8, count: u8, forward: bool) -> u8 {
+    if forward { (current + 1) % count } else { (current + count - 1) % count }
+}
+
+fn cycle_copy<T: Copy + PartialEq, const N: usize>(values: [T; N], current: T, forward: bool) -> T {
+    let index = values.iter().position(|value| *value == current).unwrap_or(0);
+    let next = if forward { (index + 1) % N } else { (index + N - 1) % N };
+    values[next]
 }

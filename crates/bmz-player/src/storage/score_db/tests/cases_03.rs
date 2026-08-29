@@ -55,7 +55,7 @@ fn upsert_replay_slot_overwrites_same_slot() {
     db.upsert_replay_slot(&updated).unwrap();
 
     let record = db.replay_slot(key([1; 32]), 0).unwrap().unwrap();
-    assert_eq!(record.ex_score, 99);
+    assert_eq!(record.ex_score, Some(99));
     assert_eq!(record.replay_path, "replay/updated.toml");
 }
 
@@ -73,7 +73,7 @@ fn replay_slots_for_chart_returns_all_four_slots() {
     assert!(slots[0].is_some());
     assert!(slots[1].is_none());
     assert!(slots[2].is_none());
-    assert_eq!(slots[3].as_ref().unwrap().ex_score, 30);
+    assert_eq!(slots[3].as_ref().unwrap().ex_score, Some(30));
 }
 
 #[test]
@@ -93,8 +93,8 @@ fn replay_slots_are_separate_per_ln_policy() {
     let ln_slot = db.replay_slot(key([1; 32]), 0).unwrap().unwrap();
     let cn_slot =
         db.replay_slot(ScoreKey::new([1; 32], LnScorePolicy::ForceCn), 0).unwrap().unwrap();
-    assert_eq!(ln_slot.ex_score, 10);
-    assert_eq!(cn_slot.ex_score, 99);
+    assert_eq!(ln_slot.ex_score, Some(10));
+    assert_eq!(cn_slot.ex_score, Some(99));
 }
 
 #[test]
@@ -114,8 +114,8 @@ fn replay_slots_are_separate_per_rule_mode() {
     let beatoraja_slot =
         db.replay_slot(key([1; 32]).with_rule_mode(RuleMode::Beatoraja), 0).unwrap().unwrap();
     let dx_slot = db.replay_slot(key([1; 32]).with_rule_mode(RuleMode::Dx), 0).unwrap().unwrap();
-    assert_eq!(beatoraja_slot.ex_score, 10);
-    assert_eq!(dx_slot.ex_score, 99);
+    assert_eq!(beatoraja_slot.ex_score, Some(10));
+    assert_eq!(dx_slot.ex_score, Some(99));
 }
 
 #[test]

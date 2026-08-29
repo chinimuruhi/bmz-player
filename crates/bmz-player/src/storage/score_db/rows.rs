@@ -76,6 +76,9 @@ pub(super) fn replay_slot_record_from_row(
         cb: row.get(10)?,
         max_combo: row.get(11)?,
         clear_rank: row.get(12)?,
+        source_kind: score_source_kind_from_row(row, 13)?,
+        source_path: row.get(14)?,
+        source_fingerprint: row.get(15)?,
     })
 }
 

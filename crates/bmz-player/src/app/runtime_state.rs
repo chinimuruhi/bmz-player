@@ -67,6 +67,8 @@ pub(super) struct SelectRuntimeState {
     pub(super) select_analog_last_tick_at: Option<Instant>,
     /// キーコンフィグ確定/キャンセル直後、スクラッチが止まるまでアナログスクロールを抑止する。
     pub(super) select_analog_suppress_until_idle: bool,
+    /// Select の先頭 frame が surface へ正常に描画された後だけ scene 系 timer を進める。
+    pub(super) select_scene_timer_armed: bool,
     pub(super) select_scene_started_at: Instant,
     pub(super) select_bar_started_at: Instant,
     pub(super) option_panel_started_at: Instant,
@@ -77,20 +79,17 @@ pub(super) struct SelectRuntimeState {
     /// 選曲画面のメタ画像・試聴音源のキャッシュと非同期ロード状態。
     pub(super) select_assets: SelectAssetRuntime,
     /// 設定画面で編集中の項目。`None` なら一覧操作モード。
-    pub(super) settings_edit: Option<SettingsEditSession>,
+    pub(super) settings_edit: Option<SelectSettingsEditSession>,
     /// キー設定の待ち受け状態。
     pub(super) key_config_edit: Option<KeyConfigEditSession>,
     /// 選曲画面の検索文字列、IME、cursor、履歴、feedback状態。
     pub(super) search: SelectSearchRuntime,
-    /// 直近のマウスカーソル位置。select skin のクリック hit-test に使う。
-    pub(super) last_cursor_position: Option<PhysicalPosition<f64>>,
     /// ドラッグ中の select skin slider type。
     pub(super) select_slider_dragging_type: Option<i32>,
 }
 
 pub(super) struct SelectCourseBuilderState {
     pub(super) definition: bmz_core::course::CourseDefinition,
-    pub(super) key_mode: Option<KeyMode>,
     pub(super) return_folder_stack: Vec<String>,
     pub(super) return_selected_index_stack: Vec<usize>,
     pub(super) return_selected_index: usize,
@@ -230,6 +229,7 @@ pub(super) struct AppJobs {
     /// 通常表・rianIR表の取得channel、queue、progress、世代状態。
     pub(super) table_fetch: TableFetchRuntime,
     pub(super) pending_song_scan: Option<PendingSongScan>,
+    pub(super) pending_replay_import: Option<PendingReplayImport>,
     /// Select外で要求されたscanを開始せず、次のSelectまでFIFOで保持する。
     pub(super) queued_song_scans: VecDeque<(Vec<PathEntry>, bool, String)>,
     pub(super) pending_chart_download: Option<Receiver<Result<ChartDownloadBatchResult>>>,
@@ -326,6 +326,8 @@ pub(super) struct UiRuntimeState {
     pub(super) focused: bool,
     /// 直近のマウスカーソル移動 / 操作時刻。カーソル非表示判定に使う。
     pub(super) last_cursor_action_at: Instant,
+    /// 直近のウィンドウ内マウスカーソル位置。skin の hover / hit-test に使う。
+    pub(super) last_cursor_position: Option<PhysicalPosition<f64>>,
     /// 現在マウスカーソルが表示されているか。
     pub(super) cursor_visible: bool,
 }

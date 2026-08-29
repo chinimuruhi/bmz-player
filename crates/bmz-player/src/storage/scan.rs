@@ -18,6 +18,9 @@ use super::library_db::{CHART_IMPORT_VERSION, ChartImportRecord, LibraryDatabase
 pub struct ScanSummary {
     pub roots_seen: u32,
     pub roots_unreadable: u32,
+    pub native_discovery_roots: u32,
+    pub everything_discovery_roots: u32,
+    pub everything_fallback_roots: u32,
     pub files_seen: u32,
     pub discovery_skipped: u32,
     pub imported: u32,
@@ -38,6 +41,24 @@ pub enum ScanDiscoveryOperation {
     ReadEntry,
     ReadFileType,
     ReadMetadata,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ScanDiscoveryBackend {
+    #[default]
+    Native,
+    Everything,
+    NativeFallback,
+}
+
+impl ScanDiscoveryBackend {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Everything => "everything",
+            Self::NativeFallback => "native_fallback",
+        }
+    }
 }
 
 impl ScanDiscoveryOperation {
@@ -86,6 +107,8 @@ pub struct ScanProgress {
 }
 
 mod discovery;
+#[cfg(windows)]
+mod everything;
 mod import;
 
 pub(crate) use discovery::folder_has_document;
@@ -109,6 +132,7 @@ mod tests {
         ScanConfig {
             follow_symlinks: false,
             skip_hidden: true,
+            use_everything: false,
             auto_rescan_on_startup: false,
             rescan_missing_files: true,
         }
@@ -315,6 +339,33 @@ mod tests {
         assert_eq!(valid_last_scan, Some(1_700_000_040));
 
         std::fs::remove_dir_all(valid_root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn everything_incompatible_symlink_setting_falls_back_to_native_discovery() {
+        let root = make_temp_dir("everything-symlink-fallback");
+        let mut config = scan_config();
+        config.use_everything = true;
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure_connection(&conn).unwrap();
+        run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+        let mut db = LibraryDatabase::from_connection(conn);
+        let roots = vec![PathEntry {
+            path: root.to_string_lossy().into_owned(),
+            enabled: true,
+            recursive: true,
+        }];
+
+        let report = scan_song_roots(&mut db, &roots, &config, 1_700_000_042, false).unwrap();
+
+        assert_eq!(report.summary.everything_discovery_roots, 0);
+        assert_eq!(report.summary.native_discovery_roots, 1);
+        assert_eq!(report.summary.everything_fallback_roots, 1);
+        assert_eq!(report.summary.files_seen, 0);
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]

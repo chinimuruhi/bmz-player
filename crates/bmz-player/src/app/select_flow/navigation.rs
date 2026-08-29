@@ -1,5 +1,15 @@
 use super::*;
 
+pub(in crate::app) fn select_explorer_path(item: &SelectItem) -> Option<PathBuf> {
+    match item {
+        SelectItem::Chart(row) => row.chart.as_ref().map(|chart| PathBuf::from(&chart.folder_path)),
+        SelectItem::Folder { path, kind: bmz_render::scene::SelectRowKind::Folder, .. } => {
+            Some(PathBuf::from(path))
+        }
+        _ => None,
+    }
+}
+
 impl WinitApp {
     pub(super) fn move_selection(&mut self, select_move: SelectMove) {
         self.move_selection_with_duration(select_move, self.select_scroll_duration_low());
@@ -92,6 +102,31 @@ impl WinitApp {
         tracing::info!("opened egui advanced settings from select");
     }
 
+    pub(super) fn open_skin_settings_from_select(&mut self) {
+        if let Some(egui) = self.ui.egui.as_mut() {
+            egui.open_skin_settings();
+        }
+        self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
+        tracing::info!("opened egui skin settings from select");
+    }
+
+    pub(super) fn open_key_config_from_select(&mut self) {
+        self.set_search_mode(false);
+        if !push_key_config_folder_history(
+            &mut self.select.folder_stack,
+            &mut self.select.selected_index_stack,
+            self.select.selected_index,
+        ) {
+            return;
+        }
+        self.reload_select_items();
+        self.select.selected_index = 0;
+        self.reset_selected_replay_slot();
+        self.restart_select_bar_timer_without_scroll(Instant::now());
+        self.play_system_sound(crate::system_sound::SoundType::FolderOpen);
+        tracing::info!("opened key config from select");
+    }
+
     pub(super) fn selected_chart_row(
         &self,
     ) -> Option<&crate::screens::select_model::SelectChartRow> {
@@ -153,7 +188,7 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn handle_select_f3_action(&mut self) {
+    pub(super) fn handle_select_open_folder_action(&mut self) {
         let e1_held = self.input.select_e_action_holds.contains(&InputActionConfig::E1);
         let e2_held = self.input.select_e_action_holds.contains(&InputActionConfig::E2);
         let ctrl_held = self.input.pressed_controls.iter().any(|control| {
@@ -210,15 +245,16 @@ impl WinitApp {
 
     pub(super) fn open_selected_chart_folder(&mut self) {
         let text = Localizer::new(self.boot.profile_config.ui.locale());
-        let Some(chart) = self.selected_chart_row().and_then(|row| row.chart.clone()) else {
+        let Some(path) =
+            self.select.select_items.get(self.select.selected_index).and_then(select_explorer_path)
+        else {
             return;
         };
-        let folder = PathBuf::from(&chart.folder_path);
-        if let Err(error) = open_file_browser_path(&folder) {
-            tracing::warn!(path = %folder.display(), %error, "failed to open selected chart folder");
+        if let Err(error) = open_file_browser_path(&path) {
+            tracing::warn!(path = %path.display(), %error, "failed to open selected chart folder");
             self.show_left_overlay_toast(text.text("toast-chart-folder-open-failed"));
         } else {
-            tracing::info!(path = %folder.display(), "opened selected chart folder");
+            tracing::info!(path = %path.display(), "opened selected chart folder");
         }
     }
 
@@ -256,39 +292,72 @@ impl WinitApp {
     }
 
     pub(super) fn open_primary_ir_for_selected(&mut self) {
+        let identity = match self.select.select_items.get(self.select.selected_index) {
+            Some(SelectItem::Chart(row)) => {
+                let Some(sha256) = row.score_sha256() else {
+                    let text = Localizer::new(self.boot.profile_config.ui.locale());
+                    self.show_left_overlay_toast(text.text("toast-ir-chart-hash-missing"));
+                    return;
+                };
+                PrimaryIrPageIdentity::Chart { sha256: hash_to_hex(&sha256) }
+            }
+            Some(SelectItem::Course(row)) => PrimaryIrPageIdentity::Course {
+                canonical_hash: row.course_hash.clone(),
+                rian_hash_v1: row.rian_course_hash_v1.clone(),
+            },
+            _ => return,
+        };
+        self.open_primary_ir_page(identity);
+    }
+
+    pub(super) fn open_primary_ir_page(&mut self, identity: PrimaryIrPageIdentity) {
         let text = Localizer::new(self.boot.profile_config.ui.locale());
-        let Some(row) = self.selected_chart_row() else {
-            return;
-        };
-        let Some(sha256) = row.score_sha256() else {
-            self.show_left_overlay_toast(text.text("toast-ir-chart-hash-missing"));
-            return;
-        };
         let Some(provider) = primary_ir_provider_for_profile(&self.boot.profile_config) else {
             self.show_left_overlay_toast(text.text("toast-primary-ir-not-configured"));
             return;
         };
-        let sha256_hex = hash_to_hex(&sha256);
-        let url = if crate::ir::rian_ir::is_rian_ir_config(provider) {
-            match crate::ir::rian_ir::chart_page_url(&provider.base_url, &sha256_hex) {
-                Ok(url) => url,
-                Err(error) => {
-                    tracing::warn!(%error, "failed to build primary rianIR chart page URL");
-                    self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
-                    return;
-                }
+        let url = match primary_ir_page_url(provider, &identity) {
+            Ok(url) => url,
+            Err(error) => {
+                tracing::warn!(%error, "failed to build primary IR page URL");
+                self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
+                return;
             }
-        } else {
-            format!("{}/charts/{sha256_hex}", provider.base_url.trim_end_matches('/'))
         };
         match open_external_url(&url) {
             Ok(()) => {
                 self.show_left_overlay_toast(text.text("toast-primary-ir-opened"));
-                tracing::info!(%url, "opened primary IR chart page");
+                tracing::info!(%url, "opened primary IR page");
             }
             Err(error) => {
-                tracing::warn!(%error, %url, "failed to open primary IR chart page");
+                tracing::warn!(%error, %url, "failed to open primary IR page");
                 self.show_left_overlay_toast(text.text("toast-primary-ir-open-failed"));
+            }
+        }
+    }
+
+    pub(super) fn open_selected_chart_download_sites(&mut self) {
+        let text = Localizer::new(self.boot.profile_config.ui.locale());
+        let Some(row) = self.selected_chart_row() else {
+            return;
+        };
+        let urls = crate::song_download::validated_browser_urls([
+            &row.download_metadata.url,
+            &row.download_metadata.append_url,
+        ]);
+        if urls.is_empty() {
+            self.show_left_overlay_toast(text.text("toast-chart-source-unavailable"));
+            return;
+        }
+        match open_browser_urls(&urls) {
+            Ok(count) => {
+                let mut args = FluentArgs::new();
+                args.set("count", count as i64);
+                self.show_left_overlay_toast(text.format("toast-chart-sources-opened", &args));
+            }
+            Err(error) => {
+                tracing::error!(%error, "failed to open selected chart URLs");
+                self.show_left_overlay_toast(text.text("toast-chart-sources-open-failed"));
             }
         }
     }
@@ -483,6 +552,10 @@ impl WinitApp {
                 self.show_select_course_builder_chart_required();
             }
             Some(SelectItem::Config(_)) => {}
+            Some(SelectItem::AppConfig(_)) if self.select.course_builder.is_some() => {
+                self.show_select_course_builder_chart_required();
+            }
+            Some(SelectItem::AppConfig(_)) => {}
             Some(SelectItem::KeyBinding(row)) => {
                 if self.select.course_builder.is_some() {
                     self.show_select_course_builder_chart_required();
@@ -498,6 +571,13 @@ impl WinitApp {
                     self.show_select_course_builder_chart_required();
                 } else {
                     self.open_advanced_settings_from_select();
+                }
+            }
+            Some(SelectItem::ApplyAudioSettings) => {
+                if self.select.course_builder.is_some() {
+                    self.show_select_course_builder_chart_required();
+                } else {
+                    self.apply_select_audio_settings();
                 }
             }
             None => {
@@ -917,4 +997,17 @@ impl WinitApp {
             self.cancel_select_course_builder();
         }
     }
+}
+
+pub(in crate::app) fn push_key_config_folder_history(
+    folder_stack: &mut Vec<String>,
+    selected_index_stack: &mut Vec<usize>,
+    selected_index: usize,
+) -> bool {
+    if folder_stack.last().is_some_and(|path| path == CONFIG_KEYS_PATH) {
+        return false;
+    }
+    selected_index_stack.push(selected_index);
+    folder_stack.push(CONFIG_KEYS_PATH.to_string());
+    true
 }

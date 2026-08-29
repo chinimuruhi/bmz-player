@@ -89,11 +89,14 @@ fn sample_slot(slot: u8, ex_score: u32) -> ReplaySlotRecord {
         rule: ReplaySlotRule::Always,
         replay_path: format!("replay/{slot}.toml"),
         played_at: 1_700_000_000 + slot as i64,
-        ex_score,
-        bp: 0,
-        cb: 0,
-        max_combo: ex_score,
-        clear_rank: ClearType::Normal as u8,
+        ex_score: Some(ex_score),
+        bp: Some(0),
+        cb: Some(0),
+        max_combo: Some(ex_score),
+        clear_rank: Some(ClearType::Normal as u8),
+        source_kind: ScoreSourceKind::Local,
+        source_path: String::new(),
+        source_fingerprint: String::new(),
     }
 }
 

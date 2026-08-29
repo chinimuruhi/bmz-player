@@ -32,6 +32,10 @@ pub struct ActiveCourseSession {
     /// コース開始時に全エントリ分を確定した開始条件。source chart の事前集計と
     /// 実プレイで同じ LN / DOUBLE / RANDOM 条件を使うため、曲間で作り直さない。
     pub entry_start_options: Vec<PlayStartOptions>,
+    /// Replay attempts may end before the full definition after a failed
+    /// stage. This bound prevents playback from falling through into normal
+    /// interactive play when no later replay was recorded.
+    pub replay_stage_limit: Option<usize>,
     /// CLI/smoke boot course playback should progress through intermediate
     /// results without manual input.  Normal select-launched courses wait for
     /// the player on each intermediate result.
@@ -115,6 +119,9 @@ impl ActiveCourseSession {
             return None;
         }
         let entry_index = self.current_index;
+        if self.replay_stage_limit.is_some_and(|limit| entry_index >= limit) {
+            return None;
+        }
         let chart_id = self.definition.entries.get(entry_index)?.chart_id?;
         let mut options = self.entry_start_options.get(entry_index)?.clone();
         if let Some(previous) = previous {
@@ -125,13 +132,15 @@ impl ActiveCourseSession {
     }
 
     pub fn into_result(self) -> CourseResultSummary {
+        let total_entries = self.definition.entries.len();
+        let played_entries = self.entry_results.len();
         let played_total_notes = self
             .entry_results
             .iter()
             .fold(0u32, |total, r| total.saturating_add(r.finished.result.total_notes));
         let total_notes = self.course_total_notes.max(played_total_notes);
-        let course_failed =
-            self.entry_results.iter().any(|r| r.finished.result.clear_type == ClearType::Failed);
+        let course_failed = played_entries < total_entries
+            || self.entry_results.iter().any(|r| r.finished.result.clear_type == ClearType::Failed);
         let played_bp = self
             .entry_results
             .iter()
@@ -178,9 +187,6 @@ impl ActiveCourseSession {
         };
         let final_gauge_type = last_result.map(|r| r.gauge_type).unwrap_or(GaugeType::Normal);
         let final_gauge_value = last_result.map(|r| r.gauge_value).unwrap_or(0.0);
-        let total_entries = self.definition.entries.len();
-        let played_entries = self.entry_results.len();
-
         let miss_rate = if total_notes > 0 { bp as f32 / total_notes as f32 * 100.0 } else { 0.0 };
         let score_rate = if max_ex_score > 0 {
             total_ex_score as f32 / max_ex_score as f32 * 100.0
@@ -201,7 +207,9 @@ impl ActiveCourseSession {
             })
             .collect();
 
-        let course_clear = !course_failed && trophy_results.iter().any(|t| t.achieved);
+        // Trophies are optional achievements. As in beatoraja, clearing the
+        // course depends on surviving every stage, not on earning a trophy.
+        let course_clear = !course_failed;
 
         let entry_arranges: Vec<AppliedArrange> =
             self.entry_results.iter().map(|r| r.finished.applied_arrange.clone()).collect();
@@ -431,6 +439,7 @@ mod tests {
             current_index: 0,
             entry_results,
             entry_start_options: Vec::new(),
+            replay_stage_limit: None,
             auto_advance_intermediate_results: false,
         }
     }
@@ -521,7 +530,18 @@ mod tests {
         let result = session.into_result();
         assert!(!result.trophy_results[0].achieved);
         assert!(!result.trophy_results[1].achieved);
-        assert!(!result.course_clear);
+        assert!(result.course_clear);
+    }
+
+    #[test]
+    fn course_without_trophies_clears_after_surviving_every_stage() {
+        let mut session = make_session(1, vec![(make_score(100, 20), 100)]);
+        session.definition.trophies.clear();
+
+        let result = session.into_result();
+
+        assert!(result.trophy_results.is_empty());
+        assert!(result.course_clear);
     }
 
     /// Build a session of `entry_count` entries, but only fill `played` of them
@@ -609,6 +629,7 @@ mod tests {
             current_index: 0,
             entry_results,
             entry_start_options: Vec::new(),
+            replay_stage_limit: None,
             auto_advance_intermediate_results: false,
         }
     }
@@ -682,6 +703,29 @@ mod tests {
         finished.current_index = 1;
         finished.entry_start_options = vec![PlayStartOptions::default()];
         assert!(finished.next_stage_start().is_none());
+    }
+
+    #[test]
+    fn partial_replay_limit_never_falls_through_to_interactive_stage() {
+        use bmz_core::clear::ClearType;
+
+        let mut session = make_partial_session(
+            4,
+            vec![
+                (make_score(100, 0), 100, ClearType::Normal),
+                (make_score(100, 0), 100, ClearType::Normal),
+            ],
+        );
+        session.current_index = 2;
+        session.entry_start_options = vec![PlayStartOptions::default(); 4];
+        session.replay_stage_limit = Some(2);
+
+        assert!(session.next_stage_start().is_none());
+        let result = session.into_result();
+        assert!(result.course_failed);
+        assert!(!result.course_clear);
+        assert_eq!(result.played_entries, 2);
+        assert_eq!(result.total_entries, 4);
     }
 
     #[test]

@@ -35,14 +35,20 @@ impl WinitApp {
         });
 
         let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
             &options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
             self.play_skin_previous_best_ex_score(chart_id, &options),
             &self.boot.profile_config.display_name,
+            skin_attempt,
         );
-        self.spawn_play_skin_decode_for(play_skin_key_mode, play_skin_runtime_state);
+        self.spawn_play_skin_decode_for(
+            play_skin_key_mode,
+            options.session_mode,
+            play_skin_runtime_state,
+        );
         tracing::info!(
             course_id,
             entry_index,
@@ -184,12 +190,7 @@ impl WinitApp {
         let failed = course.entry_results.last().is_some_and(|entry| {
             entry.finished.result.clear_type == bmz_core::clear::ClearType::Failed
         });
-        let has_next_chart = course
-            .definition
-            .entries
-            .get(course.current_index)
-            .and_then(|entry| entry.chart_id)
-            .is_some();
+        let has_next_chart = course.next_stage_start().is_some();
         course_intermediate_exit_action_for_state(failed, has_next_chart)
     }
 
@@ -201,6 +202,9 @@ impl WinitApp {
         pressed: bool,
         repeat: bool,
     ) -> bool {
+        if self.handle_result_open_ir_control(control, pressed, repeat, false) {
+            return true;
+        }
         if self.handle_result_ir_scroll_control(control, pressed, repeat) {
             return true;
         }
@@ -260,9 +264,12 @@ impl WinitApp {
         course.entry_results.push(CourseEntryResult { chart_id, finished });
         course.current_index += 1;
 
-        let next_chart_id =
-            course.definition.entries.get(course.current_index).and_then(|e| e.chart_id);
-        let has_next_entry = course.definition.entries.get(course.current_index).is_some();
+        let next_chart_id = course.next_stage_start().map(|(_, chart_id, _)| chart_id);
+        let stage_limit = course
+            .replay_stage_limit
+            .unwrap_or(course.definition.entries.len())
+            .min(course.definition.entries.len());
+        let has_next_entry = course.current_index < stage_limit;
 
         if should_show_course_stage_result(failed, has_next_entry, next_chart_id.is_some()) {
             // 次の曲をすぐ始めず、まず直前の曲の単曲リザルト (中間リザルト) を出す。

@@ -1,41 +1,105 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use anyhow::Result;
+use std::process::ExitCode;
+
 use bmz_player::cli::Command;
-use bmz_player::logging::{LogBuffer, LogBufferLayer};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use bmz_player::logging::{
+    StartupLoggingConfig, initialize_logging, install_panic_hook, load_startup_logging_config,
+    log_session_end, log_session_start,
+};
 
 #[tokio::main]
-async fn main() {
-    if let Err(error) = run().await {
-        bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
-        std::process::exit(1);
-    }
-}
-
-async fn run() -> Result<()> {
+async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if bmz_player::cli::args_request_help(&args) {
         bmz_player::stdio::stdout_line(format_args!("{}", bmz_player::cli::app_help_text()));
-        return Ok(());
+        return ExitCode::SUCCESS;
     }
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let log_buffer = LogBuffer::default();
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_writer(bmz_player::stdio::SafeStderr))
-        .with(LogBufferLayer::new(log_buffer.clone()))
-        .init();
-
-    match bmz_player::cli::parse_command(args)? {
-        Command::Run(options) => {
-            bmz_player::app::run_with_options_and_log_buffer(options, log_buffer).await
+    // Parse errors and help remain side-effect free: paths/config/log directories are not created.
+    let command = match bmz_player::cli::parse_command(args) {
+        Ok(command) => command,
+        Err(error) => {
+            bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
+            return ExitCode::FAILURE;
         }
-        Command::Table(cmd) => bmz_player::table_cmd::run_table_command(cmd).await,
-        Command::Songs(cmd) => bmz_player::songs_cmd::run_songs_command(cmd),
-        Command::Course(cmd) => bmz_player::course_cmd::run_course_command(cmd),
-        Command::Ir(cmd) => bmz_player::ir_cmd::run_ir_command(cmd).await,
-        Command::Profile(cmd) => bmz_player::profile_cmd::run_profile_command(cmd),
+    };
+    let app_paths = match bmz_player::paths::resolve_app_paths() {
+        Ok(paths) => paths,
+        Err(error) => {
+            bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
+            return ExitCode::FAILURE;
+        }
+    };
+    let (startup_logging, startup_logging_error) =
+        match load_startup_logging_config(&app_paths.config_toml) {
+            Ok(config) => (config, None),
+            Err(error) => {
+                bmz_player::stdio::stderr_line(format_args!(
+                    "Warning: could not read startup logging settings; using defaults: {error:#}"
+                ));
+                (StartupLoggingConfig::default(), Some(format!("{error:#}")))
+            }
+        };
+    let rust_log = std::env::var_os("RUST_LOG").map(|value| {
+        value
+            .into_string()
+            // EnvFilter cannot interpret non-Unicode process environment values.
+            .unwrap_or_else(|_| "[non-unicode RUST_LOG]".to_string())
+    });
+    let logging = match initialize_logging(&app_paths, startup_logging, rust_log.as_deref()) {
+        Ok(logging) => logging,
+        Err(error) => {
+            bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
+            return ExitCode::FAILURE;
+        }
+    };
+
+    install_panic_hook();
+    log_session_start(&logging);
+    if let Some(error) = startup_logging_error {
+        tracing::warn!(%error, "startup logging settings could not be read; using defaults");
+    }
+
+    let result = match command {
+        Command::Run(options) => {
+            bmz_player::app::run_with_options_log_buffer_and_paths(
+                options,
+                logging.log_buffer.clone(),
+                app_paths,
+            )
+            .await
+        }
+        Command::Table(cmd) => {
+            bmz_player::table_cmd::run_table_command_with_paths(cmd, &app_paths).await
+        }
+        Command::Songs(cmd) => bmz_player::songs_cmd::run_songs_command_with_paths(cmd, &app_paths),
+        Command::Course(cmd) => {
+            bmz_player::course_cmd::run_course_command_with_paths(cmd, &app_paths)
+        }
+        Command::Replay(cmd) => {
+            bmz_player::replay_cmd::run_replay_command_with_paths(cmd, &app_paths)
+        }
+        Command::Ir(cmd) => bmz_player::ir_cmd::run_ir_command_with_paths(cmd, &app_paths).await,
+        Command::Profile(cmd) => {
+            bmz_player::profile_cmd::run_profile_command_with_paths(cmd, &app_paths)
+        }
+    };
+
+    match result {
+        Ok(()) => {
+            log_session_end(&logging, true);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            tracing::error!(
+                error = %format!("{error:#}"),
+                status = "error",
+                "BMZ Player command failed"
+            );
+            bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
+            log_session_end(&logging, false);
+            ExitCode::FAILURE
+        }
     }
 }

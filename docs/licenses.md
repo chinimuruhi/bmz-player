@@ -40,7 +40,9 @@ Development installs are not redistributable artifacts by themselves:
 - Windows development instructions currently use `vcpkg install ffmpeg:x64-windows`;
   the release workflow uses the repository's `x64-windows-release` triplet so only
   Release FFmpeg artifacts are built.
-- macOS instructions currently use `brew install ffmpeg`.
+- macOS development instructions use `brew install ffmpeg`. The release workflow
+  instead builds the pinned FFmpeg source with `scripts/build-ffmpeg-macos.sh`
+  so the shared libraries have a controlled deployment target and configuration.
 - Linux instructions currently use distribution packages such as `ffmpeg-free` / `ffmpeg-free-devel`.
 
 Before publishing an installer, archive, app bundle, or container image, check the concrete FFmpeg binaries included in that artifact.

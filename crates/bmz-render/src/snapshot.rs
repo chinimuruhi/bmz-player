@@ -17,6 +17,61 @@ pub use bmz_skin_document::{
     ResultNoteGraphBucket, ResultTimingDistribution, ResultTimingPoint,
 };
 
+pub const SKIN_SOURCE_LN_UNDEFINED_BIT: u8 = 1 << 0;
+pub const SKIN_SOURCE_LN_DEFINED_LN_BIT: u8 = 1 << 1;
+pub const SKIN_SOURCE_LN_DEFINED_CN_BIT: u8 = 1 << 2;
+pub const SKIN_SOURCE_LN_DEFINED_HCN_BIT: u8 = 1 << 3;
+
+/// Selectでは開始予定、Decide/Play/Resultでは試行開始時に固定されたskin公開状態。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SkinAttemptState {
+    /// BATTLE / キーモード変換前の譜面キーモード。
+    pub source_key_mode: Option<KeyMode>,
+    /// skinが描画する変換後のキーモード。Selectでは開始予定値。
+    pub effective_key_mode: Option<KeyMode>,
+    pub seven_to_six: bool,
+    /// beatoraja ref 360互換。7K TO 9K無効時は0、有効時は1..=6。
+    pub seven_to_nine_pattern: u8,
+    /// beatoraja ref 361互換。0=FIXED, 1=NO MASHING, 2=ALTERNATION。
+    pub seven_to_nine_type: u8,
+    /// [`SKIN_SOURCE_LN_UNDEFINED_BIT`] などのbit mask。Noneは譜面未確定。
+    pub source_ln_profile_bits: Option<u8>,
+    /// 0=NORMAL, 1=PRACTICE, 2=AUTOPLAY, 3=AUTO BATTLE, 4=G-BATTLE。
+    pub session_mode_index: Option<usize>,
+    pub double_option_index: Option<usize>,
+    pub hsfix_index: Option<usize>,
+    pub gauge_auto_shift_index: Option<usize>,
+    pub bottom_shiftable_gauge_index: Option<usize>,
+    pub judge_algorithm_index: Option<usize>,
+    /// 0=LN, 1=CN, 2=HCN。Noneは譜面未確定。
+    pub ln_mode_index: Option<usize>,
+    /// SongDataBooleanProperty互換。Noneは譜面未選択・未確定。
+    pub has_bga: Option<bool>,
+    pub has_random_sequence: Option<bool>,
+}
+
+impl SkinAttemptState {
+    /// 譜面preloadで確定した値を反映し、まだ取得できないprofile由来値は保持する。
+    pub fn merge_known(&mut self, newer: Self) {
+        self.source_key_mode = newer.source_key_mode.or(self.source_key_mode);
+        self.effective_key_mode = newer.effective_key_mode.or(self.effective_key_mode);
+        self.seven_to_six = newer.seven_to_six;
+        self.seven_to_nine_pattern = newer.seven_to_nine_pattern;
+        self.seven_to_nine_type = newer.seven_to_nine_type;
+        self.source_ln_profile_bits = newer.source_ln_profile_bits.or(self.source_ln_profile_bits);
+        self.session_mode_index = newer.session_mode_index.or(self.session_mode_index);
+        self.double_option_index = newer.double_option_index.or(self.double_option_index);
+        self.hsfix_index = newer.hsfix_index.or(self.hsfix_index);
+        self.gauge_auto_shift_index = newer.gauge_auto_shift_index.or(self.gauge_auto_shift_index);
+        self.bottom_shiftable_gauge_index =
+            newer.bottom_shiftable_gauge_index.or(self.bottom_shiftable_gauge_index);
+        self.judge_algorithm_index = newer.judge_algorithm_index.or(self.judge_algorithm_index);
+        self.ln_mode_index = newer.ln_mode_index.or(self.ln_mode_index);
+        self.has_bga = newer.has_bga.or(self.has_bga);
+        self.has_random_sequence = newer.has_random_sequence.or(self.has_random_sequence);
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ResultTimingMetrics {
     pub initialized: bool,
@@ -151,6 +206,7 @@ pub struct RenderSnapshot {
     /// beatoraja の NUMBER_OPERATING_TIME_HOUR/MINUTE/SECOND (27..29) に使う。
     pub operating_time_ms: i32,
     pub skin_input: SkinLogicalInputSnapshot,
+    pub skin_attempt: SkinAttemptState,
     /// READY timer (TIMER_READY=40) elapsed time. None while READY is not active yet.
     pub ready_elapsed_time: Option<TimeUs>,
     /// 直近の小節線からの60 BPM換算拍時間 (TIMER_RHYTHM=140)。
@@ -224,6 +280,9 @@ pub struct RenderSnapshot {
     pub min_bpm: f32,
     pub max_bpm: f32,
     pub has_bga: bool,
+    /// beatoraja OPTION_NO_LN / OPTION_LN (172/173) 用。
+    /// None は開始譜面をまだ特定できない placeholder。
+    pub has_long_notes: Option<bool>,
     pub has_bpm_stop: bool,
     pub bga_enabled: bool,
     pub bga_base: Option<DisplayBgaFrame>,
@@ -256,14 +315,25 @@ pub struct RenderSnapshot {
     pub autoplay: bool,
     /// リプレイ再生中かどうか。プレイ中 FAST/SLOW 表示など、入力由来の表示制御に使う。
     pub replay_playback: bool,
+    /// BMZ extension: frozen scoring rule mode index for Decide/Play.
+    pub rule_mode_index: usize,
+    /// BMZ extension: normalized LN policy index stored in the score key.
+    pub ln_score_policy_index: Option<usize>,
     /// プラクティス再生中かどうか。beatoraja OPTION_PRACTICE (1080) 用。
     pub practice_mode: bool,
+    /// プラクティスの設定中プレビューか。秒線/BPMガイドはこの間だけ表示する。
+    pub practice_preview: bool,
     /// beatoraja assist button 301..307 の選択状態。
     pub assist_flags: [bool; 7],
     pub assist_extra_note_depth: u8,
     pub assist_mine_mode: i64,
     pub assist_scroll_mode: i64,
     pub assist_long_note_mode: i64,
+    /// beatoraja event/index 343。
+    pub guide_se_enabled: bool,
+    /// beatoraja event/index/option 400。
+    pub constant_enabled: bool,
+    pub constant_fade_ms: i32,
     /// 描画専用アシスト。判定・譜面変換とは独立して renderer が参照する。
     pub judge_area: bool,
     pub mark_processed_note: bool,
@@ -406,6 +476,7 @@ pub struct VisibleNote {
     pub lane: Lane,
     pub time: TimeUs,
     pub y: f32,
+    pub alpha: f32,
     pub kind: NoteVisualKind,
     /// beatoraja の `Note.state` 相当。判定済みでも本来の時刻までは描画に残す。
     pub processed_judge: Option<Judge>,
@@ -417,6 +488,7 @@ pub struct VisibleMine {
     pub lane: Lane,
     pub time: TimeUs,
     pub y: f32,
+    pub alpha: f32,
     pub damage: f64,
 }
 
@@ -450,6 +522,7 @@ pub struct VisibleLongNote {
     pub mode: LongNoteMode,
     pub head_y: f32,
     pub tail_y: f32,
+    pub alpha: f32,
     /// 胴体の表示状態。胴体画像の切り替えに使う。
     pub body_state: LongBodyState,
 }
@@ -458,7 +531,7 @@ pub struct VisibleLongNote {
 pub struct DisplayJudgement {
     pub lane: Lane,
     pub judge: Judge,
-    /// `None` = FAST/SLOW 表示なし（閾値以内の JUST 判定）。
+    /// `None` = FAST/SLOW 表示なし（Auto または閾値以内の PGREAT）。
     pub side: Option<TimingSide>,
     pub text: String,
     pub combo: u32,
@@ -467,7 +540,7 @@ pub struct DisplayJudgement {
     /// ノートを押さずに通過した見逃し判定（Poor）。
     /// このとき「打鍵」は発生していないのでキービームやボム演出は不要。
     pub is_miss: bool,
-    /// 閾値 ms フィルタ（bmz 独自拡張）で ±ms 表示 (ref 525) も非表示にする。
+    /// PGREAT の閾値 ms フィルタ（bmz 独自拡張）で ±ms 表示 (ref 525) も非表示にする。
     /// Auto (beatoraja 準拠) では常に false（beatoraja は 525 を常に供給する）。
     pub timing_ms_suppressed: bool,
 }
@@ -482,6 +555,7 @@ pub struct DisplayInput {
 pub struct VisibleBarLine {
     pub time: TimeUs,
     pub y: f32,
+    pub alpha: f32,
     pub label: String,
 }
 

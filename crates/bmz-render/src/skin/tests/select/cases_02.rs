@@ -17,6 +17,46 @@ fn select_settings_screen_volume_numbers_match_beatoraja_refs() {
 }
 
 #[test]
+fn select_option_event_indices_expose_guide_assists_and_constant() {
+    let state = SkinDrawState {
+        select_screen: true,
+        select_difficulty_filter_index: 4,
+        guide_se_enabled: true,
+        assist_extra_note_depth: 3,
+        assist_mine_mode: 4,
+        assist_scroll_mode: 2,
+        assist_long_note_mode: 5,
+        constant_enabled: true,
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_event_index(10, &state), 4);
+    assert_eq!(skin_state_event_index(309, &state), 4);
+    assert_eq!(skin_state_event_index(343, &state), 1);
+    assert_eq!(skin_state_event_index(350, &state), 3);
+    assert_eq!(skin_state_event_index(351, &state), 4);
+    assert_eq!(skin_state_event_index(352, &state), 2);
+    assert_eq!(skin_state_event_index(353, &state), 5);
+    assert_eq!(skin_state_event_index(400, &state), 1);
+    assert_eq!(skin_image_index_number(343, &state), Some(1));
+    assert_eq!(skin_image_index_number(400, &state), Some(1));
+    assert!(test_skin_op(400, &[], &state));
+}
+
+#[test]
+fn select_duration_ref_preserves_exact_configured_milliseconds() {
+    let state = SkinDrawState {
+        select_screen: true,
+        total_duration_ms: 497,
+        duration_green_ms: Some(duration_to_green_number_ms(497)),
+        ..SkinDrawState::default()
+    };
+
+    assert_eq!(skin_state_number(312, &state), Some(497));
+    assert_eq!(skin_state_number(313, &state), Some(298));
+}
+
+#[test]
 fn select_rank_and_judge_ops_are_hidden_in_settings() {
     let state = SkinDrawState {
         select_screen: true,
@@ -36,7 +76,7 @@ fn select_rank_and_judge_ops_are_hidden_in_settings() {
 }
 
 #[test]
-fn select_detail_artist_shows_config_value_in_settings() {
+fn select_detail_uses_beatoraja_fields_for_setting_description_and_editing_state() {
     let snapshot = SelectSnapshot {
         in_settings: true,
         settings_editing: true,
@@ -44,6 +84,8 @@ fn select_detail_artist_shows_config_value_in_settings() {
         rows: vec![SelectRowSnapshot {
             index: 0,
             title: "MASTER".to_string(),
+            bar_text: "MASTER [25]".to_string(),
+            subtitle: "MASTER is currently set to 25".to_string(),
             artist: "25".to_string(),
             kind: SelectRowKind::Config,
             ..SelectRowSnapshot::default()
@@ -51,8 +93,30 @@ fn select_detail_artist_shows_config_value_in_settings() {
         ..SelectSnapshot::default()
     };
     let row = &snapshot.rows[0];
+    assert_eq!(row.display_bar_text(), "MASTER [25]");
+    assert_eq!(select_detail_title(&snapshot, Some(row)), "MASTER");
     assert_eq!(select_detail_artist(&snapshot, Some(row)), "25");
-    assert_eq!(select_detail_subtitle(&snapshot, Some(row)), "[編集中]");
+    assert_eq!(select_detail_genre(&snapshot, Some(row)), "[編集中]");
+    assert_eq!(select_detail_subtitle(&snapshot, Some(row)), "MASTER is currently set to 25");
+
+    let song_snapshot = SelectSnapshot {
+        selected_index: 0,
+        rows: vec![SelectRowSnapshot {
+            index: 0,
+            title: "Song".to_string(),
+            subtitle: "Subtitle".to_string(),
+            artist: "Artist".to_string(),
+            genre: "Genre".to_string(),
+            kind: SelectRowKind::Song,
+            ..SelectRowSnapshot::default()
+        }],
+        ..SelectSnapshot::default()
+    };
+    let song = &song_snapshot.rows[0];
+    assert_eq!(select_detail_artist(&song_snapshot, Some(song)), "Artist");
+    assert_eq!(select_detail_genre(&song_snapshot, Some(song)), "Genre");
+    assert_eq!(select_detail_subtitle(&song_snapshot, Some(song)), "Subtitle");
+
     assert_eq!(
         skin_state_text(
             &SkinTextDef { id: "t".to_string(), ref_id: 3, ..SkinTextDef::default() },
@@ -244,8 +308,8 @@ fn next_select_diff_number_renders_next_rank_label() {
     });
 
     let (state, _) = document.select_draw_state(&snapshot, None);
-    assert_eq!(skin_state_number(154, &state), Some(1002));
-    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.0));
+    assert_eq!(skin_state_number(154, &state), Some(-1002));
+    assert_eq!(first_digit_uv.map(|uv| uv.y), Some(0.5));
     assert!(items.iter().any(|item| matches!(
         item,
         SkinRenderItem::Image {

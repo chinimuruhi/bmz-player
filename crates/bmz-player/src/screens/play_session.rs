@@ -5,7 +5,9 @@ use bmz_audio::ffmpeg_loader::FfmpegSampleLoader;
 use bmz_audio::loader::{
     LoadedSampleReport, SampleLoader, load_chart_samples, load_chart_samples_with_progress,
 };
-use bmz_audio::loudness::{analyze_chart_loudness, play_normalization_gain_for_loudness};
+use bmz_audio::loudness::{
+    LoudnessAnalysis, analyze_chart_loudness, play_normalization_gain_for_analysis_with_output_gain,
+};
 use bmz_chart::import::{
     BmsRandomSource, ImportResult, import_bms_chart, import_bms_chart_with_random_source,
 };
@@ -31,7 +33,7 @@ use bmz_gameplay::judge::engine::JudgeEngine;
 use bmz_gameplay::judge::model::{JudgeAlgorithm, JudgeWindow, JudgeWindows};
 use bmz_gameplay::judge::window::{
     judge_percent_at_time_for_keymode, judge_windows_for_keymode_and_rule_mode,
-    judge_windows_for_rule_mode_and_keymode,
+    judge_windows_for_rule_mode_and_keymode, scale_judge_windows_for_playback_rate,
 };
 use bmz_gameplay::replay::{ReplayPlayer, ReplayRecorder};
 use bmz_gameplay::rule::RuleMode;
@@ -43,13 +45,14 @@ use bmz_gameplay::session::{
 use std::sync::Arc;
 
 use crate::config::play::{
-    audio_mix_from_profile, bottom_shiftable_gauge_from_config, gauge_auto_shift_from_config,
-    gauge_type_from_config, input_bounce_config_from_profile, lane_binding_for_chart_with_slots,
-    lane_unit_to_f32, play_offsets_from_profile_for_mode,
+    audio_mix_from_profile, bottom_shiftable_gauge_from_config, chart_normalization_output_gain,
+    gauge_auto_shift_from_config, gauge_type_from_config, input_bounce_config_from_profile,
+    lane_binding_for_chart_with_slots, lane_unit_to_f32, play_offsets_from_profile_for_mode,
 };
 use crate::config::profile_config::{
-    AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig, LaneEffectConfig,
-    PlayModeConfig, ProfileConfig,
+    AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig,
+    KeyModeConversionConfig, LaneEffectConfig, PlayModeConfig, ProfileConfig, SevenToNinePattern,
+    SevenToNineRuleMode, SevenToNineType,
 };
 use crate::input::gamepad::GamepadSlotMap;
 use crate::ln_policy::{
@@ -100,13 +103,16 @@ pub struct PlaySessionOptions {
     /// Per-key presentation settings use the source chart mode. This differs
     /// from `chart.metadata.key_mode` after BATTLE expands 5K/7K to 10K/14K.
     pub play_config_key_mode: Option<KeyMode>,
+    /// The authoritative launch mode. Practice-specific runtime state is
+    /// derived from this value instead of being configured independently.
     pub session_mode: SessionMode,
     pub autoplay: bool,
-    /// Practice section play: no score / replay persistence (like autoplay).
-    pub practice_mode: bool,
-    /// Convert a source 7K chart into BMZ's scratch-less 6K mode before
-    /// applying the normal arrange option.
-    pub seven_to_six: bool,
+    /// Requested key-mode conversion. It becomes effective only for a
+    /// compatible source chart and is mutually exclusive with battle modes.
+    pub key_mode_conversion: KeyModeConversionConfig,
+    pub seven_to_nine_pattern: SevenToNinePattern,
+    pub seven_to_nine_type: SevenToNineType,
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
     /// Explicitly disables score/lamp/replay/IR persistence without presenting
     /// the session as practice or autoplay.
     pub score_save_disabled: bool,
@@ -117,9 +123,9 @@ pub struct PlaySessionOptions {
     /// 譜面変換時に確定した実効 assist。preload 後に内部で設定する。
     pub assist_runtime: AssistRuntime,
     pub replay_player: Option<ReplayPlayer>,
-    /// G-BATTLE is orthogonal to SessionMode. When present, preload builds a
-    /// separately arranged opponent chart and gameplay advances this replay
-    /// without taking over the primary input lanes.
+    /// `SessionMode::GBattle` opponent. Preload builds a separately arranged
+    /// opponent chart and gameplay advances this replay without taking over
+    /// the primary input lanes.
     pub battle_opponent: Option<BattleOpponentOptions>,
     /// Preload-only output consumed by `build_game_session*`.
     pub opponent_chart: Option<Arc<PlayableChart>>,
@@ -147,6 +153,9 @@ pub struct PlaySessionOptions {
     pub s_random_scheme: SRandomScheme,
     /// Optional 2P S-RANDOM generation for mixed ghost/replay arrangements.
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    /// beatoraja H-RANDOM/ALL-SCR key-lane threshold recovered for a replay.
+    /// None keeps BMZ's historical 100 ms behavior.
+    pub h_random_threshold_ms: Option<u32>,
     /// Independent seed used only while selecting BMS `#RANDOM` branches.
     pub bms_random_seed: Option<u64>,
     /// Recorded `#RANDOM` decisions, in source order, for exact replay.
@@ -190,6 +199,7 @@ pub struct BattleOpponentOptions {
     pub double_option: DoubleOption,
     pub arrange_seed: Option<i64>,
     pub arrange_seed_2p: Option<i64>,
+    pub legacy_arrange_seed: bool,
     /// rianIR-compatible packed side seeds. Expanded after the source key mode
     /// is known during preload.
     pub packed_seed: Option<i64>,
@@ -197,6 +207,7 @@ pub struct BattleOpponentOptions {
     pub arrange_pattern: Option<Vec<u8>>,
     pub s_random_scheme: SRandomScheme,
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -214,11 +225,29 @@ pub struct AppliedArrange {
     pub s_random_scheme: SRandomScheme,
     /// 2P generation for DP charts. `None` means this is an SP chart.
     pub s_random_scheme_2p: Option<SRandomScheme>,
+    pub h_random_threshold_ms: Option<u32>,
     /// BMS `#RANDOM` decisions applied before the arrange modifier.
     pub bms_random_choices: Vec<i32>,
     pub pattern: Option<Vec<u8>>,
-    /// The source chart was converted from 7K to 6K before this arrangement.
-    pub seven_to_six: bool,
+    /// Key-mode conversion actually applied to the source chart.
+    pub key_mode_conversion: KeyModeConversionConfig,
+    pub seven_to_nine_pattern: SevenToNinePattern,
+    pub seven_to_nine_type: SevenToNineType,
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
+}
+
+impl AppliedArrange {
+    pub const fn key_mode_converted(&self) -> bool {
+        !matches!(self.key_mode_conversion, KeyModeConversionConfig::Off)
+    }
+
+    pub const fn score_persistence_disabled(&self) -> bool {
+        self.key_mode_conversion.score_persistence_disabled(self.seven_to_nine_rule_mode)
+    }
+
+    pub const fn seven_to_six(&self) -> bool {
+        matches!(self.key_mode_conversion, KeyModeConversionConfig::SevenToSix)
+    }
 }
 
 impl AppliedArrange {
@@ -248,6 +277,7 @@ impl AppliedArrange {
 
 pub struct PreparedPlaySession {
     pub session: GameSession,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     pub chart_length_ms: u64,
     pub audio: AudioEngine,
@@ -270,6 +300,7 @@ pub struct PreparedPlaySession {
 #[derive(Debug, Clone)]
 pub struct PreparedPlayChart {
     pub chart: Arc<PlayableChart>,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     pub chart_length_ms: u64,
     pub render_snapshot_cache: crate::screens::play_snapshot::PlayRenderSnapshotCache,
@@ -282,6 +313,7 @@ pub struct PreparedPlayChart {
 
 pub struct PreloadedPlaySession {
     pub chart: Arc<PlayableChart>,
+    pub skin_attempt: bmz_render::snapshot::SkinAttemptState,
     pub source_ln_profile: ChartLnProfile,
     pub chart_length_ms: u64,
     pub audio: AudioEngine,
@@ -299,8 +331,33 @@ impl PreloadedPlaySession {
     pub fn prepared_chart(&self) -> PreparedPlayChart {
         PreparedPlayChart {
             chart: Arc::clone(&self.chart),
+            skin_attempt: self.skin_attempt,
             source_ln_profile: self.source_ln_profile,
             chart_length_ms: self.chart_length_ms,
+            render_snapshot_cache: self.render_snapshot_cache.clone(),
+            applied_arrange: self.applied_arrange.clone(),
+            score_key: self.score_key,
+            assist_runtime: self.assist_runtime,
+            score_save_disabled: self.score_save_disabled,
+            opponent_chart: self.opponent_chart.clone(),
+        }
+    }
+
+    /// デコード済み PCM と変換済み譜面を共有し、再生状態だけを空にした
+    /// 新しい preload を作る。Practice の反復開始で filesystem / FFmpeg の
+    /// 再ロードを行わないための beatoraja `BMSResource` 相当の経路。
+    pub fn clone_loaded_resources(&self) -> Self {
+        Self {
+            chart: Arc::clone(&self.chart),
+            skin_attempt: self.skin_attempt,
+            source_ln_profile: self.source_ln_profile,
+            chart_length_ms: self.chart_length_ms,
+            audio: AudioEngine::with_sample_bank(
+                self.audio.output_sample_rate(),
+                self.audio.samples.clone(),
+            ),
+            sample_report: self.sample_report.clone(),
+            chart_normalization_gain: self.chart_normalization_gain,
             render_snapshot_cache: self.render_snapshot_cache.clone(),
             applied_arrange: self.applied_arrange.clone(),
             score_key: self.score_key,
@@ -317,8 +374,10 @@ impl Default for PlaySessionOptions {
             play_config_key_mode: None,
             session_mode: SessionMode::Normal,
             autoplay: false,
-            practice_mode: false,
-            seven_to_six: false,
+            key_mode_conversion: KeyModeConversionConfig::Off,
+            seven_to_nine_pattern: SevenToNinePattern::default(),
+            seven_to_nine_type: SevenToNineType::default(),
+            seven_to_nine_rule_mode: SevenToNineRuleMode::default(),
             score_save_disabled: false,
             playback_rate_percent: 100,
             assist: AssistOptionConfig::default(),
@@ -343,6 +402,7 @@ impl Default for PlaySessionOptions {
             legacy_arrange_seed: false,
             s_random_scheme: SRandomScheme::default(),
             s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
             bms_random_seed: None,
             bms_random_choices: None,
             arrange_pattern: None,
@@ -370,11 +430,16 @@ mod arrange_pipeline;
 mod arrange_rng;
 mod build;
 mod preload;
+#[path = "play_session/seven_to_nine.rs"]
+mod seven_to_nine;
 #[path = "play_session/seven_to_six.rs"]
 mod seven_to_six;
+#[path = "play_session/sp_to_dp.rs"]
+mod sp_to_dp;
 
 pub(crate) use arrange_pipeline::second_player_lane_mask;
 pub use arrange_pipeline::{apply_arrange, apply_arrange_pair, generate_arrange_seed};
+pub(crate) use build::judge_algorithm_from_config;
 pub use build::{
     apply_placeholder_session_visuals, build_game_session, build_game_session_with_input_backend,
 };
@@ -388,7 +453,9 @@ pub use preload::{
     preload_play_session_reloading_audio_with_progress, scored_chart_metrics_for_chart,
     scored_chart_metrics_from_prepared, scored_note_count_for_chart,
 };
+pub use seven_to_nine::{apply_seven_to_nine, seven_to_nine_replay_lane_projection};
 pub use seven_to_six::{apply_seven_to_six, normalize_arrange_for_seven_to_six};
+pub use sp_to_dp::apply_sp_to_dp;
 
 use arrange_algorithm::*;
 use arrange_permutation::*;

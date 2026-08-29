@@ -104,6 +104,11 @@ impl AudioEngine {
         self.mixer.playback_rate = f64::from(rate) / 100.0;
     }
 
+    pub fn apply_playback_rate_change(&mut self, change: crate::clock::PlaybackRateChange) {
+        self.queue.apply_playback_rate_change(change);
+        self.mixer.apply_playback_rate_change(change);
+    }
+
     /// 指定 sound_id のスケジュール済み音および再生中 voice の音量を更新する。
     pub fn set_sound_volume(&mut self, id: bmz_core::ids::SoundId, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);

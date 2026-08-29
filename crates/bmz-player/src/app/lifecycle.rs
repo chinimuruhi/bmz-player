@@ -1,5 +1,13 @@
 use super::*;
 
+pub(super) fn clear_window_cursor_state(
+    position: &mut Option<PhysicalPosition<f64>>,
+    dragging_slider_type: &mut Option<i32>,
+) {
+    *position = None;
+    *dragging_slider_type = None;
+}
+
 impl ApplicationHandler<AppUserEvent> for WinitApp {
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
         match cause {
@@ -39,6 +47,12 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             return;
         }
 
+        if let WindowEvent::KeyboardInput { event, .. } = &event
+            && self.capture_egui_key_config_keyboard(event)
+        {
+            return;
+        }
+
         // すべてのウィンドウイベントを egui へ供給する。RedrawRequested など
         // egui が関知しないイベントは egui_winit 側で無視される。
         let practice_overlay = self
@@ -47,11 +61,47 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
         let select_course_builder = self.select.course_builder.is_some();
-        let egui_consumed = match (self.window.clone(), self.ui.egui.as_mut()) {
-            (Some(window), Some(egui)) => {
-                egui.on_window_event(&window, &event, practice_overlay, select_course_builder)
+        let has_play_context =
+            self.play.active_play.is_some() || self.play.pending_play_start.is_some();
+        let play_owns_keyboard_input = match &event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                let control = physical_key_to_control(event.physical_key);
+                let app_key_held = event.state == ElementState::Released
+                    && control.as_ref().is_some_and(|control| {
+                        self.input
+                            .pressed_play_inputs
+                            .contains(&(W_KEYBOARD_DEVICE_ID, control.clone()))
+                    });
+                keyboard_input_bypasses_egui(
+                    has_play_context,
+                    self.play.play_e1_held,
+                    self.play.play_e2_held,
+                    app_key_held,
+                    control.as_ref(),
+                    self.play.play_option_input.as_ref(),
+                )
             }
+            WindowEvent::Ime(_) => has_play_context && self.play_lane_value_changing(),
             _ => false,
+        };
+        // Press を egui へ渡すと、E1/E2 を押しながら行うプレイ操作が UI も
+        // 同時に動かしてしまう。Release は egui の押下状態を残さないため供給する。
+        let suppress_egui_event = match &event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                play_owns_keyboard_input && event.state == ElementState::Pressed
+            }
+            WindowEvent::Ime(_) => play_owns_keyboard_input,
+            _ => false,
+        };
+        let egui_consumed = if suppress_egui_event {
+            false
+        } else {
+            match (self.window.clone(), self.ui.egui.as_mut()) {
+                (Some(window), Some(egui)) => {
+                    egui.on_window_event(&window, &event, practice_overlay, select_course_builder)
+                }
+                _ => false,
+            }
         };
 
         match event {
@@ -70,15 +120,23 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     }
                     return;
                 }
-                if event.physical_key == PhysicalKey::Code(KeyCode::F12)
-                    && event.state == ElementState::Pressed
-                    && !event.repeat
-                {
-                    self.request_manual_screenshot();
+                // Practice 設定画面だけは keyboard を UI 専用にする。通常プレイ中の
+                // F1メニュー等はeguiへ供給しつつ、プレイ側にも同じ入力を通す。
+                if egui_blocks_window_keyboard_route(
+                    has_play_context,
+                    practice_overlay,
+                    play_owns_keyboard_input,
+                    egui_consumed,
+                ) {
                     return;
                 }
-                // egui がフォーカスを持つ間はゲーム入力へ伝播させない。
-                if egui_consumed {
+                if self.select.key_config_edit.is_none()
+                    && event.state == ElementState::Pressed
+                    && !event.repeat
+                    && physical_key_name(event.physical_key)
+                        .is_some_and(|control| self.select.select_keys.is_screenshot(&control))
+                {
+                    self.request_manual_screenshot();
                     return;
                 }
                 self.route_keyboard_input(&event);
@@ -97,7 +155,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_mouse_wheel(delta);
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.select.last_cursor_position = Some(position);
+                self.ui.last_cursor_position = Some(position);
                 self.ui.last_cursor_action_at = Instant::now();
                 if !self.ui.cursor_visible {
                     if let Some(window) = &self.window {
@@ -108,6 +166,12 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 if !egui_consumed {
                     self.route_select_slider_drag();
                 }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                clear_window_cursor_state(
+                    &mut self.ui.last_cursor_position,
+                    &mut self.select.select_slider_dragging_type,
+                );
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 self.ui.last_cursor_action_at = Instant::now();
@@ -123,7 +187,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_mouse_input(state, button);
             }
             WindowEvent::Ime(ime) => {
-                if egui_consumed {
+                if play_owns_keyboard_input || practice_overlay || egui_consumed {
                     return;
                 }
                 self.route_ime_event(&ime);
@@ -166,6 +230,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     );
                 }
                 if focus_update.focus_lost {
+                    if let Some(egui) = self.ui.egui.as_mut() {
+                        egui.cancel_key_config_listening();
+                    }
                     let releases = self.input.handle_focus_lost();
                     for event in releases.raw_keyboard {
                         self.route_play_device_input(event);
@@ -192,6 +259,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let scene_before = self.current_scene_kind();
                 let pending_skin_before = self.has_pending_skin_reload();
                 let render_probe_before = self.skin.pending_skin_render_probe.is_some();
+                self.start_deferred_skin_uploads_if_ready();
                 let cursor_start = Instant::now();
                 if self.ui.cursor_visible
                     && self.ui.last_cursor_action_at.elapsed() >= Duration::from_secs(2)
@@ -400,9 +468,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
         self.flush_pending_screenshots("app exit");
         self.save_configs_for_exit(self.active_hispeed(), "game exit");
         self.wait_for_pending_play_result_on_exit();
-        if self.release_audio_for_process_exit() {
-            std::process::exit(0);
-        }
+        self.release_audio_for_process_exit();
         // Linux の winit/wgpu backend では Window より後に Surface を drop すると
         // native 側で落ちることがあるため、Window を保持したまま GPU 資源を解放する。
         self.ui.egui = None;
@@ -432,7 +498,7 @@ impl WinitApp {
         }
     }
 
-    fn release_audio_for_process_exit(&mut self) -> bool {
+    fn release_audio_for_process_exit(&mut self) {
         if self.audio.audio_runtime.as_ref().is_some_and(AudioRuntime::uses_pulseaudio_host) {
             // cpal 0.18 の PulseAudio backend は stream Drop 時に pulseaudio crate の
             // reactor 切断と stream delete が重なり、終了時に native 側で abort する
@@ -450,8 +516,8 @@ impl WinitApp {
             if let Some(runtime) = self.audio.audio_runtime.take() {
                 std::mem::forget(runtime);
             }
-            tracing::debug!("exiting process directly after PulseAudio output workaround");
-            return true;
+            tracing::debug!("released audio with PulseAudio shutdown workaround");
+            return;
         }
 
         // プロセス終了前に音声出力を確実に Drop し、ASIO の停止・後処理を走らせる。
@@ -459,6 +525,5 @@ impl WinitApp {
         self.play.active_play = None;
         self.audio.system_audio = None;
         self.audio.audio_runtime = None;
-        false
     }
 }

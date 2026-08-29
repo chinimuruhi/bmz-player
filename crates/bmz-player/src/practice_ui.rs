@@ -3,7 +3,9 @@
 use egui::{Context, RichText};
 
 use crate::i18n::Localizer;
-use crate::screens::practice::{PracticeGaugeType, PracticeGraphType, PracticeProperty};
+use crate::screens::practice::{
+    PracticeCursorAction, PracticeGaugeType, PracticeGraphType, PracticeProperty,
+};
 use crate::select_options::ArrangeOption;
 use bmz_gameplay::gauge::GaugeProperty;
 use bmz_render::snapshot::ResultGraphSnapshot;
@@ -16,7 +18,11 @@ pub struct PracticePanelContext<'a> {
     pub cursor: &'a mut usize,
     pub chart_title: &'a str,
     pub media_ready: bool,
+    /// Practice の終了演出中は表示だけを維持し、egui 操作を受け付けない。
+    pub input_enabled: bool,
     pub max_end_time_ms: u32,
+    /// Surface 左上原点の正規化座標。beatoraja skin の practice destination 由来。
+    pub default_position: Option<(f32, f32)>,
 }
 
 pub struct PracticePanelOutput {
@@ -31,229 +37,218 @@ pub fn build_practice_panel(
 ) -> PracticePanelOutput {
     let mut start_play = false;
     let mut leave = false;
-    let field_count = crate::screens::practice::practice_field_count(practice.is_double);
-    if ctx.input(|input| input.key_pressed(egui::Key::ArrowDown)) {
-        *practice.cursor = (*practice.cursor + 1) % field_count;
+    let cursor_count = crate::screens::practice::practice_cursor_count(practice.is_double);
+    if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowDown)) {
+        *practice.cursor = (*practice.cursor + 1) % cursor_count;
     }
-    if ctx.input(|input| input.key_pressed(egui::Key::ArrowUp)) {
-        *practice.cursor = (*practice.cursor + field_count - 1) % field_count;
+    if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowUp)) {
+        *practice.cursor = (*practice.cursor + cursor_count - 1) % cursor_count;
     }
-    let decrement = ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft));
-    let increment = ctx.input(|input| input.key_pressed(egui::Key::ArrowRight));
+    let decrement =
+        practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft));
+    let increment =
+        practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::ArrowRight));
     if decrement || increment {
-        crate::screens::practice::adjust_practice_selected_field(
+        match crate::screens::practice::apply_practice_cursor_horizontal(
             practice.property,
             *practice.cursor,
             practice.is_double,
             increment,
             practice.max_end_time_ms,
-        );
+        ) {
+            PracticeCursorAction::None => {}
+            PracticeCursorAction::Start => start_play = true,
+            PracticeCursorAction::Leave => leave = true,
+        }
     }
 
-    egui::Area::new(egui::Id::new("practice_config_panel"))
-        .anchor(egui::Align2::LEFT_TOP, egui::vec2(12.0, 12.0))
+    let mut window = egui::Window::new(text.text("practice-title"))
+        .id(egui::Id::new("practice_config_panel"))
         .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            egui::Frame::window(ui.style())
-                .fill(egui::Color32::from_rgba_unmultiplied(16, 20, 32, 230))
-                .show(ui, |ui| {
-                    ui.set_min_width(360.0);
-                    ui.heading(text.text("practice-title"));
-                    ui.label(RichText::new(practice.chart_title).weak());
-                    ui.separator();
+        .movable(practice.input_enabled)
+        .resizable(false)
+        .collapsible(false)
+        .default_width(360.0)
+        .frame(
+            egui::Frame::window(ctx.global_style().as_ref())
+                .fill(egui::Color32::from_rgba_unmultiplied(16, 20, 32, 230)),
+        );
+    let screen = ctx.content_rect();
+    let default_position = practice
+        .default_position
+        .map(|(x, y)| {
+            egui::pos2(screen.left() + x * screen.width(), screen.top() + y * screen.height())
+        })
+        .unwrap_or_else(|| egui::pos2(screen.left() + 12.0, screen.top() + 12.0));
+    window = window.default_pos(default_position);
+    window.show(ctx, |ui| {
+        ui.set_min_width(360.0);
+        if !practice.input_enabled {
+            ui.disable();
+        }
+        ui.label(RichText::new(practice.chart_title).weak());
+        ui.separator();
 
-                    practice_field_label(ui, practice.cursor, 0, text.text("practice-start-time"));
+        practice_field_label(ui, practice.cursor, 0, text.text("practice-start-time"));
 
-                    ui.horizontal(|ui| {
-                        time_ms_field(
-                            ui,
-                            &mut practice.property.start_time_ms,
-                            practice.max_end_time_ms.saturating_sub(3000),
-                        );
-                    });
-                    practice_field_label(ui, practice.cursor, 1, text.text("practice-end-time"));
-                    ui.horizontal(|ui| {
-                        time_ms_field(
-                            ui,
-                            &mut practice.property.end_time_ms,
-                            practice.max_end_time_ms,
-                        );
-                    });
-
-                    practice_field_label(ui, practice.cursor, 2, text.text("practice-gauge"));
-                    ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("practice_gauge")
-                            .selected_text(gauge_label(text, practice.property.gauge))
-                            .show_ui(ui, |ui| {
-                                for gauge in practice_gauges() {
-                                    ui.selectable_value(
-                                        &mut practice.property.gauge,
-                                        gauge,
-                                        gauge_label(text, gauge),
-                                    );
-                                }
-                            });
-                    });
-                    practice_field_label(
-                        ui,
-                        practice.cursor,
-                        3,
-                        text.text("practice-gauge-category"),
-                    );
-                    ui.horizontal(|ui| {
-                        let category = practice
-                            .property
-                            .gauge_category
-                            .get_or_insert(GaugeProperty::SevenKeys);
-                        let previous_category = *category;
-                        egui::ComboBox::from_id_salt("practice_gauge_category")
-                            .selected_text(gauge_category_label(*category))
-                            .show_ui(ui, |ui| {
-                                for value in practice_gauge_categories() {
-                                    ui.selectable_value(
-                                        category,
-                                        value,
-                                        gauge_category_label(value),
-                                    );
-                                }
-                            });
-                        let selected_category = *category;
-                        if selected_category != previous_category {
-                            practice.property.start_gauge =
-                                crate::screens::practice::practice_gauge_initial_value(
-                                    practice.property.gauge,
-                                    selected_category,
-                                );
-                        }
-                    });
-                    practice_field_label(
-                        ui,
-                        practice.cursor,
-                        4,
-                        text.text("practice-gauge-percent"),
-                    );
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut practice.property.start_gauge)
-                                .range(1..=100)
-                                .speed(0.2),
-                        );
-                    });
-                    practice_field_label(ui, practice.cursor, 5, text.text("practice-judge-rank"));
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut practice.property.judgerank)
-                                .range(1..=400)
-                                .speed(0.5),
-                        );
-                    });
-                    practice_field_label(ui, practice.cursor, 6, text.text("practice-total"));
-                    if let Some(total) = practice.property.total.as_mut() {
-                        ui.horizontal(|ui| {
-                            ui.add(egui::DragValue::new(total).range(10.0..=5000.0).speed(1.0));
-                        });
-                    }
-                    practice_field_label(ui, practice.cursor, 7, text.text("practice-frequency"));
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut practice.property.playback_rate_percent)
-                                .range(50..=200)
-                                .suffix(" %"),
-                        );
-                    });
-                    practice_field_label(ui, practice.cursor, 8, text.text("practice-graph-type"));
-                    ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("practice_graph_type")
-                            .selected_text(graph_type_label(practice.property.graph_type))
-                            .show_ui(ui, |ui| {
-                                for graph_type in [
-                                    PracticeGraphType::NoteType,
-                                    PracticeGraphType::Judge,
-                                    PracticeGraphType::EarlyLate,
-                                ] {
-                                    ui.selectable_value(
-                                        &mut practice.property.graph_type,
-                                        graph_type,
-                                        graph_type_label(graph_type),
-                                    );
-                                }
-                            });
-                    });
-                    practice_field_label(ui, practice.cursor, 9, text.text("practice-arrange"));
-                    ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("practice_arrange")
-                            .selected_text(arrange_label(text, practice.property.arrange))
-                            .show_ui(ui, |ui| {
-                                for arrange in ArrangeOption::VALUES {
-                                    ui.selectable_value(
-                                        &mut practice.property.arrange,
-                                        arrange,
-                                        arrange_label(text, arrange),
-                                    );
-                                }
-                            });
-                    });
-                    if practice.is_double {
-                        practice_field_label(
-                            ui,
-                            practice.cursor,
-                            10,
-                            text.text("practice-arrange-2p"),
-                        );
-                        ui.horizontal(|ui| {
-                            egui::ComboBox::from_id_salt("practice_arrange_2p")
-                                .selected_text(arrange_label(text, practice.property.arrange_2p))
-                                .show_ui(ui, |ui| {
-                                    for arrange in ArrangeOption::VALUES {
-                                        ui.selectable_value(
-                                            &mut practice.property.arrange_2p,
-                                            arrange,
-                                            arrange_label(text, arrange),
-                                        );
-                                    }
-                                });
-                        });
-                        practice_field_label(
-                            ui,
-                            practice.cursor,
-                            11,
-                            text.text("practice-dp-option"),
-                        );
-                        ui.checkbox(&mut practice.property.dp_flip, "FLIP");
-                    }
-
-                    let last_field = if practice.is_double { 11 } else { 9 };
-                    *practice.cursor = (*practice.cursor).min(last_field);
-                    draw_practice_graph(ui, practice);
-
-                    ui.separator();
-                    if practice.media_ready {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_GREEN,
-                            text.text("practice-ready-hint"),
-                        );
-                    } else {
-                        ui.colored_label(
-                            egui::Color32::YELLOW,
-                            text.text("practice-media-loading"),
-                        );
-                    }
-
-                    ui.horizontal(|ui| {
-                        if ui.button(text.text("practice-start-play")).clicked() {
-                            start_play = true;
-                        }
-                        if ui.button(text.text("practice-back-to-select")).clicked() {
-                            leave = true;
-                        }
-                    });
-                });
+        ui.horizontal(|ui| {
+            time_ms_field(
+                ui,
+                &mut practice.property.start_time_ms,
+                practice.max_end_time_ms.saturating_sub(3000),
+            );
+        });
+        practice_field_label(ui, practice.cursor, 1, text.text("practice-end-time"));
+        ui.horizontal(|ui| {
+            time_ms_field(ui, &mut practice.property.end_time_ms, practice.max_end_time_ms);
         });
 
-    if ctx.input(|input| input.key_pressed(egui::Key::Enter)) && practice.media_ready {
+        practice_field_label(ui, practice.cursor, 2, text.text("practice-gauge"));
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("practice_gauge")
+                .selected_text(gauge_label(text, practice.property.gauge))
+                .show_ui(ui, |ui| {
+                    for gauge in practice_gauges() {
+                        ui.selectable_value(
+                            &mut practice.property.gauge,
+                            gauge,
+                            gauge_label(text, gauge),
+                        );
+                    }
+                });
+        });
+        practice_field_label(ui, practice.cursor, 3, text.text("practice-gauge-category"));
+        ui.horizontal(|ui| {
+            let category = practice.property.gauge_category.get_or_insert(GaugeProperty::SevenKeys);
+            let previous_category = *category;
+            egui::ComboBox::from_id_salt("practice_gauge_category")
+                .selected_text(gauge_category_label(*category))
+                .show_ui(ui, |ui| {
+                    for value in practice_gauge_categories() {
+                        ui.selectable_value(category, value, gauge_category_label(value));
+                    }
+                });
+            let selected_category = *category;
+            if selected_category != previous_category {
+                practice.property.start_gauge =
+                    crate::screens::practice::practice_gauge_initial_value(
+                        practice.property.gauge,
+                        selected_category,
+                    );
+            }
+        });
+        practice_field_label(ui, practice.cursor, 4, text.text("practice-gauge-percent"));
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::DragValue::new(&mut practice.property.start_gauge).range(1..=100).speed(0.2),
+            );
+        });
+        practice_field_label(ui, practice.cursor, 5, text.text("practice-judge-rank"));
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::DragValue::new(&mut practice.property.judgerank).range(1..=400).speed(0.5),
+            );
+        });
+        practice_field_label(ui, practice.cursor, 6, text.text("practice-total"));
+        if let Some(total) = practice.property.total.as_mut() {
+            ui.horizontal(|ui| {
+                ui.add(egui::DragValue::new(total).range(10.0..=5000.0).speed(1.0));
+            });
+        }
+        practice_field_label(ui, practice.cursor, 7, text.text("practice-frequency"));
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::DragValue::new(&mut practice.property.playback_rate_percent)
+                    .range(50..=200)
+                    .suffix(" %"),
+            );
+        });
+        practice_field_label(ui, practice.cursor, 8, text.text("practice-graph-type"));
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("practice_graph_type")
+                .selected_text(graph_type_label(practice.property.graph_type))
+                .show_ui(ui, |ui| {
+                    for graph_type in [
+                        PracticeGraphType::NoteType,
+                        PracticeGraphType::Judge,
+                        PracticeGraphType::EarlyLate,
+                    ] {
+                        ui.selectable_value(
+                            &mut practice.property.graph_type,
+                            graph_type,
+                            graph_type_label(graph_type),
+                        );
+                    }
+                });
+        });
+        practice_field_label(ui, practice.cursor, 9, text.text("practice-arrange"));
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("practice_arrange")
+                .selected_text(arrange_label(text, practice.property.arrange))
+                .show_ui(ui, |ui| {
+                    for arrange in ArrangeOption::VALUES {
+                        ui.selectable_value(
+                            &mut practice.property.arrange,
+                            arrange,
+                            arrange_label(text, arrange),
+                        );
+                    }
+                });
+        });
+        if practice.is_double {
+            practice_field_label(ui, practice.cursor, 10, text.text("practice-arrange-2p"));
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt("practice_arrange_2p")
+                    .selected_text(arrange_label(text, practice.property.arrange_2p))
+                    .show_ui(ui, |ui| {
+                        for arrange in ArrangeOption::VALUES {
+                            ui.selectable_value(
+                                &mut practice.property.arrange_2p,
+                                arrange,
+                                arrange_label(text, arrange),
+                            );
+                        }
+                    });
+            });
+            practice_field_label(ui, practice.cursor, 11, text.text("practice-dp-option"));
+            ui.checkbox(&mut practice.property.dp_flip, "FLIP");
+        }
+
+        *practice.cursor = (*practice.cursor).min(cursor_count - 1);
+        draw_practice_graph(ui, practice);
+
+        ui.separator();
+        if practice.media_ready {
+            ui.colored_label(egui::Color32::LIGHT_GREEN, text.text("practice-ready-hint"));
+        } else {
+            ui.colored_label(egui::Color32::YELLOW, text.text("practice-media-loading"));
+        }
+
+        ui.horizontal(|ui| {
+            let start_cursor = crate::screens::practice::practice_start_cursor(practice.is_double);
+            let start_button = egui::Button::new(text.text("practice-start-play"))
+                .selected(*practice.cursor == start_cursor);
+            if ui.add_enabled(practice.media_ready, start_button).clicked() {
+                *practice.cursor = start_cursor;
+                start_play = true;
+            }
+            let leave_cursor = crate::screens::practice::practice_leave_cursor(practice.is_double);
+            let leave_button = egui::Button::new(text.text("practice-back-to-select"))
+                .selected(*practice.cursor == leave_cursor);
+            if ui.add(leave_button).clicked() {
+                *practice.cursor = leave_cursor;
+                leave = true;
+            }
+        });
+    });
+
+    if practice.input_enabled
+        && ctx.input(|input| input.key_pressed(egui::Key::Enter))
+        && practice.media_ready
+    {
         start_play = true;
     }
-    if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+    if practice.input_enabled && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
         leave = true;
     }
 
@@ -378,18 +373,7 @@ fn draw_practice_graph(ui: &mut egui::Ui, practice: &PracticePanelContext<'_>) {
     let max_total =
         visible.iter().map(|bucket| bucket.iter().copied().sum::<u32>()).max().unwrap_or(1).max(1)
             as f32;
-    let colors = [
-        egui::Color32::from_rgb(90, 100, 120),
-        egui::Color32::from_rgb(80, 210, 255),
-        egui::Color32::from_rgb(255, 220, 80),
-        egui::Color32::from_rgb(120, 220, 120),
-        egui::Color32::from_rgb(255, 150, 70),
-        egui::Color32::from_rgb(245, 80, 90),
-        egui::Color32::from_rgb(210, 70, 210),
-        egui::Color32::from_rgb(70, 160, 255),
-        egui::Color32::from_rgb(255, 100, 180),
-        egui::Color32::from_rgb(150, 80, 220),
-    ];
+    let colors = practice_graph_colors(practice.property.graph_type);
     let width = rect.width() / visible.len() as f32;
     for (index, bucket) in visible.iter().enumerate() {
         let mut bottom = rect.bottom();
@@ -406,6 +390,36 @@ fn draw_practice_graph(ui: &mut egui::Ui, practice: &PracticePanelContext<'_>) {
             bottom -= height;
         }
     }
+}
+
+fn practice_graph_colors(graph_type: PracticeGraphType) -> [egui::Color32; 10] {
+    if graph_type == PracticeGraphType::NoteType {
+        // beatoraja SkinNoteDistributionGraph.JGRAPH[TYPE_NORMAL] と同じ系列順。
+        return [
+            egui::Color32::from_rgb(0x44, 0xff, 0x44),
+            egui::Color32::from_rgb(0x22, 0x88, 0x22),
+            egui::Color32::from_rgb(0xff, 0x44, 0x44),
+            egui::Color32::from_rgb(0x44, 0x44, 0xff),
+            egui::Color32::from_rgb(0x22, 0x22, 0x88),
+            egui::Color32::from_rgb(0xcc, 0xcc, 0xcc),
+            egui::Color32::from_rgb(0x88, 0x00, 0x00),
+            egui::Color32::TRANSPARENT,
+            egui::Color32::TRANSPARENT,
+            egui::Color32::TRANSPARENT,
+        ];
+    }
+    [
+        egui::Color32::from_rgb(90, 100, 120),
+        egui::Color32::from_rgb(80, 210, 255),
+        egui::Color32::from_rgb(255, 220, 80),
+        egui::Color32::from_rgb(120, 220, 120),
+        egui::Color32::from_rgb(255, 150, 70),
+        egui::Color32::from_rgb(245, 80, 90),
+        egui::Color32::from_rgb(210, 70, 210),
+        egui::Color32::from_rgb(70, 160, 255),
+        egui::Color32::from_rgb(255, 100, 180),
+        egui::Color32::from_rgb(150, 80, 220),
+    ]
 }
 
 fn arrange_label(text: Localizer, arrange: ArrangeOption) -> String {
@@ -464,5 +478,13 @@ mod tests {
     fn time_format_is_locale_neutral() {
         assert_eq!(format_time_ms(0), "00:00.0");
         assert_eq!(format_time_ms(125_678), "02:05.6");
+    }
+
+    #[test]
+    fn note_type_graph_uses_beatoraja_key_and_scratch_colors() {
+        let colors = practice_graph_colors(PracticeGraphType::NoteType);
+
+        assert_eq!(colors[2], egui::Color32::from_rgb(0xff, 0x44, 0x44));
+        assert_eq!(colors[5], egui::Color32::from_rgb(0xcc, 0xcc, 0xcc));
     }
 }

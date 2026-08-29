@@ -118,7 +118,7 @@ pub(super) fn unpack_screenshot_rgba(
     }
 
     if matches!(format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) {
-        for pixel in rgba.chunks_exact_mut(4) {
+        for pixel in rgba.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
     }
@@ -203,7 +203,7 @@ pub(super) fn screenshot_dibv5(width: u32, height: u32, rgba: &[u8]) -> Result<V
 
     dib.reserve(expected_len);
     for row in rgba.chunks_exact(row_bytes).rev() {
-        for pixel in row.chunks_exact(4) {
+        for pixel in row.as_chunks::<4>().0 {
             dib.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
         }
     }

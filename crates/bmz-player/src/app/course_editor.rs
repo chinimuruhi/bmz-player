@@ -2,38 +2,67 @@ use super::*;
 
 const LOCAL_COURSE_SOURCE: &str = "bmz:local";
 
+#[derive(Default)]
+pub(super) struct CourseEditorDataCache {
+    pub(super) data: CourseEditorData,
+    courses_valid: bool,
+    charts_valid: bool,
+    loaded_query: Option<String>,
+    was_visible: bool,
+}
+
+impl CourseEditorDataCache {
+    pub(super) fn reload_requirements(&mut self, visible: bool, query: &str) -> (bool, bool) {
+        if !visible {
+            self.was_visible = false;
+            return (false, false);
+        }
+
+        let opened = !self.was_visible;
+        self.was_visible = true;
+        let reload_courses = opened || !self.courses_valid;
+        let reload_charts =
+            opened || !self.charts_valid || self.loaded_query.as_deref() != Some(query);
+        (reload_courses, reload_charts)
+    }
+
+    pub(super) fn set_courses(&mut self, courses: Vec<crate::storage::library_db::StoredCourse>) {
+        self.data.courses = courses;
+        self.courses_valid = true;
+    }
+
+    pub(super) fn set_charts(&mut self, query: String, charts: Vec<CourseEditorChart>) {
+        self.data.charts = charts;
+        self.loaded_query = Some(query);
+        self.charts_valid = true;
+    }
+
+    pub(super) fn invalidate(&mut self) {
+        self.courses_valid = false;
+        self.charts_valid = false;
+    }
+}
+
 impl WinitApp {
     pub(super) fn apply_course_editor_action(&mut self, action: CourseEditorAction) {
-        let result: Result<(String, bool, Option<i64>)> = match action {
+        let result: Result<(String, bool)> = match action {
             CourseEditorAction::Save(definition) => self
                 .save_local_course(&definition)
-                .map(|id| (format!("コースを保存しました (ID {id})"), true, None)),
-            CourseEditorAction::SaveAndTest(definition) => {
-                self.save_local_course(&definition).map(|id| {
-                    (
-                        format!("コースを保存してテストプレイを開始しました (ID {id})"),
-                        true,
-                        Some(id),
-                    )
-                })
-            }
+                .map(|id| (format!("コースを保存しました (ID {id})"), true)),
             CourseEditorAction::Delete(course_id) => {
-                self.delete_local_course(course_id).map(|message| (message, true, None))
+                self.delete_local_course(course_id).map(|message| (message, true))
             }
             CourseEditorAction::Export { path, definition } => {
-                self.export_local_course(path, &definition).map(|message| (message, false, None))
+                self.export_local_course(path, &definition).map(|message| (message, false))
             }
             CourseEditorAction::Import { path } => {
-                self.import_local_courses(path).map(|message| (message, true, None))
+                self.import_local_courses(path).map(|message| (message, true))
             }
         };
         let (message, error) = match result {
-            Ok((message, refresh_select, test_course_id)) => {
+            Ok((message, refresh_select)) => {
                 if refresh_select {
                     self.reload_select_items();
-                }
-                if let Some(course_id) = test_course_id {
-                    self.start_course(course_id);
                 }
                 (message, false)
             }
@@ -51,17 +80,14 @@ impl WinitApp {
         &mut self,
         definition: &bmz_core::course::CourseDefinition,
     ) -> Result<i64> {
-        if definition.entries.is_empty() {
-            anyhow::bail!("コースには1曲以上必要です");
-        }
-        if definition.entries.iter().any(|entry| entry.chart_id.is_none()) {
-            anyhow::bail!("未解決の譜面が含まれています");
-        }
+        let mut definition = definition.clone();
+        crate::course::normalize_course_definition(&mut definition);
+        validate_local_course_definition(&definition)?;
         let position =
             self.boot.library_db.list_courses_by_source(LOCAL_COURSE_SOURCE)?.len() as i64;
         self.boot.library_db.upsert_course(
             LOCAL_COURSE_SOURCE,
-            definition,
+            &definition,
             position,
             course_editor_unix_now(),
         )
@@ -120,9 +146,83 @@ impl WinitApp {
     }
 }
 
+fn validate_local_course_definition(definition: &bmz_core::course::CourseDefinition) -> Result<()> {
+    if definition.entries.is_empty() {
+        anyhow::bail!("コースには1曲以上必要です");
+    }
+    if definition.entries.len() > crate::course::LOCAL_COURSE_MAX_ENTRIES {
+        anyhow::bail!("コースは最大{}曲です", crate::course::LOCAL_COURSE_MAX_ENTRIES);
+    }
+    if definition.entries.iter().any(|entry| entry.chart_id.is_none()) {
+        anyhow::bail!("未解決の譜面が含まれています");
+    }
+    Ok(())
+}
+
 fn course_editor_unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn course_definition_with_entries(count: usize) -> bmz_core::course::CourseDefinition {
+        bmz_core::course::CourseDefinition {
+            key: "local-course-1".to_string(),
+            title: "Course".to_string(),
+            kind: bmz_core::course::CourseKind::Course,
+            entries: vec![
+                bmz_core::course::CourseEntry {
+                    title_hint: "Chart".to_string(),
+                    md5: None,
+                    sha256: None,
+                    chart_id: Some(1),
+                };
+                count
+            ],
+            constraints: bmz_core::course::CourseConstraints::default(),
+            trophies: Vec::new(),
+            release: false,
+        }
+    }
+
+    #[test]
+    fn local_course_validation_accepts_ten_entries_and_rejects_eleven() {
+        assert!(validate_local_course_definition(&course_definition_with_entries(10)).is_ok());
+        let error =
+            validate_local_course_definition(&course_definition_with_entries(11)).unwrap_err();
+        assert!(error.to_string().contains("最大10曲"));
+    }
+
+    #[test]
+    fn course_editor_cache_reloads_only_when_needed() {
+        let mut cache = CourseEditorDataCache::default();
+
+        assert_eq!(cache.reload_requirements(false, ""), (false, false));
+        assert_eq!(cache.reload_requirements(true, ""), (true, true));
+        cache.set_courses(Vec::new());
+        cache.set_charts(String::new(), Vec::new());
+        assert_eq!(cache.reload_requirements(true, ""), (false, false));
+        assert_eq!(cache.reload_requirements(true, "blue"), (false, true));
+        cache.set_charts("blue".to_string(), Vec::new());
+        assert_eq!(cache.reload_requirements(true, "blue"), (false, false));
+
+        cache.invalidate();
+        assert_eq!(cache.reload_requirements(true, "blue"), (true, true));
+    }
+
+    #[test]
+    fn course_editor_cache_reloads_after_reopening() {
+        let mut cache = CourseEditorDataCache::default();
+        assert_eq!(cache.reload_requirements(true, ""), (true, true));
+        cache.set_courses(Vec::new());
+        cache.set_charts(String::new(), Vec::new());
+
+        assert_eq!(cache.reload_requirements(false, ""), (false, false));
+        assert_eq!(cache.reload_requirements(true, ""), (true, true));
+    }
 }

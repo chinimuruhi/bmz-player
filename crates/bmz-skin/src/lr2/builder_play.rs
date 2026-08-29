@@ -297,7 +297,7 @@ impl<'a> CsvBuilder<'a> {
                 label_w,
                 height,
                 timer,
-                &[1998, op],
+                &[SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_EARLY_LATE, op],
             ));
         }
 
@@ -327,7 +327,7 @@ impl<'a> CsvBuilder<'a> {
                 digit_w,
                 height,
                 timer,
-                &[1999, perfect_op],
+                &[SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_MS, perfect_op],
             ));
         }
     }

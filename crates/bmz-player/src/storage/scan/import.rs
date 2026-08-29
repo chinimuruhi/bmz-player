@@ -69,6 +69,22 @@ pub fn scan_song_roots_with_progress(
             });
         let discovery_ms = discovery_start.elapsed().as_millis();
         report.timing.discovery_ms += discovery_ms;
+        match discovery.backend {
+            ScanDiscoveryBackend::Native => {
+                report.summary.native_discovery_roots =
+                    report.summary.native_discovery_roots.saturating_add(1);
+            }
+            ScanDiscoveryBackend::Everything => {
+                report.summary.everything_discovery_roots =
+                    report.summary.everything_discovery_roots.saturating_add(1);
+            }
+            ScanDiscoveryBackend::NativeFallback => {
+                report.summary.native_discovery_roots =
+                    report.summary.native_discovery_roots.saturating_add(1);
+                report.summary.everything_fallback_roots =
+                    report.summary.everything_fallback_roots.saturating_add(1);
+            }
+        }
         let root_files = usize_to_u32(discovery.entries.len());
         files_total = files_total.saturating_add(root_files);
         report.summary.files_seen = files_total;
@@ -82,6 +98,7 @@ pub fn scan_song_roots_with_progress(
             root = %root_path.display(),
             root_num = root_index + 1,
             root_count,
+            discovery_backend = discovery.backend.as_str(),
             files = root_files,
             discovery_issues = discovery.issues.len(),
             discovery_ms,

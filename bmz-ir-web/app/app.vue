@@ -15,8 +15,13 @@ const i18nHead = useLocaleHead({ seo: true })
 
 useHead(() => ({
   htmlAttrs: { ...i18nHead.value.htmlAttrs, dir: uiLocale.value.dir },
-  link: i18nHead.value.link ?? [],
-  meta: i18nHead.value.meta ?? [],
+  link: [
+    ...(i18nHead.value.link ?? []),
+    { rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+    { rel: 'icon', href: '/icon.svg', type: 'image/svg+xml' },
+    { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '180x180' },
+  ],
+  meta: [...(i18nHead.value.meta ?? []), { name: 'theme-color', content: '#ffffff' }],
   titleTemplate: (title) => (title ? `${title} - BMZ IR` : 'BMZ IR'),
 }))
 useSeoMeta({ description: () => t('meta.description') })

@@ -47,18 +47,24 @@ fn select_state_exposes_best_judge_detail_counts() {
 fn select_state_starts_input_timer_after_document_delay() {
     let document: SkinDocument =
         serde_json::from_str(r#"{ "w": 1280, "h": 720, "input": 500 }"#).unwrap();
+    let mut runtime = DynamicTimerRuntime::default();
 
     let (waiting, _) = document.select_draw_state(
         &SelectSnapshot { time: TimeUs(500_000), ..SelectSnapshot::default() },
-        None,
+        Some(&mut runtime),
     );
     let (active, _) = document.select_draw_state(
         &SelectSnapshot { time: TimeUs(725_000), ..SelectSnapshot::default() },
-        None,
+        Some(&mut runtime),
+    );
+    let (advanced, _) = document.select_draw_state(
+        &SelectSnapshot { time: TimeUs(750_000), ..SelectSnapshot::default() },
+        Some(&mut runtime),
     );
 
     assert_eq!(waiting.start_input_ms, None);
-    assert_eq!(active.start_input_ms, Some(225));
+    assert_eq!(active.start_input_ms, Some(0));
+    assert_eq!(advanced.start_input_ms, Some(25));
 }
 
 #[test]
@@ -90,6 +96,52 @@ fn select_render_items_passes_selected_row_genre_to_string_ref_13() {
     assert!(items.iter().any(|item| matches!(
         item,
         SkinRenderItem::Text { text, .. } if text == "Techno"
+    )));
+}
+
+#[test]
+fn select_render_items_show_editing_marker_in_setting_genre() {
+    let document: SkinDocument = serde_json::from_str(
+        r#"
+            {
+                "type": 5,
+                "w": 100,
+                "h": 100,
+                "text": [{ "id": "genre", "size": 6, "ref": 13 }],
+                "destination": [{
+                    "id": "genre",
+                    "op": [2],
+                    "dst": [{ "x": 10, "y": 40, "w": 40, "h": 6 }]
+                }]
+            }
+            "#,
+    )
+    .unwrap();
+    let snapshot = SelectSnapshot {
+        in_settings: true,
+        settings_editing: true,
+        selected_index: 0,
+        rows: vec![SelectRowSnapshot {
+            index: 0,
+            kind: SelectRowKind::Config,
+            ..SelectRowSnapshot::default()
+        }],
+        ..SelectSnapshot::default()
+    };
+    let settings_dest_index =
+        crate::select_settings_dest::build_select_settings_dest_index(&document);
+
+    let items = document.select_render_items_with_dynamic_timers(
+        &HashMap::new(),
+        &snapshot,
+        None,
+        &settings_dest_index,
+        None,
+    );
+
+    assert!(items.iter().any(|item| matches!(
+        item,
+        SkinRenderItem::Text { text, .. } if text == "[編集中]"
     )));
 }
 

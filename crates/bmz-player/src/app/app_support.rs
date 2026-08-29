@@ -26,7 +26,7 @@ pub(super) struct CourseLibrarySnapshot {
     pub(super) metrics: CoursePlayMetrics,
     pub(super) first_chart: ChartListItem,
     pub(super) titles: HashMap<i64, String>,
-    pub(super) has_seven_key: bool,
+    pub(super) has_score_disabling_key_mode_conversion: bool,
 }
 
 fn finish_course_play_metrics(
@@ -103,7 +103,7 @@ pub(super) fn course_play_metrics_from_chart_metadata(
     let mut total_notes = 0u32;
     let mut ln_mode = None;
     let mut source_ln_profile = crate::ln_policy::ChartLnProfile::default();
-    let mut has_seven_key = false;
+    let mut has_score_disabling_key_mode_conversion = false;
     for (index, (chart_id, start_options)) in chart_ids.iter().zip(entry_start_options).enumerate()
     {
         let chart = charts_by_id.get(chart_id).with_context(|| {
@@ -115,8 +115,18 @@ pub(super) fn course_play_metrics_from_chart_metadata(
             chart.ln_profile,
         );
         let key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
-        has_seven_key |= key_mode == KeyMode::K7;
-        let double_option = if start_options.seven_to_six && key_mode == KeyMode::K7 {
+        let conversion_applies = !start_options.session_mode.is_battle()
+            && start_options.battle_target.is_none()
+            && !matches!(
+                start_options.double_option,
+                DoubleOption::Battle | DoubleOption::BattleAutoScratch
+            )
+            && start_options.key_mode_conversion.applies_to(key_mode);
+        has_score_disabling_key_mode_conversion |= conversion_applies
+            && start_options
+                .key_mode_conversion
+                .score_persistence_disabled(start_options.seven_to_nine_rule_mode);
+        let double_option = if conversion_applies {
             DoubleOption::Off
         } else {
             start_options.double_option.normalize_for_key_mode(key_mode)
@@ -145,7 +155,12 @@ pub(super) fn course_play_metrics_from_chart_metadata(
     );
     let titles =
         charts_by_id.into_iter().map(|(chart_id, chart)| (chart_id, chart.title)).collect();
-    Ok(CourseLibrarySnapshot { metrics, first_chart, titles, has_seven_key })
+    Ok(CourseLibrarySnapshot {
+        metrics,
+        first_chart,
+        titles,
+        has_score_disabling_key_mode_conversion,
+    })
 }
 
 /// 先頭譜面はPlay preload workerが既に変換した値を再利用し、残りの譜面だけを

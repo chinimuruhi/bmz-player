@@ -191,8 +191,11 @@ impl WinitApp {
         if let Some(manager) = &self.audio.system_sound {
             manager.stop_all_bgm();
         }
-        self.audio.system_sound =
-            Some(system_sound_manager_from_catalog(&self.audio.system_sound_catalog, system_audio));
+        self.audio.system_sound = Some(system_sound_manager_from_catalog(
+            &self.audio.system_sound_catalog,
+            system_audio,
+            self.boot.profile_config.audio_mix.normalize_system_bgm_volume,
+        ));
     }
 
     /// `profile.audio_mix.system_bgm_volume` / `system_se_volume` に
@@ -258,6 +261,19 @@ impl WinitApp {
             return;
         }
         self.play_system_sound(crate::system_sound::SoundType::Landmine);
+    }
+
+    pub(super) fn play_guide_se_for_judgements(
+        &self,
+        enabled: bool,
+        judgements: &[bmz_gameplay::judge::model::JudgementEvent],
+    ) {
+        if !enabled {
+            return;
+        }
+        for event in judgements {
+            self.play_system_sound(crate::system_sound::guide_se_for_judge(event.judge));
+        }
     }
 
     pub(super) fn stop_system_sound(&self, sound_type: crate::system_sound::SoundType) {

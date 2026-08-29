@@ -21,6 +21,7 @@ fn retry_audio_reload_preserves_bgm_and_keysound_asset_mapping() {
     let preloaded = preload_play_session_reloading_audio_with_progress(
         PreparedPlayChart {
             chart: Arc::clone(&chart),
+            skin_attempt: Default::default(),
             source_ln_profile: crate::ln_policy::ChartLnProfile::default(),
             chart_length_ms: 123_456,
             render_snapshot_cache:

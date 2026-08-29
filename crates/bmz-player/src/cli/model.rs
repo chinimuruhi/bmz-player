@@ -4,8 +4,14 @@ pub enum Command {
     Table(TableCommand),
     Songs(SongsCommand),
     Course(CourseCommand),
+    Replay(ReplayCommand),
     Ir(IrCommand),
     Profile(ProfileCommand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplayCommand {
+    Import { path: String, overwrite: bool, controller: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,8 +71,8 @@ pub enum TableCommand {
 pub enum SongsCommand {
     Add { path: String, recursive: bool, enabled: bool },
     List,
-    Load { target: Option<String> },
-    Reload { target: Option<String> },
+    Load { target: Option<String>, use_everything: Option<bool> },
+    Reload { target: Option<String>, use_everything: Option<bool> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

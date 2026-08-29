@@ -54,10 +54,22 @@ pub struct SelectStateConfig {
     pub difficulty_filter: String,
     #[serde(default = "default_select_sort")]
     pub sort: String,
+    /// 難易度表のレベルフォルダ内で、表のレベルと譜面本来のレベルの
+    /// どちらを選曲表示へ使うか。
+    #[serde(default)]
+    pub difficulty_table_level_display: DifficultyTableLevelDisplay,
     #[serde(default)]
     pub random_select: bool,
     #[serde(default)]
     pub random_mix: RandomMixConfig,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DifficultyTableLevelDisplay {
+    #[default]
+    Table,
+    Chart,
 }
 
 /// LR2-style RANDOM MIX generation constraints.
@@ -121,6 +133,7 @@ impl Default for SelectStateConfig {
             mode_filter: default_select_mode_filter(),
             difficulty_filter: default_select_difficulty_filter(),
             sort: default_select_sort(),
+            difficulty_table_level_display: DifficultyTableLevelDisplay::default(),
             random_select: false,
             random_mix: RandomMixConfig::default(),
         }
@@ -133,8 +146,26 @@ pub struct PlayDefaultsConfig {
     pub rule_mode: RuleMode,
     #[serde(default)]
     pub ln_mode_policy: LnPolicySetting,
-    /// Convert source 7K charts into BMZ's scratch-less 6K mode.
+    /// Key-mode conversion applied before play. Unsupported source modes leave
+    /// the chart unchanged and remain score-eligible.
     #[serde(default)]
+    pub key_mode_conversion: KeyModeConversionConfig,
+    /// beatoraja `sevenToNinePattern` (1..=6). OFF is represented by
+    /// `key_mode_conversion = "Off"`, so this value always remembers the last
+    /// active placement.
+    #[serde(default)]
+    pub seven_to_nine_pattern: SevenToNinePattern,
+    /// beatoraja `sevenToNineType` (0..=2).
+    #[serde(default)]
+    pub seven_to_nine_type: SevenToNineType,
+    /// 7K to 9K conversion scoring rules. `7K` keeps the source chart's
+    /// judgement/gauge rules and remains score eligible; `9K` uses PMS rules
+    /// and disables every persistence path.
+    #[serde(default)]
+    pub seven_to_nine_rule_mode: SevenToNineRuleMode,
+    /// Legacy BMZ profile migration field. New profiles use
+    /// `key_mode_conversion = "SevenToSix"` and omit this field.
+    #[serde(default, skip_serializing_if = "is_false")]
     pub seven_to_six: bool,
     pub gauge: GaugeTypeConfig,
     #[serde(default)]
@@ -153,6 +184,9 @@ pub struct PlayDefaultsConfig {
     pub lane_effect: LaneEffectConfig,
     #[serde(default)]
     pub assist: AssistOptionConfig,
+    /// beatoraja `PlayerConfig.guideSE` 相当。判定時に guide-*.wav を再生する。
+    #[serde(default)]
+    pub guide_se: bool,
     /// 選曲画面で選んだセッション全体のモード。
     ///
     /// 旧 profile の `auto_play` を読み込めるよう Option とし、None の場合だけ
@@ -175,6 +209,187 @@ pub struct PlayDefaultsConfig {
     /// beatoraja は LN モードで tail キャップを描画しないため既定 OFF。
     #[serde(default)]
     pub show_ln_tail_cap: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum KeyModeConversionConfig {
+    #[default]
+    Off,
+    SpToDp,
+    SevenToNine,
+    SevenToSix,
+}
+
+impl KeyModeConversionConfig {
+    pub const VALUES: [Self; 4] = [Self::Off, Self::SpToDp, Self::SevenToNine, Self::SevenToSix];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "OFF",
+            Self::SpToDp => "SP TO DP",
+            Self::SevenToNine => "7K TO 9K",
+            Self::SevenToSix => "7K TO 6K",
+        }
+    }
+
+    pub const fn applies_to(self, source: KeyMode) -> bool {
+        match self {
+            Self::Off => false,
+            Self::SpToDp => matches!(source, KeyMode::K5 | KeyMode::K7),
+            Self::SevenToNine | Self::SevenToSix => matches!(source, KeyMode::K7),
+        }
+    }
+
+    pub const fn effective_key_mode(self, source: KeyMode) -> KeyMode {
+        match (self, source) {
+            (Self::SpToDp, KeyMode::K5) => KeyMode::K10,
+            (Self::SpToDp, KeyMode::K7) => KeyMode::K14,
+            (Self::SevenToNine, KeyMode::K7) => KeyMode::K9,
+            (Self::SevenToSix, KeyMode::K7) => KeyMode::K6,
+            _ => source,
+        }
+    }
+
+    pub const fn score_persistence_disabled(
+        self,
+        seven_to_nine_rule_mode: SevenToNineRuleMode,
+    ) -> bool {
+        match self {
+            Self::Off => false,
+            Self::SevenToNine => matches!(seven_to_nine_rule_mode, SevenToNineRuleMode::Keys9),
+            Self::SpToDp | Self::SevenToSix => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(try_from = "u8", into = "u8")]
+pub enum SevenToNinePattern {
+    Sc1Key2To8 = 1,
+    Sc1Key3To9 = 2,
+    Sc2Key3To9 = 3,
+    Sc8Key1To7 = 4,
+    #[default]
+    Sc9Key1To7 = 5,
+    Sc9Key2To8 = 6,
+}
+
+impl SevenToNinePattern {
+    pub const VALUES: [Self; 6] = [
+        Self::Sc1Key2To8,
+        Self::Sc1Key3To9,
+        Self::Sc2Key3To9,
+        Self::Sc8Key1To7,
+        Self::Sc9Key1To7,
+        Self::Sc9Key2To8,
+    ];
+
+    pub const fn value(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Sc1Key2To8 => "SC1 KEY2-8",
+            Self::Sc1Key3To9 => "SC1 KEY3-9",
+            Self::Sc2Key3To9 => "SC2 KEY3-9",
+            Self::Sc8Key1To7 => "SC8 KEY1-7",
+            Self::Sc9Key1To7 => "SC9 KEY1-7",
+            Self::Sc9Key2To8 => "SC9 KEY2-8",
+        }
+    }
+}
+
+impl TryFrom<u8> for SevenToNinePattern {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Self::VALUES
+            .into_iter()
+            .find(|pattern| pattern.value() == value)
+            .ok_or_else(|| format!("sevenToNinePattern must be in 1..=6, got {value}"))
+    }
+}
+
+impl From<SevenToNinePattern> for u8 {
+    fn from(value: SevenToNinePattern) -> Self {
+        value.value()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(try_from = "u8", into = "u8")]
+pub enum SevenToNineType {
+    #[default]
+    Fixed = 0,
+    NoMashing = 1,
+    Alternation = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SevenToNineRuleMode {
+    #[default]
+    #[serde(rename = "7K")]
+    Keys7,
+    #[serde(rename = "9K")]
+    Keys9,
+}
+
+impl SevenToNineRuleMode {
+    pub const VALUES: [Self; 2] = [Self::Keys7, Self::Keys9];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Keys7 => "7K",
+            Self::Keys9 => "9K (NO SAVE)",
+        }
+    }
+}
+
+impl SevenToNineType {
+    pub const VALUES: [Self; 3] = [Self::Fixed, Self::NoMashing, Self::Alternation];
+
+    pub const fn value(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Fixed => "FIXED",
+            Self::NoMashing => "NO MASHING",
+            Self::Alternation => "ALTERNATION",
+        }
+    }
+
+    pub const fn next(self, forward: bool) -> Self {
+        match (self, forward) {
+            (Self::Fixed, true) | (Self::Alternation, false) => Self::NoMashing,
+            (Self::NoMashing, true) | (Self::Fixed, false) => Self::Alternation,
+            (Self::Alternation, true) | (Self::NoMashing, false) => Self::Fixed,
+        }
+    }
+}
+
+impl TryFrom<u8> for SevenToNineType {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Self::VALUES
+            .into_iter()
+            .find(|kind| kind.value() == value)
+            .ok_or_else(|| format!("sevenToNineType must be in 0..=2, got {value}"))
+    }
+}
+
+impl From<SevenToNineType> for u8 {
+    fn from(value: SevenToNineType) -> Self {
+        value.value()
+    }
 }
 
 pub fn default_play_exit_hold_ms() -> u32 {
@@ -696,8 +911,8 @@ pub enum FastSlowDisplayScope {
     /// fast_slow_display_threshold_ms は無視される。
     #[default]
     Auto,
-    /// 判定種別を問わず、|delta| >= fast_slow_display_threshold_ms のときのみ表示。
-    /// PGREAT も対象になる。threshold_ms = 0 なら全判定で常時表示。
+    /// PGREAT は |delta| >= fast_slow_display_threshold_ms のときのみ表示。
+    /// GREAT 以下は常時表示し、threshold_ms = 0 なら PGREAT も常時表示。
     ThresholdMs,
 }
 
@@ -747,6 +962,10 @@ pub struct LaneViewConfig {
     /// HIDDEN レーンカバー量。0..=1000 の整数で持ち、ランタイムでは /1000 して扱う。
     pub hidden: u32,
     pub target_green_number: u32,
+    #[serde(default)]
+    pub constant_enabled: bool,
+    #[serde(default = "default_constant_fade_ms")]
+    pub constant_fade_ms: i32,
 }
 
 /// Per-key-mode values corresponding to beatoraja/LR2orajaED `PlayConfig`.
@@ -774,6 +993,10 @@ pub struct PlayModeConfig {
     #[serde(default = "default_target_green_number")]
     pub target_green_number: u32,
     #[serde(default)]
+    pub constant_enabled: bool,
+    #[serde(default = "default_constant_fade_ms")]
+    pub constant_fade_ms: i32,
+    #[serde(default)]
     pub visual_offset_us: i64,
 }
 
@@ -790,6 +1013,8 @@ impl Default for PlayModeConfig {
             hispeed_auto_adjust: true,
             hidden: 0,
             target_green_number: default_target_green_number(),
+            constant_enabled: false,
+            constant_fade_ms: default_constant_fade_ms(),
             visual_offset_us: 0,
         }
     }
@@ -801,6 +1026,10 @@ pub const fn default_mode_hispeed() -> f32 {
 
 pub const fn default_target_green_number() -> u32 {
     300
+}
+
+pub const fn default_constant_fade_ms() -> i32 {
+    100
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

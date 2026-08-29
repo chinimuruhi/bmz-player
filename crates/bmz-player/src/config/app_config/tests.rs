@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn app_config_loads_missing_logging_section_with_defaults() {
+    let serialized = toml::to_string(&AppConfig::default()).unwrap();
+    let mut document: toml::Value = toml::from_str(&serialized).unwrap();
+    document.as_table_mut().unwrap().remove("logging");
+
+    let config: AppConfig = document.try_into().unwrap();
+
+    assert_eq!(config.logging.level, LogLevel::Info);
+    assert!(config.logging.file_logging);
+}
+
+#[test]
 fn app_config_defaults_screenshot_settings() {
     let config = AppConfig::default();
 
@@ -13,11 +25,22 @@ fn app_config_defaults_scan_symlinks_and_background_frame_limit() {
     let config = AppConfig::default();
 
     assert!(config.scan.follow_symlinks);
+    assert!(!config.scan.use_everything);
     assert!(!config.scan.auto_rescan_on_startup);
     assert_eq!(config.video.vsync_mode, VsyncModeConfig::Vsync);
     assert_eq!(config.video.frame_latency_mode, FrameLatencyModeConfig::Auto);
     assert_eq!(config.video.internal_resolution, InternalResolutionModeConfig::Native);
     assert_eq!(config.video.frame_limit_in_background, 60);
+}
+
+#[test]
+fn app_config_loads_missing_everything_setting_as_disabled() {
+    let toml =
+        toml::to_string(&AppConfig::default()).unwrap().replace("use_everything = false\n", "");
+
+    let config: AppConfig = toml::from_str(&toml).unwrap();
+
+    assert!(!config.scan.use_everything);
 }
 
 #[test]
@@ -138,15 +161,36 @@ fn app_config_round_trips_low_latency_shared_audio_mode() {
 }
 
 #[test]
-fn legacy_exclusive_flag_does_not_enable_low_latency_shared_mode() {
+fn app_config_round_trips_exclusive_audio_mode() {
+    let mut config = AppConfig::default();
+    config.audio.output_mode = AudioOutputMode::Exclusive;
+
+    let toml = toml::to_string(&config).unwrap();
+    let loaded: AppConfig = toml::from_str(&toml).unwrap();
+
+    assert_eq!(loaded.audio.output_mode, AudioOutputMode::Exclusive);
+}
+
+#[test]
+fn legacy_exclusive_flag_migrates_to_exclusive_output_mode() {
     let toml = toml::to_string(&AppConfig::default())
         .unwrap()
-        .replace("output_mode = \"Shared\"\n", "")
-        .replace("exclusive_mode = false", "exclusive_mode = true");
+        .replace("output_mode = \"Shared\"\n", "exclusive_mode = true\n");
 
     let config: AppConfig = toml::from_str(&toml).unwrap();
 
-    assert!(config.audio.exclusive_mode);
+    assert_eq!(config.audio.output_mode, AudioOutputMode::Exclusive);
+    assert!(!toml::to_string(&config).unwrap().contains("exclusive_mode"));
+}
+
+#[test]
+fn explicit_output_mode_takes_priority_over_legacy_exclusive_flag() {
+    let toml = toml::to_string(&AppConfig::default())
+        .unwrap()
+        .replace("output_mode = \"Shared\"", "output_mode = \"Shared\"\nexclusive_mode = true");
+
+    let config: AppConfig = toml::from_str(&toml).unwrap();
+
     assert_eq!(config.audio.output_mode, AudioOutputMode::Shared);
 }
 

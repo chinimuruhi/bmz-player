@@ -421,19 +421,30 @@ impl LibraryDatabase {
     ) -> Result<Option<ChartNormalizationAnalysis>> {
         self.conn
             .query_row(
-                "SELECT loudness_lufs
+                "SELECT loudness_lufs, short_term_lufs, sample_peak
                  FROM chart_analysis
                  WHERE chart_id = ?1
                     AND loudness_analysis_version = ?2
-                    AND loudness_lufs IS NOT NULL",
+                    AND loudness_lufs IS NOT NULL
+                    AND short_term_lufs IS NOT NULL
+                    AND sample_peak IS NOT NULL",
                 params![chart_id, CHART_LOUDNESS_ANALYSIS_VERSION],
                 |row| {
                     let loudness_lufs: f32 = row.get(0)?;
-                    Ok(ChartNormalizationAnalysis { loudness_lufs })
+                    let short_term_lufs: f32 = row.get(1)?;
+                    let sample_peak: f32 = row.get(2)?;
+                    Ok(ChartNormalizationAnalysis { loudness_lufs, short_term_lufs, sample_peak })
                 },
             )
             .optional()
-            .map(|value| value.filter(|analysis| analysis.loudness_lufs.is_finite()))
+            .map(|value| {
+                value.filter(|analysis| {
+                    analysis.loudness_lufs.is_finite()
+                        && analysis.short_term_lufs.is_finite()
+                        && analysis.sample_peak.is_finite()
+                        && analysis.sample_peak > 0.0
+                })
+            })
             .map_err(Into::into)
     }
 
@@ -446,10 +457,18 @@ impl LibraryDatabase {
             .prepare_cached(
                 "UPDATE chart_analysis
              SET loudness_lufs = ?2,
-                 loudness_analysis_version = ?3
+                 short_term_lufs = ?3,
+                 sample_peak = ?4,
+                 loudness_analysis_version = ?5
              WHERE chart_id = ?1",
             )?
-            .execute(params![chart_id, analysis.loudness_lufs, CHART_LOUDNESS_ANALYSIS_VERSION,])?;
+            .execute(params![
+                chart_id,
+                analysis.loudness_lufs,
+                analysis.short_term_lufs,
+                analysis.sample_peak,
+                CHART_LOUDNESS_ANALYSIS_VERSION,
+            ])?;
         Ok(())
     }
 
@@ -553,7 +572,22 @@ impl LibraryDatabase {
     /// `query` as a case-insensitive substring. Equivalent to beatoraja
     /// `SQLiteSongDatabaseAccessor.getSongDatasByText`.
     pub fn search_charts(&self, query: &str) -> Result<Vec<ChartListItem>> {
+        self.search_charts_with_limit(query, None)
+    }
+
+    /// Searches chart metadata while limiting the rows materialized by SQLite.
+    /// UI callers should use this instead of collecting every match and truncating it.
+    pub fn search_charts_limited(&self, query: &str, limit: u32) -> Result<Vec<ChartListItem>> {
+        self.search_charts_with_limit(query, Some(limit))
+    }
+
+    fn search_charts_with_limit(
+        &self,
+        query: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<ChartListItem>> {
         let pattern = format!("%{}%", escape_like(query));
+        let limit_clause = if limit.is_some() { " LIMIT ?2" } else { "" };
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {CHART_LIST_ITEM_COLUMNS}
             FROM charts
@@ -563,10 +597,16 @@ impl LibraryDatabase {
                OR subartist LIKE ?1 ESCAPE '\\'
                OR genre LIKE ?1 ESCAPE '\\'
             GROUP BY sha256
-            ORDER BY title COLLATE NOCASE, artist COLLATE NOCASE, play_level COLLATE NOCASE"
+            ORDER BY title COLLATE NOCASE, artist COLLATE NOCASE, play_level COLLATE NOCASE
+            {limit_clause}"
         ))?;
-        let rows = stmt.query_map(params![pattern], chart_list_item_from_row)?;
-        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        if let Some(limit) = limit {
+            let rows = stmt.query_map(params![pattern, limit], chart_list_item_from_row)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        } else {
+            let rows = stmt.query_map(params![pattern], chart_list_item_from_row)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        }
     }
 
     pub fn primary_chart_file_path(&self, chart_id: i64) -> Result<Option<String>> {

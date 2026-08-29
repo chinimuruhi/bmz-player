@@ -116,6 +116,7 @@ pub fn load_prepared_play_session_for_chart_with_input_backend(
         library_db,
         chart_id,
         PlaySessionOptions { rule_mode: profile.play.rule_mode, ..options.clone() },
+        chart_normalization_output_gain(profile),
     )?;
     Ok(build_prepared_play_session_from_preloaded(preloaded, profile, options, input_backend))
 }
@@ -124,20 +125,29 @@ pub fn preload_play_session_for_chart(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
+    normalization_output_gain: f32,
 ) -> Result<PreloadedPlaySession> {
-    preload_play_session_for_chart_with_progress(library_db, chart_id, options, |_, _| {})
+    preload_play_session_for_chart_with_progress(
+        library_db,
+        chart_id,
+        options,
+        normalization_output_gain,
+        |_, _| {},
+    )
 }
 
 pub fn preload_play_session_for_chart_with_progress(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
+    normalization_output_gain: f32,
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
     preload_play_session_for_chart_with_callbacks(
         library_db,
         chart_id,
         options,
+        normalization_output_gain,
         |_| {},
         on_progress,
     )
@@ -151,6 +161,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
     library_db: &LibraryDatabase,
     chart_id: i64,
     options: PlaySessionOptions,
+    normalization_output_gain: f32,
     on_chart: impl FnOnce(&PreparedPlayChart),
     on_progress: impl FnMut(usize, usize),
 ) -> Result<PreloadedPlaySession> {
@@ -163,8 +174,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         let mut opponent_options = options.clone();
         opponent_options.session_mode = SessionMode::Normal;
         opponent_options.autoplay = false;
-        opponent_options.practice_mode = false;
-        opponent_options.seven_to_six = false;
+        opponent_options.key_mode_conversion = KeyModeConversionConfig::Off;
         opponent_options.score_save_disabled = true;
         opponent_options.assist = AssistOptionConfig::default();
         opponent_options.assist_runtime = Default::default();
@@ -176,6 +186,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         opponent_options.double_option = opponent.double_option;
         opponent_options.arrange_seed = opponent.arrange_seed;
         opponent_options.arrange_seed_2p = opponent.arrange_seed_2p;
+        opponent_options.legacy_arrange_seed = opponent.legacy_arrange_seed;
         if let Some(packed) = opponent.packed_seed.and_then(|seed| u64::try_from(seed).ok())
             && let Some(seeds) = RandomOptionSeeds::unpack(
                 packed,
@@ -189,6 +200,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         opponent_options.arrange_pattern = opponent.arrange_pattern.clone();
         opponent_options.s_random_scheme = opponent.s_random_scheme;
         opponent_options.s_random_scheme_2p = opponent.s_random_scheme_2p;
+        opponent_options.h_random_threshold_ms = opponent.h_random_threshold_ms;
         Some(Arc::new(
             load_transformed_chart_for_play(library_db, chart_id, &opponent_options)?.chart,
         ))
@@ -196,8 +208,35 @@ pub fn preload_play_session_for_chart_with_callbacks(
         None
     };
     let chart_parse_elapsed = chart_parse_started_at.elapsed();
+    let skin_attempt = bmz_render::snapshot::SkinAttemptState {
+        source_key_mode: Some(imported.source_key_mode),
+        effective_key_mode: Some(imported.chart.metadata.key_mode),
+        seven_to_six: imported.applied_arrange.seven_to_six(),
+        seven_to_nine_pattern: if imported.applied_arrange.key_mode_conversion
+            == KeyModeConversionConfig::SevenToNine
+        {
+            imported.applied_arrange.seven_to_nine_pattern.value()
+        } else {
+            0
+        },
+        seven_to_nine_type: imported.applied_arrange.seven_to_nine_type.value(),
+        source_ln_profile_bits: Some(crate::skin_extension::source_ln_profile_bits(
+            imported.source_ln_profile,
+        )),
+        session_mode_index: Some(crate::skin_extension::session_mode_index(options.session_mode)),
+        double_option_index: Some(crate::skin_extension::double_option_index(
+            imported.applied_arrange.double_option,
+        )),
+        hsfix_index: Some(crate::skin_extension::hsfix_index(options.hs_fix)),
+        ln_mode_index: Some(crate::skin_extension::long_note_mode_index(
+            imported.chart.metadata.long_note_mode,
+        )),
+        has_bga: Some(imported.chart.metadata.has_bga),
+        has_random_sequence: Some(imported.chart.metadata.has_bms_random),
+        ..Default::default()
+    };
     let mut primary_chart = imported.chart;
-    if options.session_mode.is_battle()
+    if (options.session_mode.is_battle() || options.battle_opponent.is_some())
         && let Some(opponent) = opponent_chart.as_deref()
     {
         apply_battle_opponent_chart(&mut primary_chart, opponent);
@@ -208,6 +247,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
             &chart,
         ),
         chart,
+        skin_attempt,
         source_ln_profile: imported.source_ln_profile,
         chart_length_ms,
         applied_arrange: imported.applied_arrange,
@@ -249,6 +289,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
         chart_id,
         &prepared_chart.chart,
         &audio,
+        normalization_output_gain,
     )?;
     tracing::info!(
         chart_id,
@@ -262,6 +303,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
 
     Ok(PreloadedPlaySession {
         chart: prepared_chart.chart,
+        skin_attempt: prepared_chart.skin_attempt,
         source_ln_profile: prepared_chart.source_ln_profile,
         chart_length_ms: prepared_chart.chart_length_ms,
         audio,
@@ -290,6 +332,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
 ) -> PreloadedPlaySession {
     let PreparedPlayChart {
         chart,
+        skin_attempt,
         source_ln_profile,
         chart_length_ms,
         render_snapshot_cache,
@@ -314,6 +357,7 @@ pub fn preload_play_session_reloading_audio_with_progress(
     );
     PreloadedPlaySession {
         chart,
+        skin_attempt,
         source_ln_profile,
         chart_length_ms,
         audio,
@@ -379,16 +423,32 @@ pub(super) fn load_transformed_chart_for_play(
     // LN / arrange より前に適用し、practice 切出しもシフト後時刻を使う。
     apply_start_note_margin(&mut chart);
     let source_key_mode = chart.metadata.key_mode;
-    let seven_to_six = options.seven_to_six && source_key_mode == KeyMode::K7;
-    let battle_presentation =
-        options.session_mode.is_battle() && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
-    // SessionMode の battle は表示用に2P側を作るが、通常の BATTLE 譜面オプションとは
-    // 異なり、1P側のスコアキーと保存可否を維持する。
-    let applied_double_option = if seven_to_six || battle_presentation {
-        DoubleOption::Off
+    let battle_presentation = (options.session_mode.is_battle()
+        || options.battle_opponent.is_some())
+        && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
+    let battle_option =
+        matches!(options.double_option, DoubleOption::Battle | DoubleOption::BattleAutoScratch);
+    let requested_conversion = if battle_presentation || battle_option {
+        KeyModeConversionConfig::Off
     } else {
-        options.double_option.normalize_for_key_mode(source_key_mode)
+        options.key_mode_conversion
     };
+    let key_mode_conversion = if requested_conversion.applies_to(source_key_mode) {
+        requested_conversion
+    } else {
+        KeyModeConversionConfig::Off
+    };
+    let seven_to_six = key_mode_conversion == KeyModeConversionConfig::SevenToSix;
+    let seven_to_nine = key_mode_conversion == KeyModeConversionConfig::SevenToNine;
+    let sp_to_dp = key_mode_conversion == KeyModeConversionConfig::SpToDp;
+    // SessionMode のbattle、または明示したbattle targetは表示用に2P側を作るが、
+    // 通常のBATTLE譜面オプションとは異なり、1P側のスコアキーと保存可否を維持する。
+    let applied_double_option =
+        if key_mode_conversion != KeyModeConversionConfig::Off || battle_presentation {
+            DoubleOption::Off
+        } else {
+            options.double_option.normalize_for_key_mode(source_key_mode)
+        };
     let ln_policy = course_score_ln_policy(
         options.ln_policy_setting,
         options.ln_mode_override,
@@ -401,7 +461,7 @@ pub(super) fn load_transformed_chart_for_play(
         options.rule_mode,
     );
     apply_score_ln_policy_to_chart(ln_policy, &mut chart);
-    let assist_runtime = crate::assist::apply_chart_assists(
+    let mut assist_runtime = crate::assist::apply_chart_assists(
         &mut chart,
         options.assist,
         options.arrange_seed.unwrap_or(0),
@@ -425,25 +485,56 @@ pub(super) fn load_transformed_chart_for_play(
             arrange_seed.expect("7K to 6K seed"),
             options.legacy_arrange_seed,
         );
+    } else if sp_to_dp {
+        apply_sp_to_dp(&mut chart);
     }
     apply_double_option(&mut chart, applied_double_option);
-    if !seven_to_six && battle_presentation && options.battle_opponent.is_none() {
+    if key_mode_conversion == KeyModeConversionConfig::Off
+        && battle_presentation
+        && options.battle_opponent.is_none()
+    {
         apply_battle_double_option(&mut chart);
     }
+    let second_arrange = if matches!(
+        key_mode_conversion,
+        KeyModeConversionConfig::SevenToNine | KeyModeConversionConfig::SevenToSix
+    ) {
+        ArrangeOption::Normal
+    } else {
+        options.arrange_2p
+    };
     let mut applied_arrange = apply_arrange_pair(
         &mut chart,
         arrange,
-        if seven_to_six { ArrangeOption::Normal } else { options.arrange_2p },
+        second_arrange,
         arrange_seed,
         options.arrange_seed_2p,
         options.legacy_arrange_seed,
         options.s_random_scheme,
         options.s_random_scheme_2p,
+        options.h_random_threshold_ms,
         options.arrange_pattern.as_deref(),
     );
+    crate::assist::merge_arrange_assist_level(
+        &mut assist_runtime,
+        applied_arrange.arrange,
+        applied_arrange.arrange_2p,
+    );
+    if seven_to_nine {
+        apply_seven_to_nine(
+            &mut chart,
+            options.seven_to_nine_pattern,
+            options.seven_to_nine_type,
+            options.h_random_threshold_ms.unwrap_or(125),
+        );
+    }
     applied_arrange.double_option = applied_double_option;
     applied_arrange.bms_random_choices = import.bms_random_choices;
-    applied_arrange.seven_to_six = seven_to_six;
+    applied_arrange.key_mode_conversion = key_mode_conversion;
+    applied_arrange.seven_to_nine_pattern = options.seven_to_nine_pattern;
+    applied_arrange.seven_to_nine_type = options.seven_to_nine_type;
+    applied_arrange.seven_to_nine_rule_mode = options.seven_to_nine_rule_mode;
+    let conversion_persistence_disabled = applied_arrange.score_persistence_disabled();
 
     Ok(TransformedPlayChart {
         chart,
@@ -451,7 +542,7 @@ pub(super) fn load_transformed_chart_for_play(
         applied_arrange,
         score_key,
         assist_runtime,
-        score_save_disabled: options.score_save_disabled || seven_to_six,
+        score_save_disabled: options.score_save_disabled || conversion_persistence_disabled,
         source_key_mode,
     })
 }
@@ -526,27 +617,36 @@ pub fn build_practice_prepared_from_preloaded(
         false,
         options.s_random_scheme,
         options.s_random_scheme_2p,
+        options.h_random_threshold_ms,
         None,
     );
     applied_arrange.double_option = double_option;
-    applied_arrange.seven_to_six = preloaded.applied_arrange.seven_to_six;
-    options.practice_mode = true;
-    options.assist_runtime = preloaded.assist_runtime;
+    applied_arrange.key_mode_conversion = preloaded.applied_arrange.key_mode_conversion;
+    applied_arrange.seven_to_nine_pattern = preloaded.applied_arrange.seven_to_nine_pattern;
+    applied_arrange.seven_to_nine_type = preloaded.applied_arrange.seven_to_nine_type;
+    applied_arrange.seven_to_nine_rule_mode = preloaded.applied_arrange.seven_to_nine_rule_mode;
+    options.session_mode = SessionMode::Practice;
+    let mut assist_runtime = preloaded.assist_runtime;
+    crate::assist::merge_arrange_assist_level(
+        &mut assist_runtime,
+        applied_arrange.arrange,
+        applied_arrange.arrange_2p,
+    );
+    options.assist_runtime = assist_runtime;
     options.autoplay = false;
     options.replay_player = None;
-    options.gauge_override = Some(property.gauge.gauge_type());
+    let (practice_gauge, gauge_auto_shift, bottom_shiftable_gauge) =
+        practice_gauge_runtime_options(profile, property.gauge, &options);
+    options.gauge_override = Some(practice_gauge);
     options.gauge_property = property.gauge_category;
-    options.gauge_auto_shift = if property.gauge == PracticeGaugeType::AutoShift {
-        GaugeAutoShiftMode::BestClear
-    } else {
-        GaugeAutoShiftMode::Off
-    };
+    options.gauge_auto_shift = gauge_auto_shift;
+    options.bottom_shiftable_gauge = bottom_shiftable_gauge;
     options.arrange = property.arrange;
     options.arrange_2p = property.arrange_2p;
     options.double_option = double_option;
     options.playback_rate_percent = property.playback_rate_percent;
     let target = TargetOption::None.as_string();
-    let practice_mode = options.practice_mode;
+    let practice_mode = options.session_mode.is_practice();
     options.score_save_disabled |= preloaded.score_save_disabled;
     let score_save_disabled = options.score_save_disabled;
     let playback_rate_percent = options.playback_rate_percent;
@@ -556,8 +656,25 @@ pub fn build_practice_prepared_from_preloaded(
     apply_practice_start_gauge(&mut session.gauge, property.start_gauge);
     let render_snapshot_cache =
         crate::screens::play_snapshot::PlayRenderSnapshotCache::from_chart(&session.chart);
+    let mut skin_attempt = preloaded.skin_attempt;
+    skin_attempt.session_mode_index =
+        Some(crate::skin_extension::session_mode_index(SessionMode::Practice));
+    skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
+    skin_attempt.double_option_index =
+        Some(crate::skin_extension::double_option_index(applied_arrange.double_option));
+    skin_attempt.hsfix_index = usize::try_from(session.hsfix_index).ok();
+    skin_attempt.gauge_auto_shift_index =
+        Some(crate::skin_extension::gauge_auto_shift_index(session.gauge.auto_shift_mode));
+    skin_attempt.bottom_shiftable_gauge_index = Some(
+        crate::skin_extension::bottom_shiftable_gauge_index(session.gauge.bottom_shiftable_gauge),
+    );
+    skin_attempt.judge_algorithm_index =
+        Some(crate::skin_extension::judge_algorithm_index(session.judge.algorithm));
+    skin_attempt.ln_mode_index =
+        Some(crate::skin_extension::long_note_mode_index(session.chart.metadata.long_note_mode));
     PreparedPlaySession {
         session,
+        skin_attempt,
         source_ln_profile: preloaded.source_ln_profile,
         chart_length_ms: preloaded.chart_length_ms,
         audio: preloaded.audio,
@@ -572,6 +689,41 @@ pub fn build_practice_prepared_from_preloaded(
         score_save_disabled,
         playback_rate_percent,
     }
+}
+
+/// beatoraja は Practice のゲージ種類とプロファイルの GAUGE AUTO SHIFT を
+/// 独立して扱う。SELECT TO UNDER の上限だけはプロファイル側の選択ゲージになる。
+pub(super) fn practice_gauge_runtime_options(
+    profile: &ProfileConfig,
+    practice_gauge: PracticeGaugeType,
+    options: &PlaySessionOptions,
+) -> (GaugeType, GaugeAutoShiftMode, GaugeType) {
+    let select_gauge =
+        options.gauge_override.unwrap_or_else(|| gauge_type_from_config(profile.play.gauge));
+    let profile_auto_shift = if options.gauge_override.is_some() {
+        options.gauge_auto_shift
+    } else {
+        gauge_auto_shift_from_config(profile.play.gauge, profile.play.gauge_auto_shift)
+    };
+    let bottom_shiftable_gauge = if options.gauge_override.is_some() {
+        options.bottom_shiftable_gauge
+    } else {
+        bottom_shiftable_gauge_from_config(profile.play.bottom_shiftable_gauge)
+    };
+    // 旧BMZのPractice設定にだけ存在する AutoShift は従来通りBEST CLEARへ移行する。
+    let auto_shift = if practice_gauge == PracticeGaugeType::AutoShift
+        && profile_auto_shift == GaugeAutoShiftMode::Off
+    {
+        GaugeAutoShiftMode::BestClear
+    } else {
+        profile_auto_shift
+    };
+    let selected = if auto_shift == GaugeAutoShiftMode::SelectToUnder {
+        select_gauge
+    } else {
+        practice_gauge.gauge_type()
+    };
+    (selected, auto_shift, bottom_shiftable_gauge)
 }
 
 pub fn build_prepared_play_session_from_preloaded(
@@ -589,7 +741,7 @@ pub fn build_prepared_play_session_from_preloaded(
         .as_ref()
         .map(|target| target.name.clone())
         .unwrap_or_else(|| options.target.as_string());
-    let practice_mode = options.practice_mode;
+    let practice_mode = options.session_mode.is_practice();
     let score_save_disabled = options.score_save_disabled;
     let playback_rate_percent = options.playback_rate_percent;
     options.opponent_chart = preloaded.opponent_chart;
@@ -597,8 +749,21 @@ pub fn build_prepared_play_session_from_preloaded(
         build_game_session_with_input_backend(preloaded.chart, profile, options, input_backend);
     let mut session = session;
     session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
+    let mut skin_attempt = preloaded.skin_attempt;
+    skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
+    skin_attempt.hsfix_index = usize::try_from(session.hsfix_index).ok();
+    skin_attempt.gauge_auto_shift_index =
+        Some(crate::skin_extension::gauge_auto_shift_index(session.gauge.auto_shift_mode));
+    skin_attempt.bottom_shiftable_gauge_index = Some(
+        crate::skin_extension::bottom_shiftable_gauge_index(session.gauge.bottom_shiftable_gauge),
+    );
+    skin_attempt.judge_algorithm_index =
+        Some(crate::skin_extension::judge_algorithm_index(session.judge.algorithm));
+    skin_attempt.ln_mode_index =
+        Some(crate::skin_extension::long_note_mode_index(session.chart.metadata.long_note_mode));
     PreparedPlaySession {
         session,
+        skin_attempt,
         source_ln_profile: preloaded.source_ln_profile,
         chart_length_ms: preloaded.chart_length_ms,
         audio: preloaded.audio,
@@ -620,9 +785,17 @@ pub(super) fn load_or_compute_chart_normalization_gain(
     chart_id: i64,
     chart: &PlayableChart,
     audio: &AudioEngine,
+    normalization_output_gain: f32,
 ) -> Result<f32> {
     if let Some(analysis) = library_db.chart_normalization_analysis_by_chart_id(chart_id)? {
-        return Ok(play_normalization_gain_for_loudness(analysis.loudness_lufs));
+        return Ok(play_normalization_gain_for_analysis_with_output_gain(
+            LoudnessAnalysis {
+                loudness_lufs: analysis.loudness_lufs,
+                short_term_lufs: analysis.short_term_lufs,
+                peak_abs: analysis.sample_peak,
+            },
+            normalization_output_gain,
+        ));
     }
 
     let Some(analysis) = analyze_chart_loudness(chart, &audio.samples, audio.output_sample_rate())
@@ -630,12 +803,19 @@ pub(super) fn load_or_compute_chart_normalization_gain(
         tracing::warn!(chart_id, "failed to analyze chart loudness; using unity gain");
         return Ok(1.0);
     };
-    let stored = ChartNormalizationAnalysis { loudness_lufs: analysis.loudness_lufs };
+    let stored = ChartNormalizationAnalysis {
+        loudness_lufs: analysis.loudness_lufs,
+        short_term_lufs: analysis.short_term_lufs,
+        sample_peak: analysis.peak_abs,
+    };
     library_db.write_chart_normalization_analysis(chart_id, stored)?;
-    let play_gain = play_normalization_gain_for_loudness(stored.loudness_lufs);
+    let play_gain =
+        play_normalization_gain_for_analysis_with_output_gain(analysis, normalization_output_gain);
     tracing::info!(
         chart_id,
         loudness_lufs = stored.loudness_lufs,
+        short_term_lufs = stored.short_term_lufs,
+        sample_peak = stored.sample_peak,
         chart_normalization_gain = play_gain,
         "stored chart volume normalization analysis"
     );

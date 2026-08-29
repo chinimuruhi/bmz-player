@@ -3,6 +3,7 @@ use super::jobs::sync_cli_jobs;
 use super::*;
 
 pub(super) async fn upload_local(
+    app_paths: &AppPaths,
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     options: IrLocalUploadOptions,
@@ -10,10 +11,9 @@ pub(super) async fn upload_local(
     all: bool,
 ) -> Result<()> {
     if all {
-        return upload_all_local(profile_paths, profile, options).await;
+        return upload_all_local(app_paths, profile_paths, profile, options).await;
     }
 
-    let app_paths = resolve_app_paths()?;
     crate::storage::migration::migrate_library_db(&app_paths.library_db)?;
     crate::storage::migration::migrate_score_db(&profile_paths.score_db)?;
     crate::storage::migration::migrate_network_db(&profile_paths.network_db)?;
@@ -123,6 +123,7 @@ pub(super) async fn upload_local(
 }
 
 async fn upload_all_local(
+    app_paths: &AppPaths,
     profile_paths: &ProfilePaths,
     profile: &ProfileConfig,
     options: IrLocalUploadOptions,
@@ -131,7 +132,6 @@ async fn upload_all_local(
         bail!("ir upload-local --all cannot be combined with --dry-run");
     }
 
-    let app_paths = resolve_app_paths()?;
     crate::storage::migration::migrate_library_db(&app_paths.library_db)?;
     crate::storage::migration::migrate_score_db(&profile_paths.score_db)?;
     crate::storage::migration::migrate_network_db(&profile_paths.network_db)?;

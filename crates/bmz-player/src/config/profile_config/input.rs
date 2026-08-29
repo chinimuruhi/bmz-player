@@ -2,6 +2,9 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UiInputConfig {
+    /// UI action binding schema version. Missing values are migrated on load.
+    #[serde(default)]
+    pub version: u32,
     #[serde(default = "default_ui_bindings")]
     pub bindings: Vec<BindingConfigEntry>,
 }
@@ -157,6 +160,7 @@ pub enum ScratchDirectionConfig {
 #[serde(rename_all = "PascalCase")]
 pub enum InputActionConfig {
     E1,
+    /// Deprecated compatibility value. Runtime selection uses play-lane bindings.
     #[serde(rename = "Enter")]
     SelectEnter,
     E2,
@@ -168,14 +172,36 @@ pub enum InputActionConfig {
     SelectOptionGauge,
     #[serde(rename = "OptionAssist")]
     SelectOptionAssist,
+    /// Deprecated compatibility value. Runtime BGA selection uses KEY1.
     #[serde(rename = "OptionBga")]
     SelectOptionBga,
+    #[serde(rename = "OpenFolder")]
+    SelectOpenFolder,
+    #[serde(rename = "Reload")]
+    SelectReload,
+    #[serde(rename = "AutoplayFolder")]
+    SelectAutoplayFolder,
+    #[serde(rename = "OpenIr")]
+    SelectOpenIr,
+    #[serde(rename = "OpenKeyConfig")]
+    SelectOpenKeyConfig,
+    Screenshot,
+    #[serde(rename = "RivalCycle")]
+    SelectRivalCycle,
+    #[serde(rename = "OpenDocuments")]
+    SelectOpenDocuments,
     #[serde(rename = "FavoriteSong")]
     SelectFavoriteSong,
     #[serde(rename = "FavoriteChart")]
     SelectFavoriteChart,
     #[serde(rename = "SameFolder")]
     SelectSameFolder,
+    #[serde(rename = "ModeFilter")]
+    SelectModeFilter,
+    #[serde(rename = "Sort")]
+    SelectSort,
+    #[serde(rename = "LnMode")]
+    SelectLnMode,
     #[serde(rename = "DifficultyFilter")]
     SelectDifficultyFilter,
     #[serde(rename = "ReplayCycle")]

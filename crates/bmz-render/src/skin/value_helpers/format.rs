@@ -96,7 +96,7 @@ pub(super) fn number_padding(value: &SkinValueDef) -> NumberPadding {
         return NumberPadding::Zero;
     }
     let image_cells = value.divx.max(1).saturating_mul(value.divy.max(1));
-    if !value_layout_is_signed(value) && !ref_id_is_signed(value.ref_id) && image_cells % 10 != 0 {
+    if !value_layout_is_signed(value) && image_cells % 10 != 0 {
         return NumberPadding::Blank;
     }
     NumberPadding::None
@@ -218,10 +218,12 @@ pub(super) fn display_signed_number_digits_with_row_order(
 
 /// `ref_id` が符号付き表示を要求する Result 系 ref か。
 /// beatoraja の `NUMBER_DIFF_*` 系と次 DJ LEVEL までの差分を対象とする。
+#[cfg(test)]
 pub(super) fn ref_id_is_signed(ref_id: i32) -> bool {
     matches!(ref_id, 152 | 153 | 154 | 172 | 175 | 178 | SKIN_REF_BMZ_SCORE_GRADE_NEAREST_DIFF)
 }
 
+#[cfg(test)]
 pub(super) fn value_ref_is_signed_for_state(ref_id: i32, state: &SkinDrawState) -> bool {
     ref_id_is_signed(ref_id)
         || (ref_id == 12 && state.select_screen && state.select_option_panel == 3)
@@ -235,16 +237,15 @@ pub(super) fn value_layout_is_signed(value: &SkinValueDef) -> bool {
     cells >= 24 && cells % 24 == 0
 }
 
-pub(super) fn value_is_signed_for_state(value: &SkinValueDef, state: &SkinDrawState) -> bool {
-    value_ref_is_signed_for_state(value.ref_id, state) || value_layout_is_signed(value)
-}
-
 pub(super) fn signed_number_render_for_value(
     value: &SkinValueDef,
-    state: &SkinDrawState,
+    _state: &SkinDrawState,
 ) -> SignedNumberRender {
-    if value_is_signed_for_state(value, state) {
-        SignedNumberRender::Signed(signed_number_row_order_for_value(value, state))
+    // beatoraja chooses SkinNumber's positive/negative image sets solely from
+    // the 24-cell layout. A signed ref rendered with an 11-cell digit sheet
+    // uses its absolute value; the skin supplies a separate minus label.
+    if value_layout_is_signed(value) {
+        SignedNumberRender::Signed(signed_number_row_order_for_value(value, _state))
     } else {
         SignedNumberRender::Unsigned
     }

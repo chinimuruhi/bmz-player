@@ -101,22 +101,23 @@ pub fn play_skin_selection_for(skin: &SkinConfig, key_mode: KeyMode) -> PlaySkin
 }
 
 /// Battle SessionMode では source 5K/7K のみ専用スロットを使う。
-/// それ以外のキーモードと Normal の G-BATTLE は通常スロットを使う。
+/// 専用スロットが未設定なら同じ source key mode の通常スロットへ戻し、
+/// それ以外のキーモードも通常スロットを使う。
 pub fn play_skin_selection_for_session(
     skin: &SkinConfig,
     key_mode: KeyMode,
     session_mode: SessionMode,
 ) -> PlaySkinSelection<'_> {
-    if !session_mode.is_battle() {
+    if !session_mode.uses_battle_skin() {
         return play_skin_selection_for(skin, key_mode);
     }
     match key_mode {
         KeyMode::K5 => {
             if skin.battle5.trim().is_empty() {
-                play_skin_selection_for(skin, KeyMode::K10)
+                play_skin_selection_for(skin, KeyMode::K5)
             } else {
                 PlaySkinSelection {
-                    key_mode: KeyMode::K10,
+                    key_mode: KeyMode::K5,
                     path: skin.battle5.as_str(),
                     options: &skin.battle5_options,
                     files: &skin.battle5_files,
@@ -126,10 +127,10 @@ pub fn play_skin_selection_for_session(
         }
         KeyMode::K7 => {
             if skin.battle7.trim().is_empty() {
-                play_skin_selection_for(skin, KeyMode::K14)
+                play_skin_selection_for(skin, KeyMode::K7)
             } else {
                 PlaySkinSelection {
-                    key_mode: KeyMode::K14,
+                    key_mode: KeyMode::K7,
                     path: skin.battle7.as_str(),
                     options: &skin.battle7_options,
                     files: &skin.battle7_files,

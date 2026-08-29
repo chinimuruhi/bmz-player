@@ -8,6 +8,7 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         KeyMode::K7,
         None,
         "Player",
+        Default::default(),
     );
     assert_eq!(normal.text_values.get(&2).map(String::as_str), Some("Player"));
     assert_eq!(normal.option_values.get(&61), Some(&true));
@@ -24,12 +25,57 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         Some(&true)
     );
 
+    let source_ln_bits = bmz_render::snapshot::SKIN_SOURCE_LN_UNDEFINED_BIT
+        | bmz_render::snapshot::SKIN_SOURCE_LN_DEFINED_HCN_BIT;
+    let attempt = bmz_render::snapshot::SkinAttemptState {
+        source_key_mode: Some(KeyMode::K7),
+        effective_key_mode: Some(KeyMode::K6),
+        seven_to_six: true,
+        seven_to_nine_pattern: 5,
+        seven_to_nine_type: 2,
+        source_ln_profile_bits: Some(source_ln_bits),
+        session_mode_index: Some(3),
+        ln_mode_index: Some(2),
+        has_bga: Some(false),
+        has_random_sequence: Some(true),
+        ..Default::default()
+    };
+    let extended = lua_runtime_state_for_play(
+        &PlayStartOptions::default(),
+        false,
+        KeyMode::K6,
+        None,
+        "Player",
+        attempt,
+    );
+    assert_eq!(
+        extended.number_values.get(&bmz_render::skin::SKIN_REF_BMZ_SOURCE_KEY_MODE),
+        Some(&7)
+    );
+    assert_eq!(
+        extended.number_values.get(&bmz_render::skin::SKIN_REF_BMZ_SOURCE_LN_PROFILE),
+        Some(&9)
+    );
+    assert_eq!(
+        extended.event_index_values.get(&bmz_render::skin::SKIN_REF_BMZ_SELECT_SESSION_MODE),
+        Some(&3)
+    );
+    assert_eq!(
+        extended.option_values.get(&bmz_render::skin::SKIN_OPTION_BMZ_SEVEN_TO_SIX),
+        Some(&true)
+    );
+    assert_eq!(extended.event_index_values.get(&360), Some(&5));
+    assert_eq!(extended.event_index_values.get(&361), Some(&2));
+    assert_eq!(extended.option_values.get(&170), Some(&true));
+    assert_eq!(extended.option_values.get(&179), Some(&true));
+
     let played_zero = lua_runtime_state_for_play(
         &PlayStartOptions::default(),
         false,
         KeyMode::K7,
         Some(0),
         "Player",
+        Default::default(),
     );
     assert_eq!(played_zero.number_values.get(&150), Some(&0));
     assert_eq!(
@@ -43,6 +89,7 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         KeyMode::K7,
         Some(1234),
         "Player",
+        Default::default(),
     );
     assert_eq!(played.number_values.get(&150), Some(&1234));
     assert_eq!(played.number_values.get(&170), Some(&1234));
@@ -57,6 +104,7 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         KeyMode::K7,
         None,
         "Player",
+        Default::default(),
     );
     assert_eq!(autoplay.option_values.get(&33), Some(&true));
     assert_eq!(autoplay.option_values.get(&60), Some(&true));
@@ -71,18 +119,22 @@ fn play_lua_runtime_state_exposes_play_mode_and_score_save_options() {
         KeyMode::K7,
         None,
         "Player",
+        Default::default(),
     );
     assert_eq!(replay.option_values.get(&33), Some(&false));
     assert_eq!(replay.option_values.get(&84), Some(&true));
 
     let practice = lua_runtime_state_for_play(
-        &PlayStartOptions { practice_mode: true, ..PlayStartOptions::default() },
-        false,
+        &PlayStartOptions { session_mode: SessionMode::Practice, ..PlayStartOptions::default() },
+        true,
         KeyMode::K7,
         Some(1234),
         "Player",
+        Default::default(),
     );
     assert_eq!(practice.option_values.get(&60), Some(&true));
+    assert_eq!(practice.option_values.get(&32), Some(&true));
+    assert_eq!(practice.option_values.get(&33), Some(&false));
     assert_eq!(practice.option_values.get(&82), Some(&true));
     assert_eq!(practice.option_values.get(&1080), Some(&true));
     assert_eq!(practice.number_values.get(&150), Some(&0));
@@ -509,7 +561,18 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false
+            KeyModeConversionConfig::Off,
+            false,
+        ),
+        KeyMode::K14
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Battle,
+            SessionMode::Normal,
+            KeyModeConversionConfig::SevenToNine,
+            false,
         ),
         KeyMode::K14
     );
@@ -518,6 +581,7 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::BattleAutoScratch,
             SessionMode::Normal,
+            KeyModeConversionConfig::Off,
             false,
         ),
         KeyMode::K14
@@ -527,12 +591,19 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K5,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false
+            KeyModeConversionConfig::Off,
+            false,
         ),
         KeyMode::K10
     );
     assert_eq!(
-        play_skin_key_mode_for_options(KeyMode::K7, DoubleOption::Flip, SessionMode::Normal, false),
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Flip,
+            SessionMode::Normal,
+            KeyModeConversionConfig::Off,
+            false,
+        ),
         KeyMode::K7
     );
     assert_eq!(
@@ -540,7 +611,8 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K14,
             DoubleOption::Battle,
             SessionMode::Normal,
-            false
+            KeyModeConversionConfig::Off,
+            false,
         ),
         KeyMode::K14
     );
@@ -549,7 +621,8 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Off,
             SessionMode::AutoplayBattle,
-            false
+            KeyModeConversionConfig::Off,
+            false,
         ),
         KeyMode::K7
     );
@@ -558,8 +631,39 @@ fn play_skin_key_mode_uses_battle_double_mode() {
             KeyMode::K7,
             DoubleOption::Battle,
             SessionMode::AutoplayBattle,
-            true
+            KeyModeConversionConfig::SevenToSix,
+            false,
         ),
-        KeyMode::K6
+        KeyMode::K7
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Battle,
+            SessionMode::Normal,
+            KeyModeConversionConfig::Off,
+            true,
+        ),
+        KeyMode::K7
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K7,
+            DoubleOption::Off,
+            SessionMode::Normal,
+            KeyModeConversionConfig::SevenToNine,
+            false,
+        ),
+        KeyMode::K9
+    );
+    assert_eq!(
+        play_skin_key_mode_for_options(
+            KeyMode::K5,
+            DoubleOption::Off,
+            SessionMode::Normal,
+            KeyModeConversionConfig::SpToDp,
+            false,
+        ),
+        KeyMode::K10
     );
 }

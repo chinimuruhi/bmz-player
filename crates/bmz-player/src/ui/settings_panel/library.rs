@@ -1,17 +1,32 @@
 use super::*;
 
+pub(super) struct LibrarySettingsActions<'a> {
+    pub(super) save_clicked: &'a mut bool,
+    pub(super) rescan_clicked: &'a mut bool,
+    pub(super) song_scan_requests: &'a mut Vec<SongScanRequest>,
+    pub(super) table_fetch_urls: &'a mut Vec<String>,
+    pub(super) score_import_request: &'a mut Option<ScoreImportRequest>,
+    pub(super) replay_import_request: &'a mut Option<ImportBeatorajaReplaysRequest>,
+    pub(super) cancel_replay_import: &'a mut bool,
+}
+
 pub(super) fn build_library_settings_sections(
     ui: &mut egui::Ui,
     config: &mut AppConfig,
     difficulty_tables: &[DifficultyTableRecord],
     text: Localizer,
     state: &mut SettingsPanelState<'_>,
-    save_clicked: &mut bool,
-    rescan_clicked: &mut bool,
-    song_scan_requests: &mut Vec<SongScanRequest>,
-    table_fetch_urls: &mut Vec<String>,
-    score_import_request: &mut Option<ScoreImportRequest>,
+    actions: LibrarySettingsActions<'_>,
 ) {
+    let LibrarySettingsActions {
+        save_clicked,
+        rescan_clicked,
+        song_scan_requests,
+        table_fetch_urls,
+        score_import_request,
+        replay_import_request,
+        cancel_replay_import,
+    } = actions;
     egui::CollapsingHeader::new(tr!(text, "settings-song-folders"))
         .id_salt("settings_song_folders")
         .default_open(true)
@@ -160,6 +175,14 @@ pub(super) fn build_library_settings_sections(
                 tr!(text, "settings-scan-follow-symlinks"),
             );
             ui.checkbox(&mut config.scan.skip_hidden, tr!(text, "settings-scan-skip-hidden"));
+            #[cfg(windows)]
+            {
+                ui.checkbox(
+                    &mut config.scan.use_everything,
+                    tr!(text, "settings-scan-use-everything"),
+                );
+                ui.small(tr!(text, "settings-scan-use-everything-help"));
+            }
             ui.checkbox(
                 &mut config.scan.auto_rescan_on_startup,
                 tr!(text, "settings-scan-on-startup"),
@@ -372,5 +395,16 @@ pub(super) fn build_library_settings_sections(
         state.score_import_error,
         score_import_request,
         text,
+    );
+    build_replay_import_section(
+        ui,
+        state.replay_import_path,
+        state.replay_import_device_type,
+        state.replay_import_overwrite,
+        state.replay_import_status,
+        state.replay_import_error,
+        state.replay_import_progress,
+        replay_import_request,
+        cancel_replay_import,
     );
 }

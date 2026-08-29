@@ -51,6 +51,7 @@ impl WinitApp {
         let selected_cache_key = self.selected_select_preview_cache_key();
         let cache_key = select_preview_key_after_delay(
             selected_cache_key,
+            self.select.select_assets.preview_source(),
             self.select.select_bar_started_at.elapsed(),
             SELECT_PREVIEW_START_DELAY,
         );

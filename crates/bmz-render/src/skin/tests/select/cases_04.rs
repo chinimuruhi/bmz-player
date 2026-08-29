@@ -66,11 +66,15 @@ fn select_mouse_rect_gates_render_and_click_hits() {
     let inside = SelectSnapshot { mouse_position: Some((0.16, 0.75)), ..SelectSnapshot::default() };
     let outside =
         SelectSnapshot { mouse_position: Some((0.01, 0.01)), ..SelectSnapshot::default() };
+    let unavailable = SelectSnapshot::default();
 
     assert!(document.select_render_items(&sources, &inside).iter().any(|item| {
         matches!(item, SkinRenderItem::Image { texture: SkinTextureId(9999), .. })
     }));
     assert!(!document.select_render_items(&sources, &outside).iter().any(|item| {
+        matches!(item, SkinRenderItem::Image { texture: SkinTextureId(9999), .. })
+    }));
+    assert!(!document.select_render_items(&sources, &unavailable).iter().any(|item| {
         matches!(item, SkinRenderItem::Image { texture: SkinTextureId(9999), .. })
     }));
 
@@ -90,6 +94,17 @@ fn select_mouse_rect_gates_render_and_click_hits() {
             .select_click_hit(
                 &sources,
                 &outside,
+                &crate::select_settings_dest::SelectSettingsDestIndex::default(),
+                0.2,
+                0.75,
+            )
+            .is_none()
+    );
+    assert!(
+        document
+            .select_click_hit(
+                &sources,
+                &unavailable,
                 &crate::select_settings_dest::SelectSettingsDestIndex::default(),
                 0.2,
                 0.75,

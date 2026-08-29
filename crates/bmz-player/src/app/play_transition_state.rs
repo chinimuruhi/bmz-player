@@ -26,9 +26,28 @@ pub(super) fn table_breadcrumb_from_record(table: &DifficultyTableRecord) -> Tab
     TableBreadcrumb { name: table.name.clone(), symbol: table.symbol.clone() }
 }
 
+pub(super) enum DecideLaunch {
+    Play,
+    Practice(Box<PracticeSession>),
+}
+
+impl DecideLaunch {
+    pub(super) fn practice(practice: PracticeSession) -> Self {
+        Self::Practice(Box::new(practice))
+    }
+
+    pub(super) fn into_practice_session(self) -> Option<PracticeSession> {
+        match self {
+            Self::Play => None,
+            Self::Practice(practice) => Some(*practice),
+        }
+    }
+}
+
 pub(super) struct DecideTransition {
     pub(super) chart_id: i64,
     pub(super) options: PlayStartOptions,
+    pub(super) launch: DecideLaunch,
     pub(super) started_at: Instant,
     pub(super) fadeout_started_at: Option<Instant>,
     pub(super) cancel: bool,
@@ -74,6 +93,11 @@ impl PendingPlayStart {
         play_config_key_mode: KeyMode,
         gamepad_slots: crate::input::gamepad::GamepadSlotMap,
     ) -> Self {
+        let playback_rate_percent = if options.playback_rate_percent == 0 {
+            100
+        } else {
+            bmz_audio::clock::clamp_playback_rate_percent(options.playback_rate_percent)
+        };
         let binding = crate::config::play::lane_binding_for_chart_with_slots(
             &profile.input,
             key_mode,
@@ -91,6 +115,7 @@ impl PendingPlayStart {
                 mode_config.target_green_number,
                 hs_fix,
                 mode_config.hispeed_auto_adjust,
+                playback_rate_percent,
             ),
             lane_actions: Vec::new(),
             visual_input: PendingPlayVisualInput::new(key_mode, binding, snapshot.autoplay),
@@ -109,6 +134,7 @@ pub(super) struct PendingPlayLaneState {
     pub(super) lane_cover_changing: bool,
     pub(super) hsfix_base_bpm: f32,
     pub(super) hispeed_auto_adjust: bool,
+    pub(super) playback_rate_percent: u16,
 }
 
 impl PendingPlayLaneState {
@@ -117,6 +143,7 @@ impl PendingPlayLaneState {
         target_green_number: u32,
         hs_fix: HsFixOption,
         hispeed_auto_adjust: bool,
+        playback_rate_percent: u16,
     ) -> Self {
         Self {
             hispeed: snapshot.hispeed,
@@ -135,9 +162,9 @@ impl PendingPlayLaneState {
                 HsFixOption::MaxBpm => snapshot.max_bpm,
                 HsFixOption::MainBpm => snapshot.main_bpm,
                 HsFixOption::MinBpm => snapshot.min_bpm,
-            }
-            .max(1.0),
+            },
             hispeed_auto_adjust,
+            playback_rate_percent,
         }
     }
 
@@ -155,11 +182,15 @@ impl PendingPlayLaneState {
         }
         let visible =
             crate::config::play::visible_lane_fraction(self.active_lane_cover(), self.lift);
+        let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+            f64::from(now_bpm),
+            self.playback_rate_percent,
+        );
         self.hispeed =
             clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
                 self.target_green_number.max(1) as f32,
                 visible,
-                now_bpm.max(1.0) as f64,
+                now_bpm,
                 1.0,
             ));
     }
@@ -175,11 +206,14 @@ impl PendingPlayLaneState {
             HsFixOption::MaxBpm => snapshot.max_bpm,
             HsFixOption::MainBpm => snapshot.main_bpm,
             HsFixOption::MinBpm => snapshot.min_bpm,
-        }
-        .max(1.0);
+        };
     }
 
     pub(super) fn current_green_number(self, now_bpm: f32) -> u32 {
+        let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+            f64::from(now_bpm),
+            self.playback_rate_percent,
+        ) as f32;
         let duration = crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(
             now_bpm,
             self.hispeed,
@@ -202,7 +236,10 @@ impl PendingPlayLaneState {
         snapshot.lane_cover_changing = self.lane_cover_changing;
         snapshot.note_display_duration_ms =
             crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(
-                snapshot.now_bpm,
+                crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+                    f64::from(snapshot.now_bpm),
+                    self.playback_rate_percent,
+                ) as f32,
                 self.hispeed,
                 snapshot.lane_cover,
                 self.lift,

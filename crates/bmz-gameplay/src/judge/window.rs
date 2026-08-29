@@ -130,6 +130,47 @@ pub fn judge_windows_for_rank(base: JudgeWindows, percent: i32) -> JudgeWindows 
     }
 }
 
+/// 再生速度倍で進む譜面時刻へ、実時間基準の判定窓を写す。
+///
+/// beatoraja Practice はノーツ時刻を `1 / rate` に変換する一方、判定窓自体は
+/// 実時間のまま固定する。BMZ は元のノーツ時刻を保って譜面時計を `rate` 倍で
+/// 進めるため、同じ実時間幅にするには比較用の窓を `rate` 倍する必要がある。
+pub fn scale_judge_windows_for_playback_rate(
+    windows: JudgeWindows,
+    playback_rate_percent: u16,
+) -> JudgeWindows {
+    let rate = bmz_audio::clock::clamp_playback_rate_percent(playback_rate_percent);
+    JudgeWindows {
+        note: scale_judge_window_for_playback_rate(windows.note, rate),
+        scratch: scale_judge_window_for_playback_rate(windows.scratch, rate),
+        long_note_end: scale_judge_window_for_playback_rate(windows.long_note_end, rate),
+        long_scratch_end: scale_judge_window_for_playback_rate(windows.long_scratch_end, rate),
+        long_note_release_margin_us: scale_judge_time(windows.long_note_release_margin_us, rate),
+        long_scratch_release_margin_us: scale_judge_time(
+            windows.long_scratch_release_margin_us,
+            rate,
+        ),
+    }
+}
+
+fn scale_judge_window_for_playback_rate(window: JudgeWindow, rate: u16) -> JudgeWindow {
+    JudgeWindow {
+        pgreat_us: scale_judge_time(window.pgreat_us, rate),
+        great_us: scale_judge_time(window.great_us, rate),
+        good_us: scale_judge_time(window.good_us, rate),
+        bad_fast_us: scale_judge_time(window.bad_fast_us, rate),
+        bad_slow_us: scale_judge_time(window.bad_slow_us, rate),
+        empty_poor_fast_us: scale_judge_time(window.empty_poor_fast_us, rate),
+        empty_poor_slow_us: scale_judge_time(window.empty_poor_slow_us, rate),
+        mine_hit_us: scale_judge_time(window.mine_hit_us, rate),
+    }
+}
+
+fn scale_judge_time(value: i64, rate: u16) -> i64 {
+    ((i128::from(value) * i128::from(rate)) / 100).clamp(i128::from(i64::MIN), i128::from(i64::MAX))
+        as i64
+}
+
 pub fn judge_window_for_rule_mode(
     base: JudgeWindow,
     percent: i32,

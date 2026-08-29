@@ -180,6 +180,36 @@ fn search_charts_treats_like_wildcards_as_literal() {
 }
 
 #[test]
+fn search_charts_limited_stops_at_the_requested_row_count() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut db = LibraryDatabase::from_connection(conn);
+
+    for (path, title) in [
+        ("/songs/c.bms", "Match Charlie"),
+        ("/songs/a.bms", "Match Alpha"),
+        ("/songs/b.bms", "Match Bravo"),
+    ] {
+        let chart = chart(title);
+        db.upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: Path::new(path),
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &chart,
+        })
+        .unwrap();
+    }
+
+    let hits = db.search_charts_limited("match", 2).unwrap();
+    let titles = hits.iter().map(|chart| chart.title.as_str()).collect::<Vec<_>>();
+
+    assert_eq!(titles, ["Match Alpha", "Match Bravo"]);
+}
+
+#[test]
 fn primary_chart_file_path_returns_linked_file() {
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();
@@ -422,7 +452,7 @@ fn library_migration_merges_windows_separator_variant_paths() {
         title_hint: "BMSON course entry".to_string(),
         md5: Some(hash_to_hex(&old.identity.file_md5)),
         sha256: Some(hash_to_hex(&old.identity.file_sha256)),
-        chart_id: None,
+        chart_id: Some(old_id),
     }]);
     let course_id = db.upsert_course("table:test", &course, 0, 1).unwrap();
     assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(old_id));
@@ -431,7 +461,7 @@ fn library_migration_merges_windows_separator_variant_paths() {
 
     let version: i32 =
         db.conn().pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-    assert_eq!(version, 31);
+    assert_eq!(version, 32);
     assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(refreshed_id));
     assert_ne!(copy_id, refreshed_id, "a real copy at another path must remain separate");
 
@@ -552,7 +582,7 @@ fn library_migration_removes_windows_extended_path_prefixes() {
 
     let version: i32 =
         db.conn().pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-    assert_eq!(version, 31);
+    assert_eq!(version, 32);
     let counts: (i64, i64, i64) = db
         .conn()
         .query_row(

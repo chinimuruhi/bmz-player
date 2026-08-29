@@ -187,10 +187,16 @@ pub(super) async fn submit_job_payload(
     let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
     attach_evidence(profile_root, provider, &client, &mut payload).await;
     let request_json = serde_json::to_string(&payload)?;
-    let options =
-        IrSubmitOptions { ranking_scopes: vec![IrRankingScope::Global], ranking_limit: 20 };
+    let options = default_score_submit_options();
     let response = client.submit_score(&payload, &options).await?;
     Ok((request_json, serde_json::to_string(&response)?))
+}
+
+pub(super) fn default_score_submit_options() -> IrSubmitOptions {
+    IrSubmitOptions {
+        ranking_scopes: vec![IrRankingScope::Global],
+        ranking_limit: crate::ir::types::default_ranking_limit(),
+    }
 }
 
 pub(super) fn ensure_score_payload_allowed(

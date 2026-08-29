@@ -112,6 +112,7 @@ pub(super) fn load_initial_skin_textures(
                                 false,
                                 None,
                                 false,
+                                false,
                                 KeyMode::default(),
                                 BTreeMap::new(),
                                 player_name,

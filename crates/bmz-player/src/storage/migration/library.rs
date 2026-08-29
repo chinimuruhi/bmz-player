@@ -902,4 +902,14 @@ pub const LIBRARY_MIGRATIONS: &[Migration] = &[
             DROP TABLE bmz31_root_path_keys;
         "#],
     },
+    Migration {
+        version: 32,
+        // Gated integrated loudnessだけでは、短い大音量区間と合成後peakを
+        // プレイ時のゲインへ反映できない。再生目標からゲインを再導出できるよう
+        // raw analysis metricsを保存する。
+        statements: &[
+            "ALTER TABLE chart_analysis ADD COLUMN short_term_lufs REAL;",
+            "ALTER TABLE chart_analysis ADD COLUMN sample_peak REAL;",
+        ],
+    },
 ];

@@ -6,7 +6,8 @@ mod state;
 
 use default::push_default_playfield;
 use document::push_document_playfield;
-use state::{build_play_skin_state, build_play_skin_text, play_elapsed_ms};
+pub(super) use state::build_play_skin_state;
+use state::{build_play_skin_text, play_elapsed_ms};
 
 #[derive(Clone, Copy)]
 struct PlayfieldLayout<'a> {
@@ -24,9 +25,6 @@ pub(super) fn plan_play(
     let skin_manifest = skin.manifest();
     let has_document = skin.document().is_some();
     let mut commands = Vec::with_capacity(play_command_capacity(snapshot, has_document));
-    if snapshot.backbmp_background {
-        push_fullscreen_image(&mut commands, PLAY_BACKBMP_TEXTURE);
-    }
     if !has_document {
         push_fallback_bga_background(&mut commands, snapshot);
     }
@@ -39,7 +37,16 @@ pub(super) fn plan_play(
 
     let play_elapsed_ms = play_elapsed_ms(snapshot);
     let mut skin_state = build_play_skin_state(snapshot, skin, play_elapsed_ms);
-    dynamic_timers.ingest_skin_events(&snapshot.skin_events, key_mode, snapshot.time.0);
+    skin_state.start_input_ms = dynamic_timers.start_input_elapsed_ms(
+        play_elapsed_ms,
+        skin.document().map_or(0, |document| document.input),
+    );
+    dynamic_timers.ingest_skin_events(
+        skin.document(),
+        &snapshot.skin_events,
+        key_mode,
+        snapshot.time.0,
+    );
     let judge_region_count =
         skin.document().map(|document| document.judge_region_count()).unwrap_or(1);
     dynamic_timers.ingest_judge_lane_state(
@@ -87,7 +94,6 @@ pub(super) fn plan_play(
         push_start_overlay(&text, &mut commands, snapshot);
         push_default_failed_overlay(&text, &mut commands, snapshot);
     }
-    push_chart_text(&text, &mut commands, snapshot);
     if !skin.has_timer_destination(2) {
         push_default_play_fadeout_overlay(&mut commands, snapshot);
     }
@@ -110,23 +116,4 @@ pub(super) fn play_command_capacity(snapshot: &RenderSnapshot, has_document: boo
         .saturating_add(visible_note_count)
         .saturating_add(visible_mine_count)
         .saturating_add(long_note_command_count)
-}
-
-pub(super) fn push_chart_text(
-    text: &TextRenderer,
-    commands: &mut Vec<DrawCommand>,
-    snapshot: &RenderSnapshot,
-) {
-    if snapshot.chart_text.is_empty() {
-        return;
-    }
-    commands.push(DrawCommand::Rect {
-        rect: Rect { x: 0.18, y: 0.04, width: 0.64, height: 0.06 },
-        color: Color::rgba(0.0, 0.0, 0.0, 0.55),
-    });
-    text.push_text(
-        commands,
-        &snapshot.chart_text,
-        BitmapTextStyle { x: 0.2, y: 0.055, cell: 0.006, color: Color::rgb(0.95, 0.95, 0.9) },
-    );
 }

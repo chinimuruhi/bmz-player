@@ -178,6 +178,10 @@ impl WinitApp {
             self.close_select_ir_battle();
             return true;
         }
+        self.open_select_ir_battle()
+    }
+
+    pub(super) fn open_select_ir_battle(&mut self) -> bool {
         if !self.select_ir_battle_is_available() {
             let text = Localizer::new(self.boot.profile_config.ui.locale());
             self.show_left_overlay_toast(text.text("toast-ir-battle-unavailable"));
@@ -197,6 +201,14 @@ impl WinitApp {
     }
 
     pub(super) fn close_select_ir_battle(&mut self) -> bool {
+        self.close_select_ir_battle_with_sound(true)
+    }
+
+    fn close_select_ir_battle_for_start(&mut self) -> bool {
+        self.close_select_ir_battle_with_sound(false)
+    }
+
+    fn close_select_ir_battle_with_sound(&mut self, play_close_sound: bool) -> bool {
         let was_open =
             self.select.ir_battle.active || self.select.ir_battle.hold_started_at.is_some();
         self.select.ir_battle.active = false;
@@ -212,7 +224,9 @@ impl WinitApp {
         self.select.ir_battle.generation = self.select.ir_battle.generation.wrapping_add(1);
         if was_open {
             self.restart_select_bar_timer_without_scroll(Instant::now());
-            self.play_system_sound(crate::system_sound::SoundType::FolderClose);
+            if let Some(sound_type) = select_ir_battle_close_sound(was_open, play_close_sound) {
+                self.play_system_sound(sound_type);
+            }
         }
         was_open
     }
@@ -249,7 +263,7 @@ impl WinitApp {
                 let mut options = self.play_start_options();
                 options.battle_target = None;
                 if self.prepare_session_mode_or_show_error(chart_id, &mut options) {
-                    self.close_select_ir_battle();
+                    self.close_select_ir_battle_for_start();
                     self.begin_decide_for_chart(chart_id, options);
                 }
             }
@@ -425,7 +439,7 @@ impl WinitApp {
             chart_id,
             &path,
             format!("REPLAY {}", slot + 1),
-            record.ex_score,
+            record.ex_score.unwrap_or(0),
             None,
         );
     }
@@ -506,8 +520,16 @@ impl WinitApp {
         if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
             return;
         }
-        self.close_select_ir_battle();
-        self.begin_decide_for_chart(chart_id, options);
+        self.close_select_ir_battle_for_start();
+        if options.session_mode.is_practice() {
+            self.enter_practice_with_battle_target(
+                chart_id,
+                crate::screens::practice::PracticeCliOverrides::default(),
+                options.battle_target,
+            );
+        } else {
+            self.begin_decide_for_chart(chart_id, options);
+        }
     }
 
     pub(super) fn poll_select_ir_battle_replay(&mut self) {
@@ -537,7 +559,7 @@ impl WinitApp {
         self.launch_battle_target(result.chart_id, target);
     }
 
-    fn show_ir_battle_error(&mut self, error: &str) {
+    pub(super) fn show_ir_battle_error(&mut self, error: &str) {
         let text = Localizer::new(self.boot.profile_config.ui.locale());
         let mut args = FluentArgs::new();
         args.set("error", error.to_string());
@@ -561,45 +583,58 @@ pub(in crate::app) fn select_ir_battle_snapshot_rows(
     choices: &[SelectBattleChoice],
     selected_index: usize,
     visible_limit: usize,
+    source_row: Option<&SelectRowSnapshot>,
 ) -> Vec<SelectRowSnapshot> {
     select_visible_item_indices(choices.len(), selected_index, visible_limit)
         .into_iter()
-        .map(|index| match &choices[index] {
-            SelectBattleChoice::Ranking(entry) => SelectRowSnapshot {
-                index: index as u32,
-                title: entry.player_name.clone(),
-                subtitle: entry.player_id.clone(),
-                artist: format!("EX {} / BP {}", entry.ex_score, entry.bp),
-                genre: "G-BATTLE".to_string(),
-                difficulty_name: entry.clear.clone(),
-                play_level: format!("#{}", entry.rank),
-                table_level: entry.gauge.clone().unwrap_or_default(),
-                clear_type: entry.clear.clone(),
-                ex_score: Some(entry.ex_score),
-                max_combo: Some(entry.max_combo),
-                bp: Some(entry.bp),
-                in_library: entry.score_id.is_some() || entry.random_seed.is_some(),
-                ..SelectRowSnapshot::default()
-            },
-            choice => {
-                let available = match choice {
-                    SelectBattleChoice::Off => true,
-                    SelectBattleChoice::MyBest { available }
-                    | SelectBattleChoice::Replay { available, .. }
-                    | SelectBattleChoice::Rival { available, .. } => *available,
-                    SelectBattleChoice::Ranking(_) => unreachable!(),
-                };
-                SelectRowSnapshot {
-                    index: index as u32,
-                    title: choice.title(),
-                    subtitle: if available { String::new() } else { "UNAVAILABLE".to_string() },
-                    genre: "G-BATTLE".to_string(),
-                    in_library: available,
-                    ..SelectRowSnapshot::default()
+        .map(|index| {
+            let mut row = source_row.cloned().unwrap_or_default();
+            row.index = index as u32;
+            match &choices[index] {
+                SelectBattleChoice::Ranking(entry) => {
+                    row.title = entry.player_name.clone();
+                    row.subtitle = entry.player_id.clone();
+                    row.artist = format!("EX {} / BP {}", entry.ex_score, entry.bp);
+                    row.genre = "G-BATTLE".to_string();
+                    let ranking_level = format!("#{}", entry.rank);
+                    row.play_level = ranking_level.clone();
+                    row.table_level = ranking_level.clone();
+                    row.table_text_secondary = ranking_level;
+                    row.show_level = true;
+                    row.clear_type = entry.clear.clone();
+                    row.ex_score = Some(entry.ex_score);
+                    row.max_combo = Some(entry.max_combo);
+                    row.bp = Some(entry.bp);
+                }
+                choice => {
+                    let available = match choice {
+                        SelectBattleChoice::Off => true,
+                        SelectBattleChoice::MyBest { available }
+                        | SelectBattleChoice::Replay { available, .. }
+                        | SelectBattleChoice::Rival { available, .. } => *available,
+                        SelectBattleChoice::Ranking(_) => unreachable!(),
+                    };
+                    row.title = choice.title();
+                    row.subtitle =
+                        if available { String::new() } else { "UNAVAILABLE".to_string() };
+                    row.artist.clear();
+                    row.genre = "G-BATTLE".to_string();
+                    row.play_level.clear();
+                    row.table_level.clear();
+                    row.table_text_secondary.clear();
+                    row.show_level = false;
                 }
             }
+            row
         })
         .collect()
+}
+
+fn select_ir_battle_close_sound(
+    was_open: bool,
+    play_close_sound: bool,
+) -> Option<crate::system_sound::SoundType> {
+    (was_open && play_close_sound).then_some(crate::system_sound::SoundType::FolderClose)
 }
 
 async fn download_ir_battle_target(
@@ -636,7 +671,7 @@ async fn download_ir_battle_target(
         anyhow::bail!("IR replay hash does not match its metadata");
     }
     let text = std::str::from_utf8(&bytes).context("IR replay is not UTF-8 TOML")?;
-    let replay = crate::storage::replay::parse_replay(text)?;
+    let mut replay = crate::storage::replay::parse_replay(text)?;
     if replay.chart_sha256_bytes()? != chart_sha256 {
         anyhow::bail!("IR replay chart hash does not match the selected chart");
     }
@@ -645,18 +680,10 @@ async fn download_ir_battle_target(
     {
         anyhow::bail!("IR replay long note policy does not match the selected chart");
     }
-    if replay.uses_legacy_seed_scheme() {
-        anyhow::bail!("IR replay uses an unsupported legacy random seed");
-    }
-    if replay.events.is_empty() || replay.events.len() > IR_BATTLE_REPLAY_MAX_EVENTS {
+    if replay.events.len() > IR_BATTLE_REPLAY_MAX_EVENTS {
         anyhow::bail!("IR replay has an invalid event count");
     }
-    if replay.events.iter().any(|event| !key_mode.active_lanes().contains(&event.lane)) {
-        anyhow::bail!("IR replay contains input lanes outside the selected key mode");
-    }
-    if replay.events.windows(2).any(|events| events[0].time > events[1].time) {
-        anyhow::bail!("IR replay events are not ordered by time");
-    }
+    crate::screens::play_start::normalize_battle_replay_for_key_mode(&mut replay, key_mode)?;
 
     let provider_cache = hash_to_hex(&Sha256::digest(provider.as_bytes()));
     let score_cache = hash_to_hex(&Sha256::digest(score_id.as_bytes()));
@@ -734,7 +761,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ranking_rows_keep_rank_and_score_identity() {
+    fn ranking_rows_keep_source_chart_data_and_target_score_identity() {
+        let source = SelectRowSnapshot {
+            title: "SOURCE TITLE".to_string(),
+            subtitle: "SOURCE SUBTITLE".to_string(),
+            artist: "SOURCE ARTIST".to_string(),
+            genre: "SOURCE GENRE".to_string(),
+            difficulty_name: "ANOTHER".to_string(),
+            play_level: "12".to_string(),
+            total_notes: 2253,
+            initial_bpm: 155.0,
+            min_bpm: 130.0,
+            max_bpm: 180.0,
+            length_ms: 123_456,
+            chart_total_gauge: 400.0,
+            chart_peak_density: 42.5,
+            ..SelectRowSnapshot::default()
+        };
         let rows = select_ir_battle_snapshot_rows(
             &[SelectBattleChoice::Ranking(Box::new(
                 crate::screens::select_ir::SelectIrBattleEntry {
@@ -756,11 +799,37 @@ mod tests {
             ))],
             0,
             25,
+            Some(&source),
         );
         assert_eq!(rows[0].title, "RIVAL");
-        assert_eq!(rows[0].play_level, "#2");
+        assert_eq!(rows[0].subtitle, "rival-id");
+        assert_eq!(rows[0].artist, "EX 1234 / BP 7");
+        assert_eq!(rows[0].genre, "G-BATTLE");
         assert_eq!(rows[0].ex_score, Some(1234));
-        assert!(rows[0].in_library);
+        assert_eq!(rows[0].max_combo, Some(400));
+        assert_eq!(rows[0].bp, Some(7));
+        assert_eq!(rows[0].difficulty_name, "ANOTHER");
+        assert_eq!(rows[0].play_level, "#2");
+        assert_eq!(rows[0].table_level, "#2");
+        assert_eq!(rows[0].table_text_secondary, "#2");
+        assert!(rows[0].show_level);
+        assert_eq!(rows[0].total_notes, 2253);
+        assert_eq!(rows[0].initial_bpm, 155.0);
+        assert_eq!(rows[0].min_bpm, 130.0);
+        assert_eq!(rows[0].max_bpm, 180.0);
+        assert_eq!(rows[0].length_ms, 123_456);
+        assert_eq!(rows[0].chart_total_gauge, 400.0);
+        assert_eq!(rows[0].chart_peak_density, 42.5);
+    }
+
+    #[test]
+    fn starting_battle_suppresses_close_se() {
+        assert_eq!(select_ir_battle_close_sound(true, false), None);
+        assert_eq!(
+            select_ir_battle_close_sound(true, true),
+            Some(crate::system_sound::SoundType::FolderClose)
+        );
+        assert_eq!(select_ir_battle_close_sound(false, true), None);
     }
 
     #[test]
@@ -785,5 +854,17 @@ mod tests {
         assert_eq!(choices[1].title(), "MYBEST");
         assert_eq!(choices[5].title(), "REPLAY 4");
         assert_eq!(choices[6].title(), "RIVAL (R)");
+
+        let source = SelectRowSnapshot {
+            play_level: "12".to_string(),
+            table_level: "★12".to_string(),
+            table_text_secondary: "★12".to_string(),
+            ..SelectRowSnapshot::default()
+        };
+        let rows = select_ir_battle_snapshot_rows(&choices, 0, choices.len(), Some(&source));
+        assert!(rows.iter().all(|row| row.play_level.is_empty()));
+        assert!(rows.iter().all(|row| row.table_level.is_empty()));
+        assert!(rows.iter().all(|row| row.table_text_secondary.is_empty()));
+        assert!(rows.iter().all(|row| !row.show_level));
     }
 }

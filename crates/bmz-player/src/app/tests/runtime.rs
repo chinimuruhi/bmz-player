@@ -2,11 +2,23 @@ use super::*;
 use crate::app::input_lifecycle::{
     gamepad_runtime_config_changed, keyboard_runtime_config_changed,
 };
+use crate::app::lifecycle::clear_window_cursor_state;
 
 #[test]
 fn winit_app_stack_size_stays_bounded() {
     let size = std::mem::size_of::<WinitApp>();
     assert!(size < 64 * 1024, "WinitApp is {size} bytes");
+}
+
+#[test]
+fn cursor_leave_clears_hover_position_and_slider_drag() {
+    let mut position = Some(PhysicalPosition::new(320.0, 180.0));
+    let mut dragging_slider_type = Some(17);
+
+    clear_window_cursor_state(&mut position, &mut dragging_slider_type);
+
+    assert_eq!(position, None);
+    assert_eq!(dragging_slider_type, None);
 }
 
 #[test]
@@ -326,6 +338,19 @@ fn final_notes_fadeout_requires_active_finished_note_state() {
         bmz_gameplay::session::PlayState::Failed,
         true,
     ));
+}
+
+#[test]
+fn final_notes_control_returns_practice_to_configuration() {
+    assert_eq!(
+        final_notes_control_action(true, true),
+        Some(FinalNotesControlAction::ReturnToPractice)
+    );
+    assert_eq!(
+        final_notes_control_action(true, false),
+        Some(FinalNotesControlAction::BeginResultFadeout)
+    );
+    assert_eq!(final_notes_control_action(false, true), None);
 }
 
 #[test]

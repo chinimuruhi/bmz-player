@@ -41,9 +41,20 @@ pub(super) struct SelectKeyBindings {
     favorite_song_controls: Vec<String>,
     favorite_chart_controls: Vec<String>,
     same_folder_controls: Vec<String>,
+    mode_filter_controls: Vec<String>,
+    sort_controls: Vec<String>,
+    ln_mode_controls: Vec<String>,
     difficulty_filter_controls: Vec<String>,
     replay_cycle_controls: Vec<String>,
     replay_play_controls: Vec<String>,
+    open_folder_controls: Vec<String>,
+    reload_controls: Vec<String>,
+    autoplay_folder_controls: Vec<String>,
+    open_ir_controls: Vec<String>,
+    open_key_config_controls: Vec<String>,
+    screenshot_controls: Vec<String>,
+    rival_cycle_controls: Vec<String>,
+    open_documents_controls: Vec<String>,
     cycle_bga: Option<String>,
     key_hint: String,
     option_hint: String,
@@ -136,7 +147,7 @@ impl SelectKeyBindings {
             .flat_map(|&lane| keys_for_2p(lane))
             .collect();
         let lane_back = merge_select_controls(lane_back_1p, lane_back_2p);
-        let enter = merge_select_controls(actions_for(InputActionConfig::SelectEnter), lane_enter);
+        let enter = lane_enter;
         let back = merge_select_controls(actions_for(InputActionConfig::E2), lane_back);
         let e_action_controls: Vec<(InputActionConfig, String)> = [
             InputActionConfig::E1,
@@ -153,22 +164,27 @@ impl SelectKeyBindings {
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteSong), "F8");
         let favorite_chart_controls =
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteChart), "F9");
-        let same_folder_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectSameFolder),
-            "Numpad8",
-        );
+        let same_folder_controls = actions_for(InputActionConfig::SelectSameFolder);
+        let mode_filter_controls = actions_for(InputActionConfig::SelectModeFilter);
+        let sort_controls = actions_for(InputActionConfig::SelectSort);
+        let ln_mode_controls = actions_for(InputActionConfig::SelectLnMode);
         let difficulty_filter_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectDifficultyFilter),
             "Numpad0",
         );
-        let replay_cycle_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectReplayCycle),
-            "Numpad4",
-        );
+        let replay_cycle_controls = actions_for(InputActionConfig::SelectReplayCycle);
         let replay_play_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectReplayPlay),
             "Numpad5",
         );
+        let open_folder_controls = actions_for(InputActionConfig::SelectOpenFolder);
+        let reload_controls = actions_for(InputActionConfig::SelectReload);
+        let autoplay_folder_controls = actions_for(InputActionConfig::SelectAutoplayFolder);
+        let open_ir_controls = actions_for(InputActionConfig::SelectOpenIr);
+        let open_key_config_controls = actions_for(InputActionConfig::SelectOpenKeyConfig);
+        let screenshot_controls = actions_for(InputActionConfig::Screenshot);
+        let rival_cycle_controls = actions_for(InputActionConfig::SelectRivalCycle);
+        let open_documents_controls = actions_for(InputActionConfig::SelectOpenDocuments);
         let mut scratch_up_controls = Vec::new();
         let mut scratch_down_controls = Vec::new();
         let mut select_scratch_up_controls = Vec::new();
@@ -189,10 +205,7 @@ impl SelectKeyBindings {
                 &mut select_scratch_down_controls,
             );
         }
-        let cycle_bga = select_control_with_lane_fallback(
-            actions_for(InputActionConfig::SelectOptionBga),
-            keys_for(LaneConfig::Key1),
-        );
+        let cycle_bga = keys_for(LaneConfig::Key1).into_iter().next();
         let mut start = actions_for(InputActionConfig::E1);
         if let Some(legacy_start) = input.start_key.clone()
             && !start.iter().any(|control| control == &legacy_start)
@@ -213,8 +226,7 @@ impl SelectKeyBindings {
             .iter()
             .flat_map(|&lane| kb_keys_for(lane))
             .collect();
-        let kb_enter =
-            merge_select_controls(kb_actions_for(InputActionConfig::SelectEnter), kb_lane_enter);
+        let kb_enter = kb_lane_enter;
         let enter_str =
             if kb_enter.is_empty() { String::new() } else { format!("/{}", kb_enter.join("/")) };
         let back_str = if kb_lane_back.is_empty() {
@@ -235,18 +247,35 @@ impl SelectKeyBindings {
         let key_hint =
             format!("UP DOWN  RIGHT{enter_str}:ENTER  LEFT{back_str}:BACK  ENTER {start_str}");
 
-        let kb_bga_str = select_control_with_lane_fallback(
-            kb_actions_for(InputActionConfig::SelectOptionBga),
-            kb_keys_for(LaneConfig::Key1),
-        );
+        let kb_bga_str = kb_keys_for(LaneConfig::Key1).into_iter().next();
         let bga_str = kb_bga_str.as_deref().unwrap_or("?");
+        let shortcut_hint = |action: InputActionConfig| {
+            kb_actions_for(action).into_iter().next().unwrap_or_else(|| "-".to_string())
+        };
+        let open_folder_str = shortcut_hint(InputActionConfig::SelectOpenFolder);
+        let reload_str = shortcut_hint(InputActionConfig::SelectReload);
+        let autoplay_folder_str = shortcut_hint(InputActionConfig::SelectAutoplayFolder);
+        let open_ir_str = shortcut_hint(InputActionConfig::SelectOpenIr);
+        let key_config_str = shortcut_hint(InputActionConfig::SelectOpenKeyConfig);
+        let screenshot_str = shortcut_hint(InputActionConfig::Screenshot);
+        let rival_str = shortcut_hint(InputActionConfig::SelectRivalCycle);
+        let documents_str = shortcut_hint(InputActionConfig::SelectOpenDocuments);
+        let mode_filter_str = shortcut_hint(InputActionConfig::SelectModeFilter);
+        let sort_str = shortcut_hint(InputActionConfig::SelectSort);
+        let ln_mode_str = shortcut_hint(InputActionConfig::SelectLnMode);
+        let replay_cycle_str = shortcut_hint(InputActionConfig::SelectReplayCycle);
+        let same_folder_str = shortcut_hint(InputActionConfig::SelectSameFolder);
         let option_hint = format!(
-            "F1 MENU  F3 FOLDER/HASH  F5 RELOAD  F10 AUTOPLAY  F11 IR  N9 TEXT   \
+            "F1 MENU  {open_folder_str}:FOLDER/HASH  {reload_str}:RELOAD  \
+             {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {key_config_str}:KEY CONFIG  \
+             {screenshot_str}:SHOT  \
+             {mode_filter_str}:MODE  {sort_str}:SORT  {ln_mode_str}:LN  \
+             {replay_cycle_str}:CYCLE  {same_folder_str}:SAME  {rival_str}:RIVAL  {documents_str}:TEXT   \
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+2P K1/K2:2P ARR  {start_str}+K3/K4:GAUGE  \
              {start_str}+K5:HS-FIX  {start_str}+K6:DP OPT  {start_str}+K7:AUTOPLAY  \
              BACK+K1..K7:ASSIST  \
-             {start_str}+BACK+{key2_str}:GAS  {start_str}+UP/DOWN:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N4:CYCLE  N5:REPLAY"
+             {start_str}+BACK+{key2_str}:GAS  {start_str}+UP/DOWN:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N5:REPLAY"
         );
 
         Self {
@@ -281,9 +310,20 @@ impl SelectKeyBindings {
             favorite_song_controls,
             favorite_chart_controls,
             same_folder_controls,
+            mode_filter_controls,
+            sort_controls,
+            ln_mode_controls,
             difficulty_filter_controls,
             replay_cycle_controls,
             replay_play_controls,
+            open_folder_controls,
+            reload_controls,
+            autoplay_folder_controls,
+            open_ir_controls,
+            open_key_config_controls,
+            screenshot_controls,
+            rival_cycle_controls,
+            open_documents_controls,
             cycle_bga,
             key_hint,
             option_hint,
@@ -335,10 +375,7 @@ impl SelectKeyBindings {
         let key8_controls = keys_for(LaneConfig::Key8);
         let key9_controls = keys_for(LaneConfig::Key9);
 
-        let enter = merge_select_controls(
-            actions_for(InputActionConfig::SelectEnter),
-            merge_select_controls(key5_controls.clone(), key7_controls.clone()),
-        );
+        let enter = merge_select_controls(key5_controls.clone(), key7_controls.clone());
         let back = merge_select_controls(actions_for(InputActionConfig::E2), key3_controls.clone());
         let select_previous_controls = key4_controls.clone();
         let select_next_controls = key6_controls.clone();
@@ -359,26 +396,28 @@ impl SelectKeyBindings {
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteSong), "F8");
         let favorite_chart_controls =
             select_controls_with_default(actions_for(InputActionConfig::SelectFavoriteChart), "F9");
-        let same_folder_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectSameFolder),
-            "Numpad8",
-        );
+        let same_folder_controls = actions_for(InputActionConfig::SelectSameFolder);
+        let mode_filter_controls = actions_for(InputActionConfig::SelectModeFilter);
+        let sort_controls = actions_for(InputActionConfig::SelectSort);
+        let ln_mode_controls = actions_for(InputActionConfig::SelectLnMode);
         let difficulty_filter_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectDifficultyFilter),
             "Numpad0",
         );
-        let replay_cycle_controls = select_controls_with_default(
-            actions_for(InputActionConfig::SelectReplayCycle),
-            "Numpad4",
-        );
+        let replay_cycle_controls = actions_for(InputActionConfig::SelectReplayCycle);
         let replay_play_controls = select_controls_with_default(
             actions_for(InputActionConfig::SelectReplayPlay),
             "Numpad5",
         );
-        let cycle_bga = select_control_with_lane_fallback(
-            actions_for(InputActionConfig::SelectOptionBga),
-            key1_controls.clone(),
-        );
+        let open_folder_controls = actions_for(InputActionConfig::SelectOpenFolder);
+        let reload_controls = actions_for(InputActionConfig::SelectReload);
+        let autoplay_folder_controls = actions_for(InputActionConfig::SelectAutoplayFolder);
+        let open_ir_controls = actions_for(InputActionConfig::SelectOpenIr);
+        let open_key_config_controls = actions_for(InputActionConfig::SelectOpenKeyConfig);
+        let screenshot_controls = actions_for(InputActionConfig::Screenshot);
+        let rival_cycle_controls = actions_for(InputActionConfig::SelectRivalCycle);
+        let open_documents_controls = actions_for(InputActionConfig::SelectOpenDocuments);
+        let cycle_bga = key1_controls.first().cloned();
         let mut start = actions_for(InputActionConfig::E1);
         if let Some(legacy_start) = input.start_key.clone()
             && !start.iter().any(|control| control == &legacy_start)
@@ -398,10 +437,8 @@ impl SelectKeyBindings {
             kb_keys_for(LaneConfig::Key6).into_iter().next().unwrap_or_else(|| "KEY6".to_string());
         let down_str =
             kb_keys_for(LaneConfig::Key4).into_iter().next().unwrap_or_else(|| "KEY4".to_string());
-        let enter_str = merge_select_controls(
-            kb_actions_for(InputActionConfig::SelectEnter),
-            merge_select_controls(kb_keys_for(LaneConfig::Key5), kb_keys_for(LaneConfig::Key7)),
-        );
+        let enter_str =
+            merge_select_controls(kb_keys_for(LaneConfig::Key5), kb_keys_for(LaneConfig::Key7));
         let enter_str =
             if enter_str.is_empty() { String::new() } else { format!("/{}", enter_str.join("/")) };
         let back_str = kb_keys_for(LaneConfig::Key3)
@@ -412,17 +449,34 @@ impl SelectKeyBindings {
         let key_hint = format!(
             "UP {up_str}  DOWN {down_str}  RIGHT{enter_str}:ENTER  LEFT/{back_str}:BACK  ENTER {start_str}"
         );
-        let bga_str = select_control_with_lane_fallback(
-            kb_actions_for(InputActionConfig::SelectOptionBga),
-            kb_keys_for(LaneConfig::Key1),
-        )
-        .unwrap_or_else(|| "?".to_string());
+        let bga_str =
+            kb_keys_for(LaneConfig::Key1).into_iter().next().unwrap_or_else(|| "?".to_string());
+        let shortcut_hint = |action: InputActionConfig| {
+            kb_actions_for(action).into_iter().next().unwrap_or_else(|| "-".to_string())
+        };
+        let open_folder_str = shortcut_hint(InputActionConfig::SelectOpenFolder);
+        let reload_str = shortcut_hint(InputActionConfig::SelectReload);
+        let autoplay_folder_str = shortcut_hint(InputActionConfig::SelectAutoplayFolder);
+        let open_ir_str = shortcut_hint(InputActionConfig::SelectOpenIr);
+        let key_config_str = shortcut_hint(InputActionConfig::SelectOpenKeyConfig);
+        let screenshot_str = shortcut_hint(InputActionConfig::Screenshot);
+        let rival_str = shortcut_hint(InputActionConfig::SelectRivalCycle);
+        let documents_str = shortcut_hint(InputActionConfig::SelectOpenDocuments);
+        let mode_filter_str = shortcut_hint(InputActionConfig::SelectModeFilter);
+        let sort_str = shortcut_hint(InputActionConfig::SelectSort);
+        let ln_mode_str = shortcut_hint(InputActionConfig::SelectLnMode);
+        let replay_cycle_str = shortcut_hint(InputActionConfig::SelectReplayCycle);
+        let same_folder_str = shortcut_hint(InputActionConfig::SelectSameFolder);
         let option_hint = format!(
-            "F1 MENU  F3 FOLDER/HASH  F5 RELOAD  F10 AUTOPLAY  F11 IR  N9 TEXT   \
+            "F1 MENU  {open_folder_str}:FOLDER/HASH  {reload_str}:RELOAD  \
+             {autoplay_folder_str}:AUTOPLAY  {open_ir_str}:IR  {key_config_str}:KEY CONFIG  \
+             {screenshot_str}:SHOT  \
+             {mode_filter_str}:MODE  {sort_str}:SORT  {ln_mode_str}:LN  \
+             {replay_cycle_str}:CYCLE  {same_folder_str}:SAME  {rival_str}:RIVAL  {documents_str}:TEXT   \
              {start_str}:PLAY OPT  BACK:E2 OPT  {start_str}+BACK:DETAIL OPT  \
              {start_str}+K1/K2:1P ARR  {start_str}+K3:GAUGE  {start_str}+K5:HS-FIX  \
              BACK+K1..K7:ASSIST  \
-             {start_str}+K8/K9:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N4:CYCLE  N5:REPLAY"
+             {start_str}+K8/K9:TARGET  {start_str}+{bga_str}:BGA  {start_str}+K4/K6:GREEN  {start_str}+K5/K7:TIMING  {start_str}+1..4:REPLAY  N5:REPLAY"
         );
 
         Self {
@@ -457,9 +511,20 @@ impl SelectKeyBindings {
             favorite_song_controls,
             favorite_chart_controls,
             same_folder_controls,
+            mode_filter_controls,
+            sort_controls,
+            ln_mode_controls,
             difficulty_filter_controls,
             replay_cycle_controls,
             replay_play_controls,
+            open_folder_controls,
+            reload_controls,
+            autoplay_folder_controls,
+            open_ir_controls,
+            open_key_config_controls,
+            screenshot_controls,
+            rival_cycle_controls,
+            open_documents_controls,
             cycle_bga,
             key_hint,
             option_hint,
@@ -650,6 +715,18 @@ impl SelectKeyBindings {
         contains(&self.same_folder_controls, control)
     }
 
+    pub(super) fn is_mode_filter(&self, control: &str) -> bool {
+        contains(&self.mode_filter_controls, control)
+    }
+
+    pub(super) fn is_sort(&self, control: &str) -> bool {
+        contains(&self.sort_controls, control)
+    }
+
+    pub(super) fn is_ln_mode(&self, control: &str) -> bool {
+        contains(&self.ln_mode_controls, control)
+    }
+
     pub(super) fn is_difficulty_filter(&self, control: &str) -> bool {
         contains(&self.difficulty_filter_controls, control)
     }
@@ -660,6 +737,38 @@ impl SelectKeyBindings {
 
     pub(super) fn is_replay_play(&self, control: &str) -> bool {
         contains(&self.replay_play_controls, control)
+    }
+
+    pub(super) fn is_open_folder(&self, control: &str) -> bool {
+        contains(&self.open_folder_controls, control)
+    }
+
+    pub(super) fn is_reload(&self, control: &str) -> bool {
+        contains(&self.reload_controls, control)
+    }
+
+    pub(super) fn is_autoplay_folder(&self, control: &str) -> bool {
+        contains(&self.autoplay_folder_controls, control)
+    }
+
+    pub(super) fn is_open_ir(&self, control: &str) -> bool {
+        contains(&self.open_ir_controls, control)
+    }
+
+    pub(super) fn is_open_key_config(&self, control: &str) -> bool {
+        contains(&self.open_key_config_controls, control)
+    }
+
+    pub(super) fn is_screenshot(&self, control: &str) -> bool {
+        contains(&self.screenshot_controls, control)
+    }
+
+    pub(super) fn is_rival_cycle(&self, control: &str) -> bool {
+        contains(&self.rival_cycle_controls, control)
+    }
+
+    pub(super) fn is_open_documents(&self, control: &str) -> bool {
+        contains(&self.open_documents_controls, control)
     }
 }
 
@@ -800,13 +909,6 @@ fn merge_select_controls(configured: Vec<String>, lane_controls: Vec<String>) ->
 
 fn select_controls_with_default(configured: Vec<String>, default_control: &str) -> Vec<String> {
     if configured.is_empty() { vec![default_control.to_string()] } else { configured }
-}
-
-fn select_control_with_lane_fallback(
-    configured: Vec<String>,
-    lane_fallback: Vec<String>,
-) -> Option<String> {
-    configured.into_iter().next().or_else(|| lane_fallback.into_iter().next())
 }
 
 fn contains(controls: &[String], control: &str) -> bool {

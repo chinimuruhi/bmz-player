@@ -25,6 +25,7 @@ export default defineI18nLocale(() =>
         courses: 'コース',
         players: 'ユーザー',
         daily: '本日の成果',
+        rivals: 'ライバル',
         profile: 'プロフィール',
         settings: 'アカウント設定',
         logout: 'ログアウト',

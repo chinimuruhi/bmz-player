@@ -131,14 +131,20 @@ impl WinitApp {
             // out before the first chart actually began.
             self.clear_active_course_state();
             self.select.autoplay_folder = None;
-            let now = Instant::now();
-            self.select.select_scene_started_at = now;
-            self.restart_select_bar_timer_without_scroll(now);
+            self.restart_select_scene_timers();
         } else {
+            let practice = decide.launch.into_practice_session();
+            let entering_practice = practice.is_some();
+            self.play.practice_session = practice;
             self.enter_play_scene(decide.chart_id, decide.options, decide.snapshot);
             // Decide 中に WAV preload が完了済みなら同一フレームで active session を
             // install し、不要な placeholder 1 フレームを挟まない。
+            // Practice 設定画面では practice_session を先に有効化しているため、
+            // preload は active session にせず start_practice_round まで保持する。
             self.poll_play_preload();
+            if entering_practice {
+                tracing::info!(chart_id = decide.chart_id, "practice configuration screen ready");
+            }
         }
     }
 

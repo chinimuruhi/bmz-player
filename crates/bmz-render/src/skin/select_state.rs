@@ -300,12 +300,21 @@ pub(super) fn select_key_mode_option_matches(op: i32, state: &SkinDrawState) -> 
 }
 
 pub(super) fn effective_skin_key_mode(state: &SkinDrawState) -> Option<KeyMode> {
-    if !state.select_screen || state.result_failed.is_some() {
-        return Some(state.key_mode);
+    if state.select_screen && state.result_failed.is_none() {
+        // beatoraja MusicSelector only exposes SongData for a SongBar. DirectoryBar,
+        // GradeBar, and settings rows must not inherit the active play-mode setting.
+        if state.in_settings
+            || state.select_row_kind != SelectRowKind::Song
+            || state.select_is_folder
+        {
+            return None;
+        }
+        return state.skin_attempt.effective_key_mode.or(state.select_chart_key_mode);
     }
-    (!state.in_settings && state.select_row_kind == SelectRowKind::Song && !state.select_is_folder)
-        .then_some(state.select_chart_key_mode)
-        .flatten()
+    if let Some(key_mode) = state.skin_attempt.effective_key_mode {
+        return Some(key_mode);
+    }
+    Some(state.key_mode)
 }
 
 pub(super) fn skin_key_mode_number(mode: KeyMode) -> i32 {
@@ -400,6 +409,11 @@ pub(super) fn select_detail_genre<'a>(
     selected_row: Option<&'a SelectRowSnapshot>,
 ) -> &'a str {
     if snapshot.in_settings {
+        if snapshot.settings_editing
+            && selected_row.is_some_and(|row| row.kind == SelectRowKind::Config)
+        {
+            return "[編集中]";
+        }
         return selected_row.map(|row| row.genre.as_str()).unwrap_or_default();
     }
     selected_row
@@ -413,12 +427,10 @@ pub(super) fn select_detail_subtitle<'a>(
     selected_row: Option<&'a SelectRowSnapshot>,
 ) -> &'a str {
     if snapshot.in_settings {
-        if snapshot.settings_editing
-            && selected_row.is_some_and(|row| row.kind == SelectRowKind::Config)
-        {
-            return "[編集中]";
-        }
-        return "";
+        return selected_row
+            .filter(|row| row.kind == SelectRowKind::Config)
+            .map(|row| row.subtitle.as_str())
+            .unwrap_or_default();
     }
     selected_row
         .filter(|row| row.kind == SelectRowKind::Song)
@@ -433,7 +445,7 @@ pub(super) fn select_row_shows_score_decorations(row: &SelectRowSnapshot) -> boo
 }
 
 pub(super) fn select_row_shows_level(row: &SelectRowSnapshot) -> bool {
-    row.kind == SelectRowKind::Song
+    row.kind == SelectRowKind::Song && row.show_level
 }
 
 pub(super) fn select_row_shows_lamp(row: &SelectRowSnapshot) -> bool {
@@ -516,5 +528,55 @@ pub(super) fn result_rank_op_matches(op: i32, state: &SkinDrawState) -> bool {
         300..=307 => op == 300 + rank as i32,
         310..=317 => op == 310 + rank as i32,
         _ => false,
+    }
+}
+
+pub(super) fn is_grade_diff_rank_destination(
+    destination: &SkinDestinationDef,
+    state: &SkinDrawState,
+) -> bool {
+    (state.result_failed.is_some() || state.select_screen)
+        && grade_diff_rank_destination_grade(&destination.id).is_some()
+        && destination.op.iter().any(|op| op.unsigned_abs() >= 300 && op.unsigned_abs() <= 307)
+}
+
+pub(super) fn grade_diff_rank_destination_matches(
+    destination: &SkinDestinationDef,
+    op: i32,
+    state: &SkinDrawState,
+) -> bool {
+    let Some(facts) = score_grade_facts(state) else {
+        return false;
+    };
+    let grade = facts.next_label();
+    grade_diff_rank_destination_grade(&destination.id) == Some(grade)
+        && grade_diff_rank_op(grade).is_some_and(|rank_op| op == rank_op)
+}
+
+fn grade_diff_rank_op(grade: &str) -> Option<i32> {
+    match grade {
+        "MAX" => Some(300),
+        "AAA" => Some(301),
+        "AA" => Some(302),
+        "A" => Some(303),
+        "B" => Some(304),
+        "C" => Some(305),
+        "D" => Some(306),
+        "E" => Some(307),
+        _ => None,
+    }
+}
+
+fn grade_diff_rank_destination_grade(id: &str) -> Option<&'static str> {
+    match id {
+        "RANK_s_MAX" => Some("MAX"),
+        "RANK_s_AAA" => Some("AAA"),
+        "RANK_s_AA" => Some("AA"),
+        "RANK_s_A" => Some("A"),
+        "RANK_s_B" => Some("B"),
+        "RANK_s_C" => Some("C"),
+        "RANK_s_D" => Some("D"),
+        "RANK_s_E" => Some("E"),
+        _ => None,
     }
 }

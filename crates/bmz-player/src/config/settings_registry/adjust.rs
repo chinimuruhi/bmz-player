@@ -10,6 +10,11 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             profile.audio_mix.normalize_chart_volume = !profile.audio_mix.normalize_chart_volume;
             true
         }
+        SettingsEntryId::NormalizeSystemBgmVolume => {
+            profile.audio_mix.normalize_system_bgm_volume =
+                !profile.audio_mix.normalize_system_bgm_volume;
+            true
+        }
         SettingsEntryId::MasterVolume => {
             adjust_u32(&mut profile.audio_mix.master_volume, delta, 0, 100)
         }
@@ -38,6 +43,14 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             cycle_enum(delta, profile.judge.judge_algorithm, cycle_judge_algorithm)
                 .map(|next| profile.judge.judge_algorithm = next)
                 .is_some()
+        }
+        SettingsEntryId::FastSlowDisplayScope => {
+            cycle_enum(delta, profile.judge.fast_slow_display_scope, cycle_fast_slow_display_scope)
+                .map(|next| profile.judge.fast_slow_display_scope = next)
+                .is_some()
+        }
+        SettingsEntryId::FastSlowDisplayThresholdMs => {
+            adjust_u32(&mut profile.judge.fast_slow_display_threshold_ms, delta, 0, 50)
         }
         SettingsEntryId::RuleMode => cycle_enum(delta, profile.play.rule_mode, cycle_rule_mode)
             .map(|next| profile.play.rule_mode = next)
@@ -91,13 +104,117 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         SettingsEntryId::BgaExpand => cycle_enum(delta, profile.play.bga_expand, cycle_bga_expand)
             .map(|next| profile.play.bga_expand = next)
             .is_some(),
-        SettingsEntryId::AutoPlay => {
-            if delta == 0 {
-                false
+        SettingsEntryId::SessionMode => {
+            let current = profile.play.session_mode.unwrap_or(if profile.play.auto_play {
+                SessionMode::Autoplay
             } else {
-                profile.play.auto_play = !profile.play.auto_play;
-                true
-            }
+                SessionMode::Normal
+            });
+            cycle_enum(delta, current, cycle_session_mode)
+                .map(|next| {
+                    profile.play.session_mode = Some(next);
+                    profile.play.auto_play = next.primary_autoplay();
+                })
+                .is_some()
+        }
+        SettingsEntryId::KeyModeConversion => {
+            cycle_enum(delta, profile.play.key_mode_conversion, cycle_key_mode_conversion)
+                .map(|next| {
+                    profile.play.key_mode_conversion = next;
+                    if next != KeyModeConversionConfig::Off {
+                        profile.play.double_option = DoubleOptionConfig::Off;
+                    }
+                })
+                .is_some()
+        }
+        SettingsEntryId::SevenToNinePattern => {
+            cycle_enum(delta, profile.play.seven_to_nine_pattern, cycle_seven_to_nine_pattern)
+                .map(|next| profile.play.seven_to_nine_pattern = next)
+                .is_some()
+        }
+        SettingsEntryId::SevenToNineType => {
+            cycle_enum(delta, profile.play.seven_to_nine_type, cycle_seven_to_nine_type)
+                .map(|next| profile.play.seven_to_nine_type = next)
+                .is_some()
+        }
+        SettingsEntryId::SevenToNineRuleMode => {
+            cycle_enum(delta, profile.play.seven_to_nine_rule_mode, cycle_seven_to_nine_rule_mode)
+                .map(|next| profile.play.seven_to_nine_rule_mode = next)
+                .is_some()
+        }
+        SettingsEntryId::PlayExitHoldMs => {
+            adjust_u32(&mut profile.play.play_exit_hold_ms, delta, 100, 5000)
+        }
+        SettingsEntryId::AssistExpandJudge => {
+            profile.play.assist.expand_judge = !profile.play.assist.expand_judge;
+            true
+        }
+        SettingsEntryId::AssistJudgeArea => {
+            profile.play.assist.judge_area = !profile.play.assist.judge_area;
+            true
+        }
+        SettingsEntryId::AssistMarkNote => {
+            profile.play.assist.mark_note = !profile.play.assist.mark_note;
+            true
+        }
+        SettingsEntryId::AssistBpmGuide => {
+            profile.play.assist.bpm_guide = !profile.play.assist.bpm_guide;
+            true
+        }
+        SettingsEntryId::AssistScrollMode => {
+            cycle_enum(delta, profile.play.assist.scroll_mode, cycle_assist_scroll_mode)
+                .map(|next| profile.play.assist.scroll_mode = next)
+                .is_some()
+        }
+        SettingsEntryId::AssistLongNoteMode => {
+            cycle_enum(delta, profile.play.assist.long_note_mode, cycle_assist_long_note_mode)
+                .map(|next| profile.play.assist.long_note_mode = next)
+                .is_some()
+        }
+        SettingsEntryId::AssistMineMode => {
+            cycle_enum(delta, profile.play.assist.mine_mode, cycle_assist_mine_mode)
+                .map(|next| profile.play.assist.mine_mode = next)
+                .is_some()
+        }
+        SettingsEntryId::AssistScrollSection => {
+            adjust_u16(&mut profile.play.assist.scroll_section, delta, 1, 64)
+        }
+        SettingsEntryId::AssistScrollRate => {
+            adjust_f64_percent(&mut profile.play.assist.scroll_rate, delta, 0.0, 1.0)
+        }
+        SettingsEntryId::AssistLongNoteRate => {
+            adjust_f64_percent(&mut profile.play.assist.long_note_rate, delta, 0.0, 1.0)
+        }
+        SettingsEntryId::AssistExtraNoteDepth => {
+            adjust_u8(&mut profile.play.assist.extra_note_depth, delta, 0, 16)
+        }
+        SettingsEntryId::AssistExtraNoteScratch => {
+            profile.play.assist.extra_note_scratch = !profile.play.assist.extra_note_scratch;
+            true
+        }
+        SettingsEntryId::AssistExtraNoteType => {
+            adjust_u8(&mut profile.play.assist.extra_note_type, delta, 0, 2)
+        }
+        SettingsEntryId::AssistKeyPgreatRate => {
+            adjust_u16(&mut profile.play.assist.key_pgreat_rate, delta, 0, 400)
+        }
+        SettingsEntryId::AssistKeyGreatRate => {
+            adjust_u16(&mut profile.play.assist.key_great_rate, delta, 0, 400)
+        }
+        SettingsEntryId::AssistKeyGoodRate => {
+            adjust_u16(&mut profile.play.assist.key_good_rate, delta, 0, 400)
+        }
+        SettingsEntryId::AssistScratchPgreatRate => {
+            adjust_u16(&mut profile.play.assist.scratch_pgreat_rate, delta, 0, 400)
+        }
+        SettingsEntryId::AssistScratchGreatRate => {
+            adjust_u16(&mut profile.play.assist.scratch_great_rate, delta, 0, 400)
+        }
+        SettingsEntryId::AssistScratchGoodRate => {
+            adjust_u16(&mut profile.play.assist.scratch_good_rate, delta, 0, 400)
+        }
+        SettingsEntryId::AssistLongNoteMarginRate => {
+            adjust_u16(&mut profile.play.assist.long_note_margin_rate, delta, 0, 400)
         }
         SettingsEntryId::MisslayerDurationMs => {
             adjust_u32(&mut profile.play.misslayer_duration_ms, delta, 0, 5000)
@@ -109,6 +226,10 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
                 profile.play.show_ln_tail_cap = !profile.play.show_ln_tail_cap;
                 true
             }
+        }
+        SettingsEntryId::GuideSe => {
+            profile.play.guide_se = !profile.play.guide_se;
+            true
         }
         SettingsEntryId::Hispeed => {
             let (step, default) = match profile.lane.hispeed_mode {
@@ -138,12 +259,20 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             0,
             crate::config::play::lane_unit_max_for_other(profile.lane.lift),
         ),
+        SettingsEntryId::LiftEnabled => {
+            profile.lane.lift_enabled = !profile.lane.lift_enabled;
+            true
+        }
         SettingsEntryId::Lift => adjust_u32(
             &mut profile.lane.lift,
             delta,
             0,
             crate::config::play::lane_unit_max_for_other(profile.lane.sudden),
         ),
+        SettingsEntryId::HispeedAutoAdjust => {
+            profile.lane.hispeed_auto_adjust = !profile.lane.hispeed_auto_adjust;
+            true
+        }
         SettingsEntryId::Hidden => adjust_u32(&mut profile.lane.hidden, delta, 0, 1000),
         SettingsEntryId::TargetGreenNumber => adjust_u32(
             &mut profile.lane.target_green_number,
@@ -151,6 +280,25 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             TARGET_GREEN_NUMBER_MIN,
             TARGET_GREEN_NUMBER_MAX,
         ),
+        SettingsEntryId::NoteDisplayDurationMs => {
+            let current = profile.lane.target_green_number;
+            let next = crate::config::play::adjust_green_number_by_duration_ms(current, delta);
+            profile.lane.target_green_number = next;
+            next != current
+        }
+        SettingsEntryId::Constant => {
+            profile.lane.constant_enabled = !profile.lane.constant_enabled;
+            true
+        }
+        SettingsEntryId::ConstantFadeMs => {
+            let before = profile.lane.constant_fade_ms;
+            profile.lane.constant_fade_ms = profile
+                .lane
+                .constant_fade_ms
+                .saturating_add(delta)
+                .clamp(CONSTANT_FADE_MIN_MS, CONSTANT_FADE_MAX_MS);
+            profile.lane.constant_fade_ms != before
+        }
         SettingsEntryId::SelectInputMode => {
             cycle_enum(delta, profile.input.select_input_mode, cycle_select_input_mode)
                 .map(|next| profile.input.select_input_mode = next)
@@ -222,6 +370,14 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
                 next,
             )
         }
+        SettingsEntryId::DifficultyTableLevelDisplay => {
+            profile.select.difficulty_table_level_display =
+                match profile.select.difficulty_table_level_display {
+                    DifficultyTableLevelDisplay::Table => DifficultyTableLevelDisplay::Chart,
+                    DifficultyTableLevelDisplay::Chart => DifficultyTableLevelDisplay::Table,
+                };
+            true
+        }
         SettingsEntryId::SelectRandomSelect => {
             if delta == 0 {
                 false
@@ -259,6 +415,10 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
                 true
             }
         }
+        SettingsEntryId::ReplayCompress => {
+            profile.replay.compress = !profile.replay.compress;
+            true
+        }
         SettingsEntryId::ReplaySlot1Rule => {
             adjust_replay_slot_rule(&mut profile.replay.slot_rules[0], delta)
         }
@@ -270,6 +430,16 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         }
         SettingsEntryId::ReplaySlot4Rule => {
             adjust_replay_slot_rule(&mut profile.replay.slot_rules[3], delta)
+        }
+        SettingsEntryId::Language => {
+            let current = profile.ui.locale();
+            cycle_enum(delta, current, cycle_language)
+                .map(|next| profile.ui.set_locale(next))
+                .is_some()
+        }
+        SettingsEntryId::ShowFps => {
+            profile.ui.show_fps = !profile.ui.show_fps;
+            true
         }
     }
 }

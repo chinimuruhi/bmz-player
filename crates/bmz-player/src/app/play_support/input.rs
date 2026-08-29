@@ -74,6 +74,60 @@ pub(in crate::app) fn play_option_control_for_input(
     }
 }
 
+/// Practice 設定 egui がゲーム入力を占有している間でも、プレイ操作へ渡すべき入力か。
+///
+/// E1/E2 自体の Press を先にプレイ側へ渡すことでホールドを開始できるようにし、
+/// ホールド中は全キーをプレイ側へ切り替える。egui 表示前やホールド中に app 側へ
+/// 渡したキーの Release も通し、押下状態を残さない。
+pub(in crate::app) fn keyboard_input_bypasses_egui(
+    has_play_context: bool,
+    e1_held: bool,
+    e2_held: bool,
+    app_key_held: bool,
+    control: Option<&PhysicalControl>,
+    play_input: Option<&PlayOptionInput>,
+) -> bool {
+    if app_key_held {
+        return true;
+    }
+    if !has_play_context {
+        return false;
+    }
+    if e1_held || e2_held {
+        return true;
+    }
+    let (Some(control), Some(play_input)) = (control, play_input) else {
+        return false;
+    };
+    !play_input.resolves_lane(W_KEYBOARD_DEVICE_ID, control)
+        && (play_input.is_action(W_KEYBOARD_DEVICE_ID, control, InputActionConfig::E1)
+            || play_input.is_action(W_KEYBOARD_DEVICE_ID, control, InputActionConfig::E2))
+}
+
+pub(in crate::app) fn egui_blocks_raw_play_keyboard(
+    practice_overlay: bool,
+    e1_held: bool,
+    e2_held: bool,
+) -> bool {
+    practice_overlay && !e1_held && !e2_held
+}
+
+/// Window keyboard を app 側の画面操作へ伝播させず、egui に留めるか。
+///
+/// Practice 設定は未消費キーも含めて排他的に扱う。通常プレイは egui の消費状態に
+/// かかわらずプレイへ渡し、Select 等の非プレイ画面は egui が実際に消費した入力だけを止める。
+pub(in crate::app) fn egui_blocks_window_keyboard_route(
+    has_play_context: bool,
+    practice_overlay: bool,
+    play_owns_keyboard_input: bool,
+    egui_consumed: bool,
+) -> bool {
+    if play_owns_keyboard_input || (has_play_context && !practice_overlay) {
+        return false;
+    }
+    practice_overlay || egui_consumed
+}
+
 pub(in crate::app) fn visual_offset_delta_control(
     control: &str,
     bindings: &SelectKeyBindings,

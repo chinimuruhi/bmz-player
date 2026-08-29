@@ -86,4 +86,9 @@ pub const NETWORK_MIGRATIONS: &[Migration] = &[
             );",
         ],
     },
+    Migration {
+        version: 3,
+        statements: &["ALTER TABLE ir_score_submissions
+                ADD COLUMN response_json TEXT NOT NULL DEFAULT '';"],
+    },
 ];

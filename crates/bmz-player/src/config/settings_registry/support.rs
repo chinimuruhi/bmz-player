@@ -15,6 +15,27 @@ pub(super) fn adjust_u32(value: &mut u32, delta: i32, min: u32, max: u32) -> boo
     *value != before
 }
 
+pub(super) fn adjust_u16(value: &mut u16, delta: i32, min: u16, max: u16) -> bool {
+    let before = *value;
+    *value = (*value as i32).saturating_add(delta).clamp(min as i32, max as i32) as u16;
+    *value != before
+}
+
+pub(super) fn adjust_u8(value: &mut u8, delta: i32, min: u8, max: u8) -> bool {
+    let before = *value;
+    *value = (*value as i32).saturating_add(delta).clamp(min as i32, max as i32) as u8;
+    *value != before
+}
+
+pub(super) fn adjust_f64_percent(value: &mut f64, delta: i32, min: f64, max: f64) -> bool {
+    let before = *value;
+    let next_percent = ((*value * 100.0).round() as i32)
+        .saturating_add(delta)
+        .clamp((min * 100.0).round() as i32, (max * 100.0).round() as i32);
+    *value = next_percent as f64 / 100.0;
+    (*value - before).abs() > f64::EPSILON
+}
+
 pub(super) fn adjust_offset_ms(value: &mut i64, delta: i32) -> bool {
     let before = *value;
     let ms = (*value / 1_000).saturating_add(delta as i64).clamp(-500, 500);
@@ -247,6 +268,93 @@ pub(super) fn cycle_judge_algorithm(
     forward: bool,
 ) -> JudgeAlgorithmConfig {
     cycle_in_slice(&JudgeAlgorithmConfig::ORDER, current, forward)
+}
+
+pub(super) fn cycle_fast_slow_display_scope(
+    current: FastSlowDisplayScope,
+    forward: bool,
+) -> FastSlowDisplayScope {
+    cycle_in_slice(
+        &[FastSlowDisplayScope::Auto, FastSlowDisplayScope::ThresholdMs],
+        current,
+        forward,
+    )
+}
+
+pub(super) fn cycle_session_mode(current: SessionMode, forward: bool) -> SessionMode {
+    cycle_in_slice(&SessionMode::VALUES, current, forward)
+}
+
+pub(super) fn cycle_key_mode_conversion(
+    current: KeyModeConversionConfig,
+    forward: bool,
+) -> KeyModeConversionConfig {
+    cycle_in_slice(&KeyModeConversionConfig::VALUES, current, forward)
+}
+
+pub(super) fn cycle_seven_to_nine_pattern(
+    current: SevenToNinePattern,
+    forward: bool,
+) -> SevenToNinePattern {
+    cycle_in_slice(&SevenToNinePattern::VALUES, current, forward)
+}
+
+pub(super) fn cycle_seven_to_nine_type(current: SevenToNineType, forward: bool) -> SevenToNineType {
+    cycle_in_slice(&SevenToNineType::VALUES, current, forward)
+}
+
+pub(super) fn cycle_seven_to_nine_rule_mode(
+    current: SevenToNineRuleMode,
+    forward: bool,
+) -> SevenToNineRuleMode {
+    cycle_in_slice(&SevenToNineRuleMode::VALUES, current, forward)
+}
+
+pub(super) fn cycle_assist_scroll_mode(
+    current: AssistScrollMode,
+    forward: bool,
+) -> AssistScrollMode {
+    cycle_in_slice(
+        &[AssistScrollMode::Off, AssistScrollMode::Remove, AssistScrollMode::Add],
+        current,
+        forward,
+    )
+}
+
+pub(super) fn cycle_assist_long_note_mode(
+    current: AssistLongNoteMode,
+    forward: bool,
+) -> AssistLongNoteMode {
+    cycle_in_slice(
+        &[
+            AssistLongNoteMode::Off,
+            AssistLongNoteMode::Remove,
+            AssistLongNoteMode::AddLn,
+            AssistLongNoteMode::AddCn,
+            AssistLongNoteMode::AddHcn,
+            AssistLongNoteMode::AddAll,
+        ],
+        current,
+        forward,
+    )
+}
+
+pub(super) fn cycle_assist_mine_mode(current: AssistMineMode, forward: bool) -> AssistMineMode {
+    cycle_in_slice(
+        &[
+            AssistMineMode::Off,
+            AssistMineMode::Remove,
+            AssistMineMode::AddRandom,
+            AssistMineMode::AddNear,
+            AssistMineMode::AddBlank,
+        ],
+        current,
+        forward,
+    )
+}
+
+pub(super) fn cycle_language(current: AppLocale, forward: bool) -> AppLocale {
+    cycle_in_slice(&AppLocale::SUPPORTED, current, forward)
 }
 
 pub(super) fn cycle_rule_mode(current: RuleMode, forward: bool) -> RuleMode {

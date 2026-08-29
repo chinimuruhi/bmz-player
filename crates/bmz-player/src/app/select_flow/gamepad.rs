@@ -57,12 +57,15 @@ impl WinitApp {
         for tick in &output.axis_ticks {
             // キーコンフィグ待ち受け中は合成 Press を待たず、生 tick から直接捕捉する。
             // 軸が active のままでも (押しっぱなし扱いで Press が出なくても) 確実に拾える。
+            let control = format!("{}{}", tick.name, if tick.ticks > 0 { "+" } else { "-" });
+            if self.capture_egui_key_config_axis(&control) {
+                continue;
+            }
             if self.select.key_config_edit.as_ref().is_some_and(|session| session.listening) {
-                let control = format!("{}{}", tick.name, if tick.ticks > 0 { "+" } else { "-" });
                 self.apply_key_config_gamepad(&control);
                 continue;
             }
-            self.route_gamepad_axis_ticks(&tick.name, tick.ticks);
+            self.route_gamepad_axis_ticks(tick.device_id, &tick.name, tick.ticks);
         }
     }
 
@@ -75,6 +78,9 @@ impl WinitApp {
         // holdは物理状態を正とする。2回押しなどの単発操作はこの後のフィルターを通す。
         self.sync_select_holds_from_pressed_controls();
         self.sync_play_control_holds_from_pressed_controls();
+        if self.capture_egui_key_config_gamepad(&event.name, event.pressed) {
+            return;
+        }
         let mut device_event = crate::input::gamepad::to_device_input_event(event);
         if should_bypass_analog_scratch_bounce(
             event,
@@ -90,10 +96,15 @@ impl WinitApp {
             .practice_session
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
-        if !practice_config {
+        if !practice_config && self.play.play_ending.is_none() {
             self.route_play_device_input(device_event);
         }
-        self.route_gamepad_button(event.device_id, &event.name, event.pressed);
+        self.route_gamepad_button(
+            event.device_id,
+            &event.name,
+            event.pressed,
+            event.synthesized_analog_axis,
+        );
     }
 
     fn resync_gamepad_pressed_controls(
@@ -110,9 +121,26 @@ impl WinitApp {
             .key_config_edit
             .as_ref()
             .is_some_and(|session| session.listening && session.target.slot().is_controller())
+            || self
+                .ui
+                .egui
+                .as_ref()
+                .is_some_and(crate::ui::EguiLayer::key_config_controller_listening)
     }
 
-    pub(super) fn route_gamepad_axis_ticks(&mut self, axis: &str, ticks: i32) {
+    pub(super) fn route_gamepad_axis_ticks(&mut self, device: DeviceId, axis: &str, ticks: i32) {
+        let practice_config = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        if practice_config
+            && !self.play.play_e1_held
+            && !self.play.play_e2_held
+            && self.apply_practice_analog_cursor_ticks(device, axis, ticks)
+        {
+            return;
+        }
         if self.apply_play_analog_option_ticks(axis, ticks) {
             return;
         }
@@ -120,6 +148,56 @@ impl WinitApp {
             return;
         }
         self.accumulate_select_analog_ticks(axis, ticks);
+    }
+
+    pub(super) fn apply_practice_analog_cursor_ticks(
+        &mut self,
+        device: DeviceId,
+        axis: &str,
+        ticks: i32,
+    ) -> bool {
+        let is_config = self
+            .play
+            .practice_session
+            .as_ref()
+            .is_some_and(|practice| practice.phase == PracticePhase::Config);
+        if !is_config {
+            return false;
+        }
+        if self.play.play_ending.is_some() {
+            return true;
+        }
+        let Some(delta) = crate::app::play_flow_practice::practice_analog_cursor_delta(
+            device,
+            axis,
+            ticks,
+            self.play.play_option_input.as_ref(),
+        ) else {
+            return false;
+        };
+        let now = Instant::now();
+        let idle = self.play.play_analog_last_tick_at.is_none_or(|last| {
+            now.duration_since(last) > Duration::from_millis(SELECT_ANALOG_SCROLL_TOLERANCE_MS)
+        });
+        self.play.play_analog_last_tick_at = Some(now);
+        if idle {
+            self.play.play_analog_scroll_buffer = 0;
+        }
+        self.play.play_analog_scroll_buffer += delta;
+
+        let ticks_per_scroll = self.boot.profile_config.input.analog_ticks_per_scroll.max(1) as i32;
+        let steps =
+            take_analog_scroll_steps(&mut self.play.play_analog_scroll_buffer, ticks_per_scroll);
+        if let Some(practice) = &mut self.play.practice_session {
+            for _ in 0..steps.abs() {
+                crate::screens::practice::move_practice_cursor(
+                    &mut practice.cursor,
+                    practice.is_double,
+                    steps > 0,
+                );
+            }
+        }
+        true
     }
 
     pub(super) fn apply_play_analog_option_ticks(&mut self, axis: &str, ticks: i32) -> bool {
@@ -327,19 +405,37 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn route_gamepad_button(&mut self, device: DeviceId, button: &str, pressed: bool) {
+    pub(super) fn route_gamepad_button(
+        &mut self,
+        device: DeviceId,
+        button: &str,
+        pressed: bool,
+        synthesized_analog_axis: bool,
+    ) {
         let control_event = ControlInputEvent::gamepad(device, button, pressed);
         let physical_control =
             control_event.physical.as_ref().expect("gamepad control always has a physical value");
         let has_play_control_context =
             self.play.active_play.is_some() || self.play.pending_play_start.is_some();
-        if self.route_practice_gamepad_control(button, pressed) {
+        if pressed
+            && self.select.key_config_edit.is_none()
+            && self.select.select_keys.is_screenshot(button)
+        {
+            self.request_manual_screenshot();
             return;
         }
-        if pressed && self.handle_quick_retry_control(button) {
+        if self.route_practice_gamepad_control(device, button, pressed, synthesized_analog_axis) {
+            return;
+        }
+        if should_route_quick_retry_input(pressed, false, self.play.play_ending.is_some())
+            && self.handle_quick_retry_control(button)
+        {
             return;
         }
         if pressed && self.begin_play_fadeout_after_final_notes_control(button) {
+            return;
+        }
+        if self.play.play_ending.is_some() {
             return;
         }
         let play_e1_control = has_play_control_context

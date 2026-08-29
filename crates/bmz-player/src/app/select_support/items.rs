@@ -70,7 +70,11 @@ pub(in crate::app) fn build_select_items_for_stack(
     }
     match stack.last() {
         Some(path) if path.starts_with(crate::screens::settings_model::CONFIG_ROOT_PATH) => {
-            load_settings_items_for_locale(path, boot.profile_config.ui.locale())
+            crate::screens::settings_model::load_settings_items_for_config(
+                path,
+                boot.profile_config.ui.locale(),
+                &boot.app_config,
+            )
         }
         Some(path) if path == COURSE_ROOT_PATH => {
             let mut items = match load_select_items_for_courses(

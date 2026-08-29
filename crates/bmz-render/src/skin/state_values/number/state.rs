@@ -54,8 +54,11 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         43 => Some(arrange_2p_ref_index(state) as i64),
         344 => Some(extended_arrange_ref_index(state) as i64),
         345 => Some(extended_arrange_2p_ref_index(state) as i64),
-        54 if state.select_screen => Some(state.select_double_option_index as i64),
-        55 if state.select_screen => Some(state.select_hs_fix_index as i64),
+        54 => {
+            Some(state.skin_attempt.double_option_index.unwrap_or(state.select_double_option_index)
+                as i64)
+        }
+        55 => Some(state.skin_attempt.hsfix_index.unwrap_or(state.select_hs_fix_index) as i64),
         11 if state.select_screen => Some(state.select_mode_index as i64),
         12 if state.select_screen && state.select_option_panel == 3 => {
             Some(state.judge_timing_offset_ms as i64)
@@ -96,6 +99,8 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         354 if state.select_screen => Some(state.select_chart_mine_notes as i64),
         360 if state.select_screen => Some(state.select_chart_peak_density.floor() as i64),
         361 if state.select_screen => Some(decimal_afterdot(state.select_chart_peak_density)),
+        360 => Some(i64::from(state.skin_attempt.seven_to_nine_pattern)),
+        361 => Some(i64::from(state.skin_attempt.seven_to_nine_type)),
         362 if state.select_screen => Some(state.select_chart_end_density.floor() as i64),
         363 if state.select_screen => Some(decimal_afterdot(state.select_chart_end_density)),
         364 if state.select_screen => Some(state.select_chart_density.floor() as i64),
@@ -109,7 +114,10 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         77 if state.select_screen => Some(state.select_play_count as i64),
         77 => Some(state.select_target_index as i64),
         78 if state.select_screen => Some(state.select_clear_count as i64),
-        78 => Some(state.select_gauge_auto_shift_index as i64),
+        78 => Some(
+            state.skin_attempt.gauge_auto_shift_index.unwrap_or(state.select_gauge_auto_shift_index)
+                as i64,
+        ),
         79 if state.select_screen
             && (state.select_ex_score.is_some()
                 || state.select_play_count > 0
@@ -117,7 +125,12 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         {
             Some(state.select_play_count.saturating_sub(state.select_clear_count) as i64)
         }
-        341 => Some(state.select_bottom_shiftable_gauge_index as i64),
+        341 => Some(
+            state
+                .skin_attempt
+                .bottom_shiftable_gauge_index
+                .unwrap_or(state.select_bottom_shiftable_gauge_index) as i64,
+        ),
         342 => Some(i64::from(state.hispeed_auto_adjust)),
         80 | 110 => Some(state.judge_counts.pgreat as i64),
         81 | 111 => Some(state.judge_counts.great as i64),
@@ -149,7 +162,13 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         SKIN_REF_BMZ_SELECT_SETTINGS_ROW_KIND => {
             Some(i64::from(select_settings_row_kind_index(state.select_row_kind)))
         }
-        SKIN_REF_BMZ_SELECT_SESSION_MODE => Some(state.select_session_mode_index as i64),
+        SKIN_REF_BMZ_SELECT_SESSION_MODE => {
+            Some(state.skin_attempt.session_mode_index.unwrap_or(state.select_session_mode_index)
+                as i64)
+        }
+        SKIN_REF_BMZ_RULE_MODE => Some(state.rule_mode_index as i64),
+        SKIN_REF_BMZ_LN_POLICY_SETTING => state.ln_policy_setting_index.map(|index| index as i64),
+        SKIN_REF_BMZ_LN_SCORE_POLICY => state.ln_score_policy_index.map(|index| index as i64),
         // Deprecated grade-difference mode: old BMZ skins fall back to NEXT.
         SKIN_REF_BMZ_GRADE_DIFF_DISPLAY => Some(1),
         SKIN_REF_BMZ_SCORE_GRADE_CURRENT => {
@@ -230,6 +249,10 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         SKIN_REF_BMZ_ACTIVE_LANE_COUNT => {
             effective_skin_key_mode(state).map(|mode| mode.lane_count() as i64)
         }
+        SKIN_REF_BMZ_SOURCE_KEY_MODE => {
+            state.skin_attempt.source_key_mode.map(skin_key_mode_number_i64)
+        }
+        SKIN_REF_BMZ_SOURCE_LN_PROFILE => state.skin_attempt.source_ln_profile_bits.map(i64::from),
         312 => {
             if state.select_screen && !duration_refs_available(state) {
                 return None;
@@ -243,8 +266,17 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
             Some(state_duration_green_number_ms(state))
         }
         1312..=1327 => lane_cover_duration_number(ref_id, state),
-        308 if state.select_screen => Some(state.select_ln_mode_index as i64),
-        340 if state.select_screen => Some(state.select_judge_algorithm_index as i64),
+        308 => Some(
+            state
+                .skin_attempt
+                .ln_mode_index
+                .or(state.result_ln_mode_index)
+                .unwrap_or(state.select_ln_mode_index) as i64,
+        ),
+        340 => Some(
+            state.skin_attempt.judge_algorithm_index.unwrap_or(state.select_judge_algorithm_index)
+                as i64,
+        ),
         // BPM 系: NUMBER_MAXBPM=90, NUMBER_MINBPM=91, NUMBER_NOWBPM=160
         90 => {
             if !select_chart_metadata_available(state) {
@@ -283,6 +315,19 @@ pub(in crate::skin) fn skin_state_number(ref_id: i32, state: &SkinDrawState) -> 
         SKIN_REF_BMZ_JUDGE_LANE_DURATION_BASE..=SKIN_REF_BMZ_JUDGE_LANE_DURATION_LAST => state
             .judge_lane_timing_ms[(ref_id - SKIN_REF_BMZ_JUDGE_LANE_DURATION_BASE) as usize]
             .map(|ms| -(ms as i64)),
+        // Modified LR2 / OpenLR2 ref=210. PGREAT is always blank even when a
+        // BMZ ThresholdMs setting preserves its timing side.
+        SKIN_REF_BMZ_LR2_FAST_SLOW_1P => {
+            if state.judge_index[0] == Some(0) {
+                Some(0)
+            } else {
+                Some(match state.judge_timing_sign[0] {
+                    Some(1) => 1,
+                    Some(-1) => 2,
+                    _ => 0,
+                })
+            }
+        }
         // 判定タイミングオフセット設定値 (NUMBER_JUDGETIMING=12)
         12 => Some(state.judge_timing_offset_ms as i64),
         // Result judgement duration / timing distribution stats.

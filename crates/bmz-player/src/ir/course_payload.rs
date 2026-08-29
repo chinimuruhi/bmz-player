@@ -613,6 +613,7 @@ mod tests {
     fn stage_summary(clear_type: ClearType, gauge_value: f32) -> ResultSummary {
         ResultSummary {
             clear_type,
+            skin_attempt: Default::default(),
             target_name: String::new(),
             arrange: "NORMAL".to_string(),
             arrange_2p: "NORMAL".to_string(),

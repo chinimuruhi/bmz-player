@@ -2,14 +2,15 @@
 
 BMZ Player から beatoraja 向け IR の rianIR へ接続するための設計・実装計画。
 BMZ 公式 IR の設計は `docs/ir.md`、LN 正規化は `docs/ln.md`、判定・ゲージの
-rule は `docs/rule.md` を正とし、本ドキュメントでは rianIR との互換境界だけを扱う。
+rule は `docs/rule.md`、アシストを含む保存・送信条件は
+`docs/score-persistence.md` を正とし、本ドキュメントでは rianIR との互換境界だけを扱う。
 
 ## Goal
 
 - rianIR の既存アカウントでログインできる。
 - BMZ の単曲スコアを rianIR 互換 payload に変換して送信できる。
 - 選曲・リザルト表示に必要な単曲ランキングを取得できる。
-- BMZ のコース完走結果を rianIR へ送信できる。
+- BMZ のコース完走・途中 FAILED の終端結果を rianIR へ送信できる。
 - rianIR が提供する難易度表、POPULAR、レビュー、Rivals RECENT、コースを選曲から利用できる。
 - クライアント実装と判定・ゲージ仕様を別フィールドとして扱い、同じ rule の
   beatoraja / LR2oraja / BMZ スコアを同じランキング条件で比較できる。
@@ -27,7 +28,7 @@ rianIR は BMZ 公式 IR とは別 provider とする。credential、送信 queu
 | login | `POST /api/auth/login.php` | ID/password を送り、`player_name` と `api_token` を provider credential として保存する |
 | 単曲送信 | `POST /api/score/score.php` | BMZ score/result/chart を rianIR payload へ変換し、署名して送る |
 | 単曲ランキング取得 | `GET /api/score/get_score.php` | chart SHA-256 と `body` を条件に取得し、BMZ の共通ランキング型へ変換する |
-| course送信 | `POST /api/score/course_score.php` | 完走した course attempt を変換し、署名して送る |
+| course送信 | `POST /api/score/course_score.php` | 完走または途中 FAILED の course attempt を変換し、署名して送る |
 | courseランキング取得 | `GET /api/score/get_course_score.php` | `rian_course_hash_v1` と `body` で取得する |
 | テーブル取得 | `GET /api/common/get_tables.php?id=...` | rianIR の動的folder/courseを既存の難易度表・course modelへ変換してキャッシュする |
 
@@ -156,9 +157,11 @@ client = bmz-player
 
 ## Score Eligibility
 
-送信可否は result 保存後ではなく、rianIR job を enqueue する直前に判定する。
-非送信の result はローカル score と replay には通常どおり保存する。非送信理由を
-UIへ表示する機能は後続課題とする。
+provider 固有の送信可否は result 保存後、rianIR job を enqueue する直前に判定する。
+Battle / Battle AS のような provider 固有の非送信 result は、ローカル score と replay
+には通常どおり保存する。一方、実効アシスト、autoplay、replay、practice、key mode
+変換は共通保存経路で先に除外され、rianIR の判定まで到達しない。非送信理由をUIへ
+表示する機能は後続課題とする。
 
 初期実装で送信可能なのは次をすべて満たすプレイだけとする。
 
@@ -174,6 +177,7 @@ UIへ表示する機能は後続課題とする。
 - autoplay
 - replay再生
 - practice
+- 実効 `LightAssist` / `Assist`
 - `DoubleOption::Battle`
 - `DoubleOption::BattleAutoScratch`（画面表記 `BATTLE AS`）
 - 中断され、rianIR の score contract を満たさない result
@@ -354,7 +358,7 @@ duration-aware対応前に保存済みのqueue jobには `chart.length_ms` が�
 
 course送信にも単曲と同じ client/rule/LN/arrange の送信可否判定を適用する。
 
-- courseを完走した attempt だけを送る。
+- course が完走または途中 FAILED で終端 Result に到達した attempt を送る。
 - course全体を単一の Force LN mode で表現できる場合だけ送る。
 - Battle / Battle AS を使用した attempt は送らない。
 - 初期版は誤った曲 metadata を登録しないため `tracks=[]` とする。BMZの既存course
@@ -570,8 +574,11 @@ rianIR側の初期作業は次に限定する。
 2. 5K/7K/14K と 4K/6K/8K を各1曲プレイし、rule・mode・判定内訳をDBと画面で確認する。
 3. 同じ譜面を Force LN/CN/HCN でプレイし、現行APIで混在する制約を確認する。
 4. F-RANDOM / MF-RANDOM の SP/DP scoreで arrange、seed、replay再現結果を照合する。
-5. Battle / Battle AS、Auto LN、autoplayがローカル保存のみで送信されないことを確認する。
-6. courseを完走し、course scoreを確認する。初期版では `tracks=[]` であることも確認する。
+5. Battle / Battle AS はローカル保存のみ、実効アシスト（SPIRAL / H-RANDOM /
+   ALL-SCR / RANDOM-EX / S-RANDOM-EXを含む）は assist lamp と統計だけを更新し、
+   数値score・履歴・replay・IRを保存しないことを確認する。autoplayも送信されないことを確認する。
+6. courseの完走と途中 FAILED を各1回行い、course scoreを確認する。初期版では
+   `tracks=[]` であることも確認する。
 7. 通信切断、401、403、429、5xxの各ケースで queue とUI表示を確認する。
 
 ## Implementation Pointers

@@ -140,14 +140,9 @@ macro_rules! skin_document_render_core_resolve_methods {
             if let Some(item) = self.direct_source_image_render_item(destination, frame, sources) {
                 return Some(vec![item]);
             }
-            if let Some(items) = self.resolve_image_destination_items(
-                destination,
-                frame,
-                elapsed,
-                images,
-                state,
-                sources,
-            ) {
+            if let Some(items) =
+                self.resolve_image_destination_items(destination, frame, images, state, sources)
+            {
                 return items;
             }
 
@@ -157,14 +152,9 @@ macro_rules! skin_document_render_core_resolve_methods {
 
             // imageset (キービーム・ボム等) を destination 自身のタイマー駆動で描画する。
             // timer が非アクティブな destination は上の skin_timer_elapsed_ms で除外済み。
-            if let Some(items) = self.resolve_imageset_destination_items(
-                destination,
-                frame,
-                elapsed,
-                images,
-                state,
-                sources,
-            ) {
+            if let Some(items) =
+                self.resolve_imageset_destination_items(destination, frame, images, state, sources)
+            {
                 return items;
             }
 
@@ -231,7 +221,6 @@ macro_rules! skin_document_render_core_resolve_methods {
             &self,
             destination: &SkinDestinationDef,
             mut frame: ResolvedSkinFrame,
-            elapsed: i32,
             images: &HashMap<&str, &SkinImageDef>,
             state: &SkinDrawState,
             sources: &HashMap<String, SkinDocumentTexture>,
@@ -253,13 +242,8 @@ macro_rules! skin_document_render_core_resolve_methods {
                 return Some(None);
             };
             let pixel_rect = skin_image_pixel_rect(image);
-            let mut uv = skin_image_texture_region_for_state(
-                image,
-                source.source_size,
-                elapsed,
-                Some(state),
-                pixel_rect,
-            );
+            let mut uv =
+                skin_image_texture_region_for_state(image, source.source_size, state, pixel_rect);
             if self.should_clip_image_at_disappear_line(destination, image)
                 && let Some((disappear_line, link_lift)) = self.disappear_line_for_lane_cover_clip()
             {
@@ -288,7 +272,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                 uv,
                 frame,
                 destination.center,
-                if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                skin_blend_mode(destination.blend),
                 Some(source.source_size),
                 destination.filter != 0,
             )]))
@@ -308,7 +292,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             }
 
             let rect = normalize_skin_frame_rect(frame, self.w, self.h);
-            let blend = if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal };
+            let blend = skin_blend_mode(destination.blend);
             let destination_tint = Color::rgba(1.0, 1.0, 1.0, frame.a as f32 / 255.0);
             let stretch =
                 if destination.stretch < 0 { state.bga_stretch } else { destination.stretch };
@@ -340,11 +324,12 @@ macro_rules! skin_document_render_core_resolve_methods {
 
             if state.bga_poor.is_none() {
                 for bga in [state.bga_layer, state.bga_layer2].into_iter().flatten() {
-                    let layer_blend = if matches!(blend, BlendMode::Add) || bga.is_video {
-                        blend
-                    } else {
-                        BlendMode::LayerMask
-                    };
+                    let layer_blend =
+                        if matches!(blend, BlendMode::Add | BlendMode::Multiply) || bga.is_video {
+                            blend
+                        } else {
+                            BlendMode::LayerMask
+                        };
                     items.push(bga_image_item(
                         bga,
                         stretch,
@@ -371,7 +356,6 @@ macro_rules! skin_document_render_core_resolve_methods {
             &self,
             destination: &SkinDestinationDef,
             frame: ResolvedSkinFrame,
-            elapsed: i32,
             images: &HashMap<&str, &SkinImageDef>,
             state: &SkinDrawState,
             sources: &HashMap<String, SkinDocumentTexture>,
@@ -397,13 +381,7 @@ macro_rules! skin_document_render_core_resolve_methods {
             let (rect, uv) = stretch_skin_image_geometry(
                 destination.stretch,
                 normalize_skin_frame_rect(frame, self.w, self.h),
-                skin_image_texture_region_for_state(
-                    image,
-                    source.source_size,
-                    elapsed,
-                    Some(state),
-                    pixel_rect,
-                ),
+                skin_image_texture_region_for_state(image, source.source_size, state, pixel_rect),
                 source.source_size,
                 self.w,
                 self.h,
@@ -414,7 +392,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                 uv,
                 frame,
                 destination.center,
-                if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                skin_blend_mode(destination.blend),
                 Some(source.source_size),
                 destination.filter != 0,
             )]))
@@ -457,8 +435,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                 let mut uv = skin_image_texture_region_for_state(
                     image,
                     source.source_size,
-                    elapsed,
-                    Some(state),
+                    state,
                     pixel_rect,
                 );
                 if self.should_clip_image_at_disappear_line(destination, image)
@@ -490,7 +467,7 @@ macro_rules! skin_document_render_core_resolve_methods {
                     uv,
                     frame,
                     destination.center,
-                    if destination.blend == 2 { BlendMode::Add } else { BlendMode::Normal },
+                    skin_blend_mode(destination.blend),
                     Some(source.source_size),
                     destination.filter != 0,
                 )]);

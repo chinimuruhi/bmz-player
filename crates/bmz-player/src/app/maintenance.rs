@@ -53,6 +53,7 @@ impl WinitApp {
         self.poll_pending_rian_table_fetch();
         self.poll_pending_chart_download();
         self.poll_pending_song_scan();
+        self.poll_pending_replay_import();
         self.poll_pending_update_check();
         self.poll_pending_update_download();
         self.poll_pending_rival_sync();

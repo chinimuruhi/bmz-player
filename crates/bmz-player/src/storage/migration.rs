@@ -14,6 +14,7 @@ pub fn migrate_library_db(path: &Path) -> Result<()> {
     let mut conn = Connection::open(path)?;
     configure_connection(&conn)?;
     run_migrations(&mut conn, LIBRARY_MIGRATIONS)?;
+    super::course_db::repair_course_entry_chart_links(&conn)?;
     backfill_unknown_chart_document_flags(&mut conn)
 }
 
@@ -154,7 +155,7 @@ mod tests {
         run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 31);
+        assert_eq!(version, 32);
 
         let mut stmt = conn.prepare("PRAGMA table_info(charts)").unwrap();
         let columns = stmt
@@ -186,6 +187,8 @@ mod tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
         assert!(analysis_columns.iter().any(|column| column == "loudness_lufs"));
+        assert!(analysis_columns.iter().any(|column| column == "short_term_lufs"));
+        assert!(analysis_columns.iter().any(|column| column == "sample_peak"));
         assert!(!analysis_columns.iter().any(|column| column == "normalization_gain"));
     }
 
@@ -385,7 +388,7 @@ mod tests {
             conn.query_row("SELECT headers_json FROM charts", [], |row| row.get(0)).unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(headers_json, "{}");
-        assert_eq!(version, 31);
+        assert_eq!(version, 32);
     }
 
     #[test]
@@ -452,7 +455,7 @@ mod tests {
             .unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(chart_ids, vec![Some(10), Some(20), None, Some(99)]);
-        assert_eq!(version, 31);
+        assert_eq!(version, 32);
     }
 
     #[test]
@@ -515,7 +518,7 @@ mod tests {
         run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 27);
+        assert_eq!(version, 30);
 
         let mut stmt = conn.prepare("PRAGMA table_info(score_best)").unwrap();
         let columns = stmt
@@ -579,7 +582,7 @@ mod tests {
         run_migrations(&mut conn, SCORE_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 27);
+        assert_eq!(version, 30);
         let course_policy: String =
             conn.query_row("SELECT ln_policy FROM course_scores", [], |row| row.get(0)).unwrap();
         let slot_policy: String = conn
@@ -630,12 +633,15 @@ mod tests {
         run_score_migrations(&mut conn).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 27);
+        assert_eq!(version, 30);
         assert!(column_exists(&conn, "score_history", "source_kind").unwrap());
         assert!(column_exists(&conn, "score_history", "arrange_2p").unwrap());
         assert!(column_exists(&conn, "score_history", "applied_double_option").unwrap());
         assert!(column_exists(&conn, "score_history", "seed_scheme").unwrap());
         assert!(column_exists(&conn, "course_scores", "ln_policy").unwrap());
+        assert!(column_exists(&conn, "course_scores", "replay_only").unwrap());
+        assert!(column_exists(&conn, "course_scores", "replay_source_fingerprint").unwrap());
+        assert!(column_exists(&conn, "replay_slots", "source_fingerprint").unwrap());
         assert!(table_exists(&conn, "score_history_sources").unwrap());
     }
 }

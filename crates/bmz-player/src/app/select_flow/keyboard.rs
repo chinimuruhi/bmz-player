@@ -19,9 +19,11 @@ impl WinitApp {
         let play_physical_control = control_event.physical.as_ref();
         let has_play_control_context =
             self.play.active_play.is_some() || self.play.pending_play_start.is_some();
-        if control_event.pressed
-            && !control_event.repeat
-            && let Some(control) = play_control
+        if should_route_quick_retry_input(
+            control_event.pressed,
+            control_event.repeat,
+            self.play.play_ending.is_some(),
+        ) && let Some(control) = play_control
             && self.handle_quick_retry_control(control)
         {
             return;
@@ -31,6 +33,9 @@ impl WinitApp {
             && let Some(control) = play_control
             && self.begin_play_fadeout_after_final_notes_control(control)
         {
+            return;
+        }
+        if self.play.play_ending.is_some() {
             return;
         }
         if has_play_control_context && let Some(control) = play_physical_control.as_ref() {
@@ -48,6 +53,12 @@ impl WinitApp {
                 event.state == ElementState::Pressed,
             )
         {
+            return;
+        }
+        if self.active_play_uses_playback_rate_keys()
+            && is_autoplay_replay_playback_rate_key(event.physical_key)
+        {
+            self.sync_autoplay_replay_playback_rate();
             return;
         }
         let window_keyboard_gameplay_enabled = self.window_keyboard_gameplay_enabled();
@@ -359,39 +370,15 @@ impl WinitApp {
         }
 
         if matches!(self.view_state(), AppViewState::Select)
-            && event.physical_key == PhysicalKey::Code(KeyCode::F5)
+            && !in_settings_stack(&self.select.folder_stack)
             && event.state == ElementState::Pressed
             && !event.repeat
+            && let Some(control) = physical_key_name(event.physical_key)
+            && let Some(action) =
+                configurable_select_shortcut_action(&control, &self.select.select_keys)
         {
-            self.reload_from_select_context();
+            self.apply_select_action(action, Some(&control));
             return;
-        }
-
-        if matches!(self.view_state(), AppViewState::Select)
-            && event.state == ElementState::Pressed
-            && !event.repeat
-        {
-            match event.physical_key {
-                PhysicalKey::Code(KeyCode::F3) => self.handle_select_f3_action(),
-                PhysicalKey::Code(KeyCode::F10) => self.start_autoplay_folder_selected(),
-                PhysicalKey::Code(KeyCode::F11) => self.open_primary_ir_for_selected(),
-                PhysicalKey::Code(KeyCode::Digit7 | KeyCode::Numpad7) => self.cycle_active_rival(1),
-                PhysicalKey::Code(KeyCode::Numpad9) => self.open_selected_chart_documents(),
-                _ => {}
-            }
-            if matches!(
-                event.physical_key,
-                PhysicalKey::Code(
-                    KeyCode::F3
-                        | KeyCode::F10
-                        | KeyCode::F11
-                        | KeyCode::Digit7
-                        | KeyCode::Numpad7
-                        | KeyCode::Numpad9
-                )
-            ) {
-                return;
-            }
         }
 
         if matches!(self.view_state(), AppViewState::Select)

@@ -3,6 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use bmz_skin_document::{
+    SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_EARLY_LATE, SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_MS,
+    SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_OFF, SKIN_REF_BMZ_LR2_FAST_SLOW_1P,
+};
 use encoding_rs::SHIFT_JIS;
 use serde_json::{Value as JsonValue, json};
 
@@ -413,7 +417,12 @@ fn apply_default_play_header_items(header: &mut Header) {
         add_builtin_option(header, "Score Graph", 38, &["Off", "On"]);
     }
     if header.builtin_options[3] {
-        add_builtin_option(header, "Judge Detail", 1997, &["Off", "EARLY/LATE", "+-ms"]);
+        add_builtin_option(
+            header,
+            "Judge Detail",
+            SKIN_OPTION_BMZ_LR2_JUDGE_DETAIL_OFF,
+            &["Off", "EARLY/LATE", "+-ms"],
+        );
     }
     add_builtin_offset(header, "All offset(%)", 1, [true, true, true, true, false, false]);
     add_builtin_offset(header, "Notes offset", 31, [false, false, false, true, false, false]);

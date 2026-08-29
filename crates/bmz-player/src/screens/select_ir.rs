@@ -527,6 +527,9 @@ mod tests {
     fn result_global_ranking_updates_cached_snapshot() {
         let mut select_ir = SelectIrRanking::default();
         let sha = [7u8; 32];
+        let old_global_battle_entries = battle_entries(&raw_global_ranking(sha, 9, 1200, 10));
+        let old_rival_battle_entries =
+            battle_entries(&raw_self_and_rivals_ranking(sha, 4, 1500, 5));
         select_ir.cache.insert(
             sha,
             CachedChartIr {
@@ -546,8 +549,8 @@ mod tests {
                     bp: 12,
                     judge_counts: None,
                 }),
-                global_battle_entries: Vec::new(),
-                self_and_rivals_battle_entries: Vec::new(),
+                global_battle_entries: old_global_battle_entries,
+                self_and_rivals_battle_entries: old_rival_battle_entries,
                 battle_entries_loaded: true,
                 global_ex_scores: vec![1200],
                 rival_ex_scores: vec![1500],
@@ -568,6 +571,13 @@ mod tests {
         );
         let rival = select_ir.rival_for(&ir_config(true), Some(sha)).unwrap();
         assert_eq!(rival.display_name, "RivalOne");
+        assert!(select_ir.battle_entries_for(Some(sha)).is_empty());
+        let cached = &select_ir.cache[&sha];
+        assert!(cached.self_and_rivals_battle_entries.is_empty());
+        assert!(!cached.battle_entries_loaded);
+        let (pending_sha, pending_since) = select_ir.pending.unwrap();
+        assert_eq!(pending_sha, sha);
+        assert!(pending_since.elapsed() >= FETCH_DEBOUNCE);
     }
 
     #[test]
@@ -779,12 +789,13 @@ mod tests {
         let sha = [7u8; 32];
         let config = ir_config(false);
         let root = std::env::temp_dir();
+        let requested_at = Instant::now();
 
         select_ir.context = "new".to_string();
-        select_ir.in_flight = Some(("old".to_string(), sha, Instant::now()));
+        select_ir.in_flight = Some(("old".to_string(), sha, requested_at));
         select_ir
             .sender
-            .send(("old".to_string(), sha, Instant::now(), Err("stale".to_string())))
+            .send(("old".to_string(), sha, requested_at, Err("stale".to_string())))
             .unwrap();
 
         select_ir.update(
@@ -801,23 +812,25 @@ mod tests {
     }
 
     #[test]
-    fn stale_fetch_result_does_not_override_newer_result_cache() {
+    fn stale_fetch_result_does_not_cancel_newer_refresh_or_override_result_cache() {
         let mut select_ir = SelectIrRanking::default();
         let sha = [7u8; 32];
         let config = ir_config(false);
         let root = std::env::temp_dir();
-        let requested_at = Instant::now();
+        let stale_requested_at = Instant::now();
 
         select_ir.context = "ctx".to_string();
-        select_ir.in_flight = Some(("ctx".to_string(), sha, requested_at));
+        select_ir.in_flight = Some(("ctx".to_string(), sha, stale_requested_at));
         select_ir
             .cache_result_global_ranking(&hash_to_hex(&sha), &result_global_ranking(1, 2000, 3));
+        let refresh_requested_at = Instant::now();
+        select_ir.in_flight = Some(("ctx".to_string(), sha, refresh_requested_at));
         select_ir
             .sender
             .send((
                 "ctx".to_string(),
                 sha,
-                requested_at,
+                stale_requested_at,
                 Ok((raw_global_ranking(sha, 9, 1200, 10), None, None)),
             ))
             .unwrap();
@@ -838,6 +851,52 @@ mod tests {
             select_ir.target_ex_score_for(&ir_config(true), Some(sha), TargetOption::IrTop, None),
             Some(2000)
         );
+        assert!(select_ir.in_flight.as_ref().is_some_and(
+            |(context, in_flight_sha, requested_at)| {
+                context == "ctx" && *in_flight_sha == sha && *requested_at == refresh_requested_at
+            }
+        ));
+    }
+
+    #[test]
+    fn refreshed_fetch_replaces_invalidated_g_battle_entries() {
+        let mut select_ir = SelectIrRanking::default();
+        let sha = [7u8; 32];
+        let config = ir_config(false);
+        let root = std::env::temp_dir();
+
+        select_ir.context = "ctx".to_string();
+        select_ir
+            .cache_result_global_ranking(&hash_to_hex(&sha), &result_global_ranking(1, 2000, 3));
+        let requested_at = Instant::now();
+        select_ir.in_flight = Some(("ctx".to_string(), sha, requested_at));
+        select_ir
+            .sender
+            .send((
+                "ctx".to_string(),
+                sha,
+                requested_at,
+                Ok((raw_global_ranking(sha, 1, 2100, 3), None, None)),
+            ))
+            .unwrap();
+
+        select_ir.update(
+            &config,
+            &root,
+            "ctx",
+            LnScorePolicy::ForceLn,
+            DoubleOptionScoreBucket::Off,
+            RuleMode::Beatoraja,
+            Some(sha),
+        );
+
+        let entries = select_ir.battle_entries_for(Some(sha));
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].rank, 1);
+        assert_eq!(entries[0].ex_score, 2100);
+        assert_eq!(entries[0].score_id.as_deref(), Some("score-1"));
+        assert!(select_ir.cache[&sha].battle_entries_loaded);
+        assert!(select_ir.pending.is_none());
         assert!(select_ir.in_flight.is_none());
     }
 }

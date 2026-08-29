@@ -86,7 +86,7 @@ pub(super) fn destination_mouse_rect_contains(
         return true;
     };
     let (Some(mouse_x), Some(mouse_y)) = (state.mouse_x, state.mouse_y) else {
-        return true;
+        return false;
     };
     let relative_x = mouse_x - frame.x as f32;
     let relative_y = mouse_y - frame.y as f32;

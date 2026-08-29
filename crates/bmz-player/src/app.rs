@@ -60,6 +60,7 @@ use crate::config::app_config::{
     AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind,
     InternalResolutionModeConfig, ObsConfig, PathEntry, WindowMode,
 };
+use crate::config::app_settings_registry::{AppSettingsChoices, AppSettingsEntryId};
 use crate::config::key_config::{
     KeyBindingSlot, KeyBindingTarget, apply_play_binding, clear_play_binding,
     is_scratch_down_control, is_scratch_up_control,
@@ -72,10 +73,10 @@ use crate::config::play::{
 use crate::config::profile_config::{
     BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig, DoubleOptionConfig,
     GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig,
-    InputActionConfig, JudgeAlgorithmConfig, LaneEffectConfig, LaneViewConfig, PlayDefaultsConfig,
-    ProfileConfig, ProfileInputConfig, RandomOptionConfig, RivalSourceConfig, SkinConfig,
-    SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs, default_hispeed_step_nhs,
-    normalize_hispeed_step, replay_slot_rule_indices,
+    InputActionConfig, JudgeAlgorithmConfig, KeyModeConversionConfig, LaneEffectConfig,
+    LaneViewConfig, PlayDefaultsConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
+    RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs,
+    default_hispeed_step_nhs, normalize_hispeed_step, replay_slot_rule_indices,
 };
 use crate::config::save::{save_app_config, save_profile_config};
 use crate::config::settings_registry::SettingsEntryId;
@@ -92,6 +93,7 @@ use crate::ir::table::{
 };
 use crate::ln_policy::LnPolicySetting;
 use crate::logging::LogBuffer;
+use crate::paths::AppPaths;
 use crate::practice_ui::PracticePanelContext;
 use crate::random_trainer::RandomTrainerState;
 use crate::screens::course_session::{ActiveCourseSession, CourseEntryResult, CourseResultSummary};
@@ -101,7 +103,6 @@ use crate::screens::play_loop::{
     PlayEndingSkinTimers, advance_running_play_session, apply_play_arrange_to_snapshot,
     refresh_play_ending_snapshot,
 };
-use crate::screens::play_session::build_practice_prepared_from_preloaded;
 use crate::screens::play_session::{AppliedArrange, PreparedPlayChart};
 use crate::screens::play_snapshot::{
     BgaFrameCatalog, apply_fast_slow_display_filter, apply_prepared_chart_to_render_snapshot,
@@ -111,7 +112,8 @@ use crate::screens::play_start::{
     PlayStartOptions, PreloadedInputPlaySession, PreparedInputPlaySession, StartedInputPlaySession,
     apply_arrange_override, apply_course_constraints, apply_queued_replay,
     open_prepared_winit_play_session, play_session_options_from_start,
-    prepare_play_session_for_chart_with_winit_input, prepare_winit_play_session_from_preloaded,
+    prepare_play_session_for_chart_with_winit_input,
+    prepare_practice_winit_play_session_from_preloaded, prepare_winit_play_session_from_preloaded,
 };
 use crate::screens::practice::{
     PracticeCliOverrides, PracticePhase, PracticeSession, clamp_practice_property,
@@ -137,9 +139,12 @@ use crate::screens::select_model::{
     table_folder_items_for_active_sources, table_level_folder_items, table_source_url_from_context,
     virtual_folder_breadcrumb, virtual_folder_root_items,
 };
-use crate::screens::settings_edit::{SettingsBindings, SettingsEditSession, adjust_settings_draft};
+use crate::screens::settings_edit::{
+    AppSettingsEditSession, SelectSettingsEditSession, SettingsBindings, SettingsEditSession,
+    adjust_settings_draft,
+};
 use crate::screens::settings_model::{
-    in_settings_stack, load_settings_items_for_locale, settings_breadcrumb_for_locale,
+    CONFIG_KEYS_PATH, in_settings_stack, settings_breadcrumb_for_locale,
     settings_root_item_for_locale,
 };
 use crate::select_options::{
@@ -163,20 +168,24 @@ use crate::storage::collection_db::FavoriteHints;
 use crate::storage::common::hash_to_hex;
 use crate::storage::difficulty_table_db::DifficultyTableRecord;
 use crate::storage::library_db::{ChartDistributionSecond, ChartListItem, LibraryDatabase};
-use crate::storage::migration::{migrate_library_db, migrate_network_db};
+use crate::storage::migration::{migrate_library_db, migrate_network_db, migrate_score_db};
 use crate::storage::replay::load_replay_for_chart_policy_and_double_option;
+use crate::storage::replay_import::{
+    ImportBeatorajaReplaysRequest, ReplayImportProgress, ReplayImportReport,
+    import_beatoraja_replays_with_progress, write_replay_import_details,
+};
 use crate::storage::scan::{ScanProgress, ScanReport};
 use crate::storage::score_db::{DailyPlayerStats, PlayerStats, ScoreDatabase, ScoreKey};
 use crate::storage::score_import::{ScoreImportRequest, import_scores};
 use crate::table_cmd::{TableFetchOutcome, TableFetchReport};
 use crate::ui::{
-    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiLayer, EguiRunContext,
-    SceneSkinDefs, SelectCourseBuilderAction, SelectCourseBuilderData, SkinCandidate,
-    SkinCandidateOrigin, SkinCatalog, SkinConfigMeta, SkinReloadRequest, SongScanRequest,
-    UpdateDialog, UpdateDialogAction,
+    CourseEditorAction, CourseEditorChart, CourseEditorData, DebugInfo, EguiKeyConfigAction,
+    EguiKeyConfigInput, EguiLayer, EguiRunContext, SceneSkinDefs, SelectCourseBuilderAction,
+    SelectCourseBuilderData, SkinCandidate, SkinCandidateOrigin, SkinCatalog, SkinConfigMeta,
+    SkinReloadRequest, SongScanRequest, UpdateDialog, UpdateDialogAction,
 };
 use crate::update::{DownloadedUpdate, UpdateAssetKind, UpdateCandidate};
-use crate::window_config::select_monitor;
+use crate::window_config::{monitor_config_name, select_monitor};
 use bmz_render::skin::{
     DestinationListEntry, SKIN_EVENT_DAILY_STATISTICS_RESET, SKIN_EVENT_IR_SCOPE_GLOBAL,
     SKIN_EVENT_IR_SCOPE_RIVAL, SKIN_EVENT_IR_SCOPE_TOGGLE, SKIN_EVENT_RESULT_PANEL_GRAPH,
@@ -339,8 +348,9 @@ use result_support::*;
 use result_timing_support::*;
 use rival_sync::*;
 use scene_input::{
-    DecideAction, ResultAction, SelectAction, SelectMove, decide_action as scene_decide_action,
-    result_action as scene_result_action, select_action as scene_select_action,
+    DecideAction, ResultAction, SelectAction, SelectMove, configurable_select_shortcut_action,
+    decide_action as scene_decide_action, result_action as scene_result_action,
+    select_action as scene_select_action,
 };
 use select_assets::{
     PreparedSelectPreview, SelectAssetRuntime, SelectMetaImageSlot, SelectPreviewFade,
@@ -394,7 +404,16 @@ pub async fn run_with_options_and_log_buffer(
     options: AppOptions,
     log_buffer: LogBuffer,
 ) -> Result<()> {
-    let boot = bootstrap::bootstrap()?;
+    let app_paths = crate::paths::resolve_app_paths()?;
+    run_with_options_log_buffer_and_paths(options, log_buffer, app_paths).await
+}
+
+pub async fn run_with_options_log_buffer_and_paths(
+    options: AppOptions,
+    log_buffer: LogBuffer,
+    app_paths: AppPaths,
+) -> Result<()> {
+    let boot = bootstrap::bootstrap_with_paths(app_paths)?;
 
     // Raw Input へ実行中に切り替えられるよう、Windows message hook は起動時から
     // 常設する。デバイス usage の登録は RawInputBackend の attach 時まで行わない。
@@ -586,6 +605,7 @@ struct WinitApp {
     skin: SkinRuntimeState,
     audio: AppAudioRuntimeState,
     ui: UiRuntimeState,
+    course_editor_cache: course_editor::CourseEditorDataCache,
 }
 
 #[path = "app/audio_helpers.rs"]
@@ -594,6 +614,7 @@ mod audio_helpers;
 mod constructor;
 #[path = "app/input_lifecycle.rs"]
 mod input_lifecycle;
+mod key_config_flow;
 #[path = "app/lifecycle.rs"]
 mod lifecycle;
 #[path = "app/platform.rs"]

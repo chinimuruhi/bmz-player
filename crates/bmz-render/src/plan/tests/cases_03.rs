@@ -102,6 +102,7 @@ fn play_skin_document_places_hit_timing_note_bottom_on_judge_line() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.0,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -143,6 +144,7 @@ fn play_skin_all_offset_transforms_fallback_mine_sprite() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.5,
+        alpha: 1.0,
         damage: 8.0,
     });
 
@@ -477,6 +479,7 @@ fn play_plan_maps_normalized_note_y_to_distinct_screen_positions() {
         lane: Lane::Key1,
         time: TimeUs(1_000),
         y: 0.75,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });
@@ -484,6 +487,7 @@ fn play_plan_maps_normalized_note_y_to_distinct_screen_positions() {
         lane: Lane::Key1,
         time: TimeUs(2_000),
         y: 0.25,
+        alpha: 1.0,
         kind: NoteVisualKind::Tap,
         processed_judge: None,
     });

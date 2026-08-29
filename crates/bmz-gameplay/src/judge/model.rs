@@ -226,6 +226,9 @@ pub struct ActiveLongNote {
     pub end: LongNoteEndRef,
     /// HEAD が判定されてホールドが始まった時刻。beatoraja の TIMER_HOLD 相当の起点。
     pub started_at: TimeUs,
+    /// Direction that started a long scratch. None for key lanes and legacy
+    /// replays that predate directional scratch events.
+    pub scratch_direction: Option<bmz_core::input::ScratchDirection>,
     /// BAD/POOR 相当の早離しを、release margin 中だけ保留する。
     pub pending_release: Option<PendingLongRelease>,
 }
@@ -237,10 +240,18 @@ pub struct PendingLongRelease {
     pub delta: TimeUs,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ScratchPressSuppression {
+    pub direction: bmz_core::input::ScratchDirection,
+    pub started_at: TimeUs,
+    pub expires_at: TimeUs,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LaneJudgeState {
     pub next_note_index: usize,
     pub active_long: Option<ActiveLongNote>,
+    pub scratch_press_suppression: Option<ScratchPressSuppression>,
     pub last_press_time: Option<TimeUs>,
     pub next_mine_index: usize,
     /// 直近にヒットした Mine の time。同一 Mine への二重ヒットを防ぐ簡易ガード。

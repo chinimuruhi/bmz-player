@@ -1,5 +1,49 @@
 use super::*;
 
+pub const UI_INPUT_BINDING_VERSION: u32 = 3;
+
+pub const CONFIGURABLE_SHORTCUT_MIGRATIONS: &[(u32, &[InputActionConfig])] = &[
+    (
+        1,
+        &[
+            InputActionConfig::SelectOpenFolder,
+            InputActionConfig::SelectReload,
+            InputActionConfig::SelectAutoplayFolder,
+            InputActionConfig::SelectOpenIr,
+            InputActionConfig::Screenshot,
+            InputActionConfig::SelectRivalCycle,
+            InputActionConfig::SelectOpenDocuments,
+        ],
+    ),
+    (2, &[InputActionConfig::SelectOpenKeyConfig]),
+    (
+        3,
+        &[
+            InputActionConfig::SelectModeFilter,
+            InputActionConfig::SelectSort,
+            InputActionConfig::SelectLnMode,
+            InputActionConfig::SelectReplayCycle,
+            InputActionConfig::SelectSameFolder,
+        ],
+    ),
+];
+
+pub const CONFIGURABLE_SHORTCUT_ACTIONS: &[InputActionConfig] = &[
+    InputActionConfig::SelectOpenFolder,
+    InputActionConfig::SelectReload,
+    InputActionConfig::SelectAutoplayFolder,
+    InputActionConfig::SelectOpenIr,
+    InputActionConfig::SelectOpenKeyConfig,
+    InputActionConfig::SelectModeFilter,
+    InputActionConfig::SelectSort,
+    InputActionConfig::SelectLnMode,
+    InputActionConfig::SelectReplayCycle,
+    InputActionConfig::SelectSameFolder,
+    InputActionConfig::Screenshot,
+    InputActionConfig::SelectRivalCycle,
+    InputActionConfig::SelectOpenDocuments,
+];
+
 pub fn default_bindings() -> Vec<BindingConfigEntry> {
     let mut bindings = default_play_lane_bindings();
     bindings.extend(default_ui_bindings());
@@ -34,17 +78,27 @@ pub fn default_keyboard_bindings() -> Vec<BindingConfigEntry> {
         binding("F", LaneConfig::Key6),
         binding("V", LaneConfig::Key7),
         action_binding("Q", InputActionConfig::E1),
-        action_binding("Z", InputActionConfig::SelectEnter),
-        action_binding("X", InputActionConfig::SelectEnter),
-        action_binding("C", InputActionConfig::SelectEnter),
-        action_binding("V", InputActionConfig::SelectEnter),
         action_binding("W", InputActionConfig::E2),
         action_binding("E", InputActionConfig::E3),
         action_binding("R", InputActionConfig::E4),
         action_binding("Z", InputActionConfig::SelectOptionArrange),
         action_binding("X", InputActionConfig::SelectOptionGauge),
         action_binding("C", InputActionConfig::SelectOptionAssist),
-        action_binding("Z", InputActionConfig::SelectOptionBga),
+        action_binding("F3", InputActionConfig::SelectOpenFolder),
+        action_binding("F5", InputActionConfig::SelectReload),
+        action_binding("F10", InputActionConfig::SelectAutoplayFolder),
+        action_binding("F11", InputActionConfig::SelectOpenIr),
+        action_binding("1", InputActionConfig::SelectModeFilter),
+        action_binding("2", InputActionConfig::SelectSort),
+        action_binding("3", InputActionConfig::SelectLnMode),
+        action_binding("4", InputActionConfig::SelectReplayCycle),
+        action_binding("6", InputActionConfig::SelectOpenKeyConfig),
+        action_binding("F12", InputActionConfig::Screenshot),
+        action_binding("7", InputActionConfig::SelectRivalCycle),
+        action_binding("Numpad7", InputActionConfig::SelectRivalCycle),
+        action_binding("8", InputActionConfig::SelectSameFolder),
+        action_binding("9", InputActionConfig::SelectOpenDocuments),
+        action_binding("Numpad9", InputActionConfig::SelectOpenDocuments),
         action_binding("F8", InputActionConfig::SelectFavoriteSong),
         action_binding("F9", InputActionConfig::SelectFavoriteChart),
         action_binding("Numpad8", InputActionConfig::SelectSameFolder),
@@ -66,15 +120,22 @@ pub fn default_gamepad_bindings() -> Vec<BindingConfigEntry> {
         gamepad_binding("Button6", LaneConfig::Key6),
         gamepad_binding("Button7", LaneConfig::Key7),
         gamepad_action_binding("Button9", InputActionConfig::E1),
-        gamepad_action_binding("Button1", InputActionConfig::SelectEnter),
         gamepad_action_binding("Button10", InputActionConfig::E2),
         gamepad_action_binding("Button11", InputActionConfig::E3),
         gamepad_action_binding("Button12", InputActionConfig::E4),
         gamepad_action_binding("Button1", InputActionConfig::SelectOptionArrange),
         gamepad_action_binding("Button3", InputActionConfig::SelectOptionGauge),
         gamepad_action_binding("Button5", InputActionConfig::SelectOptionAssist),
-        gamepad_action_binding("Button1", InputActionConfig::SelectOptionBga),
     ]
+}
+
+pub fn default_configurable_shortcut_bindings() -> Vec<BindingConfigEntry> {
+    default_ui_bindings()
+        .into_iter()
+        .filter(|entry| {
+            entry.action.is_some_and(|action| CONFIGURABLE_SHORTCUT_ACTIONS.contains(&action))
+        })
+        .collect()
 }
 
 fn binding(control: &str, lane: LaneConfig) -> BindingConfigEntry {

@@ -5,7 +5,7 @@ pub(super) fn skin_image_texture_region(
     source_size: SkinImageSize,
     elapsed_ms: i32,
 ) -> TextureRegion {
-    skin_image_texture_region_for_state(
+    skin_image_texture_region_with_elapsed(
         image,
         source_size,
         elapsed_ms,
@@ -45,6 +45,19 @@ pub(super) fn skin_image_pixel_rect(image: &SkinImageDef) -> (i32, i32, i32, i32
 /// 行インデックス（divy 方向）として使う。divx 方向は cycle 経過時間でアニメ。
 /// ref 未指定なら従来通り全フレームを cycle で順次再生する。
 pub(super) fn skin_image_texture_region_for_state(
+    image: &SkinImageDef,
+    source_size: SkinImageSize,
+    state: &SkinDrawState,
+    pixel_rect: (i32, i32, i32, i32),
+) -> TextureRegion {
+    // beatoraja の SkinImage は destination timer を座標補間だけに使い、
+    // source image の cycle は scene 全体の時刻または image.timer で進める。
+    // image.timer が off の間も画像自体は隠さず、先頭フレームを表示する。
+    let elapsed_ms = skin_timer_elapsed_ms(image.timer, state).unwrap_or(0);
+    skin_image_texture_region_with_elapsed(image, source_size, elapsed_ms, Some(state), pixel_rect)
+}
+
+fn skin_image_texture_region_with_elapsed(
     image: &SkinImageDef,
     source_size: SkinImageSize,
     elapsed_ms: i32,

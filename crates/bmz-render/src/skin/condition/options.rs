@@ -10,7 +10,30 @@ pub(in crate::skin) fn destination_ops_match(
     enabled_options: &[i32],
     state: &SkinDrawState,
 ) -> bool {
+    if is_grade_diff_rank_destination(destination, state) {
+        return destination
+            .op
+            .iter()
+            .all(|&op| test_grade_diff_rank_op(destination, op, enabled_options, state));
+    }
     test_skin_ops(&destination.op, enabled_options, state)
+}
+
+fn test_grade_diff_rank_op(
+    destination: &SkinDestinationDef,
+    op: i32,
+    enabled_options: &[i32],
+    state: &SkinDrawState,
+) -> bool {
+    if op < 0 {
+        return op.checked_neg().is_some_and(|positive| {
+            !test_grade_diff_rank_op(destination, positive, enabled_options, state)
+        });
+    }
+    match op {
+        300..=307 => grade_diff_rank_destination_matches(destination, op, state),
+        _ => test_skin_op(op, enabled_options, state),
+    }
 }
 
 pub(in crate::skin) fn test_skin_op(
@@ -57,6 +80,59 @@ pub(in crate::skin) fn test_skin_op(
             } else {
                 state.play_screen && state.best_ex_score.is_none()
             }
+        }
+        SKIN_OPTION_BMZ_RULE_MODE_BASE..=SKIN_OPTION_BMZ_RULE_MODE_LAST => {
+            state.rule_mode_index == (op - SKIN_OPTION_BMZ_RULE_MODE_BASE) as usize
+        }
+        SKIN_OPTION_BMZ_LN_POLICY_SETTING_BASE..=SKIN_OPTION_BMZ_LN_POLICY_SETTING_LAST => state
+            .ln_policy_setting_index
+            .is_some_and(|index| index == (op - SKIN_OPTION_BMZ_LN_POLICY_SETTING_BASE) as usize),
+        SKIN_OPTION_BMZ_LN_POLICY_SETTING_AUTO => {
+            state.ln_policy_setting_index.is_some_and(|index| index < 3)
+        }
+        SKIN_OPTION_BMZ_LN_POLICY_SETTING_FORCE => {
+            state.ln_policy_setting_index.is_some_and(|index| index >= 3)
+        }
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_BASE..=SKIN_OPTION_BMZ_LN_SCORE_POLICY_LAST => state
+            .ln_score_policy_index
+            .is_some_and(|index| index == (op - SKIN_OPTION_BMZ_LN_SCORE_POLICY_BASE) as usize),
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_AUTO => {
+            state.ln_score_policy_index.is_some_and(|index| index < 3)
+        }
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_FORCE => {
+            state.ln_score_policy_index.is_some_and(|index| index >= 3)
+        }
+        SKIN_OPTION_BMZ_LN_SCORE_POLICY_AVAILABLE => state.ln_score_policy_index.is_some(),
+        SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE..=SKIN_OPTION_BMZ_SOURCE_KEY_MODE_LAST => {
+            state.skin_attempt.source_key_mode.is_some_and(|mode| {
+                key_mode_option_matches(
+                    SKIN_OPTION_BMZ_KEY_MODE_BASE + (op - SKIN_OPTION_BMZ_SOURCE_KEY_MODE_BASE),
+                    mode,
+                )
+            })
+        }
+        SKIN_OPTION_BMZ_SEVEN_TO_SIX => state.skin_attempt.seven_to_six,
+        SKIN_OPTION_BMZ_SOURCE_LN_UNDEFINED => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_UNDEFINED_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_LN => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_DEFINED_LN_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_CN => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_DEFINED_CN_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_DEFINED_HCN => state
+            .skin_attempt
+            .source_ln_profile_bits
+            .is_some_and(|bits| bits & SKIN_SOURCE_LN_DEFINED_HCN_BIT != 0),
+        SKIN_OPTION_BMZ_SOURCE_LN_MIXED => {
+            state.skin_attempt.source_ln_profile_bits.is_some_and(|bits| bits.count_ones() > 1)
+        }
+        SKIN_OPTION_BMZ_SOURCE_LN_PROFILE_AVAILABLE => {
+            state.skin_attempt.source_ln_profile_bits.is_some()
         }
         SKIN_OPTION_BMZ_INPUT_BASE..=SKIN_OPTION_BMZ_INPUT_LAST => {
             state.logical_input_held[(op - SKIN_OPTION_BMZ_INPUT_BASE) as usize]
@@ -139,21 +215,26 @@ pub(in crate::skin) fn test_skin_op(
         300..=318 if state.result_failed.is_some() => result_rank_op_matches(op, state),
         300..=307 => select_small_rank_op_matches(op, state),
         320..=327 => best_rank_op_matches(op, state),
-        // OPTION_NO_LN / OPTION_LN. Resultでは、選曲設定ではなく
-        // LN policy / course constraint適用後の実効譜面を使う。
-        172 if state.result_has_long_notes.is_some() => {
-            !state.result_has_long_notes.unwrap_or_default()
+        // OPTION_NO_LN / OPTION_LN. 譜面未選択・未確定時は両方 false。
+        // Play / ResultではLN policy適用後の実効譜面を使う。
+        172 => state.chart_has_long_notes.is_some_and(|has_long_notes| !has_long_notes),
+        173 => state.chart_has_long_notes == Some(true),
+        170 => {
+            state.skin_attempt.has_bga.or_else(|| (!state.select_screen).then_some(state.has_bga))
+                == Some(false)
         }
-        173 if state.result_has_long_notes.is_some() => {
-            state.result_has_long_notes.unwrap_or_default()
+        171 => {
+            state.skin_attempt.has_bga.or_else(|| (!state.select_screen).then_some(state.has_bga))
+                == Some(true)
         }
-        170 => !state.has_bga,
-        171 => state.has_bga,
         // SongDataBooleanProperty returns false for both branches without a selected song.
         174 => select_song_option_matches(state) && !state.select_has_document,
         175 => select_song_option_matches(state) && state.select_has_document,
         // OPTION_BPMCHANGE (BPM変化あり) / OPTION_BPMSTOP (STOP命令あり)
-        177 => state.min_bpm < state.max_bpm,
+        176 => chart_metadata_option_available(state) && state.min_bpm >= state.max_bpm,
+        177 => chart_metadata_option_available(state) && state.min_bpm < state.max_bpm,
+        178 => state.skin_attempt.has_random_sequence == Some(false),
+        179 => state.skin_attempt.has_random_sequence == Some(true),
         1177 => state.has_bpm_stop,
         // OPTION_NOW_LOADING / OPTION_LOADED
         80 => !state.skin_loaded,
@@ -172,6 +253,7 @@ pub(in crate::skin) fn test_skin_op(
         271 => state.lanecover_enabled,
         272 => state.lift_enabled,
         273 => state.hidden_enabled,
+        400 => state.constant_enabled,
         // OPTION_1P_0_9 .. OPTION_1P_100. beatoraja evaluates these only on
         // BMSPlayer and compares the displayed gauge value with its configured maximum.
         230..=240 => gauge_range_option_matches(op, state),
@@ -253,11 +335,11 @@ pub(in crate::skin) fn test_skin_op(
         82 => state.play_screen && !state.autoplay && !state.replay_playback,
         84 => state.play_screen && state.replay_playback,
         1080 => state.play_screen && state.practice_mode,
-        // OPTION_1P/2P/3P_PERFECT and EARLY/LATE judge-detail conditions.
+        // LR2 OPTION_1P/2P/3P_PERFECT..MISS and EARLY/LATE judge-detail conditions.
         // beatoraja maps FAST/EARLY to positive recent judge timing, LATE/SLOW to negative.
         // beatoraja の EARLY/LATE は `getNowJudge(player) > 1` も要求するため、
         // ThresholdMs=0 で timing sign が残る場合でも PGREAT とは同時成立しない。
-        241 => state.judge_index[0] == Some(0),
+        241..=246 => state.judge_index[0] == Some((op - 241) as usize),
         1242 => {
             state.judge_index[0].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[0] == Some(1)
@@ -266,7 +348,7 @@ pub(in crate::skin) fn test_skin_op(
             state.judge_index[0].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[0] == Some(-1)
         }
-        261 => state.judge_index[1] == Some(0),
+        261..=266 => state.judge_index[1] == Some((op - 261) as usize),
         1262 => {
             state.judge_index[1].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[1] == Some(1)
@@ -275,7 +357,7 @@ pub(in crate::skin) fn test_skin_op(
             state.judge_index[1].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[1] == Some(-1)
         }
-        361 => state.judge_index[2] == Some(0),
+        361..=366 => state.judge_index[2] == Some((op - 361) as usize),
         1362 => {
             state.judge_index[2].is_some_and(|index| index > 0)
                 && state.judge_timing_sign[2] == Some(1)
@@ -307,6 +389,10 @@ fn play_rank_option_matches(op: i32, state: &SkinDrawState) -> bool {
     let rank_index = if op == 227 { 0 } else { 24_i64.saturating_sub(i64::from(op - 220) * 3) };
     let threshold_numerator = rank_index.max(0);
     i64::from(state.ex_score) * 27 >= i64::from(state.total_notes) * 2 * threshold_numerator
+}
+
+fn chart_metadata_option_available(state: &SkinDrawState) -> bool {
+    state.chart_has_long_notes.is_some()
 }
 
 pub(in crate::skin) fn gauge_range_option_matches(op: i32, state: &SkinDrawState) -> bool {
