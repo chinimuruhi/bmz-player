@@ -25,6 +25,10 @@ Lua sandboxはロード時の互換APIとして`os.clock` / `os.date` / `os.time
 Luaで解析するResult skinも通せる専用の命令数上限を持ち、runtime callback単位の上限は
 従来の小さい値を維持する。
 
+判定の存在を表すoption `2241..2246` (PGREAT / GREAT / GOOD / BAD / POOR / EMPTY POOR)
+はResultだけでなくPlay中も現在の判定数を参照する。これにより、LITONE11などが
+`-2244` / `-2245`で制御するフルコンボ演出はBAD/POOR発生後に表示されない。
+
 skin catalogのJSON候補はトップレベルに数値の`type`を明示した文書だけを受理する。
 これによりskin配下のplayer dataやparts JSONが既定値`type=0`のPlay 7KEYS skinとして
 候補へ混入することを防ぐ。Selectの曲行テキストIDは区切り文字を無視して`bartext`を
