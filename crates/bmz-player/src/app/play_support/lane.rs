@@ -1,3 +1,7 @@
+// 通常のアナログカバー操作は1 tick = 0.001。全カバー無効時は
+// EndlessDreamと同じ1 tick = HS 0.01へ変換する。
+const ANALOG_HISPEED_PER_LANE_COVER: f32 = 10.0;
+
 pub(in crate::app) fn apply_pending_play_lane_action_to_state(
     lane: &mut PendingPlayLaneState,
     action: PlayLaneAction,
@@ -30,32 +34,10 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
             lane.hispeed = adjusted_hispeed(lane.hispeed, change, step);
         }
         PlayLaneAction::LaneCoverDelta(delta) => {
-            let Some(target) = resolved_play_lane_target(
-                lane.sudden_enabled,
-                lane.lane_cover_visible,
-                lane.lift_enabled,
-                lane.hidden_enabled,
-                lane.lane_target,
-            ) else {
-                return false;
-            };
-            match target {
-                PlayLaneTarget::Sudden => {
-                    lane.lane_cover = (lane.lane_cover - delta)
-                        .clamp(0.0, crate::config::play::lane_cover_max_for_lift(lane.lift));
-                    lane.refresh_cover_hispeed(now_bpm, false);
-                }
-                PlayLaneTarget::Lift => {
-                    lane.lift =
-                        (lane.lift + delta).clamp(0.0, (1.0 - lane.lane_cover).clamp(0.0, 1.0));
-                    if lane.hispeed_auto_adjust {
-                        lane.refresh_floating_hispeed(now_bpm, false);
-                    }
-                }
-                PlayLaneTarget::Hidden => {
-                    lane.hidden_cover = (lane.hidden_cover - delta).clamp(0.0, 1.0);
-                }
-            }
+            apply_pending_lane_cover_delta(lane, profile, now_bpm, delta, false)
+        }
+        PlayLaneAction::AnalogLaneCoverDelta(delta) => {
+            apply_pending_lane_cover_delta(lane, profile, now_bpm, delta, true)
         }
         PlayLaneAction::GreenNumberDelta(delta) => {
             let current = match lane.hispeed_mode {
@@ -78,6 +60,52 @@ pub(in crate::app) fn apply_pending_play_lane_action_to_state(
         }
     }
     true
+}
+
+fn apply_pending_lane_cover_delta(
+    lane: &mut PendingPlayLaneState,
+    profile: &ProfileConfig,
+    now_bpm: f32,
+    delta: f32,
+    analog: bool,
+) {
+    let Some(target) = resolved_play_lane_target(
+        lane.sudden_enabled,
+        lane.lane_cover_visible,
+        lane.lift_enabled,
+        lane.hidden_enabled,
+        lane.lane_target,
+    ) else {
+        if lane.hispeed_auto_adjust {
+            lane.refresh_floating_hispeed_without_lane_effects(now_bpm, false);
+        } else if analog {
+            lane.hispeed = clamp_hispeed(lane.hispeed + delta * ANALOG_HISPEED_PER_LANE_COVER);
+        } else {
+            let change = if delta >= 0.0 { HispeedChange::Up } else { HispeedChange::Down };
+            lane.hispeed = adjusted_hispeed(
+                lane.hispeed,
+                change,
+                hispeed_step_for_profile(profile, lane.hispeed_mode),
+            );
+        }
+        return;
+    };
+    match target {
+        PlayLaneTarget::Sudden => {
+            lane.lane_cover = (lane.lane_cover - delta)
+                .clamp(0.0, crate::config::play::lane_cover_max_for_lift(lane.lift));
+            lane.refresh_cover_hispeed(now_bpm, false);
+        }
+        PlayLaneTarget::Lift => {
+            lane.lift = (lane.lift + delta).clamp(0.0, (1.0 - lane.lane_cover).clamp(0.0, 1.0));
+            if lane.hispeed_auto_adjust {
+                lane.refresh_floating_hispeed(now_bpm, false);
+            }
+        }
+        PlayLaneTarget::Hidden => {
+            lane.hidden_cover = (lane.hidden_cover - delta).clamp(0.0, 1.0);
+        }
+    }
 }
 
 pub(in crate::app) fn sync_active_play_visual_offset_to_profile(
@@ -134,13 +162,51 @@ pub(in crate::app) fn apply_play_lane_action_to_session(
             true
         }
         PlayLaneAction::LaneCoverDelta(delta) => {
-            apply_lane_cover_step_to_session(session, lane_target, delta, false)
+            apply_lane_cover_action_to_session(session, lane_target, delta, false, hispeed_step)
+        }
+        PlayLaneAction::AnalogLaneCoverDelta(delta) => {
+            apply_lane_cover_action_to_session(session, lane_target, delta, true, hispeed_step)
         }
         PlayLaneAction::GreenNumberDelta(delta) => {
             apply_green_number_step_to_session(session, delta, false)
         }
         PlayLaneAction::ToggleLaneCoverVisibility => toggle_lane_cover_visibility(session, false),
     }
+}
+
+fn apply_lane_cover_action_to_session(
+    session: &mut bmz_gameplay::session::GameSession,
+    lane_target: &mut PlayLaneTarget,
+    delta: f32,
+    analog: bool,
+    hispeed_step: f32,
+) -> bool {
+    if resolved_play_lane_target(
+        session.lanecover_enabled,
+        session.lane_cover_visible,
+        session.lift_enabled,
+        session.hidden_enabled,
+        *lane_target,
+    )
+    .is_some()
+    {
+        return apply_lane_cover_step_to_session(session, lane_target, delta, false);
+    }
+
+    if session.hispeed_auto_adjust {
+        if session.hispeed_mode == HispeedMode::Floating {
+            let now = session.audio_clock.now();
+            let now_bpm = session.timing_map.bpm_at_time(now);
+            session.hispeed =
+                hispeed_for_green_number_without_lane_effects_at_bpm(session, now, now_bpm);
+        }
+    } else if analog {
+        session.hispeed = clamp_hispeed(session.hispeed + delta * ANALOG_HISPEED_PER_LANE_COVER);
+    } else {
+        let change = if delta >= 0.0 { HispeedChange::Up } else { HispeedChange::Down };
+        apply_hispeed_change_to_session(session, change, hispeed_step);
+    }
+    true
 }
 
 #[cfg(test)]

@@ -158,6 +158,20 @@ Course の `NoSpeed` 制約中は、HS 変更、緑数字変更、FHS 再計算�
 | `E2 hold + Scratch Up/Down` | 緑数字を変更する |
 | `E1 double press` | SUDDEN+が有効な場合だけSUDDEN+表示を切り替える |
 
+### 操作可能なレーンカバーがない場合
+
+SUDDEN+が無効または非表示で、LIFT/HIDDEN+も無効な場合は、カバー操作を次のHS操作へ
+フォールバックする。
+
+| HS Auto Adjust | behavior |
+| --- | --- |
+| OFF | デジタル入力は現在のHS MODEの設定刻みでHSを直接変更する。アナログスクラッチは1 tickあたり0.01変更する |
+| ON | FHSの場合、SUDDEN+=0、LIFT=0の可視範囲と現在BPMからHSを再計算する。操作方向や量は再計算結果に影響しない |
+
+このフォールバックではSUDDEN+/LIFT/HIDDEN+の値を変更せず、プロファイルにも保存しない。
+EndlessDreamの全カバー無効時と同じく、HS Auto Adjust ONのカバー操作は値変更ではなく
+現在BPMへの再計算トリガーとして扱う。
+
 ## Skin Refs
 
 BMZ 独自の HS MODE ref は `1900` 台を使う。詳細は `docs/skin.md` も参照。

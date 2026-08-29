@@ -212,6 +212,27 @@ impl PendingPlayLaneState {
             ));
     }
 
+    pub(super) fn refresh_floating_hispeed_without_lane_effects(
+        &mut self,
+        now_bpm: f32,
+        speed_locked: bool,
+    ) {
+        if self.hispeed_mode != HispeedMode::Floating || speed_locked {
+            return;
+        }
+        let now_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+            f64::from(now_bpm),
+            self.playback_rate_percent,
+        );
+        self.hispeed =
+            clamp_hispeed(crate::screens::play_snapshot::hispeed_for_green_number_values(
+                self.target_green_number.max(1) as f32,
+                1.0,
+                now_bpm,
+                1.0,
+            ));
+    }
+
     pub(super) fn refresh_cover_hispeed(&mut self, now_bpm: f32, speed_locked: bool) {
         let target_bpm = if self.hispeed_auto_adjust { now_bpm } else { self.hsfix_base_bpm };
         self.refresh_floating_hispeed(target_bpm, speed_locked);

@@ -14,6 +14,7 @@ pub(super) enum PlayLaneAction {
     ToggleHispeedMode,
     Hispeed(HispeedChange),
     LaneCoverDelta(f32),
+    AnalogLaneCoverDelta(f32),
     GreenNumberDelta(i32),
     ToggleLaneCoverVisibility,
 }

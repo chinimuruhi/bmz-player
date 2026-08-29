@@ -310,6 +310,12 @@ SUDDEN+、LIFT、HIDDEN+の有効状態は、F1メニューのプロファイル
 E1+E2の押下エッジごとにLIFT/HIDDEN+を切り替えます。押す順序は問いません。
 この短押し切替とE1+E2長押しによる中断は共存します。
 
+SUDDEN+が無効または非表示で、LIFT/HIDDEN+も無効なため操作可能なカバーがない場合、
+カバー操作はEndlessDream互換のHS操作になります。HS Auto AdjustがOFFならデジタル入力は
+現在のHS MODEの設定刻み、アナログスクラッチは1 tickあたり0.01でHSを直接変更します。
+HS Auto AdjustがONのFHSでは、SUDDEN+とLIFTを0として現在BPMでHSを再計算します。
+どちらの場合も無効なSUDDEN+/LIFT/HIDDEN+の量は変更・保存されません。
+
 Practiceでは最終ノーツ処理後にE1 / E2 / Escapeで終了した場合もリザルトを表示せず、直前の判定グラフを反映してPractice設定画面へ戻ります。
 
 E1/E2 hold 中の鍵盤方向は、譜面の KEY MODE ごとに次のとおりです。`Down` はハイスピードまたは緑数字を下げ、`Up` は上げます。10K/14K は 1P/2P の両側に同じ規則を適用します。

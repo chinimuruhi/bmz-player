@@ -111,6 +111,28 @@ pub(in crate::app) fn hispeed_for_green_number_at_bpm(
     clamp_hispeed(hispeed)
 }
 
+pub(in crate::app) fn hispeed_for_green_number_without_lane_effects_at_bpm(
+    session: &bmz_gameplay::session::GameSession,
+    now: TimeUs,
+    target_bpm: f64,
+) -> f32 {
+    let scroll_multiplier = crate::screens::play_snapshot::current_scroll_multiplier(
+        &session.chart,
+        &session.timing_map,
+        now,
+    );
+    let target_bpm = crate::screens::play_snapshot::effective_bpm_for_playback_rate(
+        target_bpm,
+        session.audio_clock.playback_rate_percent(),
+    );
+    clamp_hispeed(hispeed_for_green_number_values(
+        session.target_green_number.max(1) as f32,
+        1.0,
+        target_bpm,
+        scroll_multiplier,
+    ))
+}
+
 pub(in crate::app) fn floating_hispeed_target_bpm(
     session: &bmz_gameplay::session::GameSession,
     now: TimeUs,
