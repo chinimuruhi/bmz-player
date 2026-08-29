@@ -295,6 +295,16 @@ fn skin_state_text_maps_string_refs() {
         ),
         "Song Title"
     );
+    for id in ["bar_text", "bar_text_gray", "folderbar_text", "Folder-Bar_Text"] {
+        assert_eq!(
+            skin_state_text(
+                &SkinTextDef { id: id.to_string(), ..SkinTextDef::default() },
+                &SkinTextState { bar_text: "LITONE Song Title", ..SkinTextState::default() },
+            ),
+            "LITONE Song Title",
+            "select bar text id {id}"
+        );
+    }
 }
 
 #[test]

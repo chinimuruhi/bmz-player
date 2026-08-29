@@ -175,6 +175,7 @@ pub(super) fn create_luajava_controllers_stub(lua: &Lua) -> mlua::Result<Value> 
                 "get",
                 lua.create_function(|_, (_self, _index): (Value, Value)| Ok(Value::Nil))?,
             )?;
+            list.set("first", lua.create_function(|_, _self: Value| Ok(Value::Nil))?)?;
             Ok(Value::Table(list))
         })?,
     )?;

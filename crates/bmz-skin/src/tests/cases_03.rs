@@ -71,7 +71,11 @@ fn lua_skin_luajava_input_stubs_are_neutral_during_load() {
             local Controllers = luajava.bindClass("com.badlogic.gdx.controllers.Controllers")
             local Expand_op = 2
             local function input_handler()
-                if Gdx.input:isKeyPressed(1) or Controllers:getControllers().size > 0 then
+                local controllers = Controllers:getControllers()
+                if Gdx.input:isKeyPressed(1)
+                    or controllers.size > 0
+                    or controllers:first() ~= nil
+                then
                     Expand_op = 1
                 end
             end

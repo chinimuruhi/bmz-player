@@ -65,6 +65,13 @@ pub(super) fn create_os_stub(lua: &Lua, probe: Arc<Mutex<MainStateProbe>>) -> ml
             }
         })?,
     )?;
+    table.set(
+        "time",
+        lua.create_function(|_, date: Option<Table>| match date {
+            Some(date) => lua_os_time_from_table(&date).map_err(mlua::Error::external),
+            None => Ok(lua_os_now_seconds()),
+        })?,
+    )?;
     Ok(Value::Table(table))
 }
 
@@ -283,6 +290,33 @@ pub(super) fn lua_os_now_seconds() -> i64 {
         .unwrap_or_default()
 }
 
+pub(super) fn lua_os_time_from_table(date: &Table) -> anyhow::Result<i64> {
+    let year = date.get::<i64>("year").context("os.time table requires year")?;
+    let month = date.get::<u32>("month").context("os.time table requires month")?;
+    let day = date.get::<u32>("day").context("os.time table requires day")?;
+    let hour = date.get::<Option<u32>>("hour")?.unwrap_or(12);
+    let minute = date.get::<Option<u32>>("min")?.unwrap_or_default();
+    let second = date.get::<Option<u32>>("sec")?.unwrap_or_default();
+    if !(1..=12).contains(&month) {
+        bail!("os.time month must be in 1..=12");
+    }
+    if !(1..=days_in_month(year, month)).contains(&day) {
+        bail!("os.time day is out of range for the month");
+    }
+    if hour > 23 || minute > 59 || second > 59 {
+        bail!("os.time clock fields are out of range");
+    }
+    let days = days_from_civil(year, month, day);
+    days.checked_mul(86_400)
+        .and_then(|seconds_since_epoch| {
+            seconds_since_epoch
+                .checked_add(i64::from(hour) * 3_600)
+                .and_then(|value| value.checked_add(i64::from(minute) * 60))
+                .and_then(|value| value.checked_add(i64::from(second)))
+        })
+        .context("os.time value is out of range")
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LuaDateTime {
     pub(super) year: i32,
@@ -324,6 +358,30 @@ pub(super) fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let month = mp + if mp < 10 { 3 } else { -9 };
     let year = y + if month <= 2 { 1 } else { 0 };
     (year as i32, month as u32, day as u32)
+}
+
+pub(super) fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+    let year = year - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let shifted_month = i64::from(month) + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * shifted_month + 2) / 5 + i64::from(day) - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+pub(super) fn days_in_month(year: i64, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year_i64(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+pub(super) fn is_leap_year_i64(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 pub(super) fn yearday(year: i32, month: u32, day: u32) -> u32 {
