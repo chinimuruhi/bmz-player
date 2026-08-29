@@ -112,9 +112,8 @@ impl PendingPlayStart {
             play_config_key_mode,
             lane: PendingPlayLaneState::from_snapshot(
                 snapshot,
-                mode_config.target_green_number,
+                &mode_config,
                 hs_fix,
-                mode_config.hispeed_auto_adjust,
                 playback_rate_percent,
             ),
             lane_actions: Vec::new(),
@@ -130,7 +129,12 @@ pub(super) struct PendingPlayLaneState {
     pub(super) target_green_number: u32,
     pub(super) lane_cover: f32,
     pub(super) lift: f32,
+    pub(super) hidden_cover: f32,
+    pub(super) sudden_enabled: bool,
+    pub(super) lift_enabled: bool,
+    pub(super) hidden_enabled: bool,
     pub(super) lane_cover_visible: bool,
+    pub(super) lane_target: PlayLaneTarget,
     pub(super) lane_cover_changing: bool,
     pub(super) hsfix_base_bpm: f32,
     pub(super) hispeed_auto_adjust: bool,
@@ -140,11 +144,12 @@ pub(super) struct PendingPlayLaneState {
 impl PendingPlayLaneState {
     pub(super) fn from_snapshot(
         snapshot: &RenderSnapshot,
-        target_green_number: u32,
+        mode_config: &PlayModeConfig,
         hs_fix: HsFixOption,
-        hispeed_auto_adjust: bool,
         playback_rate_percent: u16,
     ) -> Self {
+        let sudden_enabled = mode_config.lane_effect.sudden_enabled();
+        let hidden_enabled = mode_config.lane_effect.hidden_enabled();
         Self {
             hispeed: snapshot.hispeed,
             hispeed_mode: if snapshot.hispeed_mode_index == 0 {
@@ -152,10 +157,22 @@ impl PendingPlayLaneState {
             } else {
                 HispeedMode::Floating
             },
-            target_green_number: target_green_number.max(1),
-            lane_cover: snapshot.lane_cover,
+            target_green_number: mode_config.target_green_number.max(1),
+            lane_cover: crate::config::play::clamp_lane_cover_for_lift(
+                crate::config::play::lane_unit_to_f32(mode_config.sudden),
+                snapshot.lift,
+            ),
             lift: snapshot.lift,
-            lane_cover_visible: true,
+            hidden_cover: if hidden_enabled {
+                crate::config::play::lane_unit_to_f32(mode_config.hidden)
+            } else {
+                0.0
+            },
+            sudden_enabled,
+            lift_enabled: mode_config.lift_enabled,
+            hidden_enabled,
+            lane_cover_visible: sudden_enabled,
+            lane_target: PlayLaneTarget::Lift,
             lane_cover_changing: snapshot.lane_cover_changing,
             hsfix_base_bpm: match hs_fix {
                 HsFixOption::Off | HsFixOption::StartBpm => snapshot.now_bpm,
@@ -163,13 +180,13 @@ impl PendingPlayLaneState {
                 HsFixOption::MainBpm => snapshot.main_bpm,
                 HsFixOption::MinBpm => snapshot.min_bpm,
             },
-            hispeed_auto_adjust,
+            hispeed_auto_adjust: mode_config.hispeed_auto_adjust,
             playback_rate_percent,
         }
     }
 
     pub(super) fn active_lane_cover(self) -> f32 {
-        if self.lane_cover_visible {
+        if self.sudden_enabled && self.lane_cover_visible {
             crate::config::play::clamp_lane_cover_for_lift(self.lane_cover, self.lift)
         } else {
             0.0
@@ -233,6 +250,10 @@ impl PendingPlayLaneState {
         snapshot.target_green_number = self.target_green_number;
         snapshot.lift = self.lift;
         snapshot.lane_cover = self.active_lane_cover();
+        snapshot.hidden_cover = self.hidden_cover;
+        snapshot.lanecover_enabled = self.sudden_enabled;
+        snapshot.lift_enabled = self.lift_enabled;
+        snapshot.hidden_enabled = self.hidden_enabled;
         snapshot.lane_cover_changing = self.lane_cover_changing;
         snapshot.note_display_duration_ms =
             crate::screens::play_snapshot::display_duration_ms_for_bpm_hispeed(

@@ -288,13 +288,13 @@ E1/E2単押しでは開始・退出しません。E1/E2 hold中は従来どお�
 | Key | 操作 |
 | --- | --- |
 | Left / Right | ハイスピードを HS MODE ごとの設定刻みで下げる / 上げる (NHS 既定 0.25、FHS 既定 0.50) |
-| Up / Down | レーンカバー表示中はカバー位置、非表示中は LIFT を調整 |
+| Up / Down | SUDDEN+表示中はSUDDEN+、非表示中は有効なLIFT/HIDDEN+を調整 |
 | E1 hold + 鍵盤 | KEY MODE ごとの HS 方向に従い、HS MODE ごとの設定刻みでハイスピードを下げる / 上げる |
-| E1 hold + E2 | HS MODE を切替 |
-| E1 hold + Scratch Up/Down | レーンカバーを上げる / 下げる |
+| E1 hold + E2 | LIFT/HIDDEN+両方有効時は変更対象を切替。それ以外はHS MODEを切替 |
+| E1 hold + Scratch Up/Down | Up/Downと同じ対象のカバー量を変更 |
 | E2 hold + 鍵盤 | E1 と同じ KEY MODE ごとの HS 方向に従い、緑数字を下げる / 上げる |
 | E2 hold + Scratch Up/Down | 緑数字を下げる / 上げる |
-| E1 double press | レーンカバー表示を切替 |
+| E1 double press | SUDDEN+が有効な場合だけSUDDEN+表示を切替 |
 | Escape | プレイを中断して選曲へ戻る。最終ノーツ処理後、終了演出開始前は E1 と同じく終了演出を開始 |
 | E1+E2 hold | 一定時間長押しでプレイを中断 |
 | E2+E3 | 即時にプレイを中断 |
@@ -303,6 +303,12 @@ E1/E2単押しでは開始・退出しません。E1/E2 hold中は従来どお�
 | Autoplay / Replay中に上段 1 / 2 / 3 / 4 をhold | 再生速度を25% / 50% / 200% / 300%へ変更。離すと100%へ戻る |
 
 Escape / E1+E2 hold / E2+E3 による中断は、実プレイ開始前（譜面・音源ロード中および READY 演出中）なら timer=2 の黒フェードアウトを開始し、リザルトを表示せず選曲へ戻ります。実プレイ開始後は FAILED 演出を開始し、通常の終了処理へ進みます。
+
+SUDDEN+、LIFT、HIDDEN+の有効状態は、F1メニューのプロファイル設定「表示」と
+選曲画面の `設定 → 表示` でキーモード別に変更できます。無効なカバーは表示・量変更の
+対象になりません。LIFTとHIDDEN+を同時に有効にした場合、プレイ開始時の変更対象はLIFTで、
+E1+E2の押下エッジごとにLIFT/HIDDEN+を切り替えます。押す順序は問いません。
+この短押し切替とE1+E2長押しによる中断は共存します。
 
 Practiceでは最終ノーツ処理後にE1 / E2 / Escapeで終了した場合もリザルトを表示せず、直前の判定グラフを反映してPractice設定画面へ戻ります。
 

@@ -20,7 +20,9 @@ pub(in crate::app) fn play_option_control_for_input(
 ) -> Option<PlayOptionControl> {
     let play_input = play_input?;
     let resolved = play_input.resolve_entry(device, control);
-    if e1_held && resolved.is_none() && play_input.is_action(device, control, InputActionConfig::E2)
+    if resolved.is_none()
+        && ((e1_held && play_input.is_action(device, control, InputActionConfig::E2))
+            || (e2_held && play_input.is_action(device, control, InputActionConfig::E1)))
     {
         return Some(PlayOptionControl::ToggleHispeedMode);
     }

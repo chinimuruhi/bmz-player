@@ -280,6 +280,7 @@ impl WinitApp {
                 play_backbmp_source: None,
                 play_backbmp_loaded: false,
                 last_play_start_press_at: None,
+                play_lane_target: PlayLaneTarget::Lift,
                 decide_e1_held: false,
                 play_e1_held: false,
                 play_e2_held: false,

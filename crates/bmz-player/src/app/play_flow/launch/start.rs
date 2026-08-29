@@ -344,16 +344,19 @@ impl WinitApp {
         chart_id: i64,
         mut active_play: StartedInputPlaySession,
     ) {
+        let mut lane_target = PlayLaneTarget::Lift;
         if let Some(pending) =
             self.play.pending_play_start.as_ref().filter(|pending| pending.chart_id == chart_id)
         {
             let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
             replay_pending_play_lane_actions(
                 &mut active_play.running.session,
+                &mut lane_target,
                 &pending.lane_actions,
                 &self.boot.profile_config,
                 speed_locked,
             );
+            debug_assert_eq!(lane_target, pending.lane.lane_target);
             // pending 中の入力は表示状態へ反映済み。共有 backend に残った同じイベントを
             // 再処理すると key-on/off が install 時刻へずれるため、ここで一度だけ破棄し、
             // placeholder の表示状態を実セッションへ引き継ぐ。
@@ -433,6 +436,7 @@ impl WinitApp {
             play_elapsed_time,
         );
         self.play.last_play_snapshot = Some(snapshot);
+        self.play.play_lane_target = lane_target;
         self.play.active_play = Some(active_play);
         // preload 経路では Play シーンへの遷移後にここで曲メタデータが確定する。
         // 曲情報なしで送った Presence を実際の譜面情報で置き換える。

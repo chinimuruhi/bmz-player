@@ -635,8 +635,10 @@ impl WinitApp {
             self.play.play_media_cache = None;
         }
         self.sync_changed_gamepad_analog_config_from_profile(&before.input);
-        if profile_lane_settings_changed(&before.lane, &self.boot.profile_config.lane) {
-            self.sync_active_play_lane_settings_from_profile(&before.lane);
+        if profile_lane_settings_changed(&before.lane, &self.boot.profile_config.lane)
+            || before.play.lane_effect != self.boot.profile_config.play.lane_effect
+        {
+            self.sync_active_play_lane_settings_from_profile(&before.lane, before.play.lane_effect);
         }
         self.sync_realtime_profile_settings();
         self.sync_discord_presence_config();
@@ -837,6 +839,10 @@ impl WinitApp {
                 self.play.pending_play_start.as_ref().map(|pending| ActiveLaneState {
                     lane_cover: pending.lane.lane_cover,
                     lift: pending.lane.lift,
+                    hidden_cover: pending.lane.hidden_cover,
+                    sudden_enabled: pending.lane.sudden_enabled,
+                    lift_enabled: pending.lane.lift_enabled,
+                    hidden_enabled: pending.lane.hidden_enabled,
                     hispeed_mode: pending.lane.hispeed_mode,
                     target_green_number: pending.lane.target_green_number,
                 })
@@ -860,6 +866,10 @@ impl WinitApp {
             Some(ActiveLaneState {
                 lane_cover: pending.lane.lane_cover,
                 lift: pending.lane.lift,
+                hidden_cover: pending.lane.hidden_cover,
+                sudden_enabled: pending.lane.sudden_enabled,
+                lift_enabled: pending.lane.lift_enabled,
+                hidden_enabled: pending.lane.hidden_enabled,
                 hispeed_mode: pending.lane.hispeed_mode,
                 target_green_number: pending.lane.target_green_number,
             }),

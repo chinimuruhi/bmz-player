@@ -22,7 +22,11 @@ impl WinitApp {
         self.apply_select_preview_audio_mix();
     }
 
-    pub(super) fn sync_active_play_lane_settings_from_profile(&mut self, before: &LaneViewConfig) {
+    pub(super) fn sync_active_play_lane_settings_from_profile(
+        &mut self,
+        before: &LaneViewConfig,
+        before_lane_effect: LaneEffectConfig,
+    ) {
         let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
         let profile_lane = self.boot.profile_config.lane.clone();
         let Some(active_play) = &mut self.play.active_play else {
@@ -31,7 +35,9 @@ impl WinitApp {
         if apply_profile_lane_settings_to_session(
             &mut active_play.running.session,
             before,
+            before_lane_effect,
             &profile_lane,
+            self.boot.profile_config.play.lane_effect,
             speed_locked,
             active_play.running.practice_mode,
         ) {

@@ -261,6 +261,13 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         SettingsEntryId::HispeedStepFhs => {
             adjust_hispeed_step(&mut profile.lane.hispeed_step_fhs, delta)
         }
+        SettingsEntryId::SuddenEnabled => {
+            profile.play.lane_effect = profile
+                .play
+                .lane_effect
+                .with_sudden_enabled(!profile.play.lane_effect.sudden_enabled());
+            true
+        }
         SettingsEntryId::Sudden => adjust_u32(
             &mut profile.lane.sudden,
             delta,
@@ -279,6 +286,13 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         ),
         SettingsEntryId::HispeedAutoAdjust => {
             profile.lane.hispeed_auto_adjust = !profile.lane.hispeed_auto_adjust;
+            true
+        }
+        SettingsEntryId::HiddenEnabled => {
+            profile.play.lane_effect = profile
+                .play
+                .lane_effect
+                .with_hidden_enabled(!profile.play.lane_effect.hidden_enabled());
             true
         }
         SettingsEntryId::Hidden => adjust_u32(&mut profile.lane.hidden, delta, 0, 1000),

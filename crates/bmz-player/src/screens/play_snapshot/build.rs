@@ -169,7 +169,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         cursor_tick,
     );
     let note_display_duration_ms = note_display_duration_ms(session, now_bpm, scroll_multiplier);
-    let lane_cover = if session.lane_cover_visible {
+    let lane_cover = if session.lanecover_enabled && session.lane_cover_visible {
         crate::config::play::clamp_lane_cover_for_lift(session.lane_cover, session.lift)
     } else {
         0.0
@@ -521,7 +521,7 @@ pub fn update_render_snapshot_play_options(
     snapshot.hispeed_mode_index = hispeed_mode_index(session.hispeed_mode);
     snapshot.target_green_number = session.target_green_number;
     snapshot.lift = session.lift;
-    snapshot.lane_cover = if session.lane_cover_visible {
+    snapshot.lane_cover = if session.lanecover_enabled && session.lane_cover_visible {
         crate::config::play::clamp_lane_cover_for_lift(session.lane_cover, session.lift)
     } else {
         0.0

@@ -58,6 +58,14 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
                 .text(tr!(text, "profile-display-fhs-step")),
             );
             ui.label(tr!(text, "profile-display-step-range"));
+            let mut sudden_enabled = profile.play.lane_effect.sudden_enabled();
+            if ui
+                .checkbox(&mut sudden_enabled, tr!(text, "profile-display-sudden-enabled"))
+                .changed()
+            {
+                profile.play.lane_effect =
+                    profile.play.lane_effect.with_sudden_enabled(sudden_enabled);
+            }
             let sudden_max = crate::config::play::lane_unit_max_for_other(profile.lane.lift);
             lane_unit_slider_with_max(ui, &mut profile.lane.sudden, "SUDDEN+", sudden_max);
             let lift_max = crate::config::play::lane_unit_max_for_other(profile.lane.sudden);
@@ -67,6 +75,14 @@ pub(in crate::ui::profile_panel) fn build_profile_display_section(
                 &mut profile.lane.hispeed_auto_adjust,
                 tr!(text, "profile-display-auto-adjust-hispeed"),
             );
+            let mut hidden_enabled = profile.play.lane_effect.hidden_enabled();
+            if ui
+                .checkbox(&mut hidden_enabled, tr!(text, "profile-display-hidden-enabled"))
+                .changed()
+            {
+                profile.play.lane_effect =
+                    profile.play.lane_effect.with_hidden_enabled(hidden_enabled);
+            }
             lane_unit_slider(ui, &mut profile.lane.hidden, "HIDDEN");
             ui.add(
                 egui::Slider::new(

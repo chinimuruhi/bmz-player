@@ -137,7 +137,7 @@ FHS の自動再計算は主に次の操作で起きる。
 - レーンカバー表示を OFF から ON に戻す
 - NHS から FHS に切り替える
 
-プレイ中に F1 から開くプロファイル設定の「表示」内でハイスピード、SUDDEN+、LIFT、
+プレイ中に F1 から開くプロファイル設定の「表示」内でハイスピード、SUDDEN+、LIFT、HIDDEN+の有効状態と量、
 緑数字ターゲット、ノーツ表示時間、CONSTANT、CONSTANTフェード、HS Auto Adjustを変更した場合も、変更した項目だけを実行中の
 セッションへ即時反映する。未変更の項目は、プレイ中のキーボード／スクラッチ操作で
 更新された値を上書きしない。
@@ -151,12 +151,12 @@ Course の `NoSpeed` 制約中は、HS 変更、緑数字変更、FHS 再計算�
 | operation | behavior |
 | --- | --- |
 | `Left` / `Right` | HS 倍率を HS MODE ごとの設定刻みで下げる / 上げる (NHS 既定 0.25、FHS 既定 0.50) |
-| `Up` / `Down` | レーンカバー表示中はカバー位置、非表示中は LIFT を調整 |
-| `E1 hold + E2` | HS MODE を切り替える |
+| `Up` / `Down` | SUDDEN+表示中はSUDDEN+、非表示中は有効なLIFT/HIDDEN+を調整する |
+| `E1 hold + E2` | LIFT/HIDDEN+両方有効時は変更対象を切り替え、それ以外はHS MODEを切り替える |
 | `E1 hold + KEY...` | HS 倍率を変更する |
 | `E2 hold + KEY...` | 緑数字を変更する |
 | `E2 hold + Scratch Up/Down` | 緑数字を変更する |
-| `E1 double press` | レーンカバー表示を切り替える |
+| `E1 double press` | SUDDEN+が有効な場合だけSUDDEN+表示を切り替える |
 
 ## Skin Refs
 

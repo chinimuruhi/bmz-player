@@ -74,9 +74,10 @@ use crate::config::profile_config::{
     BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig, DoubleOptionConfig,
     GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig,
     InputActionConfig, JudgeAlgorithmConfig, KeyModeConversionConfig, LaneEffectConfig,
-    LaneViewConfig, PlayDefaultsConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
-    RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs,
-    default_hispeed_step_nhs, normalize_hispeed_step, replay_slot_rule_indices,
+    LaneViewConfig, PlayDefaultsConfig, PlayModeConfig, ProfileConfig, ProfileInputConfig,
+    RandomOptionConfig, RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig,
+    default_hispeed_step_fhs, default_hispeed_step_nhs, normalize_hispeed_step,
+    replay_slot_rule_indices,
 };
 use crate::config::save::{save_app_config, save_profile_config};
 use crate::config::settings_registry::SettingsEntryId;
@@ -337,7 +338,8 @@ use input_runtime::{
 use integration_support::*;
 use play_control::{
     GreenNumberChange, HispeedChange, LaneCoverChange, PlayAnalogOptionMode, PlayLaneAction,
-    PlayOptionControl, keyboard_lane_action, lane_action_from_option,
+    PlayLaneTarget, PlayOptionControl, keyboard_lane_action, lane_action_from_option,
+    resolved_play_lane_target,
 };
 use play_support::*;
 use result_runtime::{

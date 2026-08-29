@@ -84,10 +84,12 @@ pub enum SettingsEntryId {
     HispeedMode,
     HispeedStepNhs,
     HispeedStepFhs,
+    SuddenEnabled,
     Sudden,
     LiftEnabled,
     Lift,
     HispeedAutoAdjust,
+    HiddenEnabled,
     Hidden,
     TargetGreenNumber,
     NoteDisplayDurationMs,
@@ -213,10 +215,12 @@ impl SettingsEntryId {
         Self::HispeedMode,
         Self::HispeedStepNhs,
         Self::HispeedStepFhs,
+        Self::SuddenEnabled,
         Self::Sudden,
         Self::LiftEnabled,
         Self::Lift,
         Self::HispeedAutoAdjust,
+        Self::HiddenEnabled,
         Self::Hidden,
         Self::TargetGreenNumber,
         Self::NoteDisplayDurationMs,
@@ -277,6 +281,7 @@ impl SettingsEntryId {
             || Self::ASSIST_ENTRIES.contains(&self)
             || Self::ASSIST_NOTE_ENTRIES.contains(&self)
             || Self::ASSIST_JUDGE_ENTRIES.contains(&self)
+            || matches!(self, Self::SuddenEnabled | Self::HiddenEnabled)
     }
 
     pub fn label(self) -> &'static str {
@@ -343,10 +348,12 @@ impl SettingsEntryId {
             Self::HispeedMode => "HS MODE",
             Self::HispeedStepNhs => "HS STEP NHS",
             Self::HispeedStepFhs => "HS STEP FHS",
+            Self::SuddenEnabled => "SUDDEN+ ENABLED",
             Self::Sudden => "SUDDEN+",
             Self::LiftEnabled => "LIFT ENABLED",
             Self::Lift => "LIFT",
             Self::HispeedAutoAdjust => "HS AUTO ADJUST",
+            Self::HiddenEnabled => "HIDDEN+ ENABLED",
             Self::Hidden => "HIDDEN",
             Self::TargetGreenNumber => "GREEN NO.",
             Self::NoteDisplayDurationMs => "DURATION",
@@ -460,10 +467,12 @@ impl SettingsEntryId {
             Self::HispeedMode => "settings-entry-description-hispeed-mode",
             Self::HispeedStepNhs => "settings-entry-description-hispeed-step-nhs",
             Self::HispeedStepFhs => "settings-entry-description-hispeed-step-fhs",
+            Self::SuddenEnabled => "settings-entry-description-sudden-enabled",
             Self::Sudden => "settings-entry-description-sudden",
             Self::LiftEnabled => "settings-entry-description-lift-enabled",
             Self::Lift => "settings-entry-description-lift",
             Self::HispeedAutoAdjust => "settings-entry-description-hispeed-auto-adjust",
+            Self::HiddenEnabled => "settings-entry-description-hidden-enabled",
             Self::Hidden => "settings-entry-description-hidden",
             Self::TargetGreenNumber => "settings-entry-description-target-green-number",
             Self::NoteDisplayDurationMs => "settings-entry-description-note-display-duration",
@@ -617,6 +626,21 @@ mod tests {
         profile.lane.lift = 700;
         assert!(!adjust_settings_value(&mut profile, SettingsEntryId::Lift, 1));
         assert_eq!(profile.lane.lift, 700);
+    }
+
+    #[test]
+    fn independent_cover_enable_entries_preserve_the_other_flag() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::SuddenEnabled), "OFF");
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::HiddenEnabled), "OFF");
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SuddenEnabled, 1));
+        assert_eq!(profile.play.lane_effect, LaneEffectConfig::Sudden);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HiddenEnabled, 1));
+        assert_eq!(profile.play.lane_effect, LaneEffectConfig::HiddenSudden);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SuddenEnabled, -1));
+        assert_eq!(profile.play.lane_effect, LaneEffectConfig::Hidden);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::HiddenEnabled), "ON");
     }
 
     #[test]

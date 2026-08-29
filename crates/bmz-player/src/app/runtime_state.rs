@@ -145,6 +145,8 @@ pub(super) struct PlayRuntimeState {
     pub(super) play_backbmp_loaded: bool,
     /// プレイ中の Start キー直近の押下時刻。連続押し判定で使用。
     pub(super) last_play_start_press_at: Option<Instant>,
+    /// LIFT/HIDDEN+同時有効時に、SUDDEN+非表示中の変更対象を保持する。
+    pub(super) play_lane_target: PlayLaneTarget,
     /// Decide 中の E1 押下状態。E1+E2 キャンセルに使う。
     pub(super) decide_e1_held: bool,
     /// プレイ開始待ち/プレイ中の E1 押下状態。READY 前の緑数字表示にも使う。

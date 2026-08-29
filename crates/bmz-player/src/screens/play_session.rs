@@ -49,9 +49,11 @@ use crate::config::play::{
     gauge_auto_shift_from_config, gauge_type_from_config, input_bounce_config_from_profile,
     lane_binding_for_chart_with_slots, lane_unit_to_f32, play_offsets_from_profile_for_mode,
 };
+#[cfg(test)]
+use crate::config::profile_config::LaneEffectConfig;
 use crate::config::profile_config::{
     AssistOptionConfig, BgaExpandConfig, BgaModeConfig, JudgeAlgorithmConfig,
-    KeyModeConversionConfig, LaneEffectConfig, PlayModeConfig, ProfileConfig, SevenToNinePattern,
+    KeyModeConversionConfig, PlayModeConfig, ProfileConfig, SevenToNinePattern,
     SevenToNineRuleMode, SevenToNineType,
 };
 use crate::input::gamepad::GamepadSlotMap;

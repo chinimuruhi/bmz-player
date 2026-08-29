@@ -1,7 +1,7 @@
 pub(in crate::app) fn active_lane_cover_for_hispeed(
     session: &bmz_gameplay::session::GameSession,
 ) -> f32 {
-    if session.lane_cover_visible {
+    if session.lanecover_enabled && session.lane_cover_visible {
         crate::config::play::clamp_lane_cover_for_lift(session.lane_cover, session.lift)
     } else {
         0.0

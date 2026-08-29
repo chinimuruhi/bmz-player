@@ -160,10 +160,16 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::HispeedMode => format_hispeed_mode(profile.lane.hispeed_mode),
         SettingsEntryId::HispeedStepNhs => format!("{:.2}", profile.lane.hispeed_step_nhs),
         SettingsEntryId::HispeedStepFhs => format!("{:.2}", profile.lane.hispeed_step_fhs),
+        SettingsEntryId::SuddenEnabled => {
+            format_bool_on_off(profile.play.lane_effect.sudden_enabled())
+        }
         SettingsEntryId::Sudden => format_lane_unit(profile.lane.sudden),
         SettingsEntryId::LiftEnabled => format_bool_on_off(profile.lane.lift_enabled),
         SettingsEntryId::Lift => format_lane_unit(profile.lane.lift),
         SettingsEntryId::HispeedAutoAdjust => format_bool_on_off(profile.lane.hispeed_auto_adjust),
+        SettingsEntryId::HiddenEnabled => {
+            format_bool_on_off(profile.play.lane_effect.hidden_enabled())
+        }
         SettingsEntryId::Hidden => format_lane_unit(profile.lane.hidden),
         SettingsEntryId::TargetGreenNumber => format!("{}", profile.lane.target_green_number),
         SettingsEntryId::NoteDisplayDurationMs => {

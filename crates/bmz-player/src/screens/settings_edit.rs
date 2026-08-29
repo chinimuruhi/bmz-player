@@ -429,11 +429,17 @@ impl SettingsEditSession {
             }
             SettingsEntryId::HispeedStepNhs => SettingsBaseline::F32(profile.lane.hispeed_step_nhs),
             SettingsEntryId::HispeedStepFhs => SettingsBaseline::F32(profile.lane.hispeed_step_fhs),
+            SettingsEntryId::SuddenEnabled => {
+                SettingsBaseline::LaneEffect(profile.play.lane_effect)
+            }
             SettingsEntryId::Sudden => SettingsBaseline::U32(profile.lane.sudden),
             SettingsEntryId::LiftEnabled => SettingsBaseline::Bool(profile.lane.lift_enabled),
             SettingsEntryId::Lift => SettingsBaseline::U32(profile.lane.lift),
             SettingsEntryId::HispeedAutoAdjust => {
                 SettingsBaseline::Bool(profile.lane.hispeed_auto_adjust)
+            }
+            SettingsEntryId::HiddenEnabled => {
+                SettingsBaseline::LaneEffect(profile.play.lane_effect)
             }
             SettingsEntryId::Hidden => SettingsBaseline::U32(profile.lane.hidden),
             SettingsEntryId::TargetGreenNumber => {
@@ -621,7 +627,12 @@ impl SettingsEditSession {
             (SettingsEntryId::Target, SettingsBaseline::Target(value)) => {
                 profile.play.target = *value;
             }
-            (SettingsEntryId::LaneEffect, SettingsBaseline::LaneEffect(value)) => {
+            (
+                SettingsEntryId::LaneEffect
+                | SettingsEntryId::SuddenEnabled
+                | SettingsEntryId::HiddenEnabled,
+                SettingsBaseline::LaneEffect(value),
+            ) => {
                 profile.play.lane_effect = *value;
             }
             (SettingsEntryId::Assist, SettingsBaseline::Assist(value)) => {

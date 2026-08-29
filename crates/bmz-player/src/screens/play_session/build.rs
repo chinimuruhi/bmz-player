@@ -76,8 +76,9 @@ pub fn apply_placeholder_session_visuals(
     snapshot.gauge_border = current.definition.border;
 
     let speed_locked = options.speed_constraint == bmz_core::course::CourseSpeedConstraint::NoSpeed;
+    let lanecover_enabled = !speed_locked && lanecover_enabled_from_mode_config(&mode_config);
     snapshot.lift = if speed_locked { 0.0 } else { lift_from_mode_config(&mode_config) };
-    snapshot.lane_cover = if speed_locked {
+    snapshot.lane_cover = if !lanecover_enabled {
         0.0
     } else {
         crate::config::play::clamp_lane_cover_for_lift(
@@ -102,7 +103,7 @@ pub fn apply_placeholder_session_visuals(
             options.playback_rate_percent,
         )
     };
-    snapshot.lanecover_enabled = lanecover_enabled_from_mode_config(&mode_config);
+    snapshot.lanecover_enabled = lanecover_enabled;
     snapshot.lift_enabled = mode_config.lift_enabled;
     snapshot.hidden_enabled = hidden_enabled_from_mode_config(&mode_config);
     snapshot.hispeed_auto_adjust = mode_config.hispeed_auto_adjust;
@@ -567,7 +568,7 @@ pub fn build_game_session_with_input_backend(
         hsfix_base_bpm,
         lift,
         lane_cover,
-        lane_cover_visible: true,
+        lane_cover_visible: lanecover_enabled_from_mode_config(&mode_config),
         lane_cover_changing: false,
         lanecover_enabled: lanecover_enabled_from_mode_config(&mode_config),
         lift_enabled: mode_config.lift_enabled,
@@ -803,20 +804,11 @@ pub(crate) fn judge_algorithm_from_config(value: JudgeAlgorithmConfig) -> JudgeA
 }
 
 pub(super) fn hidden_cover_from_mode_config(config: &PlayModeConfig) -> f32 {
-    match config.lane_effect {
-        LaneEffectConfig::Hidden | LaneEffectConfig::HiddenSudden => {
-            lane_unit_to_f32(config.hidden)
-        }
-        LaneEffectConfig::Off | LaneEffectConfig::Sudden => 0.0,
-    }
+    if config.lane_effect.hidden_enabled() { lane_unit_to_f32(config.hidden) } else { 0.0 }
 }
 
 pub(super) fn lanecover_enabled_from_mode_config(config: &PlayModeConfig) -> bool {
-    let lift = lift_from_mode_config(config);
-    let lane_cover =
-        crate::config::play::clamp_lane_cover_for_lift(lane_unit_to_f32(config.sudden), lift);
-    matches!(config.lane_effect, LaneEffectConfig::Sudden | LaneEffectConfig::HiddenSudden)
-        || lane_cover > 0.0
+    config.lane_effect.sudden_enabled()
 }
 
 pub(super) fn lift_from_mode_config(config: &PlayModeConfig) -> f32 {
@@ -824,7 +816,7 @@ pub(super) fn lift_from_mode_config(config: &PlayModeConfig) -> f32 {
 }
 
 pub(super) fn hidden_enabled_from_mode_config(config: &PlayModeConfig) -> bool {
-    matches!(config.lane_effect, LaneEffectConfig::Hidden | LaneEffectConfig::HiddenSudden)
+    config.lane_effect.hidden_enabled()
 }
 
 pub(super) fn poor_bga_duration_us_from_profile(profile: &ProfileConfig) -> i64 {

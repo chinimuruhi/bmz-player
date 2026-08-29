@@ -2,6 +2,10 @@
 pub(in crate::app) struct ActiveLaneState {
     pub(in crate::app) lane_cover: f32,
     pub(in crate::app) lift: f32,
+    pub(in crate::app) hidden_cover: f32,
+    pub(in crate::app) sudden_enabled: bool,
+    pub(in crate::app) lift_enabled: bool,
+    pub(in crate::app) hidden_enabled: bool,
     pub(in crate::app) hispeed_mode: HispeedMode,
     pub(in crate::app) target_green_number: u32,
 }
@@ -16,6 +20,7 @@ pub(in crate::app) fn profile_lane_settings_changed(
         || before.lift != after.lift
         || before.lift_enabled != after.lift_enabled
         || before.hispeed_auto_adjust != after.hispeed_auto_adjust
+        || before.hidden != after.hidden
         || before.target_green_number != after.target_green_number
         || before.constant_enabled != after.constant_enabled
         || before.constant_fade_ms != after.constant_fade_ms
@@ -24,11 +29,13 @@ pub(in crate::app) fn profile_lane_settings_changed(
 pub(in crate::app) fn apply_profile_lane_settings_to_session(
     session: &mut bmz_gameplay::session::GameSession,
     before: &LaneViewConfig,
+    before_lane_effect: LaneEffectConfig,
     profile: &LaneViewConfig,
+    lane_effect: LaneEffectConfig,
     speed_locked: bool,
     practice_mode: bool,
 ) -> bool {
-    if !profile_lane_settings_changed(before, profile) {
+    if !profile_lane_settings_changed(before, profile) && before_lane_effect == lane_effect {
         return false;
     }
     if speed_locked {
@@ -38,15 +45,25 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
     let mode_changed = before.hispeed_mode != profile.hispeed_mode;
     let hispeed_changed = before.hispeed != profile.hispeed;
     let sudden_changed = before.sudden != profile.sudden;
+    let sudden_enabled_changed =
+        before_lane_effect.sudden_enabled() != lane_effect.sudden_enabled();
     let lift_changed = before.lift != profile.lift;
     let lift_enabled_changed = before.lift_enabled != profile.lift_enabled;
     let auto_adjust_changed = before.hispeed_auto_adjust != profile.hispeed_auto_adjust;
+    let hidden_changed = before.hidden != profile.hidden;
+    let hidden_enabled_changed =
+        before_lane_effect.hidden_enabled() != lane_effect.hidden_enabled();
     let target_green_changed = before.target_green_number != profile.target_green_number;
     let constant_changed = before.constant_enabled != profile.constant_enabled;
     let constant_fade_changed = before.constant_fade_ms != profile.constant_fade_ms;
-    let cover_changed = sudden_changed || lift_changed || lift_enabled_changed;
+    let cover_changed =
+        sudden_changed || sudden_enabled_changed || lift_changed || lift_enabled_changed;
 
     if cover_changed {
+        session.lanecover_enabled = lane_effect.sudden_enabled();
+        if sudden_enabled_changed {
+            session.lane_cover_visible = session.lanecover_enabled;
+        }
         session.lift_enabled = profile.lift_enabled;
         session.lift = if profile.lift_enabled {
             crate::config::play::lane_unit_to_f32(profile.lift)
@@ -57,6 +74,14 @@ pub(in crate::app) fn apply_profile_lane_settings_to_session(
             crate::config::play::lane_unit_to_f32(profile.sudden),
             session.lift,
         );
+    }
+    if hidden_changed || hidden_enabled_changed {
+        session.hidden_enabled = lane_effect.hidden_enabled();
+        session.hidden_cover = if session.hidden_enabled {
+            crate::config::play::lane_unit_to_f32(profile.hidden)
+        } else {
+            0.0
+        };
     }
     if auto_adjust_changed {
         session.hispeed_auto_adjust = profile.hispeed_auto_adjust;
@@ -125,6 +150,10 @@ pub(in crate::app) fn active_lane_state_for_session(
     ActiveLaneState {
         lane_cover: session.lane_cover,
         lift: session.lift,
+        hidden_cover: session.hidden_cover,
+        sudden_enabled: session.lanecover_enabled,
+        lift_enabled: session.lift_enabled,
+        hidden_enabled: session.hidden_enabled,
         hispeed_mode: session.hispeed_mode,
         // NHS の現在表示は曲終了時に変動するため保存しない。target は NHS→FHS
         // の明示切替時に session 側で更新された値を引き継ぐ。
@@ -285,9 +314,14 @@ pub(in crate::app) fn apply_lane_state_to_profile(
         profile.lane.hispeed = clamp_hispeed_for_profile(hispeed, saved_hispeed_mode, step);
     }
     if let Some(state) = lane_state {
-        profile.lane.sudden = crate::config::play::lane_f32_to_unit(state.lane_cover);
-        if profile.lane.lift_enabled {
+        if state.sudden_enabled {
+            profile.lane.sudden = crate::config::play::lane_f32_to_unit(state.lane_cover);
+        }
+        if state.lift_enabled {
             profile.lane.lift = crate::config::play::lane_f32_to_unit(state.lift);
+        }
+        if state.hidden_enabled {
+            profile.lane.hidden = crate::config::play::lane_f32_to_unit(state.hidden_cover);
         }
         profile.lane.hispeed_mode = hispeed_mode_to_config(state.hispeed_mode);
         profile.lane.target_green_number = state.target_green_number.max(1);

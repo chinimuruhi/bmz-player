@@ -288,6 +288,14 @@ fn play_option_control_prioritizes_two_player_lane_over_other_devices_e2_button(
         action: Some(InputActionConfig::E2),
         scratch: None,
     });
+    input.ui.bindings.push(crate::config::profile_config::BindingConfigEntry {
+        device: "gamepad1".to_string(),
+        control: "Button9".to_string(),
+        keyboard_slot: None,
+        lane: None,
+        action: Some(InputActionConfig::E1),
+        scratch: None,
+    });
     input.play.insert(
         KeyMode::K14.play_map_key().to_string(),
         crate::config::profile_config::PlayModeInputConfig {
@@ -323,6 +331,17 @@ fn play_option_control_prioritizes_two_player_lane_over_other_devices_e2_button(
         play_option_control_for_input(
             DeviceId(11),
             &control,
+            true,
+            true,
+            Some(&play_input),
+            &input,
+        ),
+        Some(PlayOptionControl::ToggleHispeedMode)
+    );
+    assert_eq!(
+        play_option_control_for_input(
+            DeviceId(11),
+            &PhysicalControl::GamepadButton("Button9".to_string()),
             true,
             true,
             Some(&play_input),
@@ -393,6 +412,10 @@ fn active_lane_state_saves_current_green_number_for_nhs() {
         Some(ActiveLaneState {
             lane_cover: 0.0,
             lift: 0.0,
+            hidden_cover: 0.0,
+            sudden_enabled: true,
+            lift_enabled: true,
+            hidden_enabled: false,
             hispeed_mode: HispeedMode::Normal,
             target_green_number: 600,
         }),
@@ -456,6 +479,10 @@ fn apply_current_play_options_updates_profile_defaults() {
         Some(ActiveLaneState {
             lane_cover: 0.42,
             lift: 0.1,
+            hidden_cover: 0.0,
+            sudden_enabled: true,
+            lift_enabled: true,
+            hidden_enabled: false,
             hispeed_mode: HispeedMode::Floating,
             target_green_number: 280,
         }),

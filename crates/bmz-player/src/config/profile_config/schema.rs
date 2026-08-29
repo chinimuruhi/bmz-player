@@ -595,6 +595,33 @@ pub enum LaneEffectConfig {
     HiddenSudden,
 }
 
+impl LaneEffectConfig {
+    pub const fn sudden_enabled(self) -> bool {
+        matches!(self, Self::Sudden | Self::HiddenSudden)
+    }
+
+    pub const fn hidden_enabled(self) -> bool {
+        matches!(self, Self::Hidden | Self::HiddenSudden)
+    }
+
+    pub const fn from_enabled(sudden_enabled: bool, hidden_enabled: bool) -> Self {
+        match (sudden_enabled, hidden_enabled) {
+            (false, false) => Self::Off,
+            (false, true) => Self::Hidden,
+            (true, false) => Self::Sudden,
+            (true, true) => Self::HiddenSudden,
+        }
+    }
+
+    pub const fn with_sudden_enabled(self, enabled: bool) -> Self {
+        Self::from_enabled(enabled, self.hidden_enabled())
+    }
+
+    pub const fn with_hidden_enabled(self, enabled: bool) -> Self {
+        Self::from_enabled(self.sudden_enabled(), enabled)
+    }
+}
+
 /// beatoraja `PlayerConfig` のアシスト設定。
 ///
 /// 選曲画面の7トグルは同時に有効化できるため、旧来の単一 enum ではなく

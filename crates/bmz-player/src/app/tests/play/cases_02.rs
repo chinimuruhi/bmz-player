@@ -189,7 +189,12 @@ fn pending_hispeed_changes_use_displayed_mode_without_mutating_profile() {
         target_green_number: 300,
         lane_cover: 0.0,
         lift: 0.0,
+        hidden_cover: 0.0,
+        sudden_enabled: true,
+        lift_enabled: true,
+        hidden_enabled: false,
         lane_cover_visible: true,
+        lane_target: PlayLaneTarget::Lift,
         lane_cover_changing: false,
         hsfix_base_bpm: 120.0,
         hispeed_auto_adjust: false,
@@ -213,8 +218,13 @@ fn pending_hispeed_changes_use_displayed_mode_without_mutating_profile() {
 fn pending_lane_state_preserves_sub_one_hsfix_bpm() {
     let mut snapshot =
         RenderSnapshot { hispeed_mode_index: 1, min_bpm: 0.96, ..Default::default() };
+    let mode_config = PlayModeConfig {
+        target_green_number: 300,
+        hispeed_auto_adjust: false,
+        ..PlayModeConfig::default()
+    };
     let mut lane =
-        PendingPlayLaneState::from_snapshot(&snapshot, 300, HsFixOption::MinBpm, false, 100);
+        PendingPlayLaneState::from_snapshot(&snapshot, &mode_config, HsFixOption::MinBpm, 100);
     assert_eq!(lane.hsfix_base_bpm, 0.96);
 
     snapshot.min_bpm = 0.5;
@@ -231,7 +241,12 @@ fn pending_green_number_change_switches_displayed_state_to_floating() {
         target_green_number: 300,
         lane_cover: 0.0,
         lift: 0.0,
+        hidden_cover: 0.0,
+        sudden_enabled: true,
+        lift_enabled: true,
+        hidden_enabled: false,
         lane_cover_visible: true,
+        lane_target: PlayLaneTarget::Lift,
         lane_cover_changing: true,
         hsfix_base_bpm: 120.0,
         hispeed_auto_adjust: false,
@@ -262,7 +277,12 @@ fn pending_lane_state_rejects_all_no_speed_controls() {
         target_green_number: 300,
         lane_cover: 0.0,
         lift: 0.0,
+        hidden_cover: 0.0,
+        sudden_enabled: true,
+        lift_enabled: true,
+        hidden_enabled: false,
         lane_cover_visible: true,
+        lane_target: PlayLaneTarget::Lift,
         lane_cover_changing: true,
         hsfix_base_bpm: 120.0,
         hispeed_auto_adjust: false,
@@ -293,6 +313,7 @@ fn pending_lane_actions_replay_once_on_loaded_session() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.lane.hispeed_mode = HispeedModeConfig::Floating;
     profile.lane.target_green_number = 300;
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut session = crate::screens::play_session::build_game_session(
         std::sync::Arc::new(app_test_chart()),
         &profile,
@@ -300,9 +321,11 @@ fn pending_lane_actions_replay_once_on_loaded_session() {
     );
     let initial_hispeed = session.hispeed;
     let hispeed_step = hispeed_step_for_profile(&profile, session.hispeed_mode);
+    let mut lane_target = PlayLaneTarget::Lift;
 
     replay_pending_play_lane_actions(
         &mut session,
+        &mut lane_target,
         &[PlayLaneAction::Hispeed(HispeedChange::Up)],
         &profile,
         false,
@@ -311,6 +334,7 @@ fn pending_lane_actions_replay_once_on_loaded_session() {
     assert_eq!(session.hispeed, initial_hispeed + hispeed_step);
     replay_pending_play_lane_actions(
         &mut session,
+        &mut lane_target,
         &[PlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP)],
         &profile,
         false,

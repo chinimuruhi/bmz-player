@@ -19,6 +19,43 @@ pub(super) enum PlayLaneAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PlayLaneTarget {
+    Sudden,
+    Lift,
+    Hidden,
+}
+
+impl PlayLaneTarget {
+    pub(super) const fn toggled_lift_hidden(self) -> Self {
+        match self {
+            Self::Hidden => Self::Lift,
+            Self::Sudden | Self::Lift => Self::Hidden,
+        }
+    }
+}
+
+pub(super) fn resolved_play_lane_target(
+    sudden_enabled: bool,
+    lane_cover_visible: bool,
+    lift_enabled: bool,
+    hidden_enabled: bool,
+    preferred: PlayLaneTarget,
+) -> Option<PlayLaneTarget> {
+    if sudden_enabled && lane_cover_visible {
+        return Some(PlayLaneTarget::Sudden);
+    }
+    match (lift_enabled, hidden_enabled) {
+        (true, true) => Some(match preferred {
+            PlayLaneTarget::Hidden => PlayLaneTarget::Hidden,
+            PlayLaneTarget::Sudden | PlayLaneTarget::Lift => PlayLaneTarget::Lift,
+        }),
+        (true, false) => Some(PlayLaneTarget::Lift),
+        (false, true) => Some(PlayLaneTarget::Hidden),
+        (false, false) => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PlayOptionControl {
     ToggleHispeedMode,
     Hispeed(HispeedChange),

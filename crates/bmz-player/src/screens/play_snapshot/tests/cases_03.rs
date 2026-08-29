@@ -122,6 +122,8 @@ fn build_render_snapshot_reports_lane_cover_changing_and_note_display_duration()
         build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
     session.hispeed = 2.0;
     session.lane_cover = 0.25;
+    session.lanecover_enabled = true;
+    session.lane_cover_visible = true;
     session.lane_cover_changing = true;
 
     let snapshot = build_render_snapshot(&session, TimeUs(0), &[], None);
@@ -153,6 +155,8 @@ fn update_render_snapshot_play_options_refreshes_ready_snapshot_values() {
 
     session.hispeed = 2.0;
     session.lane_cover = 0.25;
+    session.lanecover_enabled = true;
+    session.lane_cover_visible = true;
     session.lane_cover_changing = true;
     update_render_snapshot_play_options(&mut snapshot, &session, TimeUs(0));
 

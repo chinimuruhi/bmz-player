@@ -195,6 +195,8 @@ fn build_render_snapshot_lifted_lane_cover_duration_matches_note_position() {
     session.hispeed = 1.0;
     session.lift = 0.2;
     session.lane_cover = 0.25;
+    session.lanecover_enabled = true;
+    session.lane_cover_visible = true;
 
     let snapshot = build_render_snapshot(&session, TimeUs(0), &[], None);
 
