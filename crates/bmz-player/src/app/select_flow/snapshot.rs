@@ -507,7 +507,23 @@ impl WinitApp {
         } else {
             0.0
         };
-        let visible = (1.0 - sudden - hidden).clamp(0.0, 1.0);
+        let visible = if select_floating {
+            let lift = if config.lift_enabled {
+                crate::config::play::lane_unit_to_f32(config.lift)
+            } else {
+                0.0
+            };
+            let floating_visible = crate::config::play::visible_lane_fraction(sudden, lift);
+            if floating_visible > f32::EPSILON {
+                let hidden_extent = (1.0 - lift) * hidden;
+                ((floating_visible - hidden_extent).clamp(0.0, floating_visible) / floating_visible)
+                    .clamp(0.0, 1.0)
+            } else {
+                0.0
+            }
+        } else {
+            (1.0 - sudden - hidden).clamp(0.0, 1.0)
+        };
         (crate::config::play::duration_ms_from_green_number(green) as f32 * visible)
             .round()
             .clamp(0.0, i32::MAX as f32) as i32

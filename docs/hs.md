@@ -97,6 +97,8 @@ skin の `NUMBER_DURATION` (312) には導出した表示時間、
 選曲画面の `NUMBER_DURATION` と `NUMBER_DURATION_GREEN` は、選択中のキーモードで
 有効なSUDDEN+とHIDDEN+を上下のカバーとして扱い、両者の間でノーツが見える割合を
 反映する。無効なカバーの保存値は無視し、カバーが重なる場合は表示時間を0に収める。
+FloatingではSUDDEN+とLIFTを反映済みの目標緑数字を基準にし、HIDDEN+が隠す範囲だけを
+残りの可視レーンに対する相対比で反映する。
 
 ## HS-FIX
 
