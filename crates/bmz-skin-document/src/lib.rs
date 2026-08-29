@@ -97,6 +97,19 @@ pub fn default_true() -> bool {
     true
 }
 
+pub fn deserialize_skin_bool<'de, D>(deserializer: D) -> std::result::Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = JsonValue::deserialize(deserializer)?;
+    match value {
+        JsonValue::Bool(value) => Ok(value),
+        JsonValue::Number(value) if value.as_i64() == Some(0) => Ok(false),
+        JsonValue::Number(value) if value.as_i64() == Some(1) => Ok(true),
+        _ => Err(D::Error::custom("expected a boolean or integer 0/1")),
+    }
+}
+
 pub fn default_graph_angle() -> i32 {
     1
 }
