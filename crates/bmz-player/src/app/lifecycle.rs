@@ -286,11 +286,13 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let skin_drain_stats = self.drain_pending_skins();
                 let drain_us = instant_elapsed_us_u64(drain_start);
                 let input_start = Instant::now();
-                self.poll_gamepad_events();
-                self.advance_select_hold_move();
-                self.advance_select_ir_battle_hold();
+                if !self.viewer_waiting {
+                    self.poll_gamepad_events();
+                    self.advance_select_hold_move();
+                    self.advance_select_ir_battle_hold();
+                    self.advance_select_analog_scroll();
+                }
                 self.advance_result_ir_scroll_hold();
-                self.advance_select_analog_scroll();
                 self.advance_result_ir_analog_scroll();
                 let input_us = instant_elapsed_us_u64(input_start);
                 let background_start = Instant::now();

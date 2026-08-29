@@ -2,6 +2,9 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn route_mouse_wheel(&mut self, delta: MouseScrollDelta) {
+        if self.viewer_waiting {
+            return;
+        }
         if let Some(change) = lane_cover_wheel_change(delta)
             && (self.play.active_play.is_some() || self.play.pending_play_start.is_some())
         {
@@ -37,6 +40,10 @@ impl WinitApp {
     }
 
     pub(super) fn route_mouse_input(&mut self, state: ElementState, button: MouseButton) {
+        if self.viewer_waiting {
+            self.select.select_slider_dragging_type = None;
+            return;
+        }
         if state == ElementState::Released {
             self.select.select_slider_dragging_type = None;
             return;
@@ -132,6 +139,10 @@ impl WinitApp {
     }
 
     pub(super) fn route_select_slider_drag(&mut self) {
+        if self.viewer_waiting {
+            self.select.select_slider_dragging_type = None;
+            return;
+        }
         if self.select.select_slider_dragging_type.is_none() {
             return;
         }

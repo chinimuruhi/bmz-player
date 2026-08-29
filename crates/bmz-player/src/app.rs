@@ -688,6 +688,10 @@ struct WinitApp {
     /// frame pacing、確定FPS、scene別profile集計をまとめた描画runtime。
     frame: FrameRuntime,
     deferred_boot: Option<DeferredBoot>,
+    /// uBMplay互換の外部ビューワーとして起動したプロセスか。
+    viewer_mode: bool,
+    /// ビューワーの単曲再生が終わり、次のIPC命令を待っている状態。
+    viewer_waiting: bool,
     skip_result: bool,
     select: SelectRuntimeState,
     play: PlayRuntimeState,

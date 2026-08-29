@@ -163,6 +163,7 @@ impl WinitApp {
             self.stop_system_sound(*sound_type);
         }
         match scene_kind {
+            AppSceneKind::Select if self.viewer_waiting => {}
             AppSceneKind::Select
                 if should_play_select_bgm_on_enter(
                     self.select.select_assets.preview_playing(),

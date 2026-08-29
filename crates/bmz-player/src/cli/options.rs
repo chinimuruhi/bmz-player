@@ -128,7 +128,6 @@ impl AppOptions {
                     options.viewer_play = true;
                     options.autoplay_on_start = true;
                     options.skip_decide = true;
-                    options.skip_result = true;
                 }
                 VIEWER_STOP_ARG | VIEWER_STOP_SHORT_ARG => options.viewer_stop = true,
                 SKIP_DECIDE_ARG => options.skip_decide = true,

@@ -346,6 +346,23 @@ impl WinitApp {
         event: &winit::event::KeyEvent,
         control_event: &ControlInputEvent,
     ) {
+        if self.viewer_waiting {
+            // 待機中はエディタからのIPCだけを再生入口にする。Escape長押しによる
+            // 通常終了だけはSelectと同じ操作として残す。
+            if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
+                match event.state {
+                    ElementState::Pressed => {
+                        if self.select.select_exit_hold_started_at.is_none() {
+                            self.select.select_exit_hold_started_at = Some(Instant::now());
+                        }
+                    }
+                    ElementState::Released => {
+                        self.select.select_exit_hold_started_at = None;
+                    }
+                }
+            }
+            return;
+        }
         if matches!(self.view_state(), AppViewState::Select)
             && self.select.select_option_panel == 0
             && let Some(control) = physical_key_name(event.physical_key)

@@ -1,5 +1,5 @@
 use super::*;
-use crate::app::result_flow_ending::should_skip_result;
+use crate::app::result_flow_ending::{FinishedPlayAction, finished_play_action};
 use crate::app::result_flow_timing::{
     play_fadeout_duration_for_skin, practice_play_fadeout_duration_for_skin,
 };
@@ -30,10 +30,12 @@ fn result_skin_signature_changes_when_only_offset_changes() {
 }
 
 #[test]
-fn cli_result_skip_applies_only_to_single_chart_play() {
-    assert!(should_skip_result(true, false));
-    assert!(!should_skip_result(false, false));
-    assert!(!should_skip_result(true, true));
+fn finished_play_action_distinguishes_viewer_wait_and_explicit_exit() {
+    assert_eq!(finished_play_action(true, false, false), FinishedPlayAction::ViewerWait);
+    assert_eq!(finished_play_action(true, true, false), FinishedPlayAction::Exit);
+    assert_eq!(finished_play_action(false, true, false), FinishedPlayAction::Exit);
+    assert_eq!(finished_play_action(false, false, false), FinishedPlayAction::ShowResult);
+    assert_eq!(finished_play_action(true, true, true), FinishedPlayAction::ShowResult);
 }
 
 #[test]

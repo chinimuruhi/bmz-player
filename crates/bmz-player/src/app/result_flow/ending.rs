@@ -127,15 +127,35 @@ impl WinitApp {
                 }
             }
         };
-        if should_skip_result(self.skip_result, self.play.active_course.is_some()) {
-            tracing::info!("result screen skipped by CLI option");
-            drop(started);
-            drop(finished);
-            self.play.last_play_snapshot = None;
-            self.clear_play_meta_image_state();
-            self.shutdown_requested.store(true, Ordering::SeqCst);
-            self.request_redraw();
-            return;
+        match finished_play_action(
+            self.viewer_mode,
+            self.skip_result,
+            self.play.active_course.is_some(),
+        ) {
+            FinishedPlayAction::ViewerWait => {
+                tracing::info!("viewer play finished; waiting for the next command");
+                drop(started);
+                drop(finished);
+                self.viewer_waiting = true;
+                self.stop_select_preview();
+                if let Some(manager) = &self.audio.system_sound {
+                    manager.stop_all_bgm();
+                }
+                self.leave_result();
+                self.request_redraw();
+                return;
+            }
+            FinishedPlayAction::Exit => {
+                tracing::info!("result screen skipped by CLI option");
+                drop(started);
+                drop(finished);
+                self.play.last_play_snapshot = None;
+                self.clear_play_meta_image_state();
+                self.shutdown_requested.store(true, Ordering::SeqCst);
+                self.request_redraw();
+                return;
+            }
+            FinishedPlayAction::ShowResult => {}
         }
         self.select.score_refresh.mark_score_data_changed(finished.score_data_changed);
         if let Some(chart_id) = self.play.last_started_chart_id {
@@ -323,6 +343,25 @@ impl WinitApp {
     }
 }
 
-pub(super) const fn should_skip_result(skip_result: bool, has_active_course: bool) -> bool {
-    skip_result && !has_active_course
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FinishedPlayAction {
+    ShowResult,
+    ViewerWait,
+    Exit,
+}
+
+pub(super) const fn finished_play_action(
+    viewer_mode: bool,
+    skip_result: bool,
+    has_active_course: bool,
+) -> FinishedPlayAction {
+    if has_active_course {
+        FinishedPlayAction::ShowResult
+    } else if viewer_mode && !skip_result {
+        FinishedPlayAction::ViewerWait
+    } else if skip_result {
+        FinishedPlayAction::Exit
+    } else {
+        FinishedPlayAction::ShowResult
+    }
 }

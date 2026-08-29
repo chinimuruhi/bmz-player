@@ -188,6 +188,8 @@ impl WinitApp {
             event_proxy,
             frame: FrameRuntime::new(now),
             deferred_boot: deferred_boot_action(boot_chart_id, &options),
+            viewer_mode: options.viewer_play,
+            viewer_waiting: false,
             skip_result: options.skip_result,
             select: SelectRuntimeState {
                 autoplay_folder: None,

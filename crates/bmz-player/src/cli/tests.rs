@@ -29,13 +29,16 @@ fn app_options_parse_ubmplay_viewer_arguments() {
     assert!(attached.viewer_play);
     assert!(attached.autoplay_on_start);
     assert!(attached.skip_decide);
-    assert!(attached.skip_result);
+    assert!(!attached.skip_result);
     assert_eq!(attached.start_measure, Some(12));
     assert_eq!(attached.boot_play_path.as_deref(), Some("_temp.bms"));
 
     let separated = AppOptions::parse_args(["--viewer-play", "-N", "7", "song.bmson"]).unwrap();
     assert_eq!(separated.start_measure, Some(7));
     assert_eq!(separated.boot_play_path.as_deref(), Some("song.bmson"));
+
+    let exit_after_play = AppOptions::parse_args(["-P", "--skip-result", "song.bms"]).unwrap();
+    assert!(exit_after_play.skip_result);
 
     let long = AppOptions::parse_args(["--start-measure=3", "--skip-decide", "song.bms"]).unwrap();
     assert_eq!(long.start_measure, Some(3));

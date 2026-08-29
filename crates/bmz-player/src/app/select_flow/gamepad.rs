@@ -99,6 +99,9 @@ impl WinitApp {
         if !practice_config && self.play.play_ending.is_none() {
             self.route_play_device_input(device_event);
         }
+        if self.viewer_waiting {
+            return;
+        }
         self.route_gamepad_button(
             event.device_id,
             &event.name,
@@ -129,6 +132,9 @@ impl WinitApp {
     }
 
     pub(super) fn route_gamepad_axis_ticks(&mut self, device: DeviceId, axis: &str, ticks: i32) {
+        if self.viewer_waiting {
+            return;
+        }
         let practice_config = self
             .play
             .practice_session
