@@ -6,6 +6,20 @@ pub struct AppOptions {
     /// beatoraja 互換: 譜面ファイル PATH を指定して起動時プレイ。
     pub boot_play_path: Option<String>,
     pub autoplay_on_start: bool,
+    /// uBMplay 互換の外部ビューワー起動 (`-P`)。
+    pub viewer_play: bool,
+    /// 起動済みの外部ビューワーを停止する (`-S`)。
+    pub viewer_stop: bool,
+    /// uBMplay 互換の開始小節 (`-N0`, `-N 0`)。
+    pub start_measure: Option<u32>,
+    /// 起動譜面で Decide を通らず Play へ入る。
+    pub skip_decide: bool,
+    /// Play 終了後に Result を表示せずプロセスを終了する。
+    pub skip_result: bool,
+    /// 起動譜面を import して確定した開始時刻。CLI parse 時点では未設定。
+    pub boot_start_time_us: Option<i64>,
+    /// 外部ビューワーの一時importとPlayで共有するBMS `#RANDOM` seed。
+    pub boot_bms_random_seed: Option<u64>,
     pub smoke_exit_after_frames: Option<u32>,
     pub smoke_exit_after_play_frames: Option<u32>,
     pub smoke_exit_after_result_frames: Option<u32>,
@@ -95,11 +109,36 @@ impl AppOptions {
                 options.lua_skin_runtime_mode = parse_lua_skin_runtime_mode(value)?;
                 continue;
             }
+            if let Some(value) = arg.strip_prefix("--start-measure=") {
+                options.start_measure = Some(parse_start_measure(value)?);
+                continue;
+            }
+            if let Some(value) = arg.strip_prefix(START_MEASURE_SHORT_ARG)
+                && !value.is_empty()
+            {
+                options.start_measure = Some(parse_start_measure(value)?);
+                continue;
+            }
 
             match arg {
                 BOOT_PLAY_SAMPLE_ARG => options.boot_play_sample = true,
                 BOOT_RESULT_SAMPLE_ARG => options.boot_result_sample = true,
                 AUTOPLAY_ON_START_ARG | AUTOPLAY_SHORT_ARG => options.autoplay_on_start = true,
+                VIEWER_PLAY_ARG | VIEWER_PLAY_SHORT_ARG => {
+                    options.viewer_play = true;
+                    options.autoplay_on_start = true;
+                    options.skip_decide = true;
+                    options.skip_result = true;
+                }
+                VIEWER_STOP_ARG | VIEWER_STOP_SHORT_ARG => options.viewer_stop = true,
+                SKIP_DECIDE_ARG => options.skip_decide = true,
+                SKIP_RESULT_ARG => options.skip_result = true,
+                START_MEASURE_ARG | START_MEASURE_SHORT_ARG => {
+                    let Some(value) = args.next() else {
+                        bail!("{arg} requires a measure number");
+                    };
+                    options.start_measure = Some(parse_start_measure(value.as_ref())?);
+                }
                 SMOKE_EXIT_ON_RESULT_ARG => options.smoke_exit_on_result = true,
                 SMOKE_SCREENSHOT_ARG => {
                     let Some(value) = args.next() else {
@@ -191,6 +230,17 @@ impl AppOptions {
             }
         }
 
+        if options.viewer_stop
+            && (options.viewer_play
+                || options.boot_play_path.is_some()
+                || options.start_measure.is_some())
+        {
+            bail!("{VIEWER_STOP_SHORT_ARG} cannot be combined with viewer play arguments");
+        }
+        if options.viewer_play && options.boot_play_path.is_none() {
+            bail!("{VIEWER_PLAY_SHORT_ARG} requires a chart path");
+        }
+
         Ok(options)
     }
 }
@@ -198,6 +248,6 @@ use super::help::{
     parse_beatoraja_replay_flag, parse_boot_course_id, parse_boot_course_replay_id,
     parse_boot_replay_slot, parse_lua_skin_runtime_mode, parse_practice_ms, parse_renderer_backend,
     parse_smoke_exit_after_frames_value, parse_smoke_exit_after_play_frames_value,
-    parse_smoke_exit_after_result_frames_value, parse_smoke_screenshot_path,
+    parse_smoke_exit_after_result_frames_value, parse_smoke_screenshot_path, parse_start_measure,
 };
 use super::*;

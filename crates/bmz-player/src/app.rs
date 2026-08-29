@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use bmz_chart::model::{BgaAssetRef, PlayableChart};
 use bmz_core::clear::{ClearType, GaugeType};
 use bmz_core::input::{InputKind, ScratchDirection};
@@ -395,6 +395,7 @@ enum AppUserEvent {
     CourseLinkRepair,
     TableFetch,
     RivalSync,
+    ViewerStop,
 }
 
 pub async fn run() -> Result<()> {
@@ -414,12 +415,38 @@ pub async fn run_with_options_and_log_buffer(
 }
 
 pub async fn run_with_options_log_buffer_and_paths(
-    options: AppOptions,
+    mut options: AppOptions,
     log_buffer: LogBuffer,
     app_paths: AppPaths,
 ) -> Result<()> {
     let startup_started_at = Instant::now();
-    let boot = bootstrap::bootstrap_with_paths(app_paths)?;
+    let (mut boot, viewer_cleanup) = if options.viewer_play {
+        let path = options
+            .boot_play_path
+            .as_deref()
+            .map(Path::new)
+            .context("viewer play requires a chart path")?;
+        let bms_random_seed = crate::random_option_seed::fresh_bms_random_seed();
+        let viewer = bootstrap::bootstrap_viewer_with_paths(
+            app_paths,
+            path,
+            options.start_measure.unwrap_or(0),
+            bms_random_seed,
+        )?;
+        options.boot_play_path = Some(viewer.chart_path.to_string_lossy().into_owned());
+        options.boot_start_time_us = Some(viewer.start_time.0);
+        options.boot_bms_random_seed = Some(bms_random_seed);
+        tracing::info!(
+            chart_id = viewer.chart_id,
+            path = %viewer.chart_path.display(),
+            start_time_us = viewer.start_time.0,
+            "prepared transient viewer chart"
+        );
+        (viewer.app, Some(viewer.cleanup))
+    } else {
+        (bootstrap::bootstrap_with_paths(app_paths)?, None)
+    };
+    prepare_boot_chart_options(&mut boot, &mut options)?;
     tracing::info!(
         startup_elapsed_ms = startup_started_at.elapsed().as_millis(),
         "application bootstrap complete"
@@ -443,6 +470,12 @@ pub async fn run_with_options_log_buffer_and_paths(
     // event loop thread 自体を sleep させず、フレーム待機中も入力イベントを処理する。
     event_loop.set_control_flow(ControlFlow::Wait);
     let event_proxy = event_loop.create_proxy();
+    if options.viewer_play {
+        let viewer_event_proxy = event_proxy.clone();
+        crate::viewer_ipc::start_stop_listener(move || {
+            let _ = viewer_event_proxy.send_event(AppUserEvent::ViewerStop);
+        })?;
+    }
 
     // Ctrl-C(SIGINT)で event loop を正常終了させ、cpal/ASIO ストリームの Drop を
     // 走らせる。捕捉しないと既定ハンドラがプロセスを即殺し、ASIO の停止処理が走らず
@@ -458,7 +491,9 @@ pub async fn run_with_options_log_buffer_and_paths(
     }
 
     let (maintenance_select_tx, maintenance_select_rx) = tokio::sync::watch::channel(false);
-    spawn_ir_sync_worker(&boot, maintenance_select_rx);
+    if !options.viewer_play {
+        spawn_ir_sync_worker(&boot, maintenance_select_rx);
+    }
 
     let mut app = Box::new(WinitApp::new(
         boot,
@@ -473,7 +508,53 @@ pub async fn run_with_options_log_buffer_and_paths(
         raw_input_bridge,
     )?);
     tracing::info!("starting winit event loop");
-    event_loop.run_app(app.as_mut()).context("winit event loop failed")
+    let result = event_loop.run_app(app.as_mut()).context("winit event loop failed");
+    drop(app);
+    drop(viewer_cleanup);
+    result
+}
+
+fn prepare_boot_chart_options(
+    boot: &mut bootstrap::BootstrappedApp,
+    options: &mut AppOptions,
+) -> Result<()> {
+    let Some(path) = options.boot_play_path.as_deref().map(Path::new) else {
+        return Ok(());
+    };
+    if !path.is_file() {
+        return Ok(());
+    }
+    let canonical = path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve boot chart: {}", path.display()))?;
+    if !crate::storage::scan::is_chart_file(&canonical) {
+        bail!("unsupported chart extension: {}", canonical.display());
+    }
+    options.boot_play_path = Some(canonical.to_string_lossy().into_owned());
+    let chart_id = match boot.library_db.chart_id_by_chart_file_path(&canonical)? {
+        Some(chart_id) => chart_id,
+        None => {
+            crate::storage::import::import_chart_file(
+                &mut boot.library_db,
+                &canonical,
+                None,
+                None,
+                now_unix_seconds(),
+            )?
+            .chart_id
+        }
+    };
+    if options.boot_start_time_us.is_none()
+        && let Some(measure) = options.start_measure
+    {
+        let chart = crate::screens::play_session::load_source_chart_for_chart(
+            &boot.library_db,
+            chart_id,
+            None,
+        )?;
+        options.boot_start_time_us = Some(bootstrap::viewer_measure_start_time(&chart, measure)?.0);
+    }
+    Ok(())
 }
 
 /// IR スコアジョブをバックグラウンドで定期送信する。
@@ -607,6 +688,7 @@ struct WinitApp {
     /// frame pacing、確定FPS、scene別profile集計をまとめた描画runtime。
     frame: FrameRuntime,
     deferred_boot: Option<DeferredBoot>,
+    skip_result: bool,
     select: SelectRuntimeState,
     play: PlayRuntimeState,
     result: ResultRuntimeState,

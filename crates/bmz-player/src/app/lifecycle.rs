@@ -109,6 +109,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.save_configs_for_exit(self.active_hispeed(), "game exit");
                 event_loop.exit();
             }
+            WindowEvent::DroppedFile(path) => self.open_dropped_chart(path),
             WindowEvent::KeyboardInput { event, .. } => {
                 // F1 で egui メニューを開閉する。
                 if event.physical_key == PhysicalKey::Code(KeyCode::F1)
@@ -410,7 +411,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
         }
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppUserEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppUserEvent) {
         match event {
             AppUserEvent::SkinUpload { sent_at } => {
                 let event_received_at = Instant::now();
@@ -447,6 +448,10 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.poll_select_maintenance();
                 self.request_redraw();
             }
+            AppUserEvent::ViewerStop => {
+                tracing::info!("external viewer stop requested");
+                event_loop.exit();
+            }
         }
     }
 
@@ -477,7 +482,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             }
         }
         if self.shutdown_requested.load(Ordering::SeqCst) {
-            tracing::info!("Ctrl-C received; exiting cleanly");
+            tracing::info!("shutdown requested; exiting cleanly");
             event_loop.exit();
             return;
         }
@@ -503,6 +508,52 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
 }
 
 impl WinitApp {
+    fn open_dropped_chart(&mut self, path: PathBuf) {
+        if !matches!(self.view_state(), AppViewState::Select) {
+            self.show_left_overlay_toast("BMS files can only be dropped on the select screen");
+            return;
+        }
+        let canonical = match path.canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "dropped chart path is unavailable");
+                self.show_left_overlay_toast(format!("Could not open {}", path.display()));
+                return;
+            }
+        };
+        if !crate::storage::scan::is_chart_file(&canonical) {
+            self.show_left_overlay_toast(format!(
+                "Unsupported chart file: {}",
+                canonical.display()
+            ));
+            return;
+        }
+        match crate::storage::import::import_chart_file(
+            &mut self.boot.library_db,
+            &canonical,
+            None,
+            None,
+            now_unix_seconds(),
+        ) {
+            Ok(imported) => {
+                tracing::info!(
+                    chart_id = imported.chart_id,
+                    path = %canonical.display(),
+                    "opening dropped chart"
+                );
+                self.reload_select_items();
+                self.start_chart(imported.chart_id);
+            }
+            Err(error) => {
+                tracing::error!(path = %canonical.display(), %error, "failed to import dropped chart");
+                self.show_left_overlay_toast(format!(
+                    "Could not open {}: {error:#}",
+                    canonical.display()
+                ));
+            }
+        }
+    }
+
     fn wait_for_pending_play_result_on_exit(&mut self) {
         let pending = self
             .play

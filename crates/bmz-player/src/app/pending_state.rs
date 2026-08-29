@@ -242,6 +242,10 @@ pub(super) enum DeferredBoot {
     Chart {
         chart_id: i64,
         replay_slot: Option<u8>,
+        skip_decide: bool,
+        score_save_disabled: bool,
+        start_time_us: Option<i64>,
+        bms_random_seed: Option<u64>,
     },
     Practice {
         chart_id: i64,

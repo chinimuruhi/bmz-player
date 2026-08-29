@@ -513,7 +513,30 @@ fn deferred_boot_action_keeps_practice_boot_after_window_init() {
     options.boot_practice = false;
     assert_eq!(
         deferred_boot_action(Some(42), &options),
-        Some(DeferredBoot::Chart { chart_id: 42, replay_slot: None })
+        Some(DeferredBoot::Chart {
+            chart_id: 42,
+            replay_slot: None,
+            skip_decide: false,
+            score_save_disabled: false,
+            start_time_us: None,
+            bms_random_seed: None,
+        })
+    );
+
+    options.viewer_play = true;
+    options.skip_decide = true;
+    options.boot_start_time_us = Some(2_500_000);
+    options.boot_bms_random_seed = Some(99);
+    assert_eq!(
+        deferred_boot_action(Some(42), &options),
+        Some(DeferredBoot::Chart {
+            chart_id: 42,
+            replay_slot: None,
+            skip_decide: true,
+            score_save_disabled: true,
+            start_time_us: Some(2_500_000),
+            bms_random_seed: Some(99),
+        })
     );
 }
 

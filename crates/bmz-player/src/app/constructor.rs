@@ -188,6 +188,7 @@ impl WinitApp {
             event_proxy,
             frame: FrameRuntime::new(now),
             deferred_boot: deferred_boot_action(boot_chart_id, &options),
+            skip_result: options.skip_result,
             select: SelectRuntimeState {
                 autoplay_folder: None,
                 select_ir: crate::screens::select_ir::SelectIrRanking::default(),

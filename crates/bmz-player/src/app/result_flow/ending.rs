@@ -127,6 +127,16 @@ impl WinitApp {
                 }
             }
         };
+        if should_skip_result(self.skip_result, self.play.active_course.is_some()) {
+            tracing::info!("result screen skipped by CLI option");
+            drop(started);
+            drop(finished);
+            self.play.last_play_snapshot = None;
+            self.clear_play_meta_image_state();
+            self.shutdown_requested.store(true, Ordering::SeqCst);
+            self.request_redraw();
+            return;
+        }
         self.select.score_refresh.mark_score_data_changed(finished.score_data_changed);
         if let Some(chart_id) = self.play.last_started_chart_id {
             self.capture_play_media_cache_from_running(chart_id, &mut started.running);
@@ -311,4 +321,8 @@ impl WinitApp {
         );
         self.start_audio_output_stream();
     }
+}
+
+pub(super) const fn should_skip_result(skip_result: bool, has_active_course: bool) -> bool {
+    skip_result && !has_active_course
 }

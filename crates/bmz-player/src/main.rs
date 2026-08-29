@@ -24,6 +24,25 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Command::Run(options) = &command {
+        if options.viewer_stop {
+            return match bmz_player::viewer_ipc::request_stop() {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(error) => {
+                    bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        if options.viewer_play
+            && let Err(error) = bmz_player::viewer_ipc::request_stop()
+        {
+            bmz_player::stdio::stderr_line(format_args!(
+                "Error: could not replace the active viewer: {error:#}"
+            ));
+            return ExitCode::FAILURE;
+        }
+    }
     let app_paths = match bmz_player::paths::resolve_app_paths() {
         Ok(paths) => paths,
         Err(error) => {

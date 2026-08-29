@@ -361,15 +361,34 @@ impl WinitApp {
             return;
         };
         match boot {
-            DeferredBoot::Chart { chart_id, replay_slot } => {
+            DeferredBoot::Chart {
+                chart_id,
+                replay_slot,
+                skip_decide,
+                score_save_disabled,
+                start_time_us,
+                bms_random_seed,
+            } => {
                 tracing::info!(chart_id, "booting directly into chart");
                 if let Some(slot) = replay_slot {
                     if !self.try_start_replay_for_chart(chart_id, slot, false) {
                         tracing::warn!(slot, "boot replay slot empty; falling back to normal play");
-                        self.start_chart(chart_id);
+                        self.start_boot_chart(
+                            chart_id,
+                            skip_decide,
+                            score_save_disabled,
+                            start_time_us,
+                            bms_random_seed,
+                        );
                     }
                 } else {
-                    self.start_chart(chart_id);
+                    self.start_boot_chart(
+                        chart_id,
+                        skip_decide,
+                        score_save_disabled,
+                        start_time_us,
+                        bms_random_seed,
+                    );
                 }
             }
             DeferredBoot::Practice { chart_id, start_time_ms, end_time_ms } => {
@@ -435,6 +454,32 @@ impl WinitApp {
                 tracing::info!(course_id, "booting into fresh course");
                 self.start_course_with_arrange(course_id, Vec::new(), true);
             }
+        }
+    }
+
+    fn start_boot_chart(
+        &mut self,
+        chart_id: i64,
+        skip_decide: bool,
+        score_save_disabled: bool,
+        start_time_us: Option<i64>,
+        bms_random_seed: Option<u64>,
+    ) {
+        self.select.autoplay_folder = None;
+        let mut options = self.play_start_options();
+        options.score_save_disabled = score_save_disabled;
+        if bms_random_seed.is_some() {
+            options.bms_random_seed = bms_random_seed;
+        }
+        if !self.prepare_session_mode_or_show_error(chart_id, &mut options) {
+            return;
+        }
+        self.play.practice_chart_zero_time = start_time_us.map(TimeUs);
+        if skip_decide {
+            self.start_play_preload(chart_id, options.clone());
+            self.begin_preloaded_play_scene(chart_id, options);
+        } else {
+            self.begin_decide_for_chart(chart_id, options);
         }
     }
 }

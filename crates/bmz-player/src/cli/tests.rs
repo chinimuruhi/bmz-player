@@ -24,6 +24,36 @@ fn app_options_parse_beatoraja_style_boot_path() {
 }
 
 #[test]
+fn app_options_parse_ubmplay_viewer_arguments() {
+    let attached = AppOptions::parse_args(["-P", "-N12", "_temp.bms"]).unwrap();
+    assert!(attached.viewer_play);
+    assert!(attached.autoplay_on_start);
+    assert!(attached.skip_decide);
+    assert!(attached.skip_result);
+    assert_eq!(attached.start_measure, Some(12));
+    assert_eq!(attached.boot_play_path.as_deref(), Some("_temp.bms"));
+
+    let separated = AppOptions::parse_args(["--viewer-play", "-N", "7", "song.bmson"]).unwrap();
+    assert_eq!(separated.start_measure, Some(7));
+    assert_eq!(separated.boot_play_path.as_deref(), Some("song.bmson"));
+
+    let long = AppOptions::parse_args(["--start-measure=3", "--skip-decide", "song.bms"]).unwrap();
+    assert_eq!(long.start_measure, Some(3));
+    assert!(long.skip_decide);
+}
+
+#[test]
+fn app_options_parse_viewer_stop_as_standalone_command() {
+    let options = AppOptions::parse_args(["-S"]).unwrap();
+    assert!(options.viewer_stop);
+    assert!(!options.viewer_play);
+
+    assert!(AppOptions::parse_args(["-S", "song.bms"]).is_err());
+    assert!(AppOptions::parse_args(["-P"]).is_err());
+    assert!(AppOptions::parse_args(["-Nbad", "song.bms"]).is_err());
+}
+
+#[test]
 fn app_options_parse_practice_flags() {
     let options =
         AppOptions::parse_args(["-p", "--practice-start-ms=5000", "/music/song.bms"]).unwrap();
@@ -161,6 +191,11 @@ fn help_text_lists_supported_options() {
     assert!(help.contains("--boot-play-sample"));
     assert!(help.contains("--boot-result-sample"));
     assert!(help.contains("--autoplay-on-start"));
+    assert!(help.contains("-P | --viewer-play"));
+    assert!(help.contains("-N<N> | -N <N> | --start-measure <N>"));
+    assert!(help.contains("-S | --viewer-stop"));
+    assert!(help.contains("--skip-decide"));
+    assert!(help.contains("--skip-result"));
     assert!(help.contains("--lua-skin-runtime <auto|compat>"));
     assert!(help.contains("--smoke-exit-after-frames"));
     assert!(help.contains("--smoke-exit-after-play-frames"));

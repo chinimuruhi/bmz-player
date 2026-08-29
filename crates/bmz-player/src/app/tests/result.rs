@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::result_flow_ending::should_skip_result;
 use crate::app::result_flow_timing::{
     play_fadeout_duration_for_skin, practice_play_fadeout_duration_for_skin,
 };
@@ -26,6 +27,13 @@ fn result_skin_signature_changes_when_only_offset_changes() {
     assert_ne!(before, after);
     assert_eq!(after.4.offset_values["Mascot"].x, 12);
     assert_eq!(after.4.offset_id_values[&90].x, 12);
+}
+
+#[test]
+fn cli_result_skip_applies_only_to_single_chart_play() {
+    assert!(should_skip_result(true, false));
+    assert!(!should_skip_result(false, false));
+    assert!(!should_skip_result(true, true));
 }
 
 #[test]

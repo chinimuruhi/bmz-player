@@ -98,7 +98,14 @@ pub(super) fn deferred_boot_action(
                 end_time_ms: options.practice_end_ms,
             });
         }
-        return Some(DeferredBoot::Chart { chart_id, replay_slot: options.boot_replay_slot });
+        return Some(DeferredBoot::Chart {
+            chart_id,
+            replay_slot: options.boot_replay_slot,
+            skip_decide: options.skip_decide,
+            score_save_disabled: options.viewer_play,
+            start_time_us: options.boot_start_time_us,
+            bms_random_seed: options.boot_bms_random_seed,
+        });
     }
     if let Some(path) = options.boot_replay_file.clone() {
         return Some(DeferredBoot::ReplayFile { path });
