@@ -388,14 +388,14 @@ use skin_pipeline::MAX_PENDING_SKIN_UPLOADS;
 
 const SAMPLE_PLAYABLE_TITLE: &str = "BMZ Sample Playable";
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum AppUserEvent {
     SkinUpload { sent_at: Instant },
     SystemSoundReady { generation: u64 },
     CourseLinkRepair,
     TableFetch,
     RivalSync,
-    ViewerStop,
+    ViewerCommand(crate::viewer_ipc::ViewerCommand),
 }
 
 pub async fn run() -> Result<()> {
@@ -472,8 +472,8 @@ pub async fn run_with_options_log_buffer_and_paths(
     let event_proxy = event_loop.create_proxy();
     if options.viewer_play {
         let viewer_event_proxy = event_proxy.clone();
-        crate::viewer_ipc::start_stop_listener(move || {
-            let _ = viewer_event_proxy.send_event(AppUserEvent::ViewerStop);
+        crate::viewer_ipc::start_listener(move |command| {
+            let _ = viewer_event_proxy.send_event(AppUserEvent::ViewerCommand(command));
         })?;
     }
 
@@ -722,6 +722,8 @@ mod runtime_config;
 mod runtime_helpers;
 #[path = "app/scene_state.rs"]
 mod scene_state;
+#[path = "app/viewer.rs"]
+mod viewer;
 
 use audio_helpers::*;
 use platform::*;

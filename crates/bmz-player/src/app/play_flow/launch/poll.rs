@@ -284,6 +284,13 @@ impl WinitApp {
         self.reload_select_items();
         self.reload_skin_for_scene_entry(SkinKind::Select);
         self.restart_select_scene_timers();
+        if self.viewer_mode {
+            self.viewer_waiting = true;
+            self.stop_select_preview();
+            if let Some(manager) = &self.audio.system_sound {
+                manager.stop_all_bgm();
+            }
+        }
     }
 
     /// Clears any active course session and the cached finished-course

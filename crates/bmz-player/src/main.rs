@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::process::ExitCode;
+use std::time::Duration;
 
 use bmz_player::cli::Command;
 use bmz_player::logging::{
@@ -34,13 +35,52 @@ async fn main() -> ExitCode {
                 }
             };
         }
-        if options.viewer_play
-            && let Err(error) = bmz_player::viewer_ipc::request_stop()
-        {
-            bmz_player::stdio::stderr_line(format_args!(
-                "Error: could not replace the active viewer: {error:#}"
-            ));
-            return ExitCode::FAILURE;
+        if options.viewer_play {
+            let path = options.boot_play_path.as_deref().expect("viewer path validated by CLI");
+            let path = match std::path::Path::new(path).canonicalize() {
+                Ok(path) => path,
+                Err(error) => {
+                    bmz_player::stdio::stderr_line(format_args!(
+                        "Error: could not resolve viewer chart {path}: {error}"
+                    ));
+                    return ExitCode::FAILURE;
+                }
+            };
+            if options.skip_result {
+                match bmz_player::viewer_ipc::request_stop() {
+                    Ok(true) => {
+                        // 明示的なone-shot起動は常駐プロセスへ転送できないため、旧viewerが
+                        // 名前付きpipeを解放する短い間だけ待ってから新規起動する。
+                        for _ in 0..100 {
+                            std::thread::sleep(Duration::from_millis(10));
+                            if matches!(bmz_player::viewer_ipc::request_stop(), Ok(false)) {
+                                break;
+                            }
+                        }
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        bmz_player::stdio::stderr_line(format_args!(
+                            "Error: could not stop the active viewer: {error:#}"
+                        ));
+                        return ExitCode::FAILURE;
+                    }
+                }
+            } else {
+                match bmz_player::viewer_ipc::request_play(
+                    &path,
+                    options.start_measure.unwrap_or(0),
+                ) {
+                    Ok(true) => return ExitCode::SUCCESS,
+                    Ok(false) => {}
+                    Err(error) => {
+                        bmz_player::stdio::stderr_line(format_args!(
+                            "Error: could not send play command to the active viewer: {error:#}"
+                        ));
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
         }
     }
     let app_paths = match bmz_player::paths::resolve_app_paths() {
