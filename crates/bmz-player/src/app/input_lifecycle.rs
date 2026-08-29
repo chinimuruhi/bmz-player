@@ -190,7 +190,10 @@ impl WinitApp {
             return;
         }
         if self.active_play_uses_playback_rate_keys()
-            && is_autoplay_replay_playback_rate_key(physical_key)
+            && is_unassigned_autoplay_replay_playback_rate_key(
+                physical_key,
+                self.play.play_option_input.as_ref(),
+            )
         {
             self.input.discard_raw_keyboard_transition(physical_key, state);
             return;

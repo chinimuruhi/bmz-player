@@ -710,8 +710,10 @@ impl WinitApp {
     }
 
     pub(super) fn sync_autoplay_replay_playback_rate(&mut self) {
-        let rate =
-            autoplay_replay_playback_rate_from_pressed_inputs(&self.input.pressed_play_inputs);
+        let rate = autoplay_replay_playback_rate_from_pressed_inputs(
+            &self.input.pressed_play_inputs,
+            self.play.play_option_input.as_ref(),
+        );
         let Some(active_play) = &mut self.play.active_play else {
             return;
         };

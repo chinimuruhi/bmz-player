@@ -205,27 +205,90 @@ fn play_control_hold_state_rebuilds_from_pressed_controls() {
 fn autoplay_replay_speed_keys_use_top_row_hold_priority() {
     let keyboard =
         |control: &str| (W_KEYBOARD_DEVICE_ID, PhysicalControl::KeyboardKey(control.to_string()));
-    assert_eq!(autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::new()), 100);
+    let input = crate::config::play_input::default_profile_input();
+    let play_input = play_option_input_for(&input, KeyMode::K7);
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::new(), Some(&play_input)),
+        100
+    );
     for (control, expected) in [("1", 25), ("2", 50), ("3", 200), ("4", 300)] {
         assert_eq!(
-            autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([keyboard(control)])),
+            autoplay_replay_playback_rate_from_pressed_inputs(
+                &HashSet::from([keyboard(control)]),
+                Some(&play_input),
+            ),
             expected
         );
     }
     assert_eq!(
-        autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([
-            keyboard("4"),
-            keyboard("2"),
-        ])),
+        autoplay_replay_playback_rate_from_pressed_inputs(
+            &HashSet::from([keyboard("4"), keyboard("2"),]),
+            Some(&play_input),
+        ),
         50
     );
     assert_eq!(
-        autoplay_replay_playback_rate_from_pressed_inputs(&HashSet::from([(
-            DeviceId(7),
-            PhysicalControl::GamepadButton("1".to_string()),
-        )])),
+        autoplay_replay_playback_rate_from_pressed_inputs(
+            &HashSet::from([(DeviceId(7), PhysicalControl::GamepadButton("1".to_string()),)]),
+            Some(&play_input),
+        ),
         100
     );
+}
+
+#[test]
+fn autoplay_replay_speed_keys_defer_to_current_play_bindings() {
+    let keyboard =
+        |control: &str| (W_KEYBOARD_DEVICE_ID, PhysicalControl::KeyboardKey(control.to_string()));
+    let mut input = crate::config::play_input::default_profile_input();
+    apply_play_binding(
+        &mut input,
+        KeyMode::K7,
+        KeyBindingTarget::Key { lane: LaneConfig::Key1, slot: KeyBindingSlot::KeyboardPrimary },
+        "1",
+    )
+    .unwrap();
+    apply_play_binding(
+        &mut input,
+        KeyMode::K7,
+        KeyBindingTarget::Action {
+            action: InputActionConfig::E4,
+            slot: KeyBindingSlot::KeyboardPrimary,
+        },
+        "3",
+    )
+    .unwrap();
+    let play_input = play_option_input_for(&input, KeyMode::K7);
+
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(
+            &HashSet::from([keyboard("1")]),
+            Some(&play_input),
+        ),
+        100
+    );
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(
+            &HashSet::from([keyboard("3")]),
+            Some(&play_input),
+        ),
+        100
+    );
+    assert_eq!(
+        autoplay_replay_playback_rate_from_pressed_inputs(
+            &HashSet::from([keyboard("1"), keyboard("2")]),
+            Some(&play_input),
+        ),
+        50
+    );
+    assert!(!is_unassigned_autoplay_replay_playback_rate_key(
+        PhysicalKey::Code(KeyCode::Digit1),
+        Some(&play_input),
+    ));
+    assert!(is_unassigned_autoplay_replay_playback_rate_key(
+        PhysicalKey::Code(KeyCode::Digit2),
+        Some(&play_input),
+    ));
 }
 
 #[test]
