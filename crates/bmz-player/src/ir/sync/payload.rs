@@ -52,9 +52,6 @@ pub(super) async fn submit_course_job_payload(
     payload_json: &str,
     now: i64,
 ) -> Result<(String, String)> {
-    if crate::ir::bms_ir::is_bms_ir_config(provider) {
-        bail!("BMS-IR course submission is not supported");
-    }
     let mut payload: serde_json::Value =
         serde_json::from_str(payload_json).context("failed to parse stored IR course payload")?;
     normalize_legacy_course_payload(&mut payload);
@@ -62,6 +59,13 @@ pub(super) async fn submit_course_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        let client = crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_course_score(&payload, &credentials.account_id, &credentials.access_token)
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     if crate::ir::rian_ir::is_rian_ir_config(provider) {
         let client = crate::ir::rian_ir::RianIrClient::new(&provider.base_url)?;
         let outcome = client

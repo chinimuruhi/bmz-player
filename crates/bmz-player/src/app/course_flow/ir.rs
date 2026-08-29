@@ -98,11 +98,16 @@ impl WinitApp {
             .filter(|provider| {
                 provider.enabled
                     && !provider.base_url.is_empty()
-                    && !crate::ir::bms_ir::is_bms_ir_config(provider)
                     && (!crate::ir::rian_ir::is_rian_ir_config(provider)
                         || crate::ir::rian_ir::course_submission_supported(
                             self.boot.profile_config.play.ln_mode_policy,
                             self.select.double_option,
+                        ))
+                    && (!crate::ir::bms_ir::is_bms_ir_config(provider)
+                        || matches!(
+                            rule_mode,
+                            bmz_gameplay::rule::RuleMode::Beatoraja
+                                | bmz_gameplay::rule::RuleMode::Lr2Oraja
                         ))
             })
             .cloned()

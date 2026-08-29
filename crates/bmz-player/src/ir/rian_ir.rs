@@ -203,7 +203,7 @@ struct RianTablesResponse {
     data: Vec<RianTableResource>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct RianRivalScore {
     pub sha256: String,
     pub ln_mode: u8,
@@ -218,7 +218,7 @@ pub struct RianRivalScore {
     pub play_seed: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct RianRivalScoresResponse {
     pub scores: Vec<RianRivalScore>,
     pub etag: String,

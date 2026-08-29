@@ -1,11 +1,11 @@
-//! Native submit-only adapter for BMS-IR.
+//! Native bmz-player adapter for BMS-IR.
 //!
 //! The durable queue keeps bmz-player's provider-neutral score payload. This
 //! module owns only BMS-IR authentication, eligibility, request wrapping, and
 //! response decoding.
 
 use anyhow::{Context, Result, bail};
-use bmz_chart::model::{ChartSourceFormat, LongNoteMode};
+use bmz_chart::model::ChartSourceFormat;
 use bmz_gameplay::rule::RuleMode;
 use reqwest::Url;
 use serde::Serialize;
@@ -13,11 +13,14 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::config::profile_config::IrProviderConfig;
-use crate::ln_policy::{ChartLnProfile, LnScorePolicy, played_ln_mode};
+use crate::ln_policy::{ChartLnProfile, LnScorePolicy};
 use crate::select_options::DoubleOption;
 
+use super::bmz_official::{IrCourseRankingRequest, IrOwnScoreHistoryRequest, IrRankingRequest};
+use super::rian_ir::{RianRivalScoresResponse, RianTableResource};
 use super::types::{
-    IrAuthTokens, IrEffectiveLnMode, IrPlayerInfo, IrScoreSubmission, IrSubmitResponse,
+    IrAuthTokens, IrCourseRankingResult, IrOwnScoreHistoryResult, IrPlayerInfo, IrRankingResult,
+    IrRivalsResponse, IrScoreSubmission, IrSubmitResponse,
 };
 
 pub const BMS_IR_PROVIDER: &str = "bms-ir";
@@ -66,30 +69,32 @@ pub fn is_bms_ir_config(provider: &IrProviderConfig) -> bool {
 pub fn score_submission_supported(
     rule_mode: RuleMode,
     source_format: ChartSourceFormat,
-    source_ln_profile: ChartLnProfile,
-    ln_policy: LnScorePolicy,
+    _source_ln_profile: ChartLnProfile,
+    _ln_policy: LnScorePolicy,
     double_option: DoubleOption,
     is_course_stage: bool,
 ) -> bool {
     !is_course_stage
-        && rule_mode == RuleMode::Beatoraja
+        && matches!(rule_mode, RuleMode::Beatoraja | RuleMode::Lr2Oraja)
         && matches!(
             source_format,
             ChartSourceFormat::Bms | ChartSourceFormat::Bmson | ChartSourceFormat::Pms
         )
-        && played_ln_mode(source_ln_profile, ln_policy).is_none_or(|mode| mode == LongNoteMode::Ln)
-        && matches!(double_option, DoubleOption::Off | DoubleOption::Flip)
+        && matches!(
+            double_option,
+            DoubleOption::Off
+                | DoubleOption::Flip
+                | DoubleOption::Battle
+                | DoubleOption::BattleAutoScratch
+        )
 }
 
 pub fn ensure_score_payload_supported(payload: &IrScoreSubmission) -> Result<()> {
     if crate::ir::backfill::is_local_backfill_submission(payload) {
         bail!("BMS-IR local score backfill is disabled");
     }
-    if payload.rule.rule_mode != "Beatoraja" {
-        bail!("BMS-IR accepts Beatoraja rule mode only");
-    }
-    if payload.rule.effective_ln_mode != IrEffectiveLnMode::Ln {
-        bail!("BMS-IR accepts effective LN scoring only");
+    if !matches!(payload.rule.rule_mode.as_str(), "Beatoraja" | "Lr2Oraja") {
+        bail!("BMS-IR rule mode is not supported");
     }
     if payload.rule.judge_algorithm != "bmz_v1" || payload.rule.scoring != "bms_ex_score_v1" {
         bail!("BMS-IR score algorithm is not supported");
@@ -112,8 +117,11 @@ pub fn ensure_score_payload_supported(payload: &IrScoreSubmission) -> Result<()>
         .or_else(|| payload.play_options.get("double_option"))
         .and_then(Value::as_str)
         .unwrap_or("off");
-    if !matches!(double_option, "off" | "flip") {
-        bail!("BMS-IR accepts OFF or FLIP double option only");
+    if !matches!(double_option, "off" | "flip" | "battle" | "battle_auto_scratch") {
+        bail!("BMS-IR double option is not supported");
+    }
+    if payload.play_options.get("assist_mask").and_then(Value::as_u64).unwrap_or(0) != 0 {
+        bail!("BMS-IR assisted scores are not supported");
     }
     Ok(())
 }
@@ -198,9 +206,202 @@ impl BmsIrClient {
         })
     }
 
+    pub async fn submit_course_score(
+        &self,
+        payload: &Value,
+        player_id: &str,
+        game_token: &str,
+    ) -> Result<BmsIrSubmitOutcome> {
+        let player_id = parse_player_id(player_id)?;
+        let request =
+            authenticated_request_value(player_id, game_token, "course_score", payload.clone())?;
+        let redacted_request_json = redacted_score_request_json(&request)?;
+        let response = self
+            .http
+            .post(self.endpoint("/api/bmz-player/v1/course-score")?)
+            .json(&request)
+            .send()
+            .await
+            .context("failed to send BMS-IR course score request")?;
+        let decoded: Value = decode_response(response, "BMS-IR course score submission").await?;
+        if decoded.get("accepted").and_then(Value::as_bool) != Some(true) {
+            bail!("BMS-IR did not accept the course score");
+        }
+        Ok(BmsIrSubmitOutcome {
+            redacted_request_json,
+            response_json: serde_json::to_string(&decoded)?,
+        })
+    }
+
+    pub async fn fetch_ranking(
+        &self,
+        chart_sha256: &str,
+        request: &IrRankingRequest,
+        player_id: &str,
+        game_token: &str,
+    ) -> Result<IrRankingResult> {
+        let body = serde_json::json!({
+            "chart_sha256": chart_sha256,
+            "scope": request.scope,
+            "ln_policy": request.ln_policy,
+            "double_option": request.double_option.ir_value(),
+            "rule_mode": request.rule_mode.as_str(),
+            "limit": request.limit,
+            "offset": request.offset,
+        });
+        self.post_authenticated(
+            "/api/bmz-player/v1/ranking",
+            player_id,
+            game_token,
+            body,
+            "BMS-IR ranking fetch",
+        )
+        .await
+    }
+
+    pub async fn fetch_course_ranking(
+        &self,
+        course_hash: &str,
+        request: &IrCourseRankingRequest,
+        rule_mode: RuleMode,
+        player_id: &str,
+        game_token: &str,
+    ) -> Result<IrCourseRankingResult> {
+        let body = serde_json::json!({
+            "course_hash": course_hash,
+            "gauge": request.gauge,
+            "ln_policy": request.ln_policy,
+            "rule_mode": rule_mode.as_str(),
+            "limit": request.limit,
+        });
+        self.post_authenticated(
+            "/api/bmz-player/v1/course-ranking",
+            player_id,
+            game_token,
+            body,
+            "BMS-IR course ranking fetch",
+        )
+        .await
+    }
+
+    pub async fn get_rivals(&self, player_id: &str, game_token: &str) -> Result<IrRivalsResponse> {
+        self.post_authenticated(
+            "/api/bmz-player/v1/rivals",
+            player_id,
+            game_token,
+            Value::Object(Default::default()),
+            "BMS-IR rivals fetch",
+        )
+        .await
+    }
+
+    pub async fn fetch_rival_scores(
+        &self,
+        rival_id: &str,
+        rule_mode: RuleMode,
+        etag: Option<&str>,
+        player_id: &str,
+        game_token: &str,
+    ) -> Result<RianRivalScoresResponse> {
+        self.post_authenticated(
+            "/api/bmz-player/v1/rival-scores",
+            player_id,
+            game_token,
+            serde_json::json!({
+                "rival_id": rival_id,
+                "rule_mode": rule_mode.as_str(),
+                "etag": etag.unwrap_or_default(),
+            }),
+            "BMS-IR rival scores fetch",
+        )
+        .await
+    }
+
+    pub async fn fetch_tables(
+        &self,
+        player_id: &str,
+        game_token: &str,
+    ) -> Result<Vec<RianTableResource>> {
+        #[derive(serde::Deserialize)]
+        struct Response {
+            #[serde(default)]
+            data: Vec<RianTableResource>,
+        }
+        let response: Response = self
+            .post_authenticated(
+                "/api/bmz-player/v1/tables",
+                player_id,
+                game_token,
+                Value::Object(Default::default()),
+                "BMS-IR tables fetch",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn fetch_own_scores(
+        &self,
+        request: &IrOwnScoreHistoryRequest,
+        player_id: &str,
+        game_token: &str,
+    ) -> Result<IrOwnScoreHistoryResult> {
+        self.post_authenticated(
+            "/api/bmz-player/v1/me/scores",
+            player_id,
+            game_token,
+            serde_json::json!({
+                "limit": request.limit,
+                "offset": request.offset,
+                "cursor_received_at_ms": request
+                    .cursor
+                    .as_ref()
+                    .map(|cursor| cursor.server_received_at_ms),
+                "cursor_score_id": request.cursor.as_ref().map(|cursor| &cursor.score_id),
+            }),
+            "BMS-IR own score history fetch",
+        )
+        .await
+    }
+
+    async fn post_authenticated<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        player_id: &str,
+        game_token: &str,
+        payload: Value,
+        label: &str,
+    ) -> Result<T> {
+        let request = authenticated_fields_value(parse_player_id(player_id)?, game_token, payload)?;
+        let response = self
+            .http
+            .post(self.endpoint(path)?)
+            .json(&request)
+            .send()
+            .await
+            .with_context(|| format!("failed to send {label} request"))?;
+        decode_response(response, label).await
+    }
+
     fn endpoint(&self, path: &str) -> Result<Url> {
         self.base_url.join(path).context("failed to build BMS-IR endpoint URL")
     }
+}
+
+pub fn chart_page_url(base_url: &str, sha256: &str) -> Result<String> {
+    public_search_url(base_url, "/new/songs", "keyword", sha256)
+}
+
+pub fn course_page_url(base_url: &str, course_hash: &str) -> Result<String> {
+    public_search_url(base_url, "/new/courses", "q", course_hash)
+}
+
+fn public_search_url(base_url: &str, path: &str, key: &str, value: &str) -> Result<String> {
+    let mut url = Url::parse(base_url.trim()).context("invalid BMS-IR public URL")?;
+    url.set_path(path);
+    url.set_query(None);
+    url.set_fragment(None);
+    url.query_pairs_mut().append_pair(key, value);
+    Ok(url.to_string())
 }
 
 fn parse_player_id(value: &str) -> Result<u64> {
@@ -217,6 +418,31 @@ fn score_request_value<T: Serialize>(player_id: u64, game_token: &str, score: &T
         "game_token": game_token,
         "score": score,
     }))
+}
+
+fn authenticated_request_value(
+    player_id: u64,
+    game_token: &str,
+    payload_key: &str,
+    payload: Value,
+) -> Result<Value> {
+    let mut object = serde_json::Map::new();
+    object.insert(payload_key.to_string(), payload);
+    authenticated_fields_value(player_id, game_token, Value::Object(object))
+}
+
+fn authenticated_fields_value(
+    player_id: u64,
+    game_token: &str,
+    mut payload: Value,
+) -> Result<Value> {
+    if game_token.trim().is_empty() {
+        bail!("BMS-IR game token is empty");
+    }
+    let object = payload.as_object_mut().context("BMS-IR request body must be an object")?;
+    object.insert("player_id".to_string(), Value::from(player_id));
+    object.insert("game_token".to_string(), Value::String(game_token.to_string()));
+    Ok(payload)
 }
 
 fn redacted_score_request_json(request: &Value) -> Result<String> {
@@ -263,7 +489,7 @@ mod tests {
             DoubleOption::Off,
             false,
         ));
-        assert!(!score_submission_supported(
+        assert!(score_submission_supported(
             RuleMode::Lr2Oraja,
             ChartSourceFormat::Bms,
             profile,
@@ -271,7 +497,7 @@ mod tests {
             DoubleOption::Off,
             false,
         ));
-        assert!(!score_submission_supported(
+        assert!(score_submission_supported(
             RuleMode::Beatoraja,
             ChartSourceFormat::Bmson,
             profile,
@@ -279,7 +505,7 @@ mod tests {
             DoubleOption::Off,
             false,
         ));
-        assert!(!score_submission_supported(
+        assert!(score_submission_supported(
             RuleMode::Beatoraja,
             ChartSourceFormat::Pms,
             profile,

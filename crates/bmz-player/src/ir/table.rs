@@ -22,6 +22,7 @@ use super::rian_ir::{
 };
 
 pub const RIAN_TABLE_SOURCE_PREFIX: &str = "bmz-rian-table:";
+pub const BMS_IR_TABLE_SOURCE_PREFIX: &str = "bmz-bms-ir-table:";
 pub const RIAN_TABLE_REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60);
 pub const RIAN_TABLE_MANUAL_REFRESH_COOLDOWN: Duration = Duration::from_secs(5);
 
@@ -36,7 +37,7 @@ pub struct RianTableIdentity {
 impl RianTableIdentity {
     pub fn from_ir_config(config: &IrConfig) -> Option<Self> {
         let provider = primary_provider_config(config)?;
-        if !is_rian_ir_config(provider) {
+        if !is_rian_ir_config(provider) && !crate::ir::bms_ir::is_bms_ir_config(provider) {
             return None;
         }
         let provider_key = configured_provider_key(provider)?.trim();
@@ -51,7 +52,14 @@ impl RianTableIdentity {
             provider_key: provider_key.to_string(),
             base_url: base_url.to_string(),
             account_id: account_id.to_string(),
-            source_prefix: format!("{RIAN_TABLE_SOURCE_PREFIX}{scope}:"),
+            source_prefix: format!(
+                "{}{scope}:",
+                if crate::ir::bms_ir::is_bms_ir_config(provider) {
+                    BMS_IR_TABLE_SOURCE_PREFIX
+                } else {
+                    RIAN_TABLE_SOURCE_PREFIX
+                }
+            ),
         })
     }
 
@@ -66,6 +74,7 @@ impl RianTableIdentity {
 
 pub fn is_rian_table_source(source_url: &str) -> bool {
     source_url.starts_with(RIAN_TABLE_SOURCE_PREFIX)
+        || source_url.starts_with(BMS_IR_TABLE_SOURCE_PREFIX)
 }
 
 pub fn active_source_urls(
@@ -82,10 +91,23 @@ pub fn active_source_urls(
 
 pub async fn fetch_account_tables(
     identity: &RianTableIdentity,
+    profile_root: &std::path::Path,
     fetched_at: i64,
 ) -> Result<Vec<FetchedDifficultyTable>> {
-    let client = RianIrClient::new(&identity.base_url)?;
-    let resources = client.fetch_tables(&identity.account_id).await?;
+    let resources = if crate::ir::bms_ir::is_bms_ir_provider(&identity.provider_key) {
+        let credentials = crate::ir::sync::ensure_fresh_credentials(
+            profile_root,
+            &identity.provider_key,
+            &identity.base_url,
+            fetched_at,
+        )
+        .await?;
+        crate::ir::bms_ir::BmsIrClient::new(&identity.base_url)?
+            .fetch_tables(&credentials.account_id, &credentials.access_token)
+            .await?
+    } else {
+        RianIrClient::new(&identity.base_url)?.fetch_tables(&identity.account_id).await?
+    };
     Ok(convert_resources(identity, resources, fetched_at))
 }
 

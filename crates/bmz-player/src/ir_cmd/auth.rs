@@ -45,6 +45,7 @@ pub(super) async fn login(
     let provider_key = tokens.provider_key.clone();
     let account_id = tokens.player.id.clone();
     let display_name = tokens.player.display_name.clone().unwrap_or_default();
+    let bms_ir_game_token = tokens.access_token.clone();
     let now = now_unix_seconds();
 
     save_credentials(
@@ -95,7 +96,7 @@ pub(super) async fn login(
     entry.account_id = account_id.clone();
     entry.account_display_name = display_name.clone();
     entry.last_login_at = Some(now);
-    if profile.ir.primary_provider.is_empty() && !is_bms_ir {
+    if profile.ir.primary_provider.is_empty() {
         profile.ir.primary_provider = provider_key.clone();
         entry.role = IrProviderRoleConfig::Primary;
     }
@@ -110,6 +111,19 @@ pub(super) async fn login(
             }
             Err(error) => {
                 tracing::warn!(%error, "rianIR rival sync after login failed; login remains valid");
+            }
+        }
+    } else if is_bms_ir {
+        match crate::ir::bms_ir::BmsIrClient::new(&entry.base_url)?
+            .get_rivals(&account_id, &bms_ir_game_token)
+            .await
+        {
+            Ok(response) => {
+                sync_ir_rivals_into_profile(profile, &provider_key, &response.rivals);
+                tracing::info!(rivals = response.rivals.len(), "BMS-IR rivals synced after login");
+            }
+            Err(error) => {
+                tracing::warn!(%error, "BMS-IR rival sync after login failed; login remains valid");
             }
         }
     }

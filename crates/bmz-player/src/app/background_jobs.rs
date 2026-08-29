@@ -419,6 +419,7 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let event_proxy = self.event_proxy.clone();
         let worker_identity = identity.clone();
+        let worker_profile_root = self.boot.profile_paths.root_dir.clone();
         let mut maintenance_allowed = self.jobs.maintenance_select_tx.subscribe();
         thread::Builder::new()
             .name("rian-table-fetch".to_string())
@@ -439,6 +440,7 @@ impl WinitApp {
                             } => RianTableFetchOutcome::Paused,
                             result = crate::ir::table::fetch_account_tables(
                                 &worker_identity,
+                                &worker_profile_root,
                                 fetched_at,
                             ) => RianTableFetchOutcome::Completed(result),
                         }

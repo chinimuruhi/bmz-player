@@ -18,7 +18,9 @@ pub(super) type RianRivalSyncWorkerResult = Result<RianRivalSyncOutcome>;
 impl RianRivalSyncRequest {
     pub(super) fn from_profile(profile: &ProfileConfig) -> Option<Self> {
         let provider = crate::ir::provider_key::primary_provider_config(&profile.ir)?;
-        if !crate::ir::rian_ir::is_rian_ir_provider(&provider.provider) {
+        if !crate::ir::rian_ir::is_rian_ir_config(provider)
+            && !crate::ir::bms_ir::is_bms_ir_config(provider)
+        {
             return None;
         }
         let provider_key = crate::ir::provider_key::configured_provider_key(provider)?;
@@ -33,10 +35,24 @@ impl RianRivalSyncRequest {
         })
     }
 
-    async fn fetch(self) -> Result<RianRivalSyncOutcome> {
-        let rivals = crate::ir::rian_ir::RianIrClient::new(&self.base_url)?
-            .fetch_rivals(&self.account_id)
+    async fn fetch(self, profile_root: &Path) -> Result<RianRivalSyncOutcome> {
+        let rivals = if crate::ir::bms_ir::is_bms_ir_provider(&self.provider_key) {
+            let credentials = crate::ir::sync::ensure_fresh_credentials(
+                profile_root,
+                &self.provider_key,
+                &self.base_url,
+                now_unix_seconds(),
+            )
             .await?;
+            crate::ir::bms_ir::BmsIrClient::new(&self.base_url)?
+                .get_rivals(&credentials.account_id, &credentials.access_token)
+                .await?
+                .rivals
+        } else {
+            crate::ir::rian_ir::RianIrClient::new(&self.base_url)?
+                .fetch_rivals(&self.account_id)
+                .await?
+        };
         Ok(RianRivalSyncOutcome { provider_key: self.provider_key, rivals })
     }
 }
@@ -53,12 +69,13 @@ impl WinitApp {
 
         let (tx, rx) = mpsc::channel();
         let event_proxy = self.event_proxy.clone();
+        let profile_root = self.boot.profile_paths.root_dir.clone();
         let spawn_result =
             thread::Builder::new().name("rian-rival-sync".to_string()).spawn(move || {
                 let result = (|| -> RianRivalSyncWorkerResult {
                     let runtime = tokio::runtime::Runtime::new()
                         .context("failed to create rianIR rival sync runtime")?;
-                    runtime.block_on(request.fetch())
+                    runtime.block_on(request.fetch(&profile_root))
                 })();
                 let _ = tx.send(result);
                 let _ = event_proxy.send_event(AppUserEvent::RivalSync);

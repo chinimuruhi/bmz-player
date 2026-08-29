@@ -24,7 +24,6 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                 .ir
                 .providers
                 .iter()
-                .filter(|provider| !crate::ir::bms_ir::is_bms_ir_config(provider))
                 .filter_map(|provider| {
                     crate::ir::provider_key::configured_provider_key(provider).map(|provider_key| {
                         (

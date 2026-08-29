@@ -530,7 +530,7 @@ fn ir_provider_normalization_moves_builtins_first_and_preserves_accounts_and_cus
     assert_eq!(ir.providers[2].account_id, "1234");
     assert_eq!(ir.providers[2].account_display_name, "1234");
     assert!(ir.providers[2].enabled);
-    assert_eq!(ir.providers[2].role, IrProviderRoleConfig::SubmitOnly);
+    assert_eq!(ir.providers[2].role, IrProviderRoleConfig::Primary);
     assert_eq!(ir.providers[3], custom);
     assert_eq!(ir.providers[4], duplicate);
     assert!(!ir.normalize_builtin_providers());

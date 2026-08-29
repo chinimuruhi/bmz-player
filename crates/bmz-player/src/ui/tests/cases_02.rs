@@ -62,7 +62,7 @@ fn sync_ir_provider_roles_keeps_only_primary_role() {
 }
 
 #[test]
-fn sync_ir_provider_roles_keeps_bms_ir_submit_only() {
+fn sync_ir_provider_roles_accepts_bms_ir_as_primary() {
     let mut bms_ir = IrProviderConfig::bms_ir();
     bms_ir.provider_key = crate::ir::bms_ir::BMS_IR_PROVIDER.to_string();
     bms_ir.enabled = true;
@@ -73,9 +73,9 @@ fn sync_ir_provider_roles_keeps_bms_ir_submit_only() {
         ..IrConfig::default()
     };
 
-    assert!(sync_ir_provider_roles(&mut ir_config));
-    assert!(ir_config.primary_provider.is_empty());
-    assert_eq!(ir_config.providers[0].role, IrProviderRoleConfig::SubmitOnly);
+    assert!(!sync_ir_provider_roles(&mut ir_config));
+    assert_eq!(ir_config.primary_provider, crate::ir::bms_ir::BMS_IR_PROVIDER);
+    assert_eq!(ir_config.providers[0].role, IrProviderRoleConfig::Primary);
 }
 
 #[test]

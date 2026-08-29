@@ -310,7 +310,6 @@ impl IrConfig {
             .unwrap_or_else(IrProviderConfig::bms_ir);
         bms_ir.provider = crate::ir::bms_ir::BMS_IR_PROVIDER.to_string();
         bms_ir.base_url = crate::ir::bms_ir::BMS_IR_DEFAULT_BASE_URL.to_string();
-        bms_ir.role = IrProviderRoleConfig::SubmitOnly;
 
         self.providers = Vec::with_capacity(remaining.len() + BUILTIN_IR_PROVIDER_COUNT);
         self.providers.push(bmz);

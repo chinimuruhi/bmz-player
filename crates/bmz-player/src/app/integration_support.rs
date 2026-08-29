@@ -79,12 +79,11 @@ pub(super) fn primary_ir_page_url(
     provider: &crate::config::profile_config::IrProviderConfig,
     identity: &PrimaryIrPageIdentity,
 ) -> Result<String> {
-    if crate::ir::bms_ir::is_bms_ir_config(provider) {
-        anyhow::bail!("BMS-IR is submit-only and has no primary IR page capability");
-    }
     match identity {
         PrimaryIrPageIdentity::Chart { sha256 } => {
-            if crate::ir::rian_ir::is_rian_ir_config(provider) {
+            if crate::ir::bms_ir::is_bms_ir_config(provider) {
+                crate::ir::bms_ir::chart_page_url(&provider.base_url, sha256)
+            } else if crate::ir::rian_ir::is_rian_ir_config(provider) {
                 crate::ir::rian_ir::chart_page_url(&provider.base_url, sha256)
             } else {
                 Ok(format!("{}/charts/{sha256}", provider.base_url.trim_end_matches('/')))
@@ -99,7 +98,9 @@ pub(super) fn primary_ir_page_url(
             let Some(hash) = hash else {
                 anyhow::bail!("course hash is unavailable for the primary IR provider");
             };
-            if crate::ir::rian_ir::is_rian_ir_config(provider) {
+            if crate::ir::bms_ir::is_bms_ir_config(provider) {
+                crate::ir::bms_ir::course_page_url(&provider.base_url, hash)
+            } else if crate::ir::rian_ir::is_rian_ir_config(provider) {
                 crate::ir::rian_ir::course_page_url(&provider.base_url, hash)
             } else {
                 Ok(format!("{}/courses/{hash}", provider.base_url.trim_end_matches('/')))
