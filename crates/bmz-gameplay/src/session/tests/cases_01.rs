@@ -8,6 +8,7 @@ fn audio_mix_toggle_preserves_chart_normalization_gain() {
         normalize_chart_volume: true,
         key_volume: 1.0,
         bgm_volume: 1.0,
+        auto_key_volume: 0.0,
     };
 
     assert_eq!(mix.effective_normalization_gain(), 0.25);

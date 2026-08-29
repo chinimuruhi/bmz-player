@@ -335,6 +335,7 @@ profile-volume-title = Volume
 profile-volume-normalize = Normalize chart and preview volume
 profile-volume-master = Master
 profile-volume-keysound = Key sounds
+profile-volume-keysound-auto = Key sounds (auto)
 profile-volume-preview = Song select preview
 profile-volume-system-bgm = System BGM
 profile-volume-system-se = System SE

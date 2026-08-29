@@ -14,7 +14,9 @@ use bmz_gameplay::input::system::InputSystem;
 use bmz_gameplay::input::translator::DefaultInputTranslator;
 use bmz_gameplay::judge::engine::JudgeEngine;
 use bmz_gameplay::replay::ReplayRecorder;
-use bmz_gameplay::session::{BgmScheduler, GameSession, PlayAudioMix, PlayOffsets, PlayState};
+use bmz_gameplay::session::{
+    AutoKeysoundScheduler, BgmScheduler, GameSession, PlayAudioMix, PlayOffsets, PlayState,
+};
 use rusqlite::Connection;
 
 use super::*;
@@ -919,6 +921,7 @@ fn session() -> GameSession {
         full_combo_started_at: None,
         opponent_full_combo_started_at: None,
         bgm_scheduler: BgmScheduler::default(),
+        auto_keysound_scheduler: AutoKeysoundScheduler::default(),
         offsets: PlayOffsets { input_offset_us: 0, visual_offset_us: 0 },
         input_offset_auto_adjust_enabled: false,
         input_offset_auto_adjust: None,
@@ -928,6 +931,7 @@ fn session() -> GameSession {
             normalize_chart_volume: true,
             key_volume: 1.0,
             bgm_volume: 1.0,
+            auto_key_volume: 0.0,
         },
         hispeed: 2.0,
         hispeed_mode: bmz_gameplay::session::HispeedMode::Normal,

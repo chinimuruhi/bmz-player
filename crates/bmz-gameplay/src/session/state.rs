@@ -39,6 +39,8 @@ pub struct PlayAudioMix {
     pub normalize_chart_volume: bool,
     pub key_volume: f32,
     pub bgm_volume: f32,
+    /// キー音自動再生のボリューム。0.0 なら無効。
+    pub auto_key_volume: f32,
 }
 
 impl PlayAudioMix {
@@ -71,6 +73,13 @@ pub struct FrameTimes {
 #[derive(Debug, Clone, Default)]
 pub struct BgmScheduler {
     pub next_index: usize,
+}
+
+/// キー音自動再生用のレーン別カーソル。押下有無に関わらず、譜面の生タイミング
+/// (入力オフセット・表示オフセットの影響を受けない `NoteEvent.time`) でキー音を鳴らす。
+#[derive(Debug, Clone, Default)]
+pub struct AutoKeysoundScheduler {
+    pub next_note_index: [usize; LANE_COUNT],
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -193,6 +202,7 @@ pub struct GameSession {
     pub full_combo_started_at: Option<TimeUs>,
     pub opponent_full_combo_started_at: Option<TimeUs>,
     pub bgm_scheduler: BgmScheduler,
+    pub auto_keysound_scheduler: AutoKeysoundScheduler,
     pub offsets: PlayOffsets,
     pub input_offset_auto_adjust_enabled: bool,
     pub input_offset_auto_adjust: Option<InputOffsetAutoAdjustState>,
@@ -352,6 +362,48 @@ impl BgmScheduler {
 
     pub fn is_done(&self, chart: &PlayableChart) -> bool {
         self.next_index >= chart.bgm_events.len()
+    }
+}
+
+impl AutoKeysoundScheduler {
+    pub fn schedule_until(
+        &mut self,
+        chart: &PlayableChart,
+        clock: &AudioClock,
+        until: TimeUs,
+        volume: f32,
+        audio: &mut dyn AudioScheduler,
+    ) {
+        for lane in Lane::ALL {
+            let lane_index = lane.index();
+            let notes = chart.notes_for_lane(lane);
+            while let Some(note) = notes.get(self.next_note_index[lane_index]) {
+                if note.time > until {
+                    break;
+                }
+                self.next_note_index[lane_index] += 1;
+
+                if note.kind == NoteKind::Mine {
+                    continue;
+                }
+
+                let chart_volume = bmz_chart::volume::chart_channel_volume_factor(
+                    bmz_chart::volume::chart_volume_at_time(&chart.key_volume_events, note.time),
+                );
+                for sound_id in note.sounds() {
+                    audio.schedule(ScheduledSound {
+                        start_frame: clock.time_to_output_frame(note.time),
+                        sound_id,
+                        volume: (volume * chart_volume).clamp(0.0, 1.0),
+                        pan: 0.0,
+                        loop_playback: false,
+                        fade_in_frames: 0,
+                        catch_up: true,
+                        restart_policy: RestartPolicy::StopSameSound,
+                    });
+                }
+            }
+        }
     }
 }
 

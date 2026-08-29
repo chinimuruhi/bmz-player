@@ -52,6 +52,20 @@ pub fn advance_session_frame(
                 * session.audio_mix.bgm_volume,
             audio,
         );
+
+        // ノーツの押下有無に関わらず、譜面の生タイミングでキー音を鳴らす。
+        // 入力オフセット・表示オフセットは適用しない。0 なら機能自体を無効化する。
+        if session.audio_mix.auto_key_volume > 0.0 {
+            session.auto_keysound_scheduler.schedule_until(
+                &session.chart,
+                &session.audio_clock,
+                times.audio_schedule_until,
+                session.audio_mix.master_volume
+                    * session.audio_mix.effective_normalization_gain()
+                    * session.audio_mix.auto_key_volume,
+                audio,
+            );
+        }
     }
 
     if session.state == PlayState::Playing {

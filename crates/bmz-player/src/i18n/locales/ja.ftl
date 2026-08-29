@@ -332,6 +332,7 @@ profile-volume-title = 音量
 profile-volume-normalize = 譜面・プレビュー音量正規化
 profile-volume-master = マスター
 profile-volume-keysound = キー音
+profile-volume-keysound-auto = キー音（自動）
 profile-volume-preview = 選曲プレビュー
 profile-volume-system-bgm = システム BGM
 profile-volume-system-se = システム SE

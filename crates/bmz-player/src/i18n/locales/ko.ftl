@@ -332,6 +332,7 @@ profile-volume-title = 음량
 profile-volume-normalize = 차트 및 미리듣기 음량 정규화
 profile-volume-master = 마스터
 profile-volume-keysound = 키음
+profile-volume-keysound-auto = 키음 (자동)
 profile-volume-preview = 곡 선택 미리듣기
 profile-volume-system-bgm = 시스템 BGM
 profile-volume-system-se = 시스템 SE

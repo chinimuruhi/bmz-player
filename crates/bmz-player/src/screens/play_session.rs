@@ -37,8 +37,8 @@ use bmz_gameplay::replay::{ReplayPlayer, ReplayRecorder};
 use bmz_gameplay::rule::RuleMode;
 use bmz_gameplay::score::{ScoreState, scored_note_count};
 use bmz_gameplay::session::{
-    AssistRuntime, BgmScheduler, GameSession, HispeedMode, InputOffsetAutoAdjustState,
-    PlaySkinOffset, PlayState,
+    AssistRuntime, AutoKeysoundScheduler, BgmScheduler, GameSession, HispeedMode,
+    InputOffsetAutoAdjustState, PlaySkinOffset, PlayState,
 };
 use std::sync::Arc;
 

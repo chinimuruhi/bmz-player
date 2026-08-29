@@ -333,6 +333,7 @@ profile-volume-title = 音量
 profile-volume-normalize = 標準化譜面及試聽音量
 profile-volume-master = 主音量
 profile-volume-keysound = 按鍵音
+profile-volume-keysound-auto = 按鍵音（自動）
 profile-volume-preview = 選曲試聽
 profile-volume-system-bgm = 系統 BGM
 profile-volume-system-se = 系統 SE

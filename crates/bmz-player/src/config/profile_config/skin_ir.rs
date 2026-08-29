@@ -520,6 +520,7 @@ impl ProfileConfig {
                 normalize_chart_volume: true,
                 master_volume: 50,
                 key_volume: 50,
+                auto_key_volume: 0,
                 bgm_volume: 50,
                 preview_volume: 50,
                 system_bgm_volume: default_system_bgm_volume(),
