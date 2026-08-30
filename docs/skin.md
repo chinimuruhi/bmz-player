@@ -18,6 +18,24 @@ module stateを保持する。callbackからは現在フレームの `main_state
 draw=false、数値/文字列は未取得として扱う。runtime callbackを含むdocumentはVMをclone
 できないためdocument cacheとLua-to-JSON変換の対象外になる。
 
+Lua sandboxはロード時の互換APIとして`os.clock` / `os.date` / `os.time`を提供する。
+`os.time`の日付tableは標準Luaと同様にローカル時刻として正規化し、正規化後の値を
+tableへ書き戻す。引数なしでは現在時刻を返し、`os.date`は`!` prefixでUTCを選べる。libGDXの
+`Controllers.getControllers()`は入力のない空配列として`size` / `get()` / `first()`を
+提供する。`io`の書き込みstubは内容を永続化しない。初回document構築は、蓄積データを
+Luaで解析するResult skinも通せる専用の命令数上限を持ち、runtime callback単位の上限は
+従来の小さい値を維持する。
+
+判定の存在を表すoption `2241..2246` (PGREAT / GREAT / GOOD / BAD / POOR / EMPTY POOR)
+はResultだけでなくPlay中も現在の判定数を参照する。これにより、LITONE11などが
+`-2244` / `-2245`で制御するフルコンボ演出はBAD/POOR発生後に表示されない。
+
+skin catalogのJSON候補はinclude・条件・数値正規化後に数値の`type`を明示した文書だけを受理する。
+これによりskin配下のplayer dataやparts JSONが既定値`type=0`のPlay 7KEYS skinとして
+候補へ混入することを防ぐ。Selectの曲行テキストIDは区切り文字を無視して`bartext`を
+照合し、`bar_text` / `folderbar_text`形式もbar textへ割り当てる。Lua skinのslider / graph
+で使う`isRefNum`はJSONのbooleanに加えて互換表現の整数`0` / `1`も受理する。
+
 ### Lua Module Path
 
 skin library root 配下の Lua skin へ公開する初期 `package.path` は、過去の beatoraja と同じ

@@ -715,6 +715,7 @@ dependencies = [
  "anyhow",
  "bmz-skin-document",
  "encoding_rs",
+ "libc",
  "mlua",
  "serde_json",
  "serde_path_to_error",

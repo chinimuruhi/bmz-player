@@ -295,6 +295,30 @@ fn skin_state_text_maps_string_refs() {
         ),
         "Song Title"
     );
+    for id in ["bar_text", "bar_text_gray", "folderbar_text", "Folder-Bar_Text"] {
+        assert_eq!(
+            skin_state_text(
+                &SkinTextDef { id: id.to_string(), ..SkinTextDef::default() },
+                &SkinTextState { bar_text: "LITONE Song Title", ..SkinTextState::default() },
+            ),
+            "LITONE Song Title",
+            "select bar text id {id}"
+        );
+    }
+    for id in ["foobar_texture", "bartexture", "folderbar_textured"] {
+        assert_eq!(
+            skin_state_text(
+                &SkinTextDef { id: id.to_string(), ref_id: 10, ..SkinTextDef::default() },
+                &SkinTextState {
+                    title: "Ordinary Text",
+                    bar_text: "Wrong Bar Text",
+                    ..SkinTextState::default()
+                },
+            ),
+            "Ordinary Text",
+            "non-bar text id {id}"
+        );
+    }
 }
 
 #[test]

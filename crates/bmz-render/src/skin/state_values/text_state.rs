@@ -98,7 +98,7 @@ pub(super) fn skin_state_text_with_draw_state(
             state.table_text_fallback,
         );
     }
-    if text.id.contains("bartext") {
+    if is_select_bar_text_id(&text.id) {
         return state.bar_text.to_string();
     }
     match text.id.as_str() {
@@ -124,6 +124,20 @@ pub(super) fn skin_state_text_with_draw_state(
         _ => {}
     }
     skin_main_state_text(text.ref_id, draw_state, state)
+}
+
+fn is_select_bar_text_id(id: &str) -> bool {
+    let id = id.to_ascii_lowercase();
+    ["bartext", "bar_text", "bar-text"].into_iter().any(|needle| {
+        id.match_indices(needle).any(|(start, _)| {
+            let suffix = &id[start + needle.len()..];
+            suffix.is_empty()
+                || suffix
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_digit() || matches!(byte, b'_' | b'-'))
+        })
+    })
 }
 
 pub(super) fn skin_main_state_text(
