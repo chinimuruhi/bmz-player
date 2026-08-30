@@ -337,9 +337,10 @@ fn lua_skin_os_stub_supports_date_clock_and_time() {
         r#"
             local utc = os.date("!*t", 0)
             local elapsed = os.clock()
-            local epoch_input = { year = 1970, month = 1, day = 1, hour = 0 }
-            local epoch = os.time(epoch_input)
-            local epoch_round_trip = os.date("*t", epoch)
+            local round_trip_input = { year = 2000, month = 1, day = 1, hour = 0 }
+            local round_trip_epoch = os.time(round_trip_input)
+            assert(round_trip_epoch > 0)
+            local epoch_round_trip = os.date("*t", round_trip_epoch)
             local default_hour_input = { year = 2000, month = 1, day = 1 }
             os.time(default_hour_input)
             local normalized = { year = 2024, month = 13, day = 1, hour = 25 }
@@ -359,8 +360,8 @@ fn lua_skin_os_stub_supports_date_clock_and_time() {
                         constantText = os.date("!%Y-%m-%d %H:%M:%S", 0)
                             .. "|" .. utc.year
                             .. "|" .. tostring(elapsed >= 0)
-                            .. "|" .. epoch_input.year .. "-" .. epoch_input.month
-                            .. "-" .. epoch_input.day .. " " .. epoch_input.hour
+                            .. "|" .. round_trip_input.year .. "-" .. round_trip_input.month
+                            .. "-" .. round_trip_input.day .. " " .. round_trip_input.hour
                             .. "|" .. epoch_round_trip.year .. "-" .. epoch_round_trip.month
                             .. "-" .. epoch_round_trip.day .. " " .. epoch_round_trip.hour
                             .. "|" .. default_hour_input.hour
@@ -384,7 +385,7 @@ fn lua_skin_os_stub_supports_date_clock_and_time() {
 
     assert_eq!(
         loaded.value["text"][0]["constantText"],
-        "1970-01-01 00:00:00|1970|true|1970-1-1 0|1970-1-1 0|12|2025-1-2 1|2025-1-2 1|true|false|true"
+        "1970-01-01 00:00:00|1970|true|2000-1-1 0|2000-1-1 0|12|2025-1-2 1|2025-1-2 1|true|false|true"
     );
 }
 
