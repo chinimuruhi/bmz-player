@@ -266,6 +266,7 @@ impl WinitApp {
                 play_option_input: None,
                 play_analog_scroll_buffer: 0,
                 play_analog_last_tick_at: None,
+                play_entry_presentation: PlayEntryPresentation::Normal,
                 play_scene_started_at: now,
                 play_ready_sound_started_at: None,
                 play_ready_last_control_hold_at: None,

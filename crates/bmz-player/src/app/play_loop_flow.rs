@@ -30,7 +30,8 @@ impl WinitApp {
         let course_titles = self.current_course_titles();
         let course_stage = self.current_course_stage_marker();
         let play_elapsed_time = self.play_elapsed_time();
-        let ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
+        let ready_elapsed_time = self.play_ready_animation_elapsed_time();
+        let seamless_play_entry = self.play.play_entry_presentation.is_seamless();
         let stagefile_background = self.play.play_stagefile_loaded;
         let stagefile_image_size = self.play.play_stagefile_size;
         let backbmp_background = self.play.play_backbmp_loaded;
@@ -69,6 +70,7 @@ impl WinitApp {
                 self.apply_profile_fast_slow_filter(&mut snapshot);
                 snapshot.play_elapsed_time = play_elapsed_time;
                 snapshot.ready_elapsed_time = ready_elapsed_time;
+                snapshot.seamless_play_entry = seamless_play_entry;
                 snapshot.stagefile_background = stagefile_background;
                 snapshot.stagefile_image_size = stagefile_image_size;
                 snapshot.backbmp_background = backbmp_background;
@@ -108,6 +110,7 @@ impl WinitApp {
                     let mut snapshot = frame.render_snapshot;
                     snapshot.play_elapsed_time = play_elapsed_time;
                     snapshot.ready_elapsed_time = ready_elapsed_time;
+                    snapshot.seamless_play_entry = seamless_play_entry;
                     snapshot.stagefile_background = stagefile_background;
                     snapshot.stagefile_image_size = stagefile_image_size;
                     snapshot.backbmp_background = backbmp_background;
@@ -196,6 +199,7 @@ impl WinitApp {
                 let mut snapshot = frame.render_snapshot;
                 snapshot.play_elapsed_time = play_elapsed_time;
                 snapshot.ready_elapsed_time = ready_elapsed_time;
+                snapshot.seamless_play_entry = seamless_play_entry;
                 snapshot.stagefile_background = stagefile_background;
                 snapshot.stagefile_image_size = stagefile_image_size;
                 snapshot.backbmp_background = backbmp_background;
@@ -353,20 +357,26 @@ impl WinitApp {
         if self.play.play_ready_sound_started_at.is_some() {
             return;
         }
-        self.sync_play_control_holds_from_pressed_controls();
+        let shows_ready_presentation = self.play.play_entry_presentation.shows_ready_presentation();
+        let seamless_play_entry = !shows_ready_presentation;
         let now = Instant::now();
-        if play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held) {
-            self.play.play_ready_last_control_hold_at = Some(now);
-            self.update_pending_play_snapshot_timers();
-            return;
-        }
-        if play_ready_blocked_by_recent_control_hold(self.play.play_ready_last_control_hold_at, now)
-        {
-            self.update_pending_play_snapshot_timers();
-            return;
-        }
-        if self.play_elapsed_time().0 < self.play_skin_ready_delay().as_micros() as i64 {
-            return;
+        if shows_ready_presentation {
+            self.sync_play_control_holds_from_pressed_controls();
+            if play_ready_blocked_by_control_holds(self.play.play_e1_held, self.play.play_e2_held) {
+                self.play.play_ready_last_control_hold_at = Some(now);
+                self.update_pending_play_snapshot_timers();
+                return;
+            }
+            if play_ready_blocked_by_recent_control_hold(
+                self.play.play_ready_last_control_hold_at,
+                now,
+            ) {
+                self.update_pending_play_snapshot_timers();
+                return;
+            }
+            if self.play_elapsed_time().0 < self.play_skin_ready_delay().as_micros() as i64 {
+                return;
+            }
         }
         let chart_id = self
             .play
@@ -406,10 +416,13 @@ impl WinitApp {
         );
         self.play.play_ready_sound_started_at = Some(Instant::now());
         self.play.pending_play_start = None;
-        self.play_system_sound(crate::system_sound::SoundType::PlayReady);
+        if shows_ready_presentation {
+            self.play_system_sound(crate::system_sound::SoundType::PlayReady);
+        }
         if let Some(snapshot) = &mut self.play.last_play_snapshot {
             snapshot.play_elapsed_time = play_elapsed_time;
-            snapshot.ready_elapsed_time = Some(TimeUs(0));
+            snapshot.ready_elapsed_time = (!seamless_play_entry).then_some(TimeUs(0));
+            snapshot.seamless_play_entry = seamless_play_entry;
             snapshot.time = chart_zero_time;
             if let Some(active_play) = &self.play.active_play {
                 crate::screens::play_snapshot::refresh_play_skin_visuals_with_input_elapsed(
@@ -437,7 +450,8 @@ impl WinitApp {
 
     pub(super) fn update_pending_play_snapshot_timers(&mut self) {
         let play_elapsed_time = self.play_elapsed_time();
-        let ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
+        let ready_elapsed_time = self.play_ready_animation_elapsed_time();
+        let seamless_play_entry = self.play.play_entry_presentation.is_seamless();
         let resource_load_progress = self.current_play_resource_load_progress();
         let chart_id = self
             .play
@@ -450,6 +464,7 @@ impl WinitApp {
         if let Some(snapshot) = &mut self.play.last_play_snapshot {
             snapshot.play_elapsed_time = play_elapsed_time;
             snapshot.ready_elapsed_time = ready_elapsed_time;
+            snapshot.seamless_play_entry = seamless_play_entry;
             snapshot.resource_load_progress = resource_load_progress;
             if let Some(applied_arrange) = &applied_arrange {
                 apply_play_arrange_to_snapshot(snapshot, applied_arrange);
@@ -911,7 +926,8 @@ impl WinitApp {
             return;
         };
         let play_elapsed_time = self.play_elapsed_time();
-        let ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
+        let ready_elapsed_time = self.play_ready_animation_elapsed_time();
+        let seamless_play_entry = self.play.play_entry_presentation.is_seamless();
         let stagefile_background = self.play.play_stagefile_loaded;
         let stagefile_image_size = self.play.play_stagefile_size;
         let timers = PlayEndingSkinTimers {
@@ -929,6 +945,7 @@ impl WinitApp {
             };
             snapshot.play_elapsed_time = timers.play_elapsed_time;
             snapshot.ready_elapsed_time = timers.ready_elapsed_time;
+            snapshot.seamless_play_entry = seamless_play_entry;
             snapshot.stagefile_background = stagefile_background;
             snapshot.stagefile_image_size = stagefile_image_size;
             snapshot.failed_elapsed_ms = timers.failed_elapsed_ms;
@@ -945,6 +962,7 @@ impl WinitApp {
         );
 
         let mut snapshot = refresh_play_ending_snapshot(&mut active_play.running, timers);
+        snapshot.seamless_play_entry = seamless_play_entry;
         snapshot.stagefile_background = stagefile_background;
         snapshot.stagefile_image_size = stagefile_image_size;
         self.apply_profile_fast_slow_filter(&mut snapshot);

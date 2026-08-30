@@ -465,6 +465,25 @@ impl WinitApp {
         start_time_us: Option<i64>,
         bms_random_seed: Option<u64>,
     ) -> bool {
+        self.start_boot_chart_with_presentation(
+            chart_id,
+            skip_decide,
+            score_save_disabled,
+            start_time_us,
+            bms_random_seed,
+            PlayEntryPresentation::Normal,
+        )
+    }
+
+    pub(super) fn start_boot_chart_with_presentation(
+        &mut self,
+        chart_id: i64,
+        skip_decide: bool,
+        score_save_disabled: bool,
+        start_time_us: Option<i64>,
+        bms_random_seed: Option<u64>,
+        presentation: PlayEntryPresentation,
+    ) -> bool {
         self.select.autoplay_folder = None;
         let mut options = self.play_start_options();
         options.score_save_disabled = score_save_disabled;
@@ -477,7 +496,7 @@ impl WinitApp {
         self.play.practice_chart_zero_time = start_time_us.map(TimeUs);
         if skip_decide {
             self.start_play_preload(chart_id, options.clone());
-            self.begin_preloaded_play_scene(chart_id, options);
+            self.begin_preloaded_play_scene_with_presentation(chart_id, options, presentation);
         } else {
             self.begin_decide_for_chart(chart_id, options);
         }

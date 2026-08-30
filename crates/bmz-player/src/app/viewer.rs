@@ -37,12 +37,13 @@ impl WinitApp {
         self.reset_viewer_playback();
         self.select.session_mode = SessionMode::Autoplay;
         self.viewer_waiting = false;
-        if !self.start_boot_chart(
+        if !self.start_boot_chart_with_presentation(
             imported.chart_id,
             true,
             true,
             Some(start_time.0),
             Some(bms_random_seed),
+            PlayEntryPresentation::ViewerSeek,
         ) {
             self.viewer_waiting = true;
             bail!("viewer chart is unavailable for the active session mode");

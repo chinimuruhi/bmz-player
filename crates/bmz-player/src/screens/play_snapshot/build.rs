@@ -290,6 +290,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             ..Default::default()
         },
         ready_elapsed_time: None,
+        seamless_play_entry: false,
         rhythm_timer_elapsed_ms: rhythm_timer_elapsed_ms(
             &session.timing_map,
             &session.chart.bar_lines,
