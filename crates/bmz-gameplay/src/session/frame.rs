@@ -115,12 +115,7 @@ fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
     let Some(opponent) = &mut session.battle_opponent else {
         return;
     };
-    // Seed-only providers can reproduce the lane arrangement but do not
-    // publish input timing. Keep the opponent unjudged instead of fabricating
-    // misses or autoplay data.
-    if opponent.replay_player.is_none() {
-        return;
-    }
+    let display_uses_primary_arrangement = opponent.display_uses_primary_arrangement;
 
     let percent = judge_percent_at_time_for_keymode(
         opponent.chart.metadata.judge_rank_spec,
@@ -139,7 +134,14 @@ fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
         .judge
         .set_window_set(scale_judge_windows_for_playback_rate(windows, playback_rate_percent));
 
-    let inputs = opponent.replay_player.as_mut().expect("checked above").poll_until(now);
+    let inputs = if let Some(replay) = &mut opponent.replay_player {
+        replay.poll_until(now)
+    } else if let Some(autoplay) = &mut opponent.autoplay {
+        autoplay.poll_until(&opponent.chart, now)
+    } else {
+        Vec::new()
+    };
+    let mut display_judgements = Vec::new();
     for input in inputs {
         match input.kind {
             InputKind::Press => {
@@ -148,24 +150,67 @@ fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
             InputKind::Release => opponent.lane_keyon_started_at[input.lane.index()] = None,
         }
         let outcome = opponent.judge.process_input(&opponent.chart, input);
-        apply_battle_opponent_outcome(opponent, outcome);
+        display_judgements.extend(apply_battle_opponent_outcome(opponent, outcome));
     }
     let mine_outcome =
         opponent.judge.process_mine_passes(&opponent.chart, now, &opponent.lane_keyon_started_at);
-    apply_battle_opponent_outcome(opponent, mine_outcome);
+    display_judgements.extend(apply_battle_opponent_outcome(opponent, mine_outcome));
     let miss_outcome = opponent.judge.process_misses(&opponent.chart, now);
-    apply_battle_opponent_outcome(opponent, miss_outcome);
+    display_judgements.extend(apply_battle_opponent_outcome(opponent, miss_outcome));
+
+    for display in &mut display_judgements {
+        let source_lane = if display_uses_primary_arrangement {
+            display
+                .judgement
+                .note_id
+                .and_then(|note_id| session.chart.note_by_id(note_id))
+                .map_or(display.judgement.lane, |note| note.lane)
+        } else {
+            display.judgement.lane
+        };
+        display.judgement.lane = second_player_lane(source_lane);
+        display.judgement.affects_score = false;
+        push_skin_runtime_event(
+            session,
+            SkinRuntimeEventKind::Judgement(display.judgement.clone()),
+        );
+    }
+    session
+        .recent_judgements
+        .extend(display_judgements.iter().map(|display| display.judgement.clone()));
+    session.recent_display_judgements.extend(display_judgements);
 }
 
-fn apply_battle_opponent_outcome(opponent: &mut BattleOpponentSession, outcome: JudgeOutcome) {
+fn apply_battle_opponent_outcome(
+    opponent: &mut BattleOpponentSession,
+    outcome: JudgeOutcome,
+) -> Vec<DisplayJudgementEvent> {
+    let mut display_judgements = Vec::with_capacity(outcome.events.len());
     for event in outcome.events {
         if event.affects_score {
             opponent.score.apply(&event);
             opponent.gauge.apply_judge(event.judge, 1.0);
         }
+        display_judgements
+            .push(DisplayJudgementEvent { judgement: event, combo: opponent.score.combo });
     }
     for mine in outcome.mine_hits {
         opponent.gauge.apply_mine(mine.damage);
+    }
+    display_judgements
+}
+
+fn second_player_lane(lane: Lane) -> Lane {
+    match lane {
+        Lane::Scratch => Lane::Scratch2,
+        Lane::Key1 => Lane::Key8,
+        Lane::Key2 => Lane::Key9,
+        Lane::Key3 => Lane::Key10,
+        Lane::Key4 => Lane::Key11,
+        Lane::Key5 => Lane::Key12,
+        Lane::Key6 => Lane::Key13,
+        Lane::Key7 => Lane::Key14,
+        lane => lane,
     }
 }
 

@@ -156,13 +156,8 @@ impl WinitApp {
                 options.ln_mode_override,
                 chart.ln_profile,
             );
-            let multiplier = match options
-                .double_option
-                .normalize_for_key_mode(KeyMode::from_str_opt(&chart.mode).unwrap_or_default())
-            {
-                DoubleOption::Battle | DoubleOption::BattleAutoScratch => 2,
-                DoubleOption::Off | DoubleOption::Flip => 1,
-            };
+            let source_key_mode = KeyMode::from_str_opt(&chart.mode).unwrap_or_default();
+            let multiplier = decide_total_notes_multiplier(source_key_mode, &options);
             snapshot.total_notes = chart.scored_total_notes(policy).saturating_mul(multiplier);
         }
         self.reload_skin_for_scene_entry(SkinKind::Decide);
@@ -708,6 +703,18 @@ fn play_skin_score_key(
     ScoreKey::with_options(chart_sha256, ln_policy, double_option.score_bucket(), rule_mode)
 }
 
+fn decide_total_notes_multiplier(source_key_mode: KeyMode, options: &PlayStartOptions) -> u32 {
+    let battle_presentation = (options.session_mode.is_battle() || options.battle_target.is_some())
+        && matches!(source_key_mode, KeyMode::K5 | KeyMode::K7);
+    if battle_presentation {
+        return 1;
+    }
+    match options.double_option.normalize_for_key_mode(source_key_mode) {
+        DoubleOption::Battle | DoubleOption::BattleAutoScratch => 2,
+        DoubleOption::Off | DoubleOption::Flip => 1,
+    }
+}
+
 pub(in crate::app) fn rival_arrange_options(
     score: &crate::storage::network_db::IrRivalScoreRecord,
 ) -> (ArrangeOption, ArrangeOption, DoubleOption) {
@@ -946,6 +953,39 @@ mod rival_replication_tests {
             s_random_scheme_2p: None,
             h_random_threshold_ms: None,
         }
+    }
+
+    #[test]
+    fn battle_target_keeps_decide_total_notes_on_the_primary_side() {
+        let options = PlayStartOptions {
+            session_mode: SessionMode::Normal,
+            double_option: DoubleOption::Battle,
+            battle_target: Some(crate::screens::play_start::BattleTarget {
+                provider: "test".to_string(),
+                score_id: "score".to_string(),
+                player_id: "player".to_string(),
+                player_name: "RIVAL".to_string(),
+                rank: 1,
+                ex_score: 100,
+                gauge: None,
+                playback: crate::screens::play_start::BattleTargetPlayback::Seed {
+                    arrange: ArrangeOption::Normal,
+                    arrange_2p: ArrangeOption::Normal,
+                    double_option: DoubleOption::Off,
+                    packed_seed: None,
+                },
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(decide_total_notes_multiplier(KeyMode::K7, &options), 1);
+        assert_eq!(
+            decide_total_notes_multiplier(
+                KeyMode::K7,
+                &PlayStartOptions { double_option: DoubleOption::Battle, ..Default::default() }
+            ),
+            2
+        );
     }
 
     #[test]

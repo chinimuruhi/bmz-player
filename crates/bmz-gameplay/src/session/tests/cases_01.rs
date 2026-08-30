@@ -81,8 +81,29 @@ fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
             }],
             next_index: 0,
         }),
+        autoplay: None,
+        display_uses_primary_arrangement: false,
         lane_keyon_started_at: Default::default(),
     });
+    session.display_only_lane_mask[Lane::Key8.index()] = true;
+    let synthetic = apply_judge_outcome(
+        &mut session,
+        JudgeOutcome {
+            events: vec![JudgementEvent {
+                note_id: Some(NoteId(99)),
+                lane: Lane::Key8,
+                judge: Judge::Poor,
+                side: TimingSide::Slow,
+                delta: TimeUs(500_000),
+                time: TimeUs(0),
+                affects_score: true,
+            }],
+            keysound_volumes: vec![(SoundId(7), 0.0)],
+            ..JudgeOutcome::default()
+        },
+    );
+    assert!(synthetic.is_empty());
+    assert!(session.pending_keysound_volumes.is_empty());
     let mut audio = TestAudio::default();
 
     advance_session_frame(&mut session, &mut audio);
@@ -91,6 +112,54 @@ fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
     let opponent = session.battle_opponent.as_ref().unwrap();
     assert_eq!(opponent.score.ex_score(), 2);
     assert_eq!(opponent.score.past_notes, 1);
+    assert!(
+        session
+            .recent_display_judgements
+            .iter()
+            .any(|event| event.judgement.lane == Lane::Key8
+                && event.judgement.judge == Judge::PGreat)
+    );
+    assert!(!session
+        .recent_display_judgements
+        .iter()
+        .any(|event| event.judgement.lane == Lane::Key8 && event.judgement.judge == Judge::Poor));
+}
+
+#[test]
+fn independent_battle_opponent_without_replay_uses_autoplay() {
+    let opponent_chart = Arc::new(chart_with_keysound());
+    let window = JudgeWindow::symmetric(16_000, 40_000, 80_000, 120_000, 500_000, 200_000, 16_000);
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.autoplay = None;
+    session.display_only_lane_mask[Lane::Key8.index()] = true;
+    session.battle_opponent = Some(BattleOpponentSession {
+        chart: Arc::clone(&opponent_chart),
+        key_mode: opponent_chart.metadata.key_mode,
+        scored_total_notes: 1,
+        judge: JudgeEngine::new(window),
+        base_judge_windows: JudgeWindows::uniform(window),
+        rule_mode: RuleMode::Beatoraja,
+        score: ScoreState::default(),
+        gauge: GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 1),
+        replay_player: None,
+        autoplay: Some(AutoplayController::default()),
+        display_uses_primary_arrangement: true,
+        lane_keyon_started_at: Default::default(),
+    });
+    let mut audio = TestAudio::default();
+
+    advance_session_frame(&mut session, &mut audio);
+
+    let opponent = session.battle_opponent.as_ref().unwrap();
+    assert_eq!(opponent.score.ex_score(), 2);
+    assert_eq!(opponent.score.past_notes, 1);
+    assert!(
+        session
+            .recent_display_judgements
+            .iter()
+            .any(|event| event.judgement.lane == Lane::Key8
+                && event.judgement.judge == Judge::PGreat)
+    );
 }
 
 #[test]

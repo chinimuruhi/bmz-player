@@ -293,6 +293,11 @@ pub struct BattleOpponentSession {
     pub score: ScoreState,
     pub gauge: GaugeState,
     pub replay_player: Option<ReplayPlayer>,
+    /// Full autoplay fallback used when the provider has no input replay.
+    pub autoplay: Option<AutoplayController>,
+    /// G-BATTLE presents the opponent on the primary player's final lane
+    /// arrangement even when replay judgement uses the rival's arrangement.
+    pub display_uses_primary_arrangement: bool,
     pub lane_keyon_started_at: [Option<TimeUs>; LANE_COUNT],
 }
 

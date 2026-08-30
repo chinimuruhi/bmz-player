@@ -496,7 +496,9 @@ pub(super) fn apply_battle_opponent_chart(chart: &mut PlayableChart, opponent: &
         cloned.end_note_id = end_note_id;
         chart.long_notes.push(cloned);
     }
-    chart.total_notes = chart.total_notes.saturating_add(opponent.total_notes);
+    // Opponent notes are display-only. Keep the semantic TOTAL NOTES owned by
+    // the primary chart so preload/skin/result paths cannot observe a doubled
+    // value from the 14-lane presentation container.
     chart.metadata.key_mode = next_mode;
 }
 

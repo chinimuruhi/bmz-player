@@ -2,6 +2,19 @@ pub fn apply_judge_outcome(
     session: &mut GameSession,
     mut outcome: JudgeOutcome,
 ) -> Vec<JudgementEvent> {
+    if session.battle_opponent.is_some() {
+        // An independent battle opponent is the sole authority for 2P score
+        // and judgement presentation. The primary JudgeEngine still advances
+        // the cloned presentation notes, but must not publish synthetic POORs
+        // or duplicate replay judgements for those lanes.
+        let had_display_only_event =
+            outcome.events.iter().any(|event| session.display_only_lane_mask[event.lane.index()]);
+        outcome.events.retain(|event| !session.display_only_lane_mask[event.lane.index()]);
+        outcome.mine_hits.retain(|hit| !session.display_only_lane_mask[hit.lane.index()]);
+        if had_display_only_event {
+            outcome.keysound_volumes.clear();
+        }
+    }
     let has_display_only_event =
         outcome.events.iter().any(|event| session.display_only_lane_mask[event.lane.index()]);
     let mut display_only_combos = Vec::with_capacity(outcome.events.len());

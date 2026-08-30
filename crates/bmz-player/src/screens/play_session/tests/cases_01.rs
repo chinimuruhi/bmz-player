@@ -47,7 +47,7 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
         PlaySessionOptions {
             session_mode: SessionMode::GBattle,
             battle_opponent: Some(BattleOpponentOptions {
-                replay_player: Some(ReplayPlayer::default()),
+                replay_player: None,
                 gauge: None,
                 arrange: ArrangeOption::Normal,
                 arrange_2p: ArrangeOption::Normal,
@@ -70,6 +70,10 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
     assert!(session.input_offset_auto_adjust.is_some());
     assert!(session.replay_lane_mask.is_none());
     assert!(session.battle_opponent.is_some());
+    let opponent = session.battle_opponent.as_ref().unwrap();
+    assert!(opponent.replay_player.is_none());
+    assert!(opponent.autoplay.is_some());
+    assert!(opponent.display_uses_primary_arrangement);
     assert_eq!(session.primary_key_mode, KeyMode::K7);
 }
 

@@ -45,6 +45,20 @@ fn prepared_chart_populates_play_skin_data_without_marking_media_ready() {
 }
 
 #[test]
+fn prepared_battle_chart_keeps_7k_as_the_skin_key_mode() {
+    let mut chart = chart();
+    chart.metadata.key_mode = KeyMode::K14;
+    let cache = PlayRenderSnapshotCache::from_chart(&chart);
+    let mut snapshot = bmz_render::snapshot::RenderSnapshot::default();
+
+    apply_prepared_chart_to_render_snapshot(&mut snapshot, &chart, &cache, true);
+
+    assert_eq!(snapshot.key_mode, KeyMode::K14);
+    assert_eq!(snapshot.skin_attempt.effective_key_mode, Some(KeyMode::K7));
+    assert_eq!(snapshot.total_notes, 1);
+}
+
+#[test]
 fn refresh_play_skin_visuals_with_input_elapsed_tracks_short_pre_ready_keybeam() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut session =

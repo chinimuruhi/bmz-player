@@ -631,9 +631,129 @@ fn normal_session_battle_target_preloads_an_expanded_opponent_chart() {
     let preloaded = preload_play_session_for_chart(&library_db, chart_id, options, 1.0).unwrap();
 
     assert_eq!(preloaded.chart.metadata.key_mode, KeyMode::K14);
+    assert_eq!(preloaded.chart.total_notes, imported.chart.total_notes);
     assert_eq!(
         preloaded.opponent_chart.as_ref().map(|chart| chart.metadata.key_mode),
         Some(KeyMode::K7)
+    );
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn g_battle_presents_the_primary_final_arrangement_on_both_sides() {
+    let path = write_temp_bms(
+        "\
+#TITLE G Battle Same Arrangement
+#BPM 120
+#00011:0100
+#00019:0001
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+    let options = PlaySessionOptions {
+        session_mode: SessionMode::GBattle,
+        arrange: ArrangeOption::Mirror,
+        arrange_2p: ArrangeOption::Normal,
+        ..PlaySessionOptions::default()
+    };
+
+    let preloaded = preload_play_session_for_chart(&library_db, chart_id, options, 1.0).unwrap();
+
+    assert_eq!(preloaded.chart.metadata.key_mode, KeyMode::K14);
+    assert_eq!(preloaded.applied_arrange.arrange_2p, ArrangeOption::Mirror);
+    assert_eq!(preloaded.chart.lane_notes[Lane::Key7.index()].len(), 1);
+    assert_eq!(preloaded.chart.lane_notes[Lane::Key14.index()].len(), 1);
+    assert_eq!(
+        preloaded.chart.lane_notes[Lane::Key7.index()][0].time,
+        preloaded.chart.lane_notes[Lane::Key14.index()][0].time
+    );
+    assert_eq!(
+        preloaded.chart.lane_notes[Lane::Key1.index()][0].time,
+        preloaded.chart.lane_notes[Lane::Key8.index()][0].time
+    );
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn g_battle_target_replay_judges_its_chart_but_displays_primary_arrangement() {
+    let path = write_temp_bms(
+        "\
+#TITLE G Battle Target Same Arrangement
+#BPM 120
+#00011:0100
+#00019:0001
+",
+    );
+    let imported = import_bms_chart(&path, None, true).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+    let mut library_db = LibraryDatabase::from_connection(conn);
+    let chart_id = library_db
+        .upsert_chart_import(&ChartImportRecord {
+            root_id: None,
+            file_path: &path,
+            file_size: 1,
+            modified_at: 1,
+            scanned_at: 1,
+            chart: &imported.chart,
+        })
+        .unwrap();
+    let options = PlaySessionOptions {
+        session_mode: SessionMode::GBattle,
+        arrange: ArrangeOption::Mirror,
+        battle_opponent: Some(BattleOpponentOptions {
+            replay_player: Some(ReplayPlayer::default()),
+            gauge: None,
+            arrange: ArrangeOption::Normal,
+            arrange_2p: ArrangeOption::Normal,
+            double_option: DoubleOption::Off,
+            arrange_seed: None,
+            arrange_seed_2p: None,
+            legacy_arrange_seed: false,
+            packed_seed: None,
+            bms_random_choices: None,
+            arrange_pattern: None,
+            s_random_scheme: SRandomScheme::default(),
+            s_random_scheme_2p: None,
+            h_random_threshold_ms: None,
+        }),
+        ..PlaySessionOptions::default()
+    };
+
+    let preloaded = preload_play_session_for_chart(&library_db, chart_id, options, 1.0).unwrap();
+
+    assert_eq!(preloaded.chart.lane_notes[Lane::Key7.index()].len(), 1);
+    assert_eq!(preloaded.chart.lane_notes[Lane::Key14.index()].len(), 1);
+    assert_eq!(
+        preloaded.chart.lane_notes[Lane::Key7.index()][0].time,
+        preloaded.chart.lane_notes[Lane::Key14.index()][0].time
+    );
+    assert_eq!(
+        preloaded.chart.lane_notes[Lane::Key1.index()][0].time,
+        preloaded.chart.lane_notes[Lane::Key8.index()][0].time
+    );
+    let opponent = preloaded.opponent_chart.as_ref().expect("opponent chart");
+    assert_eq!(opponent.lane_notes[Lane::Key1.index()].len(), 1);
+    assert_ne!(
+        opponent.lane_notes[Lane::Key1.index()][0].time,
+        preloaded.chart.lane_notes[Lane::Key1.index()][0].time
     );
 
     std::fs::remove_file(path).unwrap();

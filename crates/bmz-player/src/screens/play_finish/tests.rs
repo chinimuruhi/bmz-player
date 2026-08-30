@@ -960,6 +960,27 @@ fn finish_snapshot_preserves_the_started_session_mode() {
 }
 
 #[test]
+fn battle_result_keeps_the_primary_key_mode_for_skin_state() {
+    for session_mode_index in [0, 4] {
+        let mut session = session();
+        Arc::make_mut(&mut session.chart).metadata.key_mode = bmz_core::lane::KeyMode::K14;
+        session.primary_key_mode = bmz_core::lane::KeyMode::K7;
+        session.session_mode_index = session_mode_index;
+
+        let snapshot = FinishSessionSnapshot::from_session(
+            &session,
+            ChartLnProfile::default(),
+            &AppliedArrange::default(),
+        );
+
+        assert_eq!(snapshot.chart.metadata.key_mode, bmz_core::lane::KeyMode::K14);
+        assert_eq!(snapshot.primary_key_mode, bmz_core::lane::KeyMode::K7);
+        assert_eq!(snapshot.skin_attempt.effective_key_mode, Some(bmz_core::lane::KeyMode::K7));
+        assert_eq!(snapshot.skin_attempt.session_mode_index, Some(usize::from(session_mode_index)));
+    }
+}
+
+#[test]
 fn seven_to_nine_7k_rule_keeps_source_mode_for_result_and_ir() {
     let mut session = session();
     Arc::make_mut(&mut session.chart).metadata.key_mode = bmz_core::lane::KeyMode::K9;

@@ -24,6 +24,7 @@ fn battle_presentation_uses_opponent_arrangement_on_2p_lanes() {
     apply_battle_opponent_chart(&mut primary, &opponent);
 
     assert_eq!(primary.metadata.key_mode, KeyMode::K14);
+    assert_eq!(primary.total_notes, 1);
     assert!(primary.lane_notes[Lane::Key8.index()].is_empty());
     assert_eq!(primary.lane_notes[Lane::Key9.index()].len(), 1);
     assert_eq!(primary.lane_notes[Lane::Key9.index()][0].lane, Lane::Key9);

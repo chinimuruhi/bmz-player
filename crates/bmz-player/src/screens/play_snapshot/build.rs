@@ -42,7 +42,6 @@ pub fn apply_prepared_chart_to_render_snapshot(
     snapshot.has_long_notes = Some(!chart.long_notes.is_empty());
     snapshot.has_bpm_stop = cache.has_bpm_stop;
     snapshot.key_mode = chart.metadata.key_mode;
-    snapshot.skin_attempt.effective_key_mode = Some(chart.metadata.key_mode);
     snapshot.skin_attempt.ln_mode_index =
         Some(crate::skin_extension::long_note_mode_index(chart.metadata.long_note_mode));
     snapshot.skin_attempt.has_bga = Some(chart.metadata.has_bga);
@@ -56,6 +55,7 @@ pub fn apply_prepared_chart_to_render_snapshot(
     } else {
         chart.metadata.key_mode
     };
+    snapshot.skin_attempt.effective_key_mode = Some(primary_key_mode);
     snapshot.fs_threshold_ms = rm_skin_fs_threshold_ms(chart.metadata.judge_rank, primary_key_mode);
     snapshot.judge_graph_density = Arc::clone(&cache.judge_graph_density);
     snapshot.bpm_graph_segments = Arc::clone(&cache.bpm_graph_segments);
@@ -260,7 +260,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         operating_time_ms: 0,
         skin_input: Default::default(),
         skin_attempt: bmz_render::snapshot::SkinAttemptState {
-            effective_key_mode: Some(session.chart.metadata.key_mode),
+            effective_key_mode: Some(session.primary_key_mode),
             hsfix_index: usize::try_from(session.hsfix_index).ok(),
             gauge_auto_shift_index: Some(crate::skin_extension::gauge_auto_shift_index(
                 session.gauge.auto_shift_mode,

@@ -479,7 +479,9 @@ pub fn build_game_session_with_input_backend(
                 base_judge_windows,
                 rule_mode,
                 score: ScoreState::for_rule_mode(key_mode, rule_mode),
+                autoplay: opponent.replay_player.is_none().then(AutoplayController::default),
                 replay_player: opponent.replay_player,
+                display_uses_primary_arrangement: session_mode == SessionMode::GBattle,
                 lane_keyon_started_at: Default::default(),
             }
         });
