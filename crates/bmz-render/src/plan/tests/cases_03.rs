@@ -699,6 +699,71 @@ fn decide_plan_activates_fadeout_timer_destinations() {
 }
 
 #[test]
+fn decide_plan_selects_loading_or_runtime_stagefile_destination() {
+    let document: SkinDocument = serde_json::from_str(
+        r##"
+            {
+                "type": 6,
+                "w": 100,
+                "h": 100,
+                "panel": [
+                    { "id": "loading", "color": "#123456" }
+                ],
+                "destination": [
+                    { "id": "loading", "op": [190], "dst": [
+                        { "x": 0, "y": 0, "w": 100, "h": 100 }
+                    ] },
+                    { "id": -100, "op": [191], "dst": [
+                        { "x": 0, "y": 0, "w": 100, "h": 100 }
+                    ] }
+                ]
+            }
+            "##,
+    )
+    .unwrap();
+    let skin =
+        SkinContext::from_manifest_and_document(SkinManifest::default(), document, Vec::new());
+
+    let without_stagefile = plan_decide(
+        &RenderSnapshot::default(),
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+    assert!(without_stagefile.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Rect { color: Color { r, g, b, .. }, .. }
+            if approx_eq(*r, 0x12 as f32 / 255.0)
+                && approx_eq(*g, 0x34 as f32 / 255.0)
+                && approx_eq(*b, 0x56 as f32 / 255.0)
+    )));
+    assert!(!without_stagefile.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Image { texture, .. } if *texture == SELECT_STAGE_TEXTURE
+    )));
+
+    let with_stagefile = plan_decide(
+        &RenderSnapshot {
+            stagefile_background: true,
+            stagefile_image_size: Some(SkinImageSize { width: 400.0, height: 200.0 }),
+            ..RenderSnapshot::default()
+        },
+        &skin,
+        &mut crate::skin::DynamicTimerRuntime::default(),
+    );
+    assert!(!with_stagefile.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Rect { color: Color { r, g, b, .. }, .. }
+            if approx_eq(*r, 0x12 as f32 / 255.0)
+                && approx_eq(*g, 0x34 as f32 / 255.0)
+                && approx_eq(*b, 0x56 as f32 / 255.0)
+    )));
+    assert!(with_stagefile.commands.iter().any(|command| matches!(
+        command,
+        DrawCommand::Image { texture, .. } if *texture == SELECT_STAGE_TEXTURE
+    )));
+}
+
+#[test]
 fn decide_plan_hides_non_course_destinations_during_course_mode() {
     let document: SkinDocument = serde_json::from_str(
         r#"

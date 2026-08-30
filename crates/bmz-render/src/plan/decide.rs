@@ -38,6 +38,8 @@ pub(super) fn plan_decide(
             table_song: !snapshot.table_text_primary.is_empty(),
             difficulty: skin_difficulty_code(&snapshot.difficulty_name),
             judge_rank: snapshot.judge_rank,
+            has_stagefile: snapshot.stagefile_background,
+            stagefile_image_size: snapshot.stagefile_image_size,
             now_bpm: snapshot.now_bpm,
             min_bpm: snapshot.min_bpm,
             max_bpm: snapshot.max_bpm,
