@@ -213,48 +213,6 @@ pub(super) fn same_provider_protocol(left: &str, right: &str) -> bool {
     canonical_provider_protocol(left) == canonical_provider_protocol(right)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn profile() -> ProfileConfig {
-        ProfileConfig::new_default("test", "Test", 0)
-    }
-
-    #[test]
-    fn bms_ir_login_rejects_a_different_credential_origin() {
-        let error = resolve_login_base_url(
-            &profile(),
-            crate::ir::bms_ir::BMS_IR_PROVIDER,
-            Some("https://attacker.example/collect"),
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("does not allow a custom base URL"));
-    }
-
-    #[test]
-    fn bms_ir_login_uses_the_compiled_origin_and_ignores_legacy_profile_urls() {
-        let mut profile = profile();
-        let mut entry = IrProviderConfig::bms_ir();
-        entry.base_url = "https://attacker.example/legacy".to_string();
-        profile.ir.providers.push(entry);
-
-        assert_eq!(
-            resolve_login_base_url(&profile, crate::ir::bms_ir::BMS_IR_PROVIDER, None).unwrap(),
-            crate::ir::bms_ir::BMS_IR_DEFAULT_BASE_URL
-        );
-    }
-
-    #[test]
-    fn custom_provider_login_keeps_an_explicit_base_url() {
-        let requested = "https://self-hosted.example/ir";
-        assert_eq!(
-            resolve_login_base_url(&profile(), "custom-provider", Some(requested)).unwrap(),
-            requested
-        );
-    }
-}
-
 pub(super) async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig) -> Result<()> {
     if profile.ir.providers.is_empty() {
         println!(
@@ -323,4 +281,46 @@ pub(super) async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile() -> ProfileConfig {
+        ProfileConfig::new_default("test", "Test", 0)
+    }
+
+    #[test]
+    fn bms_ir_login_rejects_a_different_credential_origin() {
+        let error = resolve_login_base_url(
+            &profile(),
+            crate::ir::bms_ir::BMS_IR_PROVIDER,
+            Some("https://attacker.example/collect"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("does not allow a custom base URL"));
+    }
+
+    #[test]
+    fn bms_ir_login_uses_the_compiled_origin_and_ignores_legacy_profile_urls() {
+        let mut profile = profile();
+        let mut entry = IrProviderConfig::bms_ir();
+        entry.base_url = "https://attacker.example/legacy".to_string();
+        profile.ir.providers.push(entry);
+
+        assert_eq!(
+            resolve_login_base_url(&profile, crate::ir::bms_ir::BMS_IR_PROVIDER, None).unwrap(),
+            crate::ir::bms_ir::BMS_IR_DEFAULT_BASE_URL
+        );
+    }
+
+    #[test]
+    fn custom_provider_login_keeps_an_explicit_base_url() {
+        let requested = "https://self-hosted.example/ir";
+        assert_eq!(
+            resolve_login_base_url(&profile(), "custom-provider", Some(requested)).unwrap(),
+            requested
+        );
+    }
 }
