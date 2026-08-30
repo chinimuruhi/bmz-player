@@ -98,7 +98,7 @@ pub(super) fn skin_state_text_with_draw_state(
             state.table_text_fallback,
         );
     }
-    if is_select_bar_text_id(&text.id) {
+    if text.id.contains("bartext") {
         return state.bar_text.to_string();
     }
     match text.id.as_str() {
@@ -124,23 +124,6 @@ pub(super) fn skin_state_text_with_draw_state(
         _ => {}
     }
     skin_main_state_text(text.ref_id, draw_state, state)
-}
-
-fn is_select_bar_text_id(id: &str) -> bool {
-    const NEEDLE: &[u8] = b"bartext";
-    let mut matched = 0;
-    for byte in id.bytes().filter(|byte| !matches!(byte, b'_' | b'-')) {
-        let byte = byte.to_ascii_lowercase();
-        if byte == NEEDLE[matched] {
-            matched += 1;
-            if matched == NEEDLE.len() {
-                return true;
-            }
-        } else {
-            matched = usize::from(byte == NEEDLE[0]);
-        }
-    }
-    false
 }
 
 pub(super) fn skin_main_state_text(

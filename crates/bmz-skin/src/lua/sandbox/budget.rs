@@ -29,8 +29,8 @@ impl LuaInstructionBudget {
 
 pub(super) fn install_instruction_limit(lua: &Lua) -> LuaInstructionBudget {
     let budget = LuaInstructionBudget {
-        total_remaining: Arc::new(AtomicI64::new(LUA_LOAD_INSTRUCTION_LIMIT)),
-        callback_remaining: Arc::new(AtomicI64::new(LUA_LOAD_INSTRUCTION_LIMIT)),
+        total_remaining: Arc::new(AtomicI64::new(LUA_INSTRUCTION_LIMIT)),
+        callback_remaining: Arc::new(AtomicI64::new(LUA_INSTRUCTION_LIMIT)),
     };
     let total_remaining = budget.total_remaining.clone();
     let callback_remaining = budget.callback_remaining.clone();

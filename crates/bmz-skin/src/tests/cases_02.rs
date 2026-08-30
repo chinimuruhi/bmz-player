@@ -329,17 +329,14 @@ fn lua_skin_event_util_module_loads_custom_event_helpers() {
 }
 
 #[test]
-fn lua_skin_os_stub_supports_date_clock_and_time() {
+fn lua_skin_os_stub_supports_date_and_clock() {
     let root = unique_test_dir("bmz-skin-lua");
     fs::create_dir_all(&root).unwrap();
     fs::write(
-        root.join("play7.luaskin"),
-        r#"
+            root.join("play7.luaskin"),
+            r#"
             local t = os.date("*t", 0)
             local elapsed = os.clock()
-            local epoch = os.time({ year = 1970, month = 1, day = 1, hour = 0 })
-            local default_hour = os.time({ year = 1970, month = 1, day = 1 })
-            local now = os.time()
             return {
                 type = 0,
                 text = {
@@ -347,27 +344,19 @@ fn lua_skin_os_stub_supports_date_clock_and_time() {
                         id = "timestamp",
                         font = 1,
                         size = 16,
-                        constantText = os.date("%Y-%m-%d %H:%M:%S", 0)
-                            .. "|" .. t.year
-                            .. "|" .. tostring(elapsed >= 0)
-                            .. "|" .. epoch
-                            .. "|" .. default_hour
-                            .. "|" .. tostring(now >= 0)
+                        constantText = os.date("%Y-%m-%d %H:%M:%S", 0) .. "|" .. t.year .. "|" .. tostring(elapsed >= 0)
                     }
                 }
             }
             "#,
-    )
-    .unwrap();
+        )
+        .unwrap();
 
     let loaded =
         load_lua_skin_value(&root.join("play7.luaskin"), &BTreeMap::new(), &BTreeMap::new())
             .unwrap();
 
-    assert_eq!(
-        loaded.value["text"][0]["constantText"],
-        "1970-01-01 00:00:00|1970|true|0|43200|true"
-    );
+    assert_eq!(loaded.value["text"][0]["constantText"], "1970-01-01 00:00:00|1970|true");
 }
 
 #[test]

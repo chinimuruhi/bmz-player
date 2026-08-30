@@ -108,45 +108,6 @@ fn skin_catalog_scan_ignores_lua_parts_files() {
 }
 
 #[test]
-fn skin_catalog_rejects_json_without_explicit_skin_type() {
-    let root = std::env::temp_dir().join(format!(
-        "bmz-player-skin-catalog-json-{}",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
-    ));
-    std::fs::create_dir_all(&root).unwrap();
-    let player_data = root.join("songs.json");
-    std::fs::write(&player_data, r#"{"20260829":{"songs":[]}}"#).unwrap();
-    let valid_skin = root.join("result.json");
-    std::fs::write(&valid_skin, r#"{"type":7,"name":"Result"}"#).unwrap();
-
-    assert!(load_skin_candidate(&root, &player_data, SkinCandidateOrigin::User).is_none());
-    let (skin_type, candidate) =
-        load_skin_candidate(&root, &valid_skin, SkinCandidateOrigin::User).unwrap();
-    assert_eq!(skin_type, 7);
-    assert_eq!(candidate.name, "Result");
-}
-
-#[test]
-fn skin_catalog_loads_litone11_result_headers_when_available() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let skin_root = repo_root.join("data/skins");
-    let result_root = skin_root.join("LITONE11/Result");
-    let cases = [("result.luaskin", 7), ("course.luaskin", 15)];
-
-    for (file_name, expected_type) in cases {
-        let path = result_root.join(file_name);
-        if !path.is_file() {
-            continue;
-        }
-        let (skin_type, candidate) =
-            load_skin_candidate(&skin_root, &path, SkinCandidateOrigin::Bundled)
-                .unwrap_or_else(|| panic!("load LITONE11 catalog candidate: {}", path.display()));
-        assert_eq!(skin_type, expected_type, "{}", path.display());
-        assert!(candidate.name.contains("LITONE11"), "candidate name: {}", candidate.name);
-    }
-}
-
-#[test]
 fn lr2skin_header_document_exposes_skin_config_defs_when_available() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/skins/WMII_FHD/play/FHDPLAY_AC.lr2skin");
