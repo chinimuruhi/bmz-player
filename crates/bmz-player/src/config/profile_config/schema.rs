@@ -187,6 +187,10 @@ pub struct PlayDefaultsConfig {
     /// beatoraja `PlayerConfig.guideSE` 相当。判定時に guide-*.wav を再生する。
     #[serde(default)]
     pub guide_se: bool,
+    /// lr2oraja-endlessdream `PlayerConfig.noteretention` 相当。
+    /// 未処理の通常ノートを判定ラインへ滞留させる。
+    #[serde(default)]
+    pub note_retention: bool,
     /// 選曲画面で選んだセッション全体のモード。
     ///
     /// 旧 profile の `auto_play` を読み込めるよう Option とし、None の場合だけ
@@ -591,6 +595,33 @@ pub enum LaneEffectConfig {
     HiddenSudden,
 }
 
+impl LaneEffectConfig {
+    pub const fn sudden_enabled(self) -> bool {
+        matches!(self, Self::Sudden | Self::HiddenSudden)
+    }
+
+    pub const fn hidden_enabled(self) -> bool {
+        matches!(self, Self::Hidden | Self::HiddenSudden)
+    }
+
+    pub const fn from_enabled(sudden_enabled: bool, hidden_enabled: bool) -> Self {
+        match (sudden_enabled, hidden_enabled) {
+            (false, false) => Self::Off,
+            (false, true) => Self::Hidden,
+            (true, false) => Self::Sudden,
+            (true, true) => Self::HiddenSudden,
+        }
+    }
+
+    pub const fn with_sudden_enabled(self, enabled: bool) -> Self {
+        Self::from_enabled(enabled, self.hidden_enabled())
+    }
+
+    pub const fn with_hidden_enabled(self, enabled: bool) -> Self {
+        Self::from_enabled(self.sudden_enabled(), enabled)
+    }
+}
+
 /// beatoraja `PlayerConfig` のアシスト設定。
 ///
 /// 選曲画面の7トグルは同時に有効化できるため、旧来の単一 enum ではなく
@@ -940,15 +971,20 @@ impl JudgeAlgorithmConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaneViewConfig {
+    #[serde(rename = "classic_hispeed", alias = "hispeed")]
     pub hispeed: f32,
-    #[serde(default = "default_hispeed_mode")]
-    pub hispeed_mode: HispeedModeConfig,
-    /// NHS のプレイ中 HS 変更刻み。0.05..=1.0 の範囲で持つ。
-    #[serde(default = "default_hispeed_step_nhs")]
-    pub hispeed_step_nhs: f32,
-    /// FHS のプレイ中 HS 変更刻み。0.05..=1.0 の範囲で持つ。
-    #[serde(default = "default_hispeed_step_fhs")]
-    pub hispeed_step_fhs: f32,
+    #[serde(default = "default_base_hispeed")]
+    pub base_hispeed: BaseHispeedConfig,
+    #[serde(default = "default_floating_policy")]
+    pub floating_policy: FloatingPolicyConfig,
+    #[serde(default = "default_normal_hispeed_level")]
+    pub normal_hispeed_level: u8,
+    /// Classic のプレイ中 HS 変更刻み。0.05..=1.0 の範囲で持つ。
+    #[serde(default = "default_classic_hispeed_step", alias = "hispeed_step_nhs")]
+    pub classic_hispeed_step: f32,
+    /// Floating のプレイ中 HS 変更刻み。0.05..=1.0 の範囲で持つ。
+    #[serde(default = "default_floating_hispeed_step", alias = "hispeed_step_fhs")]
+    pub floating_hispeed_step: f32,
     /// SUDDEN+ レーンカバー量。0..=1000 の整数で持ち、ランタイムでは /1000 して扱う。
     pub sudden: u32,
     /// LIFT 量。0..=1000 の整数で持ち、ランタイムでは /1000 して扱う。
@@ -961,6 +997,7 @@ pub struct LaneViewConfig {
     pub hispeed_auto_adjust: bool,
     /// HIDDEN レーンカバー量。0..=1000 の整数で持ち、ランタイムでは /1000 して扱う。
     pub hidden: u32,
+    #[serde(rename = "floating_target_green", alias = "target_green_number")]
     pub target_green_number: u32,
     #[serde(default)]
     pub constant_enabled: bool,
@@ -968,14 +1005,28 @@ pub struct LaneViewConfig {
     pub constant_fade_ms: i32,
 }
 
+impl LaneViewConfig {
+    pub const fn hispeed_config(&self) -> HispeedConfigPreset {
+        HispeedConfigPreset::from_parts(self.base_hispeed, self.floating_policy)
+    }
+
+    pub fn set_hispeed_config(&mut self, preset: HispeedConfigPreset) {
+        (self.base_hispeed, self.floating_policy) = preset.parts();
+    }
+}
+
 /// Per-key-mode values corresponding to beatoraja/LR2orajaED `PlayConfig`.
 /// Global input latency and adjustment step sizes remain outside this type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlayModeConfig {
-    #[serde(default = "default_mode_hispeed")]
+    #[serde(default = "default_mode_hispeed", rename = "classic_hispeed", alias = "hispeed")]
     pub hispeed: f32,
-    #[serde(default = "default_hispeed_mode")]
-    pub hispeed_mode: HispeedModeConfig,
+    #[serde(default = "default_base_hispeed")]
+    pub base_hispeed: BaseHispeedConfig,
+    #[serde(default = "default_floating_policy")]
+    pub floating_policy: FloatingPolicyConfig,
+    #[serde(default = "default_normal_hispeed_level")]
+    pub normal_hispeed_level: u8,
     #[serde(default)]
     pub hs_fix: HsFixConfig,
     #[serde(default)]
@@ -990,7 +1041,11 @@ pub struct PlayModeConfig {
     pub hispeed_auto_adjust: bool,
     #[serde(default)]
     pub hidden: u32,
-    #[serde(default = "default_target_green_number")]
+    #[serde(
+        default = "default_target_green_number",
+        rename = "floating_target_green",
+        alias = "target_green_number"
+    )]
     pub target_green_number: u32,
     #[serde(default)]
     pub constant_enabled: bool,
@@ -1004,7 +1059,9 @@ impl Default for PlayModeConfig {
     fn default() -> Self {
         Self {
             hispeed: default_mode_hispeed(),
-            hispeed_mode: default_hispeed_mode(),
+            base_hispeed: default_base_hispeed(),
+            floating_policy: default_floating_policy(),
+            normal_hispeed_level: default_normal_hispeed_level(),
             hs_fix: HsFixConfig::Off,
             lane_effect: LaneEffectConfig::Off,
             sudden: 0,
@@ -1017,6 +1074,12 @@ impl Default for PlayModeConfig {
             constant_fade_ms: default_constant_fade_ms(),
             visual_offset_us: 0,
         }
+    }
+}
+
+impl PlayModeConfig {
+    pub const fn hispeed_config(&self) -> HispeedConfigPreset {
+        HispeedConfigPreset::from_parts(self.base_hispeed, self.floating_policy)
     }
 }
 
@@ -1034,23 +1097,95 @@ pub const fn default_constant_fade_ms() -> i32 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub enum HispeedModeConfig {
+pub enum BaseHispeedConfig {
     Normal,
-    Floating,
+    Classic,
 }
 
-pub(super) fn default_hispeed_mode() -> HispeedModeConfig {
-    HispeedModeConfig::Normal
+pub(super) const fn default_base_hispeed() -> BaseHispeedConfig {
+    BaseHispeedConfig::Classic
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum FloatingPolicyConfig {
+    Disabled,
+    Toggle,
+    Locked,
+}
+
+pub(super) const fn default_floating_policy() -> FloatingPolicyConfig {
+    FloatingPolicyConfig::Toggle
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HispeedConfigPreset {
+    Normal,
+    Classic,
+    Floating,
+    NormalFloating,
+    ClassicFloating,
+}
+
+impl HispeedConfigPreset {
+    pub const ORDER: [Self; 5] =
+        [Self::Normal, Self::Classic, Self::Floating, Self::NormalFloating, Self::ClassicFloating];
+
+    pub const fn from_parts(base: BaseHispeedConfig, floating: FloatingPolicyConfig) -> Self {
+        match (base, floating) {
+            (_, FloatingPolicyConfig::Locked) => Self::Floating,
+            (BaseHispeedConfig::Normal, FloatingPolicyConfig::Disabled) => Self::Normal,
+            (BaseHispeedConfig::Classic, FloatingPolicyConfig::Disabled) => Self::Classic,
+            (BaseHispeedConfig::Normal, FloatingPolicyConfig::Toggle) => Self::NormalFloating,
+            (BaseHispeedConfig::Classic, FloatingPolicyConfig::Toggle) => Self::ClassicFloating,
+        }
+    }
+
+    pub const fn parts(self) -> (BaseHispeedConfig, FloatingPolicyConfig) {
+        match self {
+            Self::Normal => (BaseHispeedConfig::Normal, FloatingPolicyConfig::Disabled),
+            Self::Classic => (BaseHispeedConfig::Classic, FloatingPolicyConfig::Disabled),
+            Self::Floating => (BaseHispeedConfig::Classic, FloatingPolicyConfig::Locked),
+            Self::NormalFloating => (BaseHispeedConfig::Normal, FloatingPolicyConfig::Toggle),
+            Self::ClassicFloating => (BaseHispeedConfig::Classic, FloatingPolicyConfig::Toggle),
+        }
+    }
+
+    pub const fn index(self) -> i32 {
+        match self {
+            Self::Normal => 0,
+            Self::Classic => 1,
+            Self::Floating => 2,
+            Self::NormalFloating => 3,
+            Self::ClassicFloating => 4,
+        }
+    }
+
+    pub const fn supports_normal(self) -> bool {
+        matches!(self, Self::Normal | Self::NormalFloating)
+    }
+
+    pub const fn supports_classic(self) -> bool {
+        matches!(self, Self::Classic | Self::ClassicFloating)
+    }
+
+    pub const fn supports_floating(self) -> bool {
+        matches!(self, Self::Floating | Self::NormalFloating | Self::ClassicFloating)
+    }
+}
+
+pub const fn default_normal_hispeed_level() -> u8 {
+    18
 }
 
 pub const HISPEED_STEP_MIN: f32 = 0.05;
 pub const HISPEED_STEP_MAX: f32 = 1.0;
 
-pub fn default_hispeed_step_nhs() -> f32 {
+pub fn default_classic_hispeed_step() -> f32 {
     0.25
 }
 
-pub fn default_hispeed_step_fhs() -> f32 {
+pub fn default_floating_hispeed_step() -> f32 {
     0.50
 }
 

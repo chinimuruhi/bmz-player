@@ -21,7 +21,7 @@ use bmz_gameplay::input::binding::LaneBinding;
 use bmz_gameplay::input::system::last_input_collection_diagnostics;
 use bmz_gameplay::rule::RuleMode;
 use bmz_gameplay::session::compute_frame_times;
-use bmz_gameplay::session::{HispeedMode, PlaySkinOffset};
+use bmz_gameplay::session::{FloatingPolicy, HispeedMode, PlaySkinOffset};
 use bmz_render::assets::{RgbaImageAsset, load_chart_bga_image, load_static_rgba_image};
 use bmz_render::plan::{
     PLAY_BACKBMP_TEXTURE, Rect, SELECT_BANNER_TEXTURE, SELECT_STAGE_TEXTURE, TextureId,
@@ -71,12 +71,14 @@ use crate::config::play::{
     input_bounce_config_from_profile,
 };
 use crate::config::profile_config::{
-    BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig, DoubleOptionConfig,
-    GaugeAutoShiftConfig, GaugeTypeConfig, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig,
-    InputActionConfig, JudgeAlgorithmConfig, KeyModeConversionConfig, LaneEffectConfig,
-    LaneViewConfig, PlayDefaultsConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
-    RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig, default_hispeed_step_fhs,
-    default_hispeed_step_nhs, normalize_hispeed_step, replay_slot_rule_indices,
+    BaseHispeedConfig, BgaExpandConfig, BgaModeConfig, BottomShiftableGaugeConfig,
+    DoubleOptionConfig, FloatingPolicyConfig, GaugeAutoShiftConfig, GaugeTypeConfig,
+    HispeedConfigPreset, HispeedDirectionConfig, HsFixConfig, InputActionConfig,
+    JudgeAlgorithmConfig, KeyModeConversionConfig, LaneEffectConfig, LaneViewConfig,
+    PlayDefaultsConfig, PlayModeConfig, ProfileConfig, ProfileInputConfig, RandomOptionConfig,
+    RivalSourceConfig, SkinConfig, SkinOffsetConfig, TargetOptionConfig,
+    default_classic_hispeed_step, default_floating_hispeed_step, normalize_hispeed_step,
+    replay_slot_rule_indices,
 };
 use crate::config::save::{save_app_config, save_profile_config};
 use crate::config::settings_registry::SettingsEntryId;
@@ -337,7 +339,8 @@ use input_runtime::{
 use integration_support::*;
 use play_control::{
     GreenNumberChange, HispeedChange, LaneCoverChange, PlayAnalogOptionMode, PlayLaneAction,
-    PlayOptionControl, keyboard_lane_action, lane_action_from_option,
+    PlayLaneTarget, PlayOptionControl, keyboard_lane_action, lane_action_from_option,
+    resolved_play_lane_target,
 };
 use play_support::*;
 use result_runtime::{
@@ -388,6 +391,8 @@ const SAMPLE_PLAYABLE_TITLE: &str = "BMZ Sample Playable";
 #[derive(Debug, Clone, Copy)]
 enum AppUserEvent {
     SkinUpload { sent_at: Instant },
+    SystemSoundReady { generation: u64 },
+    CourseLinkRepair,
     TableFetch,
     RivalSync,
 }
@@ -413,7 +418,12 @@ pub async fn run_with_options_log_buffer_and_paths(
     log_buffer: LogBuffer,
     app_paths: AppPaths,
 ) -> Result<()> {
+    let startup_started_at = Instant::now();
     let boot = bootstrap::bootstrap_with_paths(app_paths)?;
+    tracing::info!(
+        startup_elapsed_ms = startup_started_at.elapsed().as_millis(),
+        "application bootstrap complete"
+    );
 
     // Raw Input へ実行中に切り替えられるよう、Windows message hook は起動時から
     // 常設する。デバイス usage の登録は RawInputBackend の attach 時まで行わない。
@@ -453,6 +463,7 @@ pub async fn run_with_options_log_buffer_and_paths(
     let mut app = Box::new(WinitApp::new(
         boot,
         options,
+        startup_started_at,
         None,
         None,
         shutdown_requested,

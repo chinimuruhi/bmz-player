@@ -211,9 +211,30 @@ pub(super) fn skin_main_state_text(
         1900 => draw_state
             .filter(|state| !state.select_screen || state.duration_green_ms.is_some())
             .map(|state| {
-                if skin_hispeed_mode_is_floating(state) { "FHS" } else { "NHS" }.to_string()
+                if skin_hispeed_mode_is_floating(state) {
+                    "FHS"
+                } else if skin_base_hispeed_index(state) == 1 {
+                    "NHS"
+                } else {
+                    "CHS"
+                }
+                .to_string()
             })
             .unwrap_or_default(),
+        SKIN_REF_BMZ_BASE_HISPEED => draw_state
+            .map(|state| if skin_base_hispeed_index(state) == 1 { "NHS" } else { "CHS" })
+            .unwrap_or_default()
+            .to_string(),
+        SKIN_REF_BMZ_HISPEED_CONFIG => draw_state
+            .map(|state| match skin_hispeed_config_index(state) {
+                0 => "NORMAL",
+                1 => "CLASSIC",
+                2 => "FLOATING",
+                3 => "NORMAL+FLOATING",
+                _ => "CLASSIC+FLOATING",
+            })
+            .unwrap_or_default()
+            .to_string(),
         // beatoraja StringPropertyFactory: 1001=tablename, 1002=tablelevel,
         // 1003=tablefull.  Rm-skin's combined table label is handled above by
         // id/value_expr, so direct numeric refs follow the beatoraja mapping.
@@ -261,6 +282,8 @@ pub(super) fn lua_main_state_text_values(
         1020,
         1021,
         1900,
+        SKIN_REF_BMZ_BASE_HISPEED,
+        SKIN_REF_BMZ_HISPEED_CONFIG,
         SKIN_TEXT_BMZ_DAILY_RANK,
         SKIN_REF_BMZ_SCORE_GRADE_CURRENT,
         SKIN_REF_BMZ_SCORE_GRADE_NEXT,

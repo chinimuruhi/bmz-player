@@ -23,6 +23,7 @@ impl WinitApp {
         self.play.last_play_snapshot = None;
         self.reload_select_items();
         self.sync_select_holds_from_pressed_controls();
+        self.reload_skin_for_scene_entry(SkinKind::Select);
         self.restart_select_scene_timers();
     }
 

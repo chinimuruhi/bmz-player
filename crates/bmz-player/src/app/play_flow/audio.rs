@@ -7,6 +7,7 @@ impl WinitApp {
         }
         self.audio.audio_output_open_attempted = true;
 
+        let audio_open_started_at = Instant::now();
         match AudioRuntime::open(&self.boot.app_config.audio).and_then(|runtime| {
             runtime.play()?;
             Ok(runtime)
@@ -14,7 +15,10 @@ impl WinitApp {
             Ok(runtime) => {
                 self.install_system_audio(&runtime, None);
                 self.audio.audio_runtime = Some(runtime);
-                tracing::info!("audio output opened after window initialization");
+                tracing::info!(
+                    audio_open_ms = audio_open_started_at.elapsed().as_millis(),
+                    "audio output opened after window initialization"
+                );
             }
             Err(error) => {
                 tracing::warn!(%error, "failed to open audio output; running without audio");
@@ -211,19 +215,128 @@ impl WinitApp {
             None => crate::audio::SystemAudio::open(runtime),
         };
 
-        if self.audio.system_sound.is_none() {
-            self.audio.system_sound = Some(system_sound_manager_from_catalog(
-                &self.audio.system_sound_catalog,
-                &system_audio,
-                self.boot.profile_config.audio_mix.normalize_system_bgm_volume,
-            ));
-        }
         if !self.select.select_assets.has_preview() {
             self.select
                 .select_assets
                 .install_preview(SelectChartPreview::new(system_audio.engine()));
         }
         self.audio.system_audio = Some(system_audio);
+        if self.audio.system_sound.is_none() && self.audio.pending_system_sound.is_none() {
+            self.start_system_sound_load();
+        }
+    }
+
+    pub(super) fn start_system_sound_load(&mut self) {
+        if self.audio.system_audio.is_none() {
+            return;
+        }
+        let selection = system_sound_selection_from_catalog(&self.audio.system_sound_catalog);
+        let normalize_bgm_volume = self.boot.profile_config.audio_mix.normalize_system_bgm_volume;
+        let cache_dir = self.boot.app_paths.cache_dir.clone();
+        self.audio.system_sound_generation = self.audio.system_sound_generation.wrapping_add(1);
+        let generation = self.audio.system_sound_generation;
+        let (tx, rx) = mpsc::channel();
+        let event_proxy = self.event_proxy.clone();
+        let spawn = thread::Builder::new().name("system-sound-load".to_string()).spawn(move || {
+            let prepared = crate::system_sound_manager::SystemSoundManager::prepare(
+                &selection,
+                normalize_bgm_volume,
+                Some(&cache_dir),
+            );
+            let _ = tx.send(SystemSoundLoadWorkerResult { generation, prepared });
+            let _ = event_proxy.send_event(AppUserEvent::SystemSoundReady { generation });
+        });
+        match spawn {
+            Ok(_) => {
+                self.audio.pending_system_sound = Some(PendingSystemSoundLoad {
+                    generation,
+                    started_at: Instant::now(),
+                    finished: rx,
+                });
+                tracing::info!(generation, normalize_bgm_volume, "started system sound worker");
+            }
+            Err(error) => {
+                tracing::warn!(%error, generation, "failed to start system sound worker");
+            }
+        }
+    }
+
+    pub(super) fn poll_system_sound_load(&mut self) {
+        let Some(pending) = self.audio.pending_system_sound.take() else {
+            return;
+        };
+        let result = match pending.finished.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => {
+                self.audio.pending_system_sound = Some(pending);
+                return;
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                tracing::warn!(generation = pending.generation, "system sound worker disconnected");
+                if self.first_frame_startup_completed && self.deferred_boot.is_some() {
+                    self.start_deferred_boot();
+                    self.sync_select_maintenance_gate();
+                }
+                return;
+            }
+        };
+        if result.generation != self.audio.system_sound_generation {
+            tracing::info!(
+                generation = result.generation,
+                current_generation = self.audio.system_sound_generation,
+                "ignored stale system sound worker result"
+            );
+            return;
+        }
+        let normalize_bgm_volume = self.boot.profile_config.audio_mix.normalize_system_bgm_volume;
+        if normalize_bgm_volume && !result.prepared.normalization_analysis_enabled {
+            tracing::info!(
+                generation = result.generation,
+                "restarting system sound worker after normalization was enabled"
+            );
+            self.start_system_sound_load();
+            return;
+        }
+        let stats = result.prepared.stats;
+        let Some(system_audio) = self.audio.system_audio.as_ref() else {
+            return;
+        };
+        if let Some(manager) = &self.audio.system_sound {
+            manager.stop_all_bgm();
+        }
+        self.audio.system_sound =
+            Some(crate::system_sound_manager::SystemSoundManager::from_prepared(
+                system_audio.engine(),
+                result.prepared,
+                normalize_bgm_volume,
+            ));
+        self.sync_realtime_profile_settings();
+        if matches!(self.view_state(), AppViewState::Select)
+            && should_play_select_bgm_on_enter(self.select.select_assets.preview_playing())
+        {
+            self.play_system_sound(crate::system_sound::SoundType::Select);
+        }
+        tracing::info!(
+            generation = result.generation,
+            startup_to_system_sound_ready_ms = self.smoke.startup_started_at.elapsed().as_millis(),
+            worker_elapsed_ms = pending.started_at.elapsed().as_millis(),
+            decoded_count = stats.decoded_count,
+            cache_hit_count = stats.cache_hit_count,
+            analysis_count = stats.analysis_count,
+            decode_ms = stats.decode_ms,
+            analysis_ms = stats.analysis_ms,
+            prepare_total_ms = stats.total_ms,
+            normalize_bgm_volume,
+            "system sounds ready"
+        );
+        if self.first_frame_startup_completed && self.deferred_boot.is_some() {
+            self.start_deferred_boot();
+            self.sync_select_maintenance_gate();
+        }
+    }
+
+    pub(super) fn system_sound_load_blocks_deferred_boot(&self) -> bool {
+        self.audio.system_audio.is_some() && self.audio.pending_system_sound.is_some()
     }
 
     pub(super) fn reopen_audio_output(&mut self) -> bool {

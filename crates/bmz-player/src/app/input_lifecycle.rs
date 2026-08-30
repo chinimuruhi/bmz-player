@@ -190,7 +190,10 @@ impl WinitApp {
             return;
         }
         if self.active_play_uses_playback_rate_keys()
-            && is_autoplay_replay_playback_rate_key(physical_key)
+            && is_unassigned_autoplay_replay_playback_rate_key(
+                physical_key,
+                self.play.play_option_input.as_ref(),
+            )
         {
             self.input.discard_raw_keyboard_transition(physical_key, state);
             return;
@@ -210,32 +213,118 @@ impl WinitApp {
         }
 
         let video = &self.boot.app_config.video;
-        let attributes =
-            window_attributes_from_config(video).with_fullscreen(fullscreen_from_config(
-                video,
-                select_monitor(
-                    &video.monitor_name,
-                    event_loop.available_monitors(),
-                    event_loop.primary_monitor(),
-                ),
-            ));
+        let requested_window_mode = video.mode.clone();
+        let monitor = select_monitor(
+            &video.monitor_name,
+            event_loop.available_monitors(),
+            event_loop.primary_monitor(),
+        );
+        let fullscreen = fullscreen_from_config(video, monitor.clone());
+        let mut effective_mode = effective_window_mode(&fullscreen);
+        let attributes = window_attributes_from_config(video).with_fullscreen(fullscreen);
         match event_loop.create_window(attributes) {
             Ok(window) => {
                 let window = Arc::new(window);
                 window.set_visible(true);
-                let size = surface_size_for_window(&window);
+                let mut size = surface_size_for_window(&window);
                 // サーフェス生成前に present mode とバックエンド設定を反映させておく。
-                self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
-                self.renderer
-                    .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video));
+                if let Err(error) =
+                    self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video))
+                {
+                    tracing::warn!(%error, "failed to prepare renderer present mode");
+                }
+                if let Err(error) = self
+                    .renderer
+                    .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video))
+                {
+                    tracing::warn!(%error, "failed to prepare renderer frame latency mode");
+                }
                 let backend = config_renderer_backend(self.boot.app_config.video.renderer.clone());
                 self.renderer.set_backend(backend);
-                if let Err(error) = self.renderer.attach_surface(Arc::clone(&window), size) {
-                    tracing::error!(%error, "failed to initialize renderer surface");
-                    event_loop.exit();
-                    return;
+                let mut fallback_attempted = false;
+                loop {
+                    match self.renderer.attach_surface(Arc::clone(&window), size) {
+                        Ok(()) => {
+                            if fallback_attempted {
+                                tracing::info!(
+                                    requested_window_mode = ?requested_window_mode,
+                                    effective_window_mode = ?effective_mode,
+                                    requested_renderer_backend = ?backend,
+                                    surface_width = size.width,
+                                    surface_height = size.height,
+                                    "borderless fullscreen renderer surface fallback succeeded"
+                                );
+                            }
+                            break;
+                        }
+                        Err(error) => {
+                            if let Some(fallback_mode) = surface_attach_fallback_mode(
+                                &requested_window_mode,
+                                &effective_mode,
+                                fallback_attempted,
+                                cfg!(target_os = "windows"),
+                            ) {
+                                tracing::warn!(
+                                    requested_window_mode = ?requested_window_mode,
+                                    effective_window_mode = ?effective_mode,
+                                    fallback_window_mode = ?fallback_mode,
+                                    requested_renderer_backend = ?backend,
+                                    configure_error = %format_error_chain(&error),
+                                    "exclusive fullscreen renderer initialization failed; falling back to borderless fullscreen"
+                                );
+                                // `attach_surface` commits a WgpuRenderer only on success, so all
+                                // failed candidate surfaces/devices are gone before this mode switch.
+                                self.renderer.detach_surface();
+                                window
+                                    .set_fullscreen(Some(Fullscreen::Borderless(monitor.clone())));
+                                effective_mode = fallback_mode;
+                                fallback_attempted = true;
+                                size = surface_size_for_window(&window);
+                                tracing::info!(
+                                    requested_window_mode = ?requested_window_mode,
+                                    effective_window_mode = ?effective_mode,
+                                    requested_renderer_backend = ?backend,
+                                    surface_width = size.width,
+                                    surface_height = size.height,
+                                    "retrying renderer surface initialization after fullscreen fallback"
+                                );
+                                continue;
+                            }
+
+                            if fallback_attempted {
+                                tracing::error!(
+                                    requested_window_mode = ?requested_window_mode,
+                                    effective_window_mode = ?effective_mode,
+                                    requested_renderer_backend = ?backend,
+                                    surface_width = size.width,
+                                    surface_height = size.height,
+                                    configure_error = %format_error_chain(&error),
+                                    "borderless fullscreen renderer surface fallback failed"
+                                );
+                            } else {
+                                tracing::error!(
+                                    requested_window_mode = ?requested_window_mode,
+                                    effective_window_mode = ?effective_mode,
+                                    requested_renderer_backend = ?backend,
+                                    surface_width = size.width,
+                                    surface_height = size.height,
+                                    configure_error = %format_error_chain(&error),
+                                    "failed to initialize renderer surface"
+                                );
+                            }
+                            event_loop.exit();
+                            return;
+                        }
+                    }
                 }
+                self.ui.applied_window_mode = effective_mode.clone();
+                self.ui.exclusive_fullscreen_fallback_active = requested_window_mode
+                    == WindowMode::ExclusiveFullscreen
+                    && effective_mode == WindowMode::BorderlessFullscreen;
                 tracing::info!(
+                    requested_window_mode = ?requested_window_mode,
+                    effective_window_mode = ?effective_mode,
+                    requested_renderer_backend = ?backend,
                     width = size.width,
                     height = size.height,
                     "window and renderer surface ready"

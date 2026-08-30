@@ -84,10 +84,12 @@ impl<'a> ScrollContext<'a> {
 pub(super) fn visible_lane_notes(
     notes: &[NoteEvent],
     lower_time: Option<TimeUs>,
+    lower_index: Option<usize>,
     upper_tick: Option<f64>,
 ) -> &[NoteEvent] {
-    let start =
+    let time_start =
         lower_time.map_or(0, |lower_time| notes.partition_point(|note| note.time < lower_time));
+    let start = lower_index.map_or(time_start, |lower_index| time_start.min(lower_index));
     let end = upper_tick.map_or(notes.len(), |upper_tick| {
         notes.partition_point(|note| (note.tick.0 as f64) <= upper_tick)
     });

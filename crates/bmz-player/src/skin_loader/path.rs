@@ -418,6 +418,16 @@ pub(super) fn required_skin_source_ids(document: &SkinDocument) -> HashSet<&str>
             }
         }
     }
+    for pmchara in &document.pmchara {
+        if !destination_ids.contains(pmchara.id.as_str()) {
+            continue;
+        }
+        if let Some(runtime) = &pmchara.runtime {
+            for layer in &runtime.motions {
+                required.insert(layer.source_id.as_str());
+            }
+        }
+    }
 
     required
 }

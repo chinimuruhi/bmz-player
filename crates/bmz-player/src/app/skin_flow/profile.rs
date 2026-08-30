@@ -3,9 +3,12 @@ use super::*;
 impl WinitApp {
     pub(super) fn sync_realtime_profile_settings(&mut self) {
         self.sync_active_play_realtime_profile_settings();
+        let mut needs_system_sound_analysis = false;
         if let Some(manager) = &self.audio.system_sound {
             let mix = self.boot.profile_config.audio_mix.clone();
             manager.set_bgm_normalization_enabled(mix.normalize_system_bgm_volume);
+            needs_system_sound_analysis =
+                mix.normalize_system_bgm_volume && !manager.normalization_analysis_enabled();
             let preview_factor = select_preview_fade_factor(
                 self.select.select_assets.preview_fade(),
                 Instant::now(),
@@ -19,10 +22,17 @@ impl WinitApp {
                 }
             });
         }
+        if needs_system_sound_analysis && self.audio.pending_system_sound.is_none() {
+            self.start_system_sound_load();
+        }
         self.apply_select_preview_audio_mix();
     }
 
-    pub(super) fn sync_active_play_lane_settings_from_profile(&mut self, before: &LaneViewConfig) {
+    pub(super) fn sync_active_play_lane_settings_from_profile(
+        &mut self,
+        before: &LaneViewConfig,
+        before_lane_effect: LaneEffectConfig,
+    ) {
         let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
         let profile_lane = self.boot.profile_config.lane.clone();
         let Some(active_play) = &mut self.play.active_play else {
@@ -31,7 +41,9 @@ impl WinitApp {
         if apply_profile_lane_settings_to_session(
             &mut active_play.running.session,
             before,
+            before_lane_effect,
             &profile_lane,
+            self.boot.profile_config.play.lane_effect,
             speed_locked,
             active_play.running.practice_mode,
         ) {

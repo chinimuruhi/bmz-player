@@ -107,13 +107,39 @@ fn exclusive_video_mode_keeps_configured_resolution_before_refresh_rate() {
 }
 
 #[test]
-fn non_macos_exclusive_video_mode_preserves_largest_resolution_policy() {
+fn linux_legacy_exclusive_video_mode_preserves_largest_resolution_policy() {
     let modes = [video_mode(3840, 2160, 160), video_mode(1920, 1080, 240)];
-    let selected =
-        select_platform_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240, false)
-            .unwrap();
+    let selected = select_platform_exclusive_video_mode(
+        &modes,
+        PhysicalSize::new(1920, 1080),
+        240,
+        ExclusiveVideoModePolicy::LegacyLargestResolution,
+    )
+    .unwrap();
     assert_eq!(selected.index, 0);
     assert_eq!(selected.resolution_reason, VideoModeResolutionReason::LegacyLargest);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::LegacyHighestAtLargestResolution);
+}
+
+#[test]
+fn windows_policy_selects_configured_resolution_and_target_refresh_rate() {
+    let modes = [
+        video_mode(1920, 1080, 144),
+        video_mode(1920, 1080, 120),
+        video_mode(1280, 720, 144),
+        video_mode(1280, 720, 120),
+        video_mode(1280, 720, 60),
+    ];
+    let selected = select_platform_exclusive_video_mode(
+        &modes,
+        PhysicalSize::new(1280, 720),
+        120,
+        ExclusiveVideoModePolicy::ConfiguredResolution,
+    )
+    .unwrap();
+    assert_eq!(selected.index, 3);
+    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::Configured);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::ClosestAtOrAbove);
 }
 
 #[test]
@@ -138,10 +164,19 @@ fn exclusive_video_mode_selects_refresh_rate_for_target() {
 
 #[test]
 fn exclusive_video_mode_prefers_rate_at_or_above_target() {
-    let modes = [video_mode(1920, 1080, 144), video_mode(1920, 1080, 240)];
-    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 160).unwrap();
+    let modes = [video_mode(1920, 1080, 144), video_mode(1920, 1080, 120)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 100).unwrap();
     assert_eq!(selected.index, 1);
     assert_eq!(selected.refresh_reason, VideoModeRefreshReason::ClosestAtOrAbove);
+}
+
+#[test]
+fn exclusive_video_mode_uses_highest_rate_when_all_candidates_are_below_target() {
+    let modes =
+        [video_mode(1920, 1080, 60), video_mode(1920, 1080, 120), video_mode(1920, 1080, 144)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 165).unwrap();
+    assert_eq!(selected.index, 2);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::HighestBelow);
 }
 
 #[test]
@@ -158,6 +193,50 @@ fn exclusive_video_mode_uses_explicit_closest_resolution_fallback() {
     let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240).unwrap();
     assert_eq!(selected.index, 0);
     assert_eq!(selected.resolution_reason, VideoModeResolutionReason::ClosestSupported);
+}
+
+#[test]
+fn surface_attach_fallback_retries_only_first_exclusive_failure_on_windows() {
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::ExclusiveFullscreen,
+            &WindowMode::ExclusiveFullscreen,
+            false,
+            true,
+        ),
+        Some(WindowMode::BorderlessFullscreen)
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(&WindowMode::Windowed, &WindowMode::Windowed, false, true,),
+        None
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::BorderlessFullscreen,
+            &WindowMode::BorderlessFullscreen,
+            false,
+            true,
+        ),
+        None
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::ExclusiveFullscreen,
+            &WindowMode::BorderlessFullscreen,
+            true,
+            true,
+        ),
+        None
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::ExclusiveFullscreen,
+            &WindowMode::ExclusiveFullscreen,
+            false,
+            false,
+        ),
+        None
+    );
 }
 
 #[test]

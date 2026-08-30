@@ -544,6 +544,7 @@ impl WinitApp {
             return self.apply_pending_play_lane_action(action);
         }
         let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
+        let lane_target = &mut self.play.play_lane_target;
         let Some(active_play) = &mut self.play.active_play else {
             return false;
         };
@@ -553,6 +554,7 @@ impl WinitApp {
         );
         if !apply_play_lane_action_to_session(
             &mut active_play.running.session,
+            lane_target,
             action,
             speed_locked,
             hispeed_step,
@@ -566,6 +568,8 @@ impl WinitApp {
             target_green_number = active_play.running.session.target_green_number,
             lane_cover = active_play.running.session.lane_cover,
             lift = active_play.running.session.lift,
+            hidden = active_play.running.session.hidden_cover,
+            lane_target = ?lane_target,
             lane_cover_visible = active_play.running.session.lane_cover_visible,
             "adjusted play lane settings"
         );
@@ -710,8 +714,10 @@ impl WinitApp {
     }
 
     pub(super) fn sync_autoplay_replay_playback_rate(&mut self) {
-        let rate =
-            autoplay_replay_playback_rate_from_pressed_inputs(&self.input.pressed_play_inputs);
+        let rate = autoplay_replay_playback_rate_from_pressed_inputs(
+            &self.input.pressed_play_inputs,
+            self.play.play_option_input.as_ref(),
+        );
         let Some(active_play) = &mut self.play.active_play else {
             return;
         };
@@ -814,7 +820,18 @@ impl WinitApp {
     /// Start / E1 の2回連続押しでレーンカバー (SUDDEN+) 表示を切り替える。
     /// キーボード・ゲームパッド共通。トグルした場合は true。
     pub(super) fn handle_play_start_double_press(&mut self) -> bool {
-        if self.play.active_play.is_none() && self.play.pending_play_start.is_none() {
+        let sudden_enabled = self
+            .play
+            .active_play
+            .as_ref()
+            .is_some_and(|active| active.running.session.lanecover_enabled)
+            || self
+                .play
+                .pending_play_start
+                .as_ref()
+                .is_some_and(|pending| pending.lane.sudden_enabled);
+        if !sudden_enabled {
+            self.play.last_play_start_press_at = None;
             return false;
         }
         let now = Instant::now();

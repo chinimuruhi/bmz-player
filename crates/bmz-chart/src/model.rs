@@ -38,6 +38,8 @@ pub struct PlayableChart {
 
 #[derive(Debug, Clone)]
 pub struct ChartMetadata {
+    /// File syntax used to import the chart. Runtime transforms preserve this provenance.
+    pub source_format: ChartSourceFormat,
     pub title: String,
     pub subtitle: String,
     pub artist: String,
@@ -74,6 +76,26 @@ pub struct ChartMetadata {
     pub long_note_mode_defined: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChartSourceFormat {
+    #[default]
+    Unknown,
+    Bms,
+    Bmson,
+    Pms,
+}
+
+impl ChartSourceFormat {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "",
+            Self::Bms => "bms",
+            Self::Bmson => "bmson",
+            Self::Pms => "pms",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JudgeRankSpec {
     pub value: i32,
@@ -104,6 +126,7 @@ pub enum LongNoteMode {
 impl Default for ChartMetadata {
     fn default() -> Self {
         Self {
+            source_format: ChartSourceFormat::Unknown,
             title: String::new(),
             subtitle: String::new(),
             artist: String::new(),

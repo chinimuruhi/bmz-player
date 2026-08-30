@@ -337,7 +337,9 @@ impl IrLoginUiState {
         self.message = None;
         tokio::spawn(async move {
             let outcome = async {
-                let tokens = if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
+                let tokens = if crate::ir::bms_ir::is_bms_ir_provider(&provider) {
+                    crate::ir::bms_ir::BmsIrClient::new(&base_url)?.login(&email, &password).await?
+                } else if crate::ir::rian_ir::is_rian_ir_provider(&provider) {
                     crate::ir::rian_ir::RianIrClient::new(&base_url)?
                         .login(&email, &password)
                         .await?

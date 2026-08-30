@@ -193,8 +193,17 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_ime_event(&ime);
             }
             WindowEvent::Resized(size) => {
-                self.renderer
-                    .resize_surface(SurfaceSize { width: size.width, height: size.height });
+                if let Err(error) = self
+                    .renderer
+                    .resize_surface(SurfaceSize { width: size.width, height: size.height })
+                {
+                    tracing::error!(
+                        width = size.width,
+                        height = size.height,
+                        error = %format_error_chain(&error),
+                        "failed to reconfigure renderer surface after resize"
+                    );
+                }
                 // 検索モード中はリサイズに合わせて IME 候補ウィンドウ位置を再計算する。
                 self.update_search_ime_cursor_area();
             }
@@ -284,6 +293,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.advance_result_ir_analog_scroll();
                 let input_us = instant_elapsed_us_u64(input_start);
                 let background_start = Instant::now();
+                // 通常はworker完了eventで反映するが、worker panicなどでeventが届かない
+                // 場合もdirect bootを待たせ続けないよう、frame側でもchannelをpollする。
+                self.poll_system_sound_load();
                 self.poll_chart_bga_texture_load();
                 self.poll_play_preload();
                 self.refresh_play_target_from_source();
@@ -311,7 +323,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let post_scene_start = Instant::now();
                 if !self.first_frame_startup_completed {
                     self.first_frame_startup_completed = true;
-                    self.start_deferred_boot();
+                    if !self.system_sound_load_blocks_deferred_boot() {
+                        self.start_deferred_boot();
+                    }
                     self.sync_select_maintenance_gate();
                     if self.current_scene_kind() == AppSceneKind::Result {
                         self.ensure_result_skin_ready(self.current_result_skin_slot());
@@ -415,6 +429,15 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     drain_us,
                     "skin upload ready event timings"
                 );
+            }
+            AppUserEvent::SystemSoundReady { generation } => {
+                self.poll_system_sound_load();
+                self.request_redraw();
+                tracing::debug!(generation, "handled system sound ready event");
+            }
+            AppUserEvent::CourseLinkRepair => {
+                self.poll_pending_course_link_repair();
+                self.request_redraw();
             }
             AppUserEvent::TableFetch => {
                 self.poll_select_maintenance();

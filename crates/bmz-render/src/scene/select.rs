@@ -32,6 +32,10 @@ pub struct SelectSnapshot {
     pub selected_title: String,
     /// Current profile hispeed shown to select skins (NUMBER_HISPEED=310/311).
     pub hispeed: f32,
+    pub hispeed_mode_index: i32,
+    pub base_hispeed_index: i32,
+    pub normal_hispeed_level: u8,
+    pub hispeed_config_index: i32,
     /// Effective target green number for the selected play mode. `None` when a
     /// mixed/unresolved course has no single mode whose value can be shown.
     pub note_display_duration_ms: Option<i32>,
@@ -187,6 +191,10 @@ impl Default for SelectSnapshot {
             selected_replay_slot: None,
             selected_title: String::new(),
             hispeed: 0.0,
+            hispeed_mode_index: 0,
+            base_hispeed_index: 0,
+            normal_hispeed_level: 18,
+            hispeed_config_index: 4,
             note_display_duration_ms: None,
             rows: Vec::new(),
             arrange: String::new(),

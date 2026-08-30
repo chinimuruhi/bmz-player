@@ -16,7 +16,8 @@ pub enum ReplayCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrCommand {
-    /// `ir login --id X [--password Y] [--base-url URL] [--provider NAME]`
+    /// `ir login --id X [--password Y] [--base-url URL] [--provider NAME]`.
+    /// For BMS-IR, `--id` is the numeric player ID and `--password` is the game token.
     Login { email: String, password: Option<String>, base_url: Option<String>, provider: String },
     /// `ir logout [--provider NAME]`
     Logout { provider: String },

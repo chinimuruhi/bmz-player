@@ -68,6 +68,19 @@ fn play_defaults_uses_default_misslayer_duration_for_old_profiles() {
     assert_eq!(play.misslayer_duration_ms, 500);
     assert_eq!(play.play_exit_hold_ms, 1000);
     assert_eq!(play.bottom_shiftable_gauge, BottomShiftableGaugeConfig::AssistEasy);
+    assert!(!play.note_retention);
+}
+
+#[test]
+fn note_retention_defaults_off_and_roundtrips() {
+    let mut play = ProfileConfig::new_default("default", "Default", 0).play;
+    assert!(!play.note_retention);
+
+    play.note_retention = true;
+    let encoded = toml::to_string(&play).unwrap();
+    let decoded: PlayDefaultsConfig = toml::from_str(&encoded).unwrap();
+
+    assert!(decoded.note_retention);
 }
 
 #[test]
@@ -135,7 +148,7 @@ fn assist_config_migrates_legacy_value_and_roundtrips_all_modifiers() {
 }
 
 #[test]
-fn lane_view_uses_mode_specific_hispeed_step_and_auto_adjust_defaults_for_old_profiles() {
+fn lane_view_migrates_old_hispeed_fields_to_classic_floating_defaults() {
     let lane: LaneViewConfig = toml::from_str(
         r#"
             hispeed = 2.0
@@ -148,14 +161,23 @@ fn lane_view_uses_mode_specific_hispeed_step_and_auto_adjust_defaults_for_old_pr
     )
     .unwrap();
 
-    assert_eq!(lane.hispeed_step_nhs, 0.25);
-    assert_eq!(lane.hispeed_step_fhs, 0.50);
+    assert_eq!(lane.hispeed, 2.0);
+    assert_eq!(lane.base_hispeed, BaseHispeedConfig::Classic);
+    assert_eq!(lane.floating_policy, FloatingPolicyConfig::Toggle);
+    assert_eq!(lane.normal_hispeed_level, 18);
+    assert_eq!(lane.classic_hispeed_step, 0.25);
+    assert_eq!(lane.floating_hispeed_step, 0.50);
     assert!(lane.lift_enabled);
     assert!(lane.hispeed_auto_adjust);
 
     let serialized = toml::to_string(&lane).unwrap();
-    assert!(serialized.contains("hispeed_step_nhs = 0.25"));
-    assert!(serialized.contains("hispeed_step_fhs = 0.5"));
+    assert!(serialized.contains("classic_hispeed = 2.0"));
+    assert!(serialized.contains("base_hispeed = \"Classic\""));
+    assert!(serialized.contains("floating_policy = \"Toggle\""));
+    assert!(serialized.contains("normal_hispeed_level = 18"));
+    assert!(serialized.contains("classic_hispeed_step = 0.25"));
+    assert!(serialized.contains("floating_hispeed_step = 0.5"));
+    assert!(serialized.contains("floating_target_green = 300"));
     assert!(serialized.contains("lift_enabled = true"));
     assert!(serialized.contains("hispeed_auto_adjust = true"));
 }
@@ -388,6 +410,8 @@ fn default_profile_uses_normalized_quieter_audio_and_prefetches_ir_rankings() {
     assert!(profile.ir.prefetch_rival_ranking_on_score_submit);
     assert_eq!(profile.ir.providers[0], IrProviderConfig::bmz_ir());
     assert_eq!(profile.ir.providers[1], IrProviderConfig::rian_ir());
+    assert_eq!(profile.ir.providers[2], IrProviderConfig::bms_ir());
+    assert!(!profile.ir.providers[2].enabled);
 }
 
 #[test]
@@ -491,18 +515,27 @@ fn ir_provider_normalization_moves_builtins_first_and_preserves_accounts_and_cus
     rian.account_id = "bob".to_string();
     rian.last_success_at = Some(20);
 
+    let mut bms_ir = IrProviderConfig::bms_ir();
+    bms_ir.provider = "BMSIR".to_string();
+    bms_ir.base_url = "https://www.bms-ir.org/ignored/path".to_string();
+    bms_ir.provider_key = "legacy-bms-key".to_string();
+    bms_ir.account_id = "1234".to_string();
+    bms_ir.account_display_name = "1234".to_string();
+    bms_ir.enabled = true;
+    bms_ir.role = IrProviderRoleConfig::Primary;
+
     let mut custom = IrProviderConfig::custom();
     custom.base_url = "http://localhost:3000/".to_string();
     custom.send_policy = IrSendPolicyConfig::CompleteSong;
 
     let duplicate = IrProviderConfig::bmz_ir();
     let mut ir = IrConfig {
-        providers: vec![custom.clone(), duplicate.clone(), rian, bmz],
+        providers: vec![custom.clone(), duplicate.clone(), bms_ir, rian, bmz],
         ..IrConfig::default()
     };
 
     assert!(ir.normalize_builtin_providers());
-    assert_eq!(ir.providers.len(), 4);
+    assert_eq!(ir.providers.len(), 5);
     assert_eq!(ir.providers[0].provider, "bmz");
     assert_eq!(ir.providers[0].base_url, "https://bmz-player.hyrorre.workers.dev/");
     assert_eq!(ir.providers[0].provider_key, "bmz-account");
@@ -513,8 +546,15 @@ fn ir_provider_normalization_moves_builtins_first_and_preserves_accounts_and_cus
     assert_eq!(ir.providers[1].provider_key, "rian-account");
     assert_eq!(ir.providers[1].account_id, "bob");
     assert_eq!(ir.providers[1].last_success_at, Some(20));
-    assert_eq!(ir.providers[2], custom);
-    assert_eq!(ir.providers[3], duplicate);
+    assert_eq!(ir.providers[2].provider, "bms-ir");
+    assert_eq!(ir.providers[2].base_url, "https://www.bms-ir.org");
+    assert_eq!(ir.providers[2].provider_key, "legacy-bms-key");
+    assert_eq!(ir.providers[2].account_id, "1234");
+    assert_eq!(ir.providers[2].account_display_name, "1234");
+    assert!(ir.providers[2].enabled);
+    assert_eq!(ir.providers[2].role, IrProviderRoleConfig::Primary);
+    assert_eq!(ir.providers[3], custom);
+    assert_eq!(ir.providers[4], duplicate);
     assert!(!ir.normalize_builtin_providers());
 }
 
@@ -526,7 +566,15 @@ fn ir_provider_normalization_adds_missing_builtins_before_custom_entries() {
     let mut ir = IrConfig { providers: vec![custom.clone()], ..IrConfig::default() };
 
     assert!(ir.normalize_builtin_providers());
-    assert_eq!(ir.providers, vec![IrProviderConfig::bmz_ir(), IrProviderConfig::rian_ir(), custom]);
+    assert_eq!(
+        ir.providers,
+        vec![
+            IrProviderConfig::bmz_ir(),
+            IrProviderConfig::rian_ir(),
+            IrProviderConfig::bms_ir(),
+            custom,
+        ]
+    );
 }
 
 #[test]

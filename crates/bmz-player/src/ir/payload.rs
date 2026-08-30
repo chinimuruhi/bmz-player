@@ -178,6 +178,7 @@ fn build_ir_chart_payload_with_ln_profile(
         chart.lane_notes.iter().flatten().filter(|note| note.kind == NoteKind::Mine).count() as u32;
 
     IrChartPayload {
+        source_format: chart.metadata.source_format.as_str().to_string(),
         sha256: hash_to_hex(&chart.identity.file_sha256),
         md5: Some(hash_to_hex(&chart.identity.file_md5)),
         length_ms: None,

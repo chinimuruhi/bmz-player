@@ -1,5 +1,16 @@
 use super::*;
 
+pub(super) struct SystemSoundLoadWorkerResult {
+    pub(super) generation: u64,
+    pub(super) prepared: crate::system_sound_manager::PreparedSystemSoundSet,
+}
+
+pub(super) struct PendingSystemSoundLoad {
+    pub(super) generation: u64,
+    pub(super) started_at: Instant,
+    pub(super) finished: Receiver<SystemSoundLoadWorkerResult>,
+}
+
 pub(super) struct PendingSongScan {
     pub(super) finished: Receiver<Result<ScanReport>>,
     pub(super) progress: Arc<AtomicU64>,

@@ -111,6 +111,62 @@ pub struct SkinBgaDef {
     pub id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SkinPmCharaDef {
+    #[serde(default, deserialize_with = "deserialize_skin_id")]
+    pub id: String,
+    #[serde(default, deserialize_with = "deserialize_skin_id")]
+    pub src: String,
+    #[serde(default = "default_pm_chara_color")]
+    pub color: i32,
+    #[serde(default, rename = "type")]
+    pub chara_type: i32,
+    #[serde(default = "default_pm_chara_side")]
+    pub side: i32,
+    /// BMZ が選択済み `.chp` を展開した描画用データ。
+    #[serde(skip)]
+    pub runtime: Option<SkinPmCharaRuntimeDef>,
+}
+
+fn default_pm_chara_color() -> i32 {
+    1
+}
+
+fn default_pm_chara_side() -> i32 {
+    1
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SkinPmCharaRuntimeDef {
+    pub canvas_width: i32,
+    pub canvas_height: i32,
+    pub motions: Vec<SkinPmCharaMotionLayerDef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkinPmCharaMotionLayerDef {
+    pub motion: i32,
+    pub source_id: String,
+    pub frame_ms: i32,
+    /// Number of one-shot frames before the looping suffix begins.
+    pub loop_start: usize,
+    pub frames: Vec<SkinPmCharaFrameDef>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SkinPmCharaFrameDef {
+    pub source_x: i32,
+    pub source_y: i32,
+    pub source_w: i32,
+    pub source_h: i32,
+    pub destination_x: i32,
+    pub destination_y: i32,
+    pub destination_w: i32,
+    pub destination_h: i32,
+    pub alpha: i32,
+    pub angle: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct SkinDestinationDef {
     #[serde(default, deserialize_with = "deserialize_skin_id")]

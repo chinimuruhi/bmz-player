@@ -90,11 +90,6 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         SettingsEntryId::Target => cycle_enum(delta, profile.play.target, cycle_target)
             .map(|next| profile.play.target = next)
             .is_some(),
-        SettingsEntryId::LaneEffect => {
-            cycle_enum(delta, profile.play.lane_effect, cycle_lane_effect)
-                .map(|next| profile.play.lane_effect = next)
-                .is_some()
-        }
         SettingsEntryId::Assist => cycle_enum(delta, profile.play.assist, cycle_assist)
             .map(|next| profile.play.assist = next)
             .is_some(),
@@ -219,6 +214,14 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         SettingsEntryId::MisslayerDurationMs => {
             adjust_u32(&mut profile.play.misslayer_duration_ms, delta, 0, 5000)
         }
+        SettingsEntryId::NoteRetention => {
+            if delta == 0 {
+                false
+            } else {
+                profile.play.note_retention = !profile.play.note_retention;
+                true
+            }
+        }
         SettingsEntryId::ShowLnTailCap => {
             if delta == 0 {
                 false
@@ -231,27 +234,37 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
             profile.play.guide_se = !profile.play.guide_se;
             true
         }
-        SettingsEntryId::Hispeed => {
-            let (step, default) = match profile.lane.hispeed_mode {
-                HispeedModeConfig::Normal => {
-                    (profile.lane.hispeed_step_nhs, default_hispeed_step_nhs())
-                }
-                HispeedModeConfig::Floating => {
-                    (profile.lane.hispeed_step_fhs, default_hispeed_step_fhs())
-                }
-            };
-            adjust_hispeed(&mut profile.lane.hispeed, delta, step, default)
-        }
+        SettingsEntryId::Hispeed => adjust_hispeed(
+            &mut profile.lane.hispeed,
+            delta,
+            profile.lane.classic_hispeed_step,
+            default_classic_hispeed_step(),
+        ),
         SettingsEntryId::HispeedMode => {
-            cycle_enum(delta, profile.lane.hispeed_mode, cycle_hispeed_mode)
-                .map(|next| profile.lane.hispeed_mode = next)
+            cycle_enum(delta, profile.lane.hispeed_config(), cycle_hispeed_mode)
+                .map(|next| profile.lane.set_hispeed_config(next))
                 .is_some()
         }
-        SettingsEntryId::HispeedStepNhs => {
-            adjust_hispeed_step(&mut profile.lane.hispeed_step_nhs, delta)
+        SettingsEntryId::NormalHispeedLevel => {
+            let before = profile.lane.normal_hispeed_level;
+            profile.lane.normal_hispeed_level = (i32::from(before) + delta).clamp(
+                i32::from(crate::config::play::NORMAL_HISPEED_LEVEL_MIN),
+                i32::from(crate::config::play::NORMAL_HISPEED_LEVEL_MAX),
+            ) as u8;
+            profile.lane.normal_hispeed_level != before
         }
-        SettingsEntryId::HispeedStepFhs => {
-            adjust_hispeed_step(&mut profile.lane.hispeed_step_fhs, delta)
+        SettingsEntryId::ClassicHispeedStep => {
+            adjust_hispeed_step(&mut profile.lane.classic_hispeed_step, delta)
+        }
+        SettingsEntryId::FloatingHispeedStep => {
+            adjust_hispeed_step(&mut profile.lane.floating_hispeed_step, delta)
+        }
+        SettingsEntryId::SuddenEnabled => {
+            profile.play.lane_effect = profile
+                .play
+                .lane_effect
+                .with_sudden_enabled(!profile.play.lane_effect.sudden_enabled());
+            true
         }
         SettingsEntryId::Sudden => adjust_u32(
             &mut profile.lane.sudden,
@@ -271,6 +284,13 @@ pub fn adjust_settings_value(profile: &mut ProfileConfig, id: SettingsEntryId, d
         ),
         SettingsEntryId::HispeedAutoAdjust => {
             profile.lane.hispeed_auto_adjust = !profile.lane.hispeed_auto_adjust;
+            true
+        }
+        SettingsEntryId::HiddenEnabled => {
+            profile.play.lane_effect = profile
+                .play
+                .lane_effect
+                .with_hidden_enabled(!profile.play.lane_effect.hidden_enabled());
             true
         }
         SettingsEntryId::Hidden => adjust_u32(&mut profile.lane.hidden, delta, 0, 1000),

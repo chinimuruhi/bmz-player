@@ -7,7 +7,9 @@ pub fn configured_provider_key(entry: &IrProviderConfig) -> Option<&str> {
 
 pub fn configured_provider_display_name(entry: &IrProviderConfig) -> Option<&str> {
     let provider_key = configured_provider_key(entry)?;
-    if crate::ir::rian_ir::is_rian_ir_config(entry) {
+    if crate::ir::bms_ir::is_bms_ir_config(entry) {
+        Some("BMS-IR")
+    } else if crate::ir::rian_ir::is_rian_ir_config(entry) {
         Some("rianIR")
     } else if matches!(entry.provider.trim().to_ascii_lowercase().as_str(), "bmz" | "bmz-official")
         || matches!(provider_key, "bmz" | "bmz-official")
@@ -41,4 +43,24 @@ pub fn primary_provider_config(ir_config: &IrConfig) -> Option<&IrProviderConfig
             configured_provider_key(entry).is_some_and(|key| key == ir_config.primary_provider)
         })
         .or_else(|| ir_config.providers.iter().find(|entry| usable(entry)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bms_ir_can_be_selected_as_primary_provider() {
+        let mut provider = IrProviderConfig::bms_ir();
+        provider.provider_key = crate::ir::bms_ir::BMS_IR_PROVIDER.to_string();
+        provider.enabled = true;
+        let config = IrConfig {
+            primary_provider: crate::ir::bms_ir::BMS_IR_PROVIDER.to_string(),
+            providers: vec![provider],
+            ..IrConfig::default()
+        };
+
+        let selected = primary_provider_config(&config).expect("BMS-IR primary provider");
+        assert!(crate::ir::bms_ir::is_bms_ir_config(selected));
+    }
 }

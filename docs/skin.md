@@ -36,6 +36,14 @@ skin catalogのJSON候補はinclude・条件・数値正規化後に数値の`ty
 照合し、`bar_text` / `folderbar_text`形式もbar textへ割り当てる。Lua skinのslider / graph
 で使う`isRefNum`はJSONのbooleanに加えて互換表現の整数`0` / `1`も受理する。
 
+### Lua Module Path
+
+skin library root 配下の Lua skin へ公開する初期 `package.path` は、過去の beatoraja と同じ
+`?.lua;skin/<skin entry directory>/?.lua` 形式にする。sandbox 内の実ファイル解決はこの論理
+パスを library root に対応付け、`require` / `dofile` / `loadfile` が root 外へ出ないことを
+別途検証する。library root を持たない低レベル API は、従来どおり entry directory の絶対
+パスを使う fallback を維持する。
+
 ## Skin Type
 
 beatoraja 互換の主な play skin type:
@@ -106,6 +114,23 @@ beatoraja skin の `source.path` は PNG / BMP / JPEG / GIF / TGA に加え、li
 `PixmapIO` の CIM を読み込める。CIM は zlib stream 内の width / height /
 Gdx2DPixmap format と pixel buffer を RGBA8 へ展開する。MILLIONDOLLAR RESULT の
 主要 atlas は配布時点から `.cim` のため、PNG fallback へ書き換えずそのまま扱う。
+
+## Play Gauge Source Layout
+
+`gauge.nodes` が 4 / 8 / 12 枚だけ定義された skin は、beatoraja の
+`JsonSkinObjectLoader` と同じ index map で 36 段階へ展開する。これにより gauge type ごとの
+通常色・警告色・点滅色を取り違えずに表示する。36 枚定義は従来どおり直接対応させる。
+
+## PMchara
+
+JSON / Lua play skin の `pmchara` を decode し、source が指すディレクトリまたは `.chp` を
+Shift_JIS で読み込む。type `0..15`、`Pattern` / `Texture` / `Layer`、frame 時間、loop 開始、
+source / destination 矩形、alpha、angle を通常の skin source と render item へ展開する。
+type 0 は通常・判定・曲終了状態からモーションを選び、type 1..15 は beatoraja の固定
+モーション対応を使う。filepath のユーザ選択と既定値は通常画像と同じ優先順位で解決する。
+
+現状は PMchara の `--` 座標補間と、画像右下色を透過色にする chroma-key 処理には未対応。
+PNG 等が持つ alpha は通常どおり反映する。
 
 ## BMZ Default JSON Skin
 
@@ -469,11 +494,14 @@ select snapshotへ予定配置を設定する。
 
 | ref | kind | meaning |
 | ---: | --- | --- |
-| 1900 | number / event_index / text | HS mode。number / event_index は `0=NHS`, `1=FHS`、text は `NHS` / `FHS` |
-| 1901 | number / option | FHS active flag。`0=NHS`, `1=FHS` |
-| 1902 | number | target green number。FHS 時は固定 target green、NHS 時は現在 green number |
+| 1900 | number / event_index / text | current HS mode。number / event_indexは `0=base`, `1=Floating`、textは `CHS` / `NHS` / `FHS` |
+| 1901 | number / option | Floating active flag。`0=OFF`, `1=ON` |
+| 1902 | number | target green number。Floating時は固定target、それ以外は現在green number |
+| 1916 | number / event_index / text | base HS。`0=Classic`, `1=Normal`、textは `CHS` / `NHS` |
+| 1917 | number / event_index | Normal HS level (`1..=20`) |
+| 1918 | number / event_index / text | HS設定。`0=NORMAL`, `1=CLASSIC`, `2=FLOATING`, `3=NORMAL+FLOATING`, `4=CLASSIC+FLOATING` |
 
-`op: [1901]` または `draw: "number(1901)==1"` で FHS 時だけ destination を表示できる。
+`op: [1901]` または `draw: "number(1901)==1"` でFloating時だけdestinationを表示できる。
 
 ### BMZ Key Mode Refs
 

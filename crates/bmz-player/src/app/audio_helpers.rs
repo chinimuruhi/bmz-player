@@ -266,20 +266,16 @@ pub(super) fn system_sound_catalog_from_boot(
     }
 }
 
-pub(super) fn system_sound_manager_from_catalog(
+pub(super) fn system_sound_selection_from_catalog(
     catalog: &crate::system_sound::SoundSetCatalog,
-    audio: &crate::audio::SystemAudio,
-    normalize_bgm_volume: bool,
-) -> crate::system_sound_manager::SystemSoundManager {
+) -> crate::system_sound::SoundSetSelection {
     let selection = catalog.select_random();
     tracing::info!(
         bgm_dir = ?selection.bgm_dir,
         se_dir = ?selection.se_dir,
         "selected system sound sets"
     );
-    let manager = crate::system_sound_manager::SystemSoundManager::new(audio.engine(), &selection);
-    manager.set_bgm_normalization_enabled(normalize_bgm_volume);
-    manager
+    selection
 }
 
 pub(super) fn system_sound_volume_from_mix(

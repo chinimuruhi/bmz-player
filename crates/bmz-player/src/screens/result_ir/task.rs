@@ -424,6 +424,29 @@ pub(super) async fn fetch_result_ranking(
                     .await
                     .map(|ranking| course_ranking_to_result_ir_ranking(&ranking));
             }
+            if crate::ir::bms_ir::is_bms_ir_provider(&query.provider) {
+                let credentials = ensure_fresh_credentials(
+                    &query.profile_root,
+                    &query.provider,
+                    &query.base_url,
+                    now_unix_seconds(),
+                )
+                .await?;
+                return crate::ir::bms_ir::BmsIrClient::new(&query.base_url)?
+                    .fetch_course_ranking(
+                        course_hash,
+                        &IrCourseRankingRequest {
+                            gauge: gauge.clone(),
+                            ln_policy: ln_policy.clone(),
+                            limit: 20,
+                        },
+                        *rule_mode,
+                        &credentials.account_id,
+                        &credentials.access_token,
+                    )
+                    .await
+                    .map(|ranking| course_ranking_to_result_ir_ranking(&ranking));
+            }
             let client = BmzOfficialIrClient::anonymous(&query.base_url)?;
             let ranking = client
                 .fetch_course_ranking(
@@ -474,6 +497,26 @@ pub(crate) async fn fetch_ranking_with_limit(
                 scope,
                 limit.min(crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT),
                 credentials.as_ref().map(|credentials| credentials.account_id.as_str()),
+            )
+            .await;
+    }
+    if crate::ir::bms_ir::is_bms_ir_provider(&query.provider) {
+        let credentials =
+            ensure_fresh_credentials(&query.profile_root, &query.provider, &query.base_url, now)
+                .await?;
+        return crate::ir::bms_ir::BmsIrClient::new(&query.base_url)?
+            .fetch_ranking(
+                &query.chart_sha256_hex,
+                &IrRankingRequest {
+                    scope,
+                    ln_policy: query.ln_policy.as_str().to_string(),
+                    double_option: query.double_option,
+                    rule_mode: query.rule_mode,
+                    limit,
+                    offset: 0,
+                },
+                &credentials.account_id,
+                &credentials.access_token,
             )
             .await;
     }

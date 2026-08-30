@@ -172,6 +172,9 @@ pub(in crate::skin) fn skin_state_event_index(event_id: i32, state: &SkinDrawSta
         344 => extended_arrange_ref_index(state) as i32,
         345 => extended_arrange_2p_ref_index(state) as i32,
         1900 => skin_hispeed_mode_index(state),
+        SKIN_REF_BMZ_BASE_HISPEED => skin_base_hispeed_index(state),
+        SKIN_REF_BMZ_NORMAL_HISPEED_LEVEL => skin_normal_hispeed_level(state) as i32,
+        SKIN_REF_BMZ_HISPEED_CONFIG => skin_hispeed_config_index(state),
         SKIN_REF_BMZ_KEY_MODE => effective_skin_key_mode(state).map_or(0, skin_key_mode_number),
         SKIN_REF_BMZ_SELECT_SETTINGS_ROW_KIND => {
             select_settings_row_kind_index(state.select_row_kind)

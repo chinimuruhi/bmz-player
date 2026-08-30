@@ -88,6 +88,8 @@ pub struct SkinDocument {
     pub gauges: Vec<SkinGaugeDef>,
     #[serde(default)]
     pub judge: Vec<SkinJudgeDef>,
+    #[serde(default)]
+    pub pmchara: Vec<SkinPmCharaDef>,
     pub bga: Option<SkinBgaDef>,
     /// beatoraja play skin の Practice 設定表示領域。
     ///

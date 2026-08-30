@@ -337,15 +337,15 @@ impl Renderer {
         self.result_skin_context.document()
     }
 
-    pub fn resize_surface(&mut self, size: SurfaceSize) {
+    pub fn resize_surface(&mut self, size: SurfaceSize) -> Result<()> {
         let Some(gpu) = &mut self.gpu else {
-            return;
+            return Ok(());
         };
         if !size.is_drawable() {
-            return;
+            return Ok(());
         }
 
-        gpu.resize(size);
+        gpu.resize(size)
     }
 
     pub fn render_scene(&mut self, scene: AppSceneSnapshot) -> Result<()> {
@@ -417,26 +417,28 @@ impl Renderer {
         self.pending_egui = Some(frame);
     }
 
-    pub fn set_present_mode(&mut self, present_mode: WgpuPresentMode) {
+    pub fn set_present_mode(&mut self, present_mode: WgpuPresentMode) -> Result<()> {
         if self.present_mode == present_mode {
-            return;
+            return Ok(());
         }
         self.present_mode = present_mode;
         if let Some(gpu) = &mut self.gpu {
-            gpu.configure_presentation(present_mode, self.frame_latency_mode);
+            gpu.configure_presentation(present_mode, self.frame_latency_mode)?;
             tracing::info!(requested = ?present_mode, "present mode updated");
         }
+        Ok(())
     }
 
-    pub fn set_frame_latency_mode(&mut self, mode: WgpuFrameLatencyMode) {
+    pub fn set_frame_latency_mode(&mut self, mode: WgpuFrameLatencyMode) -> Result<()> {
         if self.frame_latency_mode == mode {
-            return;
+            return Ok(());
         }
         self.frame_latency_mode = mode;
         if let Some(gpu) = &mut self.gpu {
-            gpu.configure_presentation(self.present_mode, mode);
+            gpu.configure_presentation(self.present_mode, mode)?;
         }
         tracing::info!(?mode, "frame latency mode updated");
+        Ok(())
     }
 
     pub fn set_internal_resolution_mode(&mut self, mode: InternalResolutionMode) {

@@ -30,6 +30,9 @@ pub const SKIN_EVENT_HSFIX: i32 = 55;
 pub const SKIN_REF_BMZ_KEY_MODE: i32 = 1903;
 /// BMZ extension: active physical lane count including scratch lanes.
 pub const SKIN_REF_BMZ_ACTIVE_LANE_COUNT: i32 = 1904;
+pub const SKIN_REF_BMZ_BASE_HISPEED: i32 = 1916;
+pub const SKIN_REF_BMZ_NORMAL_HISPEED_LEVEL: i32 = 1917;
+pub const SKIN_REF_BMZ_HISPEED_CONFIG: i32 = 1918;
 /// BMZ extension: exact key mode options in K4/K5/K6/K7/K8/K9/K10/K14 order.
 pub const SKIN_OPTION_BMZ_KEY_MODE_BASE: i32 = 1905;
 pub const SKIN_OPTION_BMZ_KEY_MODE_COUNT: usize = 8;

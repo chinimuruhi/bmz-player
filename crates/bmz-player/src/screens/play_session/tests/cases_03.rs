@@ -471,7 +471,7 @@ fn build_game_session_uses_hidden_cover_only_for_hidden_effects() {
 }
 
 #[test]
-fn build_game_session_maps_lane_cover_and_lift_skin_options_from_values() {
+fn build_game_session_maps_cover_skin_options_from_enable_settings() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.play.lane_effect = LaneEffectConfig::Off;
     profile.lane.sudden = 290;
@@ -479,7 +479,8 @@ fn build_game_session_maps_lane_cover_and_lift_skin_options_from_values() {
 
     let session = build_game_session(Arc::new(chart()), &profile, PlaySessionOptions::default());
 
-    assert!(session.lanecover_enabled);
+    assert!(!session.lanecover_enabled);
+    assert!(!session.lane_cover_visible);
     assert!(session.lift_enabled);
 
     profile.lane.sudden = 0;
@@ -507,6 +508,7 @@ fn build_game_session_maps_lane_cover_and_lift_skin_options_from_values() {
 #[test]
 fn build_game_session_clamps_lane_cover_to_remaining_lift_range() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     profile.lane.sudden = 900;
     profile.lane.lift = 200;
 

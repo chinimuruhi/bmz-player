@@ -41,7 +41,8 @@ Backspaceまたは「解除」で割り当てを削除します。Decide / Play�
 割り当てを使用します。
 F1メニューのプロファイル設定では、beatoraja互換の7アシストと
 SCROLL / LONGNOTE / MINE / EXTRA NOTEモディファイアを設定できます。
-「プレイ」では判定ごとのGUIDE SE、「表示」ではノーツ表示時間、CONSTANT、
+「プレイ」では判定ごとのGUIDE SEと未処理ノートの判定ライン滞留、
+「表示」ではノーツ表示時間、CONSTANT、
 CONSTANTフェード時間を設定できます。CONSTANTはPracticeでは無効です。
 `RULE MODE` / `LN MODE` を変更すると、選曲一覧のスコア・リプレイ・フォルダ集計を
 新しいスコア文脈で即時再読込し、変更前のプリロードとリトライ用cacheは破棄します。
@@ -286,14 +287,14 @@ E1/E2単押しでは開始・退出しません。E1/E2 hold中は従来どお�
 
 | Key | 操作 |
 | --- | --- |
-| Left / Right | ハイスピードを HS MODE ごとの設定刻みで下げる / 上げる (NHS 既定 0.25、FHS 既定 0.50) |
-| Up / Down | レーンカバー表示中はカバー位置、非表示中は LIFT を調整 |
-| E1 hold + 鍵盤 | KEY MODE ごとの HS 方向に従い、HS MODE ごとの設定刻みでハイスピードを下げる / 上げる |
-| E1 hold + E2 | HS MODE を切替 |
-| E1 hold + Scratch Up/Down | レーンカバーを上げる / 下げる |
-| E2 hold + 鍵盤 | E1 と同じ KEY MODE ごとの HS 方向に従い、緑数字を下げる / 上げる |
-| E2 hold + Scratch Up/Down | 緑数字を下げる / 上げる |
-| E1 double press | レーンカバー表示を切替 |
+| Left / Right | Normalは20段階を下げる / 上げる。Classic / Floatingは設定刻みで倍率を下げる / 上げる |
+| Up / Down | SUDDEN+表示中はSUDDEN+、非表示中は有効なLIFT/HIDDEN+を調整 |
+| E1 hold + 鍵盤 | KEY MODE ごとのHS方向に従い、Normalは段階、Classic / Floatingは倍率を変更 |
+| E1 hold + E2 | LIFT/HIDDEN+両方有効時は変更対象を切替。それ以外は切替可能な設定でFloatingを切替 |
+| E1 hold + Scratch Up/Down | Up/Downと同じ対象のカバー量を変更 |
+| E2 hold + 鍵盤 | Floatingが利用可能な設定では、E1と同じKEY MODEごとのHS方向に従い緑数字を下げる / 上げる |
+| E2 hold + Scratch Up/Down | Floatingが利用可能な設定では緑数字を下げる / 上げる |
+| E1 double press | SUDDEN+が有効な場合だけSUDDEN+表示を切替 |
 | Escape | プレイを中断して選曲へ戻る。最終ノーツ処理後、終了演出開始前は E1 と同じく終了演出を開始 |
 | E1+E2 hold | 一定時間長押しでプレイを中断 |
 | E2+E3 | 即時にプレイを中断 |
@@ -302,6 +303,26 @@ E1/E2単押しでは開始・退出しません。E1/E2 hold中は従来どお�
 | Autoplay / Replay中に上段 1 / 2 / 3 / 4 をhold | 再生速度を25% / 50% / 200% / 300%へ変更。離すと100%へ戻る |
 
 Escape / E1+E2 hold / E2+E3 による中断は、実プレイ開始前（譜面・音源ロード中および READY 演出中）なら timer=2 の黒フェードアウトを開始し、リザルトを表示せず選曲へ戻ります。実プレイ開始後は FAILED 演出を開始し、通常の終了処理へ進みます。
+
+SUDDEN+、LIFT、HIDDEN+の有効状態は、F1メニューのプロファイル設定「表示」と
+選曲画面の `設定 → 表示` でキーモード別に変更できます。無効なカバーは表示・量変更の
+対象になりません。LIFTとHIDDEN+を同時に有効にした場合、プレイ開始時の変更対象はLIFTで、
+E1+E2の押下エッジごとにLIFT/HIDDEN+を切り替えます。押す順序は問いません。
+この短押し切替とE1+E2長押しによる中断は共存します。
+HIDDEN+を変更対象にした場合だけ増減方向がSUDDEN+/LIFTと逆になり、カーソルキーと
+E1+ScratchのどちらでもUpでHIDDEN+量が増え、Downで減ります。
+
+HS設定は `NORMAL` / `CLASSIC` / `FLOATING` / `NORMAL+FLOATING` /
+`CLASSIC+FLOATING` の5種類です。`NORMAL` と `CLASSIC` ではFloatingと緑数字操作を
+無効にし、`FLOATING` ではFloatingを固定します。末尾が `+FLOATING` の2設定だけ、
+E1+E2で基準方式とFloatingを切り替えられます。Normalの段階表と切替時の変換規則は
+`docs/hs.md`を参照してください。
+
+SUDDEN+が無効または非表示で、LIFT/HIDDEN+も無効なため操作可能なカバーがない場合、
+カバー操作はEndlessDream互換のHS操作になります。HS Auto AdjustがOFFならデジタル入力は
+現在方式の速度操作、アナログスクラッチは1 tickあたり0.01でHS倍率を直接変更します。
+HS Auto AdjustがONのFloatingでは、SUDDEN+とLIFTを0として現在BPMでHSを再計算します。
+どちらの場合も無効なSUDDEN+/LIFT/HIDDEN+の量は変更・保存されません。
 
 Practiceでは最終ノーツ処理後にE1 / E2 / Escapeで終了した場合もリザルトを表示せず、直前の判定グラフを反映してPractice設定画面へ戻ります。
 
@@ -323,8 +344,10 @@ E1/E2 hold 中の鍵盤方向は、譜面の KEY MODE ごとに次のとおり�
 
 コースの `NoSpeed` 制約中は、HS 1.0、SUDDEN/LIFT/HIDDEN 0 で開始し、HS MODE・ハイスピード・緑数字・レーンカバーに関する操作がすべて無効になります。制約中の一時的なレーン状態はプロファイルへ保存されません。
 クイックリトライは単曲の通常プレイでのみ有効です。
-Autoplay / Replayの速度キーは固定操作で、キーコンフィグの対象外です。テンキーの1～4は
-使用しません。複数を同時にholdした場合は、数字の小さいキーを優先します。
+Autoplay / Replayの速度操作自体は固定で、キーコンフィグの対象外です。ただし現在の
+KEY MODEのレーン／スクラッチまたはE1～E4に上段1～4が割り当てられている場合は、
+そのキーコンフィグの動作を優先して速度変更には使いません。テンキーの1～4は使用しません。
+複数の未割り当てキーを同時にholdした場合は、数字の小さいキーを優先します。
 
 ## リザルト画面
 

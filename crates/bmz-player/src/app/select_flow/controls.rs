@@ -508,6 +508,9 @@ impl WinitApp {
         if entry_id == SettingsEntryId::Language {
             self.reload_select_items();
         }
+        if entry_id == SettingsEntryId::HispeedMode {
+            self.reload_select_items();
+        }
         if entry_id == SettingsEntryId::ShowFps
             && let Some(egui) = self.ui.egui.as_mut()
         {
@@ -953,6 +956,9 @@ impl WinitApp {
 
     pub(super) fn adjust_select_green_number(&mut self, delta: i32) -> bool {
         if !self.begin_selected_play_mode_edit() {
+            return false;
+        }
+        if self.boot.profile_config.lane.floating_policy == FloatingPolicyConfig::Disabled {
             return false;
         }
         let current = self.boot.profile_config.lane.target_green_number.max(1);

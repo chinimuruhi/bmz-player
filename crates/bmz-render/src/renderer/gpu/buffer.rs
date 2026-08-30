@@ -135,22 +135,22 @@ impl WgpuRenderer {
         self.next_offscreen_rect_batch_texture_id = OFFSCREEN_RECT_BATCH_TEXTURE_BASE;
     }
 
-    pub(in crate::renderer) fn configure_surface(&self) {
-        self.surface.configure(&self.device, &self.config);
+    pub(in crate::renderer) fn configure_surface(&self) -> Result<()> {
+        configure_surface_checked(&self.surface, &self.device, &self.config, &self.adapter_info)
     }
 
     pub(in crate::renderer) fn configure_presentation(
         &mut self,
         present_mode: WgpuPresentMode,
         frame_latency_mode: WgpuFrameLatencyMode,
-    ) {
+    ) -> Result<()> {
         configure_surface_settings(
             &mut self.config,
             present_mode,
             frame_latency_mode,
             &self.present_modes,
         );
-        self.configure_surface();
+        self.configure_surface()?;
         tracing::info!(
             requested = ?present_mode,
             effective = ?self.config.present_mode,
@@ -158,5 +158,6 @@ impl WgpuRenderer {
             maximum_frame_latency = self.config.desired_maximum_frame_latency,
             "configured renderer present mode"
         );
+        Ok(())
     }
 }

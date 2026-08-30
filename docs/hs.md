@@ -1,45 +1,76 @@
 # BMZ Hispeed Notes
 
-BMZ のハイスピード周りは、現状では次の 2 軸に分かれる。
+BMZ のハイスピードは、基準方式の Normal / Classic と、表示時間を基準にする
+Floating を組み合わせて扱う。HS-FIX はこれとは別に BPM 基準を選択する。
 
-- HS MODE: `NHS` / `FHS`
-- HS-FIX: `OFF` / `START BPM` / `MAX BPM` / `MAIN BPM` / `MIN BPM`
+## 設定
 
-`HS Auto Adjust` は独立した profile 設定としては持たない。BMZ では FHS 中の
-自動再計算を、beatoraja の `HI-SPEED FIX Auto Adjust` ON 相当として扱う。
-profile に項目がない場合の既定値は ON。`hispeed_auto_adjust = false` を明示した
-既存 profile は OFF のまま維持する。
+設定画面の `HS CONFIG` には次の5種類がある。
 
-## Terms
+| 設定 | 基準方式 | Floating の扱い |
+| --- | --- | --- |
+| `NORMAL` | Normal | 無効 |
+| `CLASSIC` | Classic | 無効 |
+| `FLOATING` | Classic | 常時有効 |
+| `NORMAL+FLOATING` | Normal | プレイ中に切替可能 |
+| `CLASSIC+FLOATING` | Classic | プレイ中に切替可能 |
 
-### NHS
+既定値は `CLASSIC+FLOATING`。旧 profile もこの設定として読み込むため、従来の
+直接倍率と Floating の動作を維持する。
 
-Normal Hispeed。設定画面では `NORMAL`、BMZ skin ref では `NHS` と表示する。
+profile では、基準方式を `base_hispeed`、Floating の扱いを `floating_policy`、
+Normal の段階を `normal_hispeed_level` に保存する。直接倍率は `classic_hispeed`、
+Floating の目標緑数字は `floating_target_green` に保存する。旧名の `hispeed`、
+`target_green_number`、`hispeed_step_nhs`、`hispeed_step_fhs` は読込時の別名として
+受け付ける。
 
-NHS は `profile.lane.hispeed` の倍率をそのまま使う。倍率は beatoraja の
-`PlayConfig.HISPEED_MIN` / `HISPEED_MAX` と同じ `0.01..=20.0`、
-操作は `profile.lane.hispeed_step_nhs` 刻み。既定値は 0.25 で、設定可能範囲は
-0.05..=1.00。
+## Classic
 
-### FHS
+Classic は `classic_hispeed` の倍率をそのまま使う。倍率の範囲は `0.01..=20.0`。
+操作刻みは `classic_hispeed_step` で、既定値は0.25、設定範囲は
+`0.05..=1.00`。
 
-Floating Hispeed。設定画面では `FLOATING`、BMZ skin ref では `FHS` と表示する。
+## Normal
 
-FHS は `profile.lane.target_green_number` を固定したまま、BPM、SCROLL/SPEED 倍率、
-レーンカバー量に応じて `session.hispeed` を逆算する。緑数字の範囲は `1..=6000`、
-既定値は `300`。
+Normal は1～20の段階を持つ。各段階はレーンカバーとLIFTを除外した全レーンの
+目標緑数字に対応する。
 
-FHS で HS 倍率を直接変更した場合は、現在の見た目から緑数字を再計算して
-`target_green_number` を更新する。緑数字やレーンカバーを変更した場合は、
-`target_green_number` を維持するように HS 倍率を再計算する。
+| 段階 | 緑数字 | 段階 | 緑数字 | 段階 | 緑数字 | 段階 | 緑数字 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1200 | 6 | 600 | 11 | 440 | 16 | 340 |
+| 2 | 1000 | 7 | 550 | 12 | 420 | 17 | 320 |
+| 3 | 800 | 8 | 500 | 13 | 400 | 18 | 300 |
+| 4 | 700 | 9 | 480 | 14 | 380 | 19 | 280 |
+| 5 | 650 | 10 | 460 | 15 | 360 | 20 | 260 |
 
-FHS の HS 変更は `profile.lane.hispeed_step_fhs` 刻みで行う。既定値は 0.50 で、
-設定可能範囲は 0.05..=1.00。設定画面の「NHS HS変更刻み」 / 「FHS HS変更刻み」
-または `profile.toml` の `[lane]` で変更できる。
+段階を変更すると、その時点の基準BPMとSCROLL/SPEED倍率から実際のHS倍率を
+再計算する。SUDDEN+、LIFT、HIDDEN+の量はNormalの計算に含めない。
 
-## Formula
+Floating から Normal へ戻すときは、現在のHS倍率から全レーン緑数字を求め、最も
+近い段階を選ぶ。同距離は速い側、つまり小さい緑数字を選ぶ。ただし700～500の
+50刻み区間では、速い側の緑数字に30を加えた位置を境界にする。たとえば580は550、
+581は600へ変換する。
 
-BMZ の表示時間計算は beatoraja の係数 `240000` を使う。
+## Floating
+
+Floating は `floating_target_green` を保つように、BPM、SCROLL/SPEED倍率、
+SUDDEN+、LIFTからHS倍率を逆算する。緑数字の範囲は `1..=6000`、既定値は300。
+HIDDEN+は可視レーン長を変えないため計算に含めない。
+
+HS倍率の直接操作は `floating_hispeed_step` 刻みで行う。既定値は0.50、設定範囲は
+`0.05..=1.00`。緑数字、SUDDEN+、LIFT、またはカバー表示を操作して再計算が起きる
+までは、直接操作した倍率を維持する。
+
+切替可能な設定で基準方式からFloatingへ入るときは、現在の見た目から緑数字を取得
+して `floating_target_green` にする。FloatingからClassicへ戻る場合は現在の倍率を
+維持する。FloatingからNormalへ戻る場合は前節の規則でNormal段階へ変換する。
+
+LIFTとHIDDEN+が両方有効な場合、`E1 hold + E2` は両者の操作対象切替を優先する。
+それ以外では、Floatingが「切替可能」の設定でのみ基準方式との切替を行う。
+
+## 計算式
+
+BMZ の表示時間計算は次の式を使う。
 
 ```text
 visible = 1.0 - lane_cover - lift
@@ -47,139 +78,102 @@ duration_ms = 240000 / bpm / hispeed / scroll_multiplier * visible
 green_number = round(duration_ms * 0.6)
 ```
 
-BMZ は `profile.lane.target_green_number` を正規値として保存し、ノーツ表示時間は
-`duration_ms = round(target_green_number / 0.6)` で必要時に導出する。設定画面やskinの
-表示時間操作は入力値を緑数字へ変換し、独立した表示時間をprofileには保存しない。
-skin の `NUMBER_DURATION` (312) には導出した表示時間、`NUMBER_DURATION_GREEN` (313)
-には正規値の緑数字を渡す。
-
-`CONSTANT` を有効にすると、現在時刻から緑数字より導出した表示時間先を表示境界として、
-それより遠いノーツ・LN・地雷・小節線・BPM/STOP/秒線を隠す。`constant_fade_ms` は
-`-1000..=1000ms` で、正値は境界の奥側、負値は境界の手前側をフェードさせる。
-Practice の区間プレビュー／プレイでは CONSTANT を無効にする。
-
-FHS ではこの式を逆向きに使う。
+Floating の逆算は次のとおり。
 
 ```text
-hispeed = 240000 * visible * 0.6 / (target_green_number * bpm * scroll_multiplier)
+hispeed = 240000 * visible * 0.6
+          / (floating_target_green * bpm * scroll_multiplier)
 ```
 
-計算後の HS 倍率は `0.01..=20.0` に clamp する。`visible` はレーンカバーと
-LIFT の合計を考慮した可視レーン率で、レーンカバー非表示中は `lane_cover = 0`
-として扱う。
+Normal も同じ逆算式を使うが、`visible = 1.0`、目標緑数字は段階表の値とする。
+計算後の倍率は `0.01..=20.0` に収める。現在位置のSCROLL/SPEED倍率が正でない
+場合は譜面先頭の正の倍率、それも利用できなければ1.0を使う。
 
-`#BPM 2222` と8倍小節を組み合わせる譜面など、BPM値自体が非常に高い譜面では、
-目標緑数字を維持するために 0.5 未満の HS が必要になる。
+skin の `NUMBER_DURATION` (312) には導出した表示時間、
+`NUMBER_DURATION_GREEN` (313) には緑数字を渡す。CONSTANT は導出した表示時間を
+表示境界に使い、`constant_fade_ms` は `-1000..=1000ms` の範囲で境界前後を
+フェードさせる。Practice の区間プレビューと区間プレイではCONSTANTを無効にする。
 
-`scroll_multiplier` は現在 tick の SCROLL factor と SPEED factor の積。SCROLL /
-SPEED がある譜面では、同じ BPM と緑数字でも HS 逆算結果が変わる。
+選曲画面の `NUMBER_DURATION` と `NUMBER_DURATION_GREEN` は、選択中のキーモードで
+有効なSUDDEN+とHIDDEN+を上下のカバーとして扱い、両者の間でノーツが見える割合を
+反映する。無効なカバーの保存値は無視し、カバーが重なる場合は表示時間を0に収める。
+FloatingではSUDDEN+とLIFTを反映済みの目標緑数字を基準にし、HIDDEN+が隠す範囲だけを
+残りの可視レーンに対する相対比で反映する。
 
 ## HS-FIX
 
-HS-FIX の選択肢は次の通り。
+HS-FIX の選択肢とBPM基準は次のとおり。
 
 | option | BPM basis |
 | --- | --- |
-| `OFF` | 初期 BPM。FHS の曲開始前計算では `START BPM` と同じ扱い |
-| `START BPM` | 初期 BPM |
-| `MAX BPM` | 初期 BPM と BPM 変化イベントの最大 BPM |
-| `MAIN BPM` | ノート数が最も多い BPM |
-| `MIN BPM` | 初期 BPM と BPM 変化イベントの最小 BPM |
+| `OFF` | 初期BPM |
+| `START BPM` | 初期BPM |
+| `MAX BPM` | 初期BPMとBPM変化イベントの最大BPM |
+| `MAIN BPM` | ノート数が最も多いBPM |
+| `MIN BPM` | 初期BPMとBPM変化イベントの最小BPM |
 
-プレイ画面の開始時は HS-FIX が HS MODE を決める。`OFF` なら NHS、`START BPM` /
-`MAX BPM` / `MAIN BPM` / `MIN BPM` なら FHS で開始する。プロファイルに保存された
-HS MODE は開始時の選択よりも、プレイ中の操作後に保存する状態として扱う。
+`FLOATING` はHS-FIXにかかわらずFloatingで開始する。Floating無効の `NORMAL` と
+`CLASSIC` は常に基準方式で開始する。切替可能な2設定は、HS-FIXが `OFF` なら
+基準方式、その他ならFloatingで開始する。
 
-`MAIN BPM` は、地雷を除いた通常ノートとロングノート始点を BPM ごとに数え、
-最も count が大きい BPM を選ぶ。ロングノートの始点が通常ノート一覧と重複する場合は
-二重に数えない。
+Floating の再計算は、READY前と曲タイマー開始前には選択したHS-FIXの基準BPM、
+曲開始後には現在BPMを使う。Normalの初期倍率は開始時の基準BPM、段階操作時は
+その時点のBPMを使う。
 
-BMZ の設定 UI / 選曲中の巡回順は次の順番。
+設定UIと選曲中の巡回順は次のとおり。
 
 ```text
 OFF -> START BPM -> MAX BPM -> MAIN BPM -> MIN BPM -> OFF
 ```
 
-この順番は beatoraja の `fixhispeed` / `event_index(55)` と同じ内部順に合わせる。
-play skin へ渡す beatoraja 互換の `event_index(55)` は次の値を使う。
+play skin の `event_index(55)` は `0=OFF`, `1=START`, `2=MAX`, `3=MAIN`,
+`4=MIN`。
 
-| index | meaning |
-| ---: | --- |
-| 0 | OFF |
-| 1 | START BPM |
-| 2 | MAX BPM |
-| 3 | MAIN BPM |
-| 4 | MIN BPM |
+## 操作
 
-プレイ中 skin 用の表示 index はセッション開始時に profile の HS-FIX 設定から決まり、
-プレイ中の手動操作では変更しない。
+主な操作は次のとおり。詳細は `docs/controls.md` を参照。
 
-## FHS Recalculation
-
-プレイセッション作成時、BMZ は HS-FIX から `session.hsfix_base_bpm` を決める。
-
-FHS の BPM 基準は、曲開始前と曲開始後で異なる。
-
-| state | BPM used by FHS recalculation |
+| 操作 | 動作 |
 | --- | --- |
-| READY 前 / 曲タイマー開始前 | `session.hsfix_base_bpm` |
-| 曲開始後 | 現在 BPM |
+| `Left` / `Right` | Normalは段階を変更、Classic/Floatingは設定刻みで倍率を変更 |
+| `Up` / `Down` | SUDDEN+表示中はSUDDEN+、非表示中は有効なLIFT/HIDDEN+を変更 |
+| `E1 hold + E2` | LIFT/HIDDEN+両方有効時は操作対象を切替。それ以外は許可されたFloating切替 |
+| `E1 hold + 鍵盤` | Left/Rightと同じ方式で速度を変更 |
+| `E2 hold + 鍵盤` | Floatingが利用可能なら緑数字を変更 |
+| `E2 hold + Scratch Up/Down` | Floatingが利用可能なら緑数字を変更 |
+| `E1 double press` | SUDDEN+が有効な場合だけ表示を切替 |
 
-実装上は `audio_clock.running && now >= 0` を満たすと曲開始後として扱う。
+HIDDEN+を操作対象にした場合は、カーソルキーと `E1 hold + Scratch Up/Down` の
+どちらでもUpで量を増やし、Downで減らす。
 
-これは beatoraja の `HI-SPEED FIX Auto Adjust` ON に寄せつつ、BMZ では READY 前後の
-調整中だけ START / MIN / MAX / MAIN BPM の固定基準を保つためのルール。
+SUDDEN+が無効または非表示でLIFT/HIDDEN+も無効な場合、カバー操作は仮想的な
+SUDDEN+=0操作として扱う。HS Auto AdjustがOFFならデジタル入力は現在方式の速度
+操作、アナログ入力は1 tickあたり倍率0.01の操作になる。HS Auto AdjustがONの
+Floatingでは、SUDDEN+=0、LIFT=0として再計算だけを行う。無効なカバー値は変更・
+保存しない。
 
-FHS の自動再計算は主に次の操作で起きる。
-
-- 緑数字を変更する
-- レーンカバー / LIFT を変更する
-- レーンカバー表示を OFF から ON に戻す
-- NHS から FHS に切り替える
-
-プレイ中に F1 から開くプロファイル設定の「表示」内でハイスピード、SUDDEN+、LIFT、
-緑数字ターゲット、ノーツ表示時間、CONSTANT、CONSTANTフェード、HS Auto Adjustを変更した場合も、変更した項目だけを実行中の
-セッションへ即時反映する。未変更の項目は、プレイ中のキーボード／スクラッチ操作で
-更新された値を上書きしない。
-
-Course の `NoSpeed` 制約中は、HS 変更、緑数字変更、FHS 再計算を行わない。
-
-## Play Controls
-
-主なプレイ中操作は次の通り。詳細は `docs/controls.md` を参照。
-
-| operation | behavior |
-| --- | --- |
-| `Left` / `Right` | HS 倍率を HS MODE ごとの設定刻みで下げる / 上げる (NHS 既定 0.25、FHS 既定 0.50) |
-| `Up` / `Down` | レーンカバー表示中はカバー位置、非表示中は LIFT を調整 |
-| `E1 hold + E2` | HS MODE を切り替える |
-| `E1 hold + KEY...` | HS 倍率を変更する |
-| `E2 hold + KEY...` | 緑数字を変更する |
-| `E2 hold + Scratch Up/Down` | 緑数字を変更する |
-| `E1 double press` | レーンカバー表示を切り替える |
+Floating無効の設定では緑数字操作を受け付けない。Floating固定の設定では
+切替操作を受け付けない。Courseの `NoSpeed` 制約中は、速度、緑数字、レーンカバーの
+操作をすべて無効にする。
 
 ## Skin Refs
 
-BMZ 独自の HS MODE ref は `1900` 台を使う。詳細は `docs/skin.md` も参照。
-
 | ref | kind | meaning |
 | ---: | --- | --- |
-| 1900 | number / event_index / text | `0=NHS`, `1=FHS`。text は `NHS` / `FHS` |
-| 1901 | number / option | FHS active flag。`0=NHS`, `1=FHS` |
-| 1902 | number | FHS 時は固定 target green、NHS 時は現在 green number |
+| 1900 | number / event_index / text | numberは `0=基準方式`, `1=Floating`。textは `CHS` / `NHS` / `FHS` |
+| 1901 | number / option | Floating active flag。`0=OFF`, `1=ON` |
+| 1902 | number | Floating中は固定目標緑数字、それ以外は現在緑数字 |
+| 1916 | number / event_index / text | 基準方式。`0=Classic`, `1=Normal`。textは `CHS` / `NHS` |
+| 1917 | number / event_index | Normal段階 `1..=20` |
+| 1918 | number / event_index / text | 5設定のindexと設定名 |
 
-beatoraja 互換の HS-FIX event は `event_index(55)`。値は `0=OFF`, `1=START`,
-`2=MAX`, `3=MAIN`, `4=MIN`。
+ref 1918は `0=NORMAL`, `1=CLASSIC`, `2=FLOATING`,
+`3=NORMAL+FLOATING`, `4=CLASSIC+FLOATING`。
 
-Rm-skin 系で使う adjusted hidden cover / BPM 比率表示は、現在は `MAX` と `MAIN` の
-HS-FIX index に反応する。`OFF` / `START` / `MIN` では adjusted 値を出さない。
+## 実装入口
 
-## Implementation Entry Points
-
-- Config: `crates/bmz-player/src/config/profile_config.rs`
-- HS-FIX select option: `crates/bmz-player/src/select_options.rs`
-- Session initialization: `crates/bmz-player/src/screens/play_session.rs`
-- Runtime controls and FHS recalculation: `crates/bmz-player/src/app.rs`
-- Render snapshot duration / green number calculation: `crates/bmz-player/src/screens/play_snapshot.rs`
-- Skin refs: `crates/bmz-render/src/skin.rs`
-- Adjusted graph helpers: `crates/bmz-render/src/chart_graph.rs`
+- Configと段階表: `crates/bmz-player/src/config/profile_config/`, `config/play.rs`
+- Session初期化: `crates/bmz-player/src/screens/play_session/`
+- プレイ中操作と再計算: `crates/bmz-player/src/app/play_support/`
+- 表示時間とSCROLL/SPEED: `crates/bmz-player/src/screens/play_snapshot/`
+- Skin refs: `crates/bmz-render/src/skin/`

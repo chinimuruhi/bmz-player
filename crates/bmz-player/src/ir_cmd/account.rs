@@ -11,6 +11,9 @@ pub(super) async fn replay(
     use sha2::{Digest, Sha256};
 
     let provider = primary_provider(profile)?;
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR does not provide replay file downloads");
+    }
     let client = BmzOfficialIrClient::anonymous(&provider.base_url)?;
     let (bytes, declared_hash) = client.download_replay(score_id).await?;
 
@@ -38,6 +41,9 @@ pub(super) async fn device_key(
     use crate::ir::device_key::{load_or_create_device_key, rotate_registered_device_key};
 
     let provider = primary_provider(profile)?;
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR does not use BMZ device keys");
+    }
     let provider_key = crate::ir::provider_key::configured_provider_key(provider)
         .context("IR provider key is not set; log in again")?;
     let root = profile_paths.root_dir.as_path();
@@ -91,6 +97,27 @@ pub(super) async fn rivals(
             save_profile_config(&profile_paths.profile_toml, profile)?;
         }
         print_rivals(&rivals);
+        return Ok(());
+    }
+    if crate::ir::bms_ir::is_bms_ir_config(&provider) {
+        if action.is_some() {
+            bail!("BMS-IR rivals can be added or removed only on the BMS-IR website");
+        }
+        let credentials = ensure_fresh_credentials(
+            profile_paths.root_dir.as_path(),
+            &provider_key,
+            &provider.base_url,
+            now_unix_seconds(),
+        )
+        .await?;
+        let response = crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?
+            .get_rivals(&credentials.account_id, &credentials.access_token)
+            .await?;
+        if sync_ir_rivals_into_profile(profile, &provider_key, &response.rivals) {
+            profile.updated_at = now_unix_seconds();
+            save_profile_config(&profile_paths.profile_toml, profile)?;
+        }
+        print_rivals(&response.rivals);
         return Ok(());
     }
     let credentials = ensure_fresh_credentials(

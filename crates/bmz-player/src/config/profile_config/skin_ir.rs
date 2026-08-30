@@ -1,4 +1,7 @@
-use super::schema::default_hispeed_mode;
+use super::schema::{
+    default_base_hispeed, default_classic_hispeed_step, default_floating_hispeed_step,
+    default_floating_policy,
+};
 use super::*;
 
 /// スキン設定。スキンはプロファイルごとに切り替えられる。
@@ -268,7 +271,7 @@ pub struct IrConfig {
     pub prefetch_rival_ranking_on_score_submit: bool,
 }
 
-pub const BUILTIN_IR_PROVIDER_COUNT: usize = 2;
+pub const BUILTIN_IR_PROVIDER_COUNT: usize = 3;
 
 pub(super) fn default_true() -> bool {
     true
@@ -279,7 +282,11 @@ impl Default for IrConfig {
         Self {
             primary_provider: String::new(),
             credential_store: IrCredentialStoreConfig::default(),
-            providers: vec![IrProviderConfig::bmz_ir(), IrProviderConfig::rian_ir()],
+            providers: vec![
+                IrProviderConfig::bmz_ir(),
+                IrProviderConfig::rian_ir(),
+                IrProviderConfig::bms_ir(),
+            ],
             prefetch_global_ranking_on_score_submit: true,
             prefetch_rival_ranking_on_score_submit: true,
         }
@@ -287,7 +294,7 @@ impl Default for IrConfig {
 }
 
 impl IrConfig {
-    /// 先頭2枠を公式 BMZ IR / rianIR に固定し、既存のカスタム provider を後続へ保つ。
+    /// 先頭3枠を公式 BMZ IR / rianIR / BMS-IR に固定し、既存のカスタム provider を後続へ保つ。
     pub fn normalize_builtin_providers(&mut self) -> bool {
         let previous = self.providers.clone();
         let mut remaining = std::mem::take(&mut self.providers);
@@ -302,9 +309,15 @@ impl IrConfig {
         rian.provider = crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string();
         rian.base_url = crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL.to_string();
 
+        let mut bms_ir = take_matching_provider(&mut remaining, is_bms_ir_builtin)
+            .unwrap_or_else(IrProviderConfig::bms_ir);
+        bms_ir.provider = crate::ir::bms_ir::BMS_IR_PROVIDER.to_string();
+        bms_ir.base_url = crate::ir::bms_ir::BMS_IR_DEFAULT_BASE_URL.to_string();
+
         self.providers = Vec::with_capacity(remaining.len() + BUILTIN_IR_PROVIDER_COUNT);
         self.providers.push(bmz);
         self.providers.push(rian);
+        self.providers.push(bms_ir);
         self.providers.extend(remaining);
         self.providers != previous
     }
@@ -358,6 +371,10 @@ impl IrProviderConfig {
         Self::new(crate::ir::rian_ir::RIAN_IR_PROVIDER, crate::ir::rian_ir::RIAN_IR_PUBLIC_BASE_URL)
     }
 
+    pub fn bms_ir() -> Self {
+        Self::new(crate::ir::bms_ir::BMS_IR_PROVIDER, crate::ir::bms_ir::BMS_IR_DEFAULT_BASE_URL)
+    }
+
     pub fn custom() -> Self {
         Self::new(crate::ir::bmz_official::BMZ_IR_PROVIDER, "")
     }
@@ -403,8 +420,15 @@ fn provider_migration_priority(provider: &IrProviderConfig) -> (bool, bool, i64)
 
 fn is_bmz_ir_builtin(provider: &IrProviderConfig) -> bool {
     !crate::ir::rian_ir::is_rian_ir_config(provider)
+        && !crate::ir::bms_ir::is_bms_ir_config(provider)
         && normalized_ir_base_url(&provider.base_url)
             == normalized_ir_base_url(crate::ir::bmz_official::BMZ_IR_DEFAULT_BASE_URL)
+}
+
+fn is_bms_ir_builtin(provider: &IrProviderConfig) -> bool {
+    crate::ir::bms_ir::is_bms_ir_config(provider)
+        || normalized_ir_base_url(&provider.base_url)
+            == normalized_ir_base_url(crate::ir::bms_ir::BMS_IR_DEFAULT_BASE_URL)
 }
 
 fn is_rian_ir_builtin(provider: &IrProviderConfig) -> bool {
@@ -473,6 +497,7 @@ impl ProfileConfig {
                 lane_effect: LaneEffectConfig::Off,
                 assist: AssistOptionConfig::default(),
                 guide_se: false,
+                note_retention: false,
                 session_mode: Some(SessionMode::Normal),
                 auto_play: false,
                 bga: default_bga_mode(),
@@ -491,9 +516,11 @@ impl ProfileConfig {
             },
             lane: LaneViewConfig {
                 hispeed: 2.0,
-                hispeed_mode: default_hispeed_mode(),
-                hispeed_step_nhs: default_hispeed_step_nhs(),
-                hispeed_step_fhs: default_hispeed_step_fhs(),
+                base_hispeed: default_base_hispeed(),
+                floating_policy: default_floating_policy(),
+                normal_hispeed_level: default_normal_hispeed_level(),
+                classic_hispeed_step: default_classic_hispeed_step(),
+                floating_hispeed_step: default_floating_hispeed_step(),
                 sudden: 0,
                 lift: 0,
                 lift_enabled: true,

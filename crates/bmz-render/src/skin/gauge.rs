@@ -71,6 +71,32 @@ pub(super) fn skin_gauge_random_animation_index(tick: i32, range: i32) -> i32 {
     (value % span as u32) as i32
 }
 
+/// Maps one of beatoraja's 36 logical gauge slots to the source node supplied
+/// by the skin. JSON skins may provide compact 4, 8, or 12 node layouts; the
+/// reference loader expands those layouts through `JsonSkinObjectLoader`'s
+/// `indexmap` before constructing `SkinGauge`.
+pub(super) fn skin_gauge_source_node_index(logical_index: usize, node_count: usize) -> usize {
+    const MAP_4: [usize; 36] = [
+        0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 0, 1,
+        0, 1, 2, 3, 0, 1,
+    ];
+    const MAP_8: [usize; 36] = [
+        4, 5, 6, 7, 4, 5, 4, 5, 6, 7, 4, 5, 0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 0, 1, 4, 5, 6, 7, 4, 5,
+        4, 5, 6, 7, 4, 5,
+    ];
+    const MAP_12: [usize; 36] = [
+        4, 5, 6, 7, 10, 11, 4, 5, 6, 7, 10, 11, 0, 1, 2, 3, 8, 9, 0, 1, 2, 3, 8, 9, 4, 5, 6, 7, 10,
+        11, 4, 5, 6, 7, 10, 11,
+    ];
+
+    match (node_count, logical_index) {
+        (4, index @ 0..36) => MAP_4[index],
+        (8, index @ 0..36) => MAP_8[index],
+        (12, index @ 0..36) => MAP_12[index],
+        _ => logical_index.min(node_count.saturating_sub(1)),
+    }
+}
+
 /// beatoraja `SkinGauge.draw` のスプライト選択 (`exgauge + offset + underclear`)。
 pub(super) fn skin_gauge_sprite_node_index(
     exgauge: usize,
@@ -92,7 +118,7 @@ pub(super) fn skin_gauge_sprite_node_index(
         2
     };
     let underclear = if part_border < border { 1 } else { 0 };
-    (exgauge + offset + underclear).min(node_count.saturating_sub(1))
+    skin_gauge_source_node_index(exgauge + offset + underclear, node_count)
 }
 
 pub(super) fn skin_gauge_flicker_tip_node_index(
@@ -102,7 +128,7 @@ pub(super) fn skin_gauge_flicker_tip_node_index(
     node_count: usize,
 ) -> Option<usize> {
     let underclear = if part_border < border { 1 } else { 0 };
-    Some((exgauge + 4 + underclear).min(node_count.saturating_sub(1)))
+    Some(skin_gauge_source_node_index(exgauge + 4 + underclear, node_count))
 }
 
 /// beatoraja `SkinGauge` FLICKERING の先端 α (`duration` = JSON `gauge.cycle`)。

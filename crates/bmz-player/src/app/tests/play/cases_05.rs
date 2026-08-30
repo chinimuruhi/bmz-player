@@ -272,7 +272,14 @@ fn apply_lane_state_preserves_lift_amount_while_lift_is_disabled() {
         Some(ActiveLaneState {
             lane_cover: 0.3,
             lift: 0.0,
+            hidden_cover: 0.0,
+            sudden_enabled: true,
+            lift_enabled: false,
+            hidden_enabled: false,
             hispeed_mode: HispeedMode::Normal,
+            base_hispeed_mode: HispeedMode::Normal,
+            floating_policy: FloatingPolicy::Toggle,
+            normal_hispeed_level: 18,
             target_green_number: 300,
         }),
     );

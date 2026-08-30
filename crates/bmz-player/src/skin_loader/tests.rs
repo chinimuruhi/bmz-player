@@ -52,3 +52,5 @@ mod lr2;
 mod lua;
 #[path = "tests/paths.rs"]
 mod paths;
+#[path = "tests/pm_chara.rs"]
+mod pm_chara;

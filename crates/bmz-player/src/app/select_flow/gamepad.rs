@@ -247,9 +247,9 @@ impl WinitApp {
 
         let change = if steps > 0 { LaneCoverChange::Down } else { LaneCoverChange::Up };
         let action = match mode {
-            PlayAnalogOptionMode::LaneCover => {
-                PlayLaneAction::LaneCoverDelta(lane_cover_change_step(change) * steps.abs() as f32)
-            }
+            PlayAnalogOptionMode::LaneCover => PlayLaneAction::AnalogLaneCoverDelta(
+                lane_cover_change_step(change) * steps.abs() as f32,
+            ),
             PlayAnalogOptionMode::GreenNumber => PlayLaneAction::GreenNumberDelta(
                 green_number_change_step(green_number_change_from_analog_steps(steps))
                     * steps.abs(),

@@ -56,7 +56,10 @@ impl WinitApp {
             return;
         }
         if self.active_play_uses_playback_rate_keys()
-            && is_autoplay_replay_playback_rate_key(event.physical_key)
+            && is_unassigned_autoplay_replay_playback_rate_key(
+                event.physical_key,
+                self.play.play_option_input.as_ref(),
+            )
         {
             self.sync_autoplay_replay_playback_rate();
             return;

@@ -165,7 +165,7 @@ impl WinitApp {
             };
             snapshot.total_notes = chart.scored_total_notes(policy).saturating_mul(multiplier);
         }
-        self.ensure_skin_ready(SkinKind::Decide);
+        self.reload_skin_for_scene_entry(SkinKind::Decide);
         // Play 画面へ入ってから stagefile / backbmp の有無が切り替わると、ロード演出中に
         // 代替タイトルから曲画像へ差し替わって見える。Decide 中に先行ロードし、
         // Play の最初の snapshot から同じ runtime image 100 / 101 を使えるようにする。
@@ -201,12 +201,12 @@ impl WinitApp {
             &self.boot.profile_config.display_name,
             skin_attempt,
         );
+        self.start_play_preload(chart_id, options.clone());
         self.spawn_play_skin_decode_for(
             play_skin_key_mode,
             options.session_mode,
             play_skin_runtime_state,
         );
-        self.start_play_preload(chart_id, options.clone());
         let now = Instant::now();
         self.play.pending_decide = Some(DecideTransition {
             chart_id,

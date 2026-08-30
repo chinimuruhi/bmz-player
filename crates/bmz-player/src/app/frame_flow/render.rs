@@ -47,6 +47,14 @@ impl WinitApp {
         let frame_timings = self.renderer.last_frame_timings();
         let surface_status = render_status.as_ref().ok().copied();
         self.frame.record_surface_status(Instant::now(), surface_status);
+        if surface_status == Some(RenderSurfaceStatus::Rendered) && !self.smoke.first_present_logged
+        {
+            self.smoke.first_present_logged = true;
+            tracing::info!(
+                startup_to_first_present_ms = self.smoke.startup_started_at.elapsed().as_millis(),
+                "first surface frame presented"
+            );
+        }
         self.arm_select_scene_timers_after_render(select_view, surface_status);
         self.log_pending_skin_render_probe(
             scene_kind,

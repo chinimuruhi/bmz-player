@@ -182,20 +182,13 @@ impl WinitApp {
     }
 
     /// beatoraja の `SystemSoundManager.shuffle()` と同様に、起動時にスキャンした候補から
-    /// BGM / SE セットを再抽選する。旧セットの BGM は、同じ SoundId へ新しいサンプルを
-    /// 登録する前に停止する。
+    /// BGM / SE セットを再抽選する。decodeと音量解析はworkerへ送り、旧セットは
+    /// 新しいセットの準備が完了するまで維持する。
     fn shuffle_system_sound_sets(&mut self) {
-        let Some(system_audio) = self.audio.system_audio.as_ref() else {
+        if self.audio.system_audio.is_none() {
             return;
-        };
-        if let Some(manager) = &self.audio.system_sound {
-            manager.stop_all_bgm();
         }
-        self.audio.system_sound = Some(system_sound_manager_from_catalog(
-            &self.audio.system_sound_catalog,
-            system_audio,
-            self.boot.profile_config.audio_mix.normalize_system_bgm_volume,
-        ));
+        self.start_system_sound_load();
     }
 
     /// `profile.audio_mix.system_bgm_volume` / `system_se_volume` に

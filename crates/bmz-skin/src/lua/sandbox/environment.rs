@@ -89,6 +89,11 @@ pub(super) fn install_sandbox(
                 &skin_file_dependency_names_for_get_path,
                 dependencies_for_get_path.as_ref(),
             );
+            if skin_config_path_uses_random_selection(&requested, &skin_files_for_get_path) {
+                // Random は同じ設定値でもロードごとに結果が変わるため、具体パスを
+                // 埋め込んだ document を次回ロードへ再利用できない。
+                mark_load_dependency_opaque(dependencies_for_get_path.as_ref());
+            }
             let path = match skin_config_get_path(
                 &context_for_get_path,
                 &requested,
@@ -96,7 +101,7 @@ pub(super) fn install_sandbox(
             ) {
                 Ok(path) => path,
                 Err(error) => {
-                    mark_io_dependency_opaque(dependencies_for_get_path.as_ref());
+                    mark_load_dependency_opaque(dependencies_for_get_path.as_ref());
                     return Err(mlua::Error::external(error));
                 }
             };
@@ -105,6 +110,19 @@ pub(super) fn install_sandbox(
         })?;
         skin_config.set("get_path", get_path)?;
         globals.set("skin_config", skin_config)?;
+    }
+    if let Some(dependencies_for_random) = load_dependencies.clone() {
+        let math: Table = globals.get("math")?;
+        let original_random: Function = math.get("random")?;
+        let original_random_key = lua.create_registry_value(original_random)?;
+        let random = lua.create_function(move |lua, args: Variadic<Value>| {
+            // Lua がロード時に選んだ値を document へ埋め込む場合、runtime state や
+            // ファイル更新だけではcache keyを再現できない。
+            mark_load_dependency_opaque(Some(&dependencies_for_random));
+            let original_random: Function = lua.registry_value(&original_random_key)?;
+            original_random.call::<Value>(args)
+        })?;
+        math.set("random", random)?;
     }
     globals.set("os", create_os_stub(lua, main_state_probe.clone())?)?;
     globals.set(
@@ -154,7 +172,7 @@ pub(super) fn install_sandbox(
         let path = match context_for_dofile.resolve_file(&path) {
             Ok(path) => path,
             Err(error) => {
-                mark_io_dependency_opaque(dependencies_for_dofile.as_ref());
+                mark_load_dependency_opaque(dependencies_for_dofile.as_ref());
                 return Err(mlua::Error::external(error));
             }
         };
@@ -170,7 +188,7 @@ pub(super) fn install_sandbox(
         let path = match context_for_loadfile.resolve_file(&path) {
             Ok(path) => path,
             Err(error) => {
-                mark_io_dependency_opaque(dependencies_for_loadfile.as_ref());
+                mark_load_dependency_opaque(dependencies_for_loadfile.as_ref());
                 return Err(mlua::Error::external(error));
             }
         };
@@ -221,7 +239,7 @@ pub(super) fn install_sandbox(
             }
         }
         let Some(path) = resolved else {
-            mark_io_dependency_opaque(dependencies_for_require.as_ref());
+            mark_load_dependency_opaque(dependencies_for_require.as_ref());
             return Err(mlua::Error::runtime(format!(
                 "module `{module}` not found in sandboxed package.path; tried: {}",
                 attempted.join(", ")

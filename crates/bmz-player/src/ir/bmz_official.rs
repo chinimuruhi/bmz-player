@@ -1,11 +1,13 @@
-use std::fmt;
-
 use anyhow::{Context, Result, bail};
 use bmz_gameplay::rule::RuleMode;
-use reqwest::{Url, header};
+use reqwest::Url;
 
 use crate::select_options::DoubleOptionScoreBucket;
 
+#[cfg(test)]
+use super::http_error::response_error_summary;
+pub(crate) use super::http_error::retry_after_seconds_from_error;
+use super::http_error::{http_response_error, retry_after_header};
 use super::types::{
     IrAuthTokens, IrCourseRankingResult, IrDeviceKeysResponse, IrLocalBackfillDeleteResponse,
     IrMeResponse, IrOwnScoreHistoryCursor, IrOwnScoreHistoryResult, IrRankingResult,
@@ -38,26 +40,6 @@ pub struct IrCourseRankingRequest {
     pub gauge: String,
     pub ln_policy: String,
     pub limit: u32,
-}
-
-#[derive(Debug)]
-struct IrHttpResponseError {
-    summary: String,
-    retry_after_seconds: Option<u64>,
-}
-
-impl fmt::Display for IrHttpResponseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.summary)
-    }
-}
-
-impl std::error::Error for IrHttpResponseError {}
-
-pub(crate) fn retry_after_seconds_from_error(error: &anyhow::Error) -> Option<u64> {
-    error.chain().find_map(|cause| {
-        cause.downcast_ref::<IrHttpResponseError>().and_then(|error| error.retry_after_seconds)
-    })
 }
 
 #[derive(Debug, Clone)]
@@ -508,70 +490,6 @@ async fn decode_response<T: serde::de::DeserializeOwned>(
         return Err(http_response_error(label, status, &body, retry_after.as_deref()));
     }
     response.json().await.with_context(|| format!("failed to decode {label} response"))
-}
-
-fn http_response_error(
-    label: &str,
-    status: reqwest::StatusCode,
-    body: &str,
-    retry_after: Option<&str>,
-) -> anyhow::Error {
-    anyhow::Error::new(IrHttpResponseError {
-        summary: format!("{label} failed: {}", response_error_summary(status, body, retry_after)),
-        retry_after_seconds: retry_after.and_then(parse_retry_after_seconds),
-    })
-}
-
-fn parse_retry_after_seconds(value: &str) -> Option<u64> {
-    value.trim().parse().ok()
-}
-
-/// エラー本文はトークン等の秘匿情報を含み得るため、そのままログへ流さない。
-/// サーバー制御の短い statusMessage / message だけを抜き出し、それ以外の
-/// 本文は捨てる (h3 の createError は JSON でこれらのキーを返す)。
-fn response_error_summary(
-    status: reqwest::StatusCode,
-    body: &str,
-    retry_after: Option<&str>,
-) -> String {
-    const MAX_MESSAGE_CHARS: usize = 200;
-
-    #[derive(serde::Deserialize)]
-    struct ErrorBody {
-        #[serde(rename = "statusMessage")]
-        status_message: Option<String>,
-        message: Option<String>,
-    }
-
-    let message = serde_json::from_str::<ErrorBody>(body)
-        .ok()
-        .and_then(|body| body.status_message.or(body.message))
-        .map(|message| message.trim().to_string())
-        .filter(|message| !message.is_empty());
-    let mut summary = match message {
-        Some(message) => {
-            let truncated: String = message.chars().take(MAX_MESSAGE_CHARS).collect();
-            format!("{status} {truncated}")
-        }
-        None => format!("{status} (response body omitted, {} bytes)", body.len()),
-    };
-    if let Some(retry_after) = retry_after.filter(|value| !value.trim().is_empty()) {
-        summary.push_str(" (retry after ");
-        summary.push_str(retry_after.trim());
-        summary.push('s');
-        summary.push(')');
-    }
-    summary
-}
-
-fn retry_after_header(response: &reqwest::Response) -> Option<String> {
-    response
-        .headers()
-        .get(header::RETRY_AFTER)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
 }
 
 fn scope_query_value(scope: &IrRankingScope) -> &'static str {
