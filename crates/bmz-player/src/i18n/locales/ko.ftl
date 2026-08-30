@@ -183,6 +183,7 @@ random-trainer-shift-left = 왼쪽 시프트
 random-trainer-shift-right = 오른쪽 시프트
 
 result-ir-title = IR 랭킹
+result-ir-primary = 기본
 result-ir-submitting = 점수 전송 중...
 result-ir-submit-failed = { $failed }건 전송 실패 ({ $submitted }건 성공)
 result-ir-submitted = 점수 { $submitted }건 전송 완료

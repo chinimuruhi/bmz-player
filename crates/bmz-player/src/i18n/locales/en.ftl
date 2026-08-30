@@ -183,6 +183,7 @@ random-trainer-shift-left = Shift left
 random-trainer-shift-right = Shift right
 
 result-ir-title = IR Rankings
+result-ir-primary = Primary
 result-ir-submitting = Submitting score...
 result-ir-submit-failed = { $failed } submissions failed ({ $submitted } succeeded)
 result-ir-submitted = Submitted { $submitted } scores

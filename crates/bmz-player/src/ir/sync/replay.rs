@@ -169,11 +169,18 @@ pub(super) fn provider_config<'a>(
     crate::ir::provider_key::provider_config_for_key(ir_config, provider_key)
 }
 
+pub(super) fn score_submission_includes_ranking(ir_config: &IrConfig, provider_key: &str) -> bool {
+    crate::ir::provider_key::primary_provider_config(ir_config)
+        .and_then(crate::ir::provider_key::configured_provider_key)
+        .is_some_and(|primary_key| primary_key == provider_key)
+}
+
 pub(super) async fn submit_job_payload(
     profile_root: &Path,
     provider: &IrProviderConfig,
     payload_json: &str,
     now: i64,
+    include_ranking: bool,
 ) -> Result<(String, String)> {
     let mut payload: IrScoreSubmission =
         serde_json::from_str(payload_json).context("failed to parse stored IR payload")?;
@@ -186,28 +193,38 @@ pub(super) async fn submit_job_payload(
     if crate::ir::bms_ir::is_bms_ir_config(provider) {
         let client = crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?;
         let outcome = client
-            .submit_score(&payload, &credentials.account_id, &credentials.access_token)
+            .submit_score(
+                &payload,
+                &credentials.account_id,
+                &credentials.access_token,
+                include_ranking,
+            )
             .await?;
         return Ok((outcome.redacted_request_json, outcome.response_json));
     }
     if crate::ir::rian_ir::is_rian_ir_config(provider) {
         let client = crate::ir::rian_ir::RianIrClient::new(&provider.base_url)?;
         let outcome = client
-            .submit_score(&payload, &credentials.account_id, &credentials.access_token)
+            .submit_score(
+                &payload,
+                &credentials.account_id,
+                &credentials.access_token,
+                include_ranking,
+            )
             .await?;
         return Ok((outcome.redacted_request_json, outcome.response_json));
     }
     let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
     attach_evidence(profile_root, provider, &client, &mut payload).await;
     let request_json = serde_json::to_string(&payload)?;
-    let options = default_score_submit_options();
+    let options = score_submit_options(include_ranking);
     let response = client.submit_score(&payload, &options).await?;
     Ok((request_json, serde_json::to_string(&response)?))
 }
 
-pub(super) fn default_score_submit_options() -> IrSubmitOptions {
+pub(super) fn score_submit_options(include_ranking: bool) -> IrSubmitOptions {
     IrSubmitOptions {
-        ranking_scopes: vec![IrRankingScope::Global],
+        ranking_scopes: if include_ranking { vec![IrRankingScope::Global] } else { Vec::new() },
         ranking_limit: crate::ir::types::default_ranking_limit(),
     }
 }

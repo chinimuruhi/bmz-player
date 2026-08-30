@@ -184,6 +184,7 @@ random-trainer-shift-left = 左移
 random-trainer-shift-right = 右移
 
 result-ir-title = IR 排名
+result-ir-primary = 主要 IR
 result-ir-submitting = 正在傳送成績...
 result-ir-submit-failed = { $failed } 筆傳送失敗（{ $submitted } 筆成功）
 result-ir-submitted = 已傳送 { $submitted } 筆成績

@@ -183,6 +183,7 @@ random-trainer-shift-left = 左シフト
 random-trainer-shift-right = 右シフト
 
 result-ir-title = IR ランキング
+result-ir-primary = プライマリ
 result-ir-submitting = スコア送信中...
 result-ir-submit-failed = 送信失敗 { $failed } 件（成功 { $submitted } 件）
 result-ir-submitted = スコア送信済み（{ $submitted } 件）

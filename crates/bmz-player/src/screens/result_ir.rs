@@ -37,16 +37,24 @@ pub enum RankingLoadState {
     Failed(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrSubmitState {
     Sending,
     Done { submitted: u32, failed: u32, message: Option<String> },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultIrProviderSubmission {
+    pub provider_key: String,
+    pub display_name: String,
+    pub primary: bool,
+    pub state: IrSubmitState,
+}
+
 #[derive(Debug)]
 pub enum ResultIrEvent {
-    Submit { submitted: u32, failed: u32, message: Option<String> },
-    Ranking { scope: IrRankingScope, result: Result<ResultIrRanking, String> },
+    Submit { provider: String, submitted: u32, failed: u32, message: Option<String> },
+    Ranking { provider: String, scope: IrRankingScope, result: Result<ResultIrRanking, String> },
 }
 
 #[derive(Debug, Clone)]
@@ -175,8 +183,15 @@ struct ResultIrTaskQuery {
     target: ResultIrTarget,
 }
 
+#[derive(Debug, Clone)]
+struct ResultIrSubmissionTarget {
+    provider: String,
+    account_id: String,
+}
+
 pub struct ResultIrState {
     pub submit: IrSubmitState,
+    pub provider_submissions: Vec<ResultIrProviderSubmission>,
     pub global: RankingLoadState,
     pub self_and_rivals: RankingLoadState,
     pub active_tab: ResultRankingTab,
@@ -219,25 +234,45 @@ impl ResultIrState {
         let mut loaded_chart_rankings = Vec::new();
         while let Ok(event) = self.receiver.try_recv() {
             match event {
-                ResultIrEvent::Submit { submitted, failed, message } => {
-                    self.submit = IrSubmitState::Done { submitted, failed, message };
-                    self.update_submit_timer(submitted, failed, self.submit_message_is_error());
+                ResultIrEvent::Submit { provider, submitted, failed, message } => {
+                    let state = IrSubmitState::Done { submitted, failed, message };
+                    if let Some(provider_state) = self
+                        .provider_submissions
+                        .iter_mut()
+                        .find(|entry| entry.provider_key == provider)
+                    {
+                        provider_state.state = state.clone();
+                    }
+                    if provider == self.query.provider {
+                        self.submit = state;
+                        self.update_submit_timer(submitted, failed, self.submit_message_is_error());
+                    }
                 }
-                ResultIrEvent::Ranking { scope, result } => match result {
-                    Ok(ranking) => {
-                        if let Some(loaded) = self.loaded_chart_ranking(&ranking) {
-                            loaded_chart_rankings.push(loaded);
+                ResultIrEvent::Ranking { provider, scope, result } => {
+                    if provider != self.query.provider {
+                        tracing::warn!(
+                            event_provider = provider,
+                            primary_provider = self.query.provider,
+                            "ignored Result ranking from a non-primary IR provider",
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(ranking) => {
+                            if let Some(loaded) = self.loaded_chart_ranking(&ranking) {
+                                loaded_chart_rankings.push(loaded);
+                            }
+                            if let Some(slot) = self.scope_slot(scope) {
+                                *slot = RankingLoadState::Loaded(ranking);
+                            }
                         }
-                        if let Some(slot) = self.scope_slot(scope) {
-                            *slot = RankingLoadState::Loaded(ranking);
+                        Err(error) => {
+                            if let Some(slot) = self.scope_slot(scope) {
+                                *slot = RankingLoadState::Failed(error);
+                            }
                         }
                     }
-                    Err(error) => {
-                        if let Some(slot) = self.scope_slot(scope) {
-                            *slot = RankingLoadState::Failed(error);
-                        }
-                    }
-                },
+                }
             }
         }
         loaded_chart_rankings
@@ -465,9 +500,9 @@ mod tests {
     use crate::storage::network_db::IrJobKind;
 
     use super::{
-        IrSubmitState, RankingLoadState, ResultIrEvent, ResultIrRanking, ResultIrRankingEntry,
-        ResultIrState, ResultIrTarget, ResultIrTaskQuery, ResultRankingTab,
-        course_ranking_to_result_ir_ranking, included_global_ranking_for_query,
+        IrSubmitState, RankingLoadState, ResultIrEvent, ResultIrProviderSubmission,
+        ResultIrRanking, ResultIrRankingEntry, ResultIrState, ResultIrTarget, ResultIrTaskQuery,
+        ResultRankingTab, course_ranking_to_result_ir_ranking, included_global_ranking_for_query,
         included_global_ranking_from_response, ranking_to_ir_snapshot,
         result_ir_ranking_to_skin_snapshot_at, result_ranking_limit,
     };
@@ -619,8 +654,23 @@ mod tests {
             total: Some(count),
         };
         let (sender, receiver) = channel::<ResultIrEvent>();
+        let event_sender = sender.clone();
         let mut state = ResultIrState {
             submit: IrSubmitState::Sending,
+            provider_submissions: vec![
+                ResultIrProviderSubmission {
+                    provider_key: "bmz-official".to_string(),
+                    display_name: "BMZ IR".to_string(),
+                    primary: true,
+                    state: IrSubmitState::Sending,
+                },
+                ResultIrProviderSubmission {
+                    provider_key: crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string(),
+                    display_name: "rianIR".to_string(),
+                    primary: false,
+                    state: IrSubmitState::Sending,
+                },
+            ],
             global: RankingLoadState::Loaded(ranking(IrRankingScope::Global, 1, 15)),
             self_and_rivals: RankingLoadState::Loaded(ranking(
                 IrRankingScope::SelfAndRivals,
@@ -683,6 +733,41 @@ mod tests {
         state.global = RankingLoadState::Loading;
         assert!(!state.scroll_skin_rows(1));
         assert_eq!(state.skin_snapshot().scroll_offset, 0);
+
+        event_sender
+            .send(ResultIrEvent::Ranking {
+                provider: crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string(),
+                scope: IrRankingScope::Global,
+                result: Ok(ranking(IrRankingScope::Global, 201, 1)),
+            })
+            .unwrap();
+        event_sender
+            .send(ResultIrEvent::Submit {
+                provider: crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string(),
+                submitted: 1,
+                failed: 0,
+                message: None,
+            })
+            .unwrap();
+
+        assert!(state.poll().is_empty());
+        assert!(matches!(state.global, RankingLoadState::Loading));
+        assert_eq!(state.submit, IrSubmitState::Sending);
+        assert_eq!(
+            state.provider_submissions[1].state,
+            IrSubmitState::Done { submitted: 1, failed: 0, message: None }
+        );
+
+        event_sender
+            .send(ResultIrEvent::Ranking {
+                provider: "bmz-official".to_string(),
+                scope: IrRankingScope::Global,
+                result: Ok(ranking(IrRankingScope::Global, 301, 1)),
+            })
+            .unwrap();
+        let loaded = state.poll();
+        assert_eq!(loaded.len(), 1);
+        assert!(matches!(state.global, RankingLoadState::Loaded(_)));
     }
 
     #[test]

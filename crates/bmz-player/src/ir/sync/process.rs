@@ -164,9 +164,18 @@ pub(super) async fn sync_pending_ir_jobs_with_filter(
                 }
             }
             IrJobKind::Score | IrJobKind::Course => {
+                let include_ranking = job.kind == IrJobKind::Score
+                    && score_submission_includes_ranking(ir_config, &job.provider);
                 let submit_result = match job.kind {
                     IrJobKind::Score => {
-                        submit_job_payload(profile_root, provider, &job.payload_json, job_now).await
+                        submit_job_payload(
+                            profile_root,
+                            provider,
+                            &job.payload_json,
+                            job_now,
+                            include_ranking,
+                        )
+                        .await
                     }
                     IrJobKind::Course => {
                         submit_course_job_payload(
@@ -210,10 +219,11 @@ pub(super) async fn sync_pending_ir_jobs_with_filter(
                 };
                 let parsed_response =
                     serde_json::from_str::<crate::ir::types::IrSubmitResponse>(&response_json).ok();
-                if let Some(ranking_response) = parsed_response
-                    .as_ref()
-                    .and_then(|response| response.rankings.get(&IrRankingScope::Global))
-                    .filter(|ranking| ranking.succeeded)
+                if include_ranking
+                    && let Some(ranking_response) = parsed_response
+                        .as_ref()
+                        .and_then(|response| response.rankings.get(&IrRankingScope::Global))
+                        .filter(|ranking| ranking.succeeded)
                     && let Some(ranking) = ranking_response.data.clone()
                 {
                     report.included_rankings.push(IrIncludedRanking {

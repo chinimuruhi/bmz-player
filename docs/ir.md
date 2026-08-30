@@ -144,6 +144,10 @@ SHA-256 fallback でラベルを付与する。
   `/api/v1/auth/refresh` が返す `provider_key` を credentials / device key /
   `ir_score_jobs.provider` / `primary_provider` の識別子として使う。
   `IrProviderConfig.provider` は表示名または実装種別として残す。
+  `primary_provider` が明示されている場合、ランキング取得・表示はそのproviderだけを使い、
+  無効・未設定でも別providerへフォールバックしない。空の旧設定だけは先頭の有効providerを使う。
+  submit-only providerはスコアを送信するが、送信応答へのランキング同梱を要求しない。
+  eguiのResultオーバーレイは、送信対象なし・成功・失敗をprovider別に表示する。
 - BMS-IR: `https://www.bms-ir.org` を3番目の固定 provider として保持する。
   既定は無効で、BMS-IR の数値 ID と LR2 game token を credential store に保存する。
   ログイン後は primary provider に選択でき、既存の durable queue から単曲・終端
@@ -153,6 +157,7 @@ SHA-256 fallback でラベルを付与する。
   実効LN/CN/HCN、Off/Flip/Battle/Battle ASの4/5/6/7/8/9/10/14/24/48Kを送信対象にする。
   BattleとBattle ASは別bucket、G-BATTLEは通常bucketを使う。DX、full autoplay、
   replay再生、Practice、実効assist、replay file送受信、local backfillは対象外である。
+  コース中の単曲スコアも現行どおり送信対象外とし、終端course/Dan scoreだけを送る。
   4/6/8Kもクライアント固有枠ではなくBMS-IRの正規キーモードとして送る。
   ローカル統合確認用のビルドだけは、`BMZ_BMS_IR_BASE_URL` を `cargo build` 時に
   指定すると固定 endpoint を差し替えられる。通常ビルドでは production URL 固定で、

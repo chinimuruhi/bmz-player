@@ -183,6 +183,7 @@ random-trainer-shift-left = 左移
 random-trainer-shift-right = 右移
 
 result-ir-title = IR 排名
+result-ir-primary = 主 IR
 result-ir-submitting = 正在提交成绩...
 result-ir-submit-failed = { $failed } 项提交失败（{ $submitted } 项成功）
 result-ir-submitted = 已提交 { $submitted } 项成绩

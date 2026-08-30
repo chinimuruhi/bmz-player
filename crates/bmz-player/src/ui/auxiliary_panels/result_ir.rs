@@ -21,40 +21,49 @@ pub(super) fn build_result_ir_panel(
         .default_pos(pos)
         .default_width(panel_width)
         .show(ctx, |ui| {
-            match &state.submit {
-                IrSubmitState::Sending => {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(tr!(text, "result-ir-submitting"));
-                    });
-                }
-                IrSubmitState::Done { submitted, failed, message } => {
-                    if *failed > 0 {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_RED,
-                            tr!(
-                                text,
-                                "result-ir-submit-failed",
-                                "failed" => *failed,
-                                "submitted" => *submitted
-                            ),
-                        );
-                        if let Some(message) = message {
-                            ui.small(message.clone());
+            for submission in &state.provider_submissions {
+                ui.horizontal(|ui| {
+                    ui.strong(&submission.display_name);
+                    if submission.primary {
+                        ui.small(tr!(text, "result-ir-primary"));
+                    }
+                });
+                match &submission.state {
+                    IrSubmitState::Sending => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(tr!(text, "result-ir-submitting"));
+                        });
+                    }
+                    IrSubmitState::Done { submitted, failed, message } => {
+                        if *failed > 0 {
+                            ui.colored_label(
+                                egui::Color32::LIGHT_RED,
+                                tr!(
+                                    text,
+                                    "result-ir-submit-failed",
+                                    "failed" => *failed,
+                                    "submitted" => *submitted
+                                ),
+                            );
+                            if let Some(message) = message {
+                                ui.small(message.clone());
+                            }
+                        } else if *submitted > 0 {
+                            ui.colored_label(
+                                egui::Color32::LIGHT_GREEN,
+                                tr!(
+                                    text,
+                                    "result-ir-submitted",
+                                    "submitted" => *submitted
+                                ),
+                            );
+                        } else {
+                            ui.label(tr!(text, "result-ir-nothing-to-submit"));
                         }
-                    } else if *submitted > 0 {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_GREEN,
-                            tr!(
-                                text,
-                                "result-ir-submitted",
-                                "submitted" => *submitted
-                            ),
-                        );
-                    } else {
-                        ui.label(tr!(text, "result-ir-nothing-to-submit"));
                     }
                 }
+                ui.add_space(4.0);
             }
 
             ui.separator();

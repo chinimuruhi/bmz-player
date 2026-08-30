@@ -750,6 +750,20 @@ mod tests {
     }
 
     #[test]
+    fn submit_only_score_request_omits_ranking_query() {
+        let client = RianIrClient::new("https://example.test/").unwrap();
+
+        assert_eq!(
+            client.score_submit_url(false).unwrap().as_str(),
+            "https://example.test/api/score/score.php"
+        );
+        assert_eq!(
+            client.score_submit_url(true).unwrap().as_str(),
+            "https://example.test/api/score/score.php?include=ranking"
+        );
+    }
+
+    #[test]
     fn chart_page_url_uses_rian_ranking_route_for_origin_and_api_urls() {
         let sha256 = "ab".repeat(32);
 

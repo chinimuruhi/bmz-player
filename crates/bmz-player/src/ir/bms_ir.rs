@@ -234,13 +234,14 @@ impl BmsIrClient {
         payload: &IrScoreSubmission,
         player_id: &str,
         game_token: &str,
+        include_ranking: bool,
     ) -> Result<BmsIrSubmitOutcome> {
         ensure_score_payload_supported(payload)?;
         let player_id = parse_player_id(player_id)?;
         if game_token.trim().is_empty() {
             bail!("BMS-IR game token is empty");
         }
-        let request = score_request_value(player_id, game_token, payload)?;
+        let request = score_request_value(player_id, game_token, payload, include_ranking)?;
         let redacted_request_json = redacted_score_request_json(&request)?;
         let response = self
             .http
@@ -611,10 +612,16 @@ fn parse_player_id(value: &str) -> Result<u64> {
     Ok(player_id)
 }
 
-fn score_request_value<T: Serialize>(player_id: u64, game_token: &str, score: &T) -> Result<Value> {
+fn score_request_value<T: Serialize>(
+    player_id: u64,
+    game_token: &str,
+    score: &T,
+    include_ranking: bool,
+) -> Result<Value> {
     Ok(serde_json::json!({
         "player_id": player_id,
         "game_token": game_token,
+        "include_ranking": include_ranking,
         "score": score,
     }))
 }
@@ -922,12 +929,14 @@ mod tests {
             123,
             "secret-game-token",
             &serde_json::json!({"idempotency_key": "score-1"}),
+            false,
         )
         .unwrap();
         let redacted = redacted_score_request_json(&request).unwrap();
         assert!(!redacted.contains("secret-game-token"));
         let decoded: Value = serde_json::from_str(&redacted).unwrap();
         assert_eq!(decoded["game_token"], "<redacted>");
+        assert_eq!(decoded["include_ranking"], false);
         assert_eq!(decoded["score"]["idempotency_key"], "score-1");
     }
 
@@ -1028,10 +1037,11 @@ mod tests {
         let client =
             BmsIrClient::new_with_timeout(&base_url, std::time::Duration::from_secs(2)).unwrap();
 
-        client.submit_score(&sample_score_payload(), "123", "token").await.unwrap();
+        client.submit_score(&sample_score_payload(), "123", "token", true).await.unwrap();
         let score_request = requests.recv().unwrap();
         assert!(score_request.starts_with("POST /api/bmz-player/v1/score HTTP/1.1"));
         assert_eq!(request_json(&score_request)["score"]["idempotency_key"], "score-contract-test");
+        assert_eq!(request_json(&score_request)["include_ranking"], true);
 
         client
             .submit_course_score(&serde_json::json!({"course_hash": course_hash}), "123", "token")
@@ -1176,7 +1186,7 @@ mod tests {
         let client =
             BmsIrClient::new_with_timeout(&base_url, std::time::Duration::from_secs(2)).unwrap();
 
-        assert!(client.submit_score(&sample_score_payload(), "123", "token").await.is_err());
+        assert!(client.submit_score(&sample_score_payload(), "123", "token", true).await.is_err());
     }
 
     #[tokio::test]

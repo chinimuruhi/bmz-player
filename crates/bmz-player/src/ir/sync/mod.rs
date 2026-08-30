@@ -207,11 +207,37 @@ mod tests {
 
     #[test]
     fn score_submission_requests_the_default_ranking_limit() {
-        let options = default_score_submit_options();
+        let options = score_submit_options(true);
 
         assert_eq!(options.ranking_scopes, vec![IrRankingScope::Global]);
         assert_eq!(options.ranking_limit, crate::ir::types::default_ranking_limit());
         assert_eq!(options.ranking_limit, 100);
+    }
+
+    #[test]
+    fn submit_only_score_submission_does_not_request_ranking() {
+        let options = score_submit_options(false);
+
+        assert!(options.ranking_scopes.is_empty());
+        assert_eq!(options.ranking_limit, crate::ir::types::default_ranking_limit());
+    }
+
+    #[test]
+    fn score_submission_requests_ranking_only_from_configured_primary() {
+        let mut primary = IrProviderConfig::bms_ir();
+        primary.provider_key = crate::ir::bms_ir::BMS_IR_PROVIDER.to_string();
+        primary.enabled = true;
+        let mut submit_only = IrProviderConfig::rian_ir();
+        submit_only.provider_key = crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string();
+        submit_only.enabled = true;
+        let config = IrConfig {
+            primary_provider: crate::ir::bms_ir::BMS_IR_PROVIDER.to_string(),
+            providers: vec![primary, submit_only],
+            ..IrConfig::default()
+        };
+
+        assert!(score_submission_includes_ranking(&config, crate::ir::bms_ir::BMS_IR_PROVIDER));
+        assert!(!score_submission_includes_ranking(&config, crate::ir::rian_ir::RIAN_IR_PROVIDER));
     }
 
     #[test]

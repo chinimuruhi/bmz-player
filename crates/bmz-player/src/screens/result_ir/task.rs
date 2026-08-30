@@ -81,10 +81,37 @@ pub(super) fn spawn_result_ir_task_for_target(
         base_url: provider.base_url.clone(),
         target,
     };
+    let mut submission_targets = Vec::new();
+    let mut provider_submissions = Vec::new();
+    for configured in &ir_config.providers {
+        if !configured.enabled || configured.base_url.is_empty() {
+            continue;
+        }
+        let Some(configured_key) = crate::ir::provider_key::configured_provider_key(configured)
+        else {
+            continue;
+        };
+        let Some(display_name) =
+            crate::ir::provider_key::configured_provider_display_name(configured)
+        else {
+            continue;
+        };
+        submission_targets.push(ResultIrSubmissionTarget {
+            provider: configured_key.to_string(),
+            account_id: configured.account_id.clone(),
+        });
+        provider_submissions.push(ResultIrProviderSubmission {
+            provider_key: configured_key.to_string(),
+            display_name: display_name.to_string(),
+            primary: configured_key == provider_key,
+            state: IrSubmitState::Sending,
+        });
+    }
     let (sender, receiver) = channel();
 
     let mut state = ResultIrState {
         submit: IrSubmitState::Sending,
+        provider_submissions,
         global: RankingLoadState::NotRequested,
         self_and_rivals: RankingLoadState::NotRequested,
         active_tab: ResultRankingTab::Global,
@@ -107,6 +134,7 @@ pub(super) fn spawn_result_ir_task_for_target(
     let submit_sender = sender.clone();
     let ir_config = ir_config.clone();
     let submit_query = query.clone();
+    let submission_targets_for_task = submission_targets.clone();
     // global は Result スキンの NUMBER_IR_RANK / OPTION_IR_* 表示にも使うため、
     // prefetch 設定に関わらず常に取得する。rivals scope のみ設定に従う。
     let prefetch_global = true;
@@ -149,6 +177,7 @@ pub(super) fn spawn_result_ir_task_for_target(
                 // backlog の同期完了を待たせない。
                 if let Some(ranking) = included_global_ranking.clone() {
                     let _ = submit_sender.send(ResultIrEvent::Ranking {
+                        provider: submit_query.provider.clone(),
                         scope: IrRankingScope::Global,
                         result: Ok(ranking),
                     });
@@ -180,12 +209,20 @@ pub(super) fn spawn_result_ir_task_for_target(
                 // 別の同期 task がこの job を先に claim していても、送信完了まで
                 // 待ってから ranking を取得する。これで古いサーバ側 ranking を
                 // Result に固定しない。
-                let event = watch_result_submission(&network_db_path, &submit_query).await;
-                let _ = submit_sender.send(event);
+                for event in watch_result_submissions(
+                    &network_db_path,
+                    &submit_query,
+                    &submission_targets_for_task,
+                )
+                .await
+                {
+                    let _ = submit_sender.send(event);
+                }
                 if included_global_ranking.is_none() {
                     match stored_included_global_ranking(&network_db_path, &submit_query) {
                         Ok(Some(ranking)) => {
                             let _ = submit_sender.send(ResultIrEvent::Ranking {
+                                provider: submit_query.provider.clone(),
                                 scope: IrRankingScope::Global,
                                 result: Ok(ranking.clone()),
                             });
@@ -200,11 +237,15 @@ pub(super) fn spawn_result_ir_task_for_target(
                 }
             }
             Err(error) => {
-                let _ = submit_sender.send(ResultIrEvent::Submit {
-                    submitted: 0,
-                    failed: 0,
-                    message: Some(format!("{error:#}")),
-                });
+                let message = format!("{error:#}");
+                for target in &submission_targets_for_task {
+                    let _ = submit_sender.send(ResultIrEvent::Submit {
+                        provider: target.provider.clone(),
+                        submitted: 0,
+                        failed: 0,
+                        message: Some(message.clone()),
+                    });
+                }
             }
         }
         let included_global_loaded = included_global_ranking.is_some();
@@ -227,49 +268,81 @@ pub(super) fn spawn_result_ir_task_for_target(
     Some(state)
 }
 
-/// 常駐同期との claim race があっても、今回の attempt の終端状態を待つ。
-pub(super) async fn watch_result_submission(
+/// 常駐同期との claim race があっても、今回の attempt の provider 別終端状態を待つ。
+pub(super) async fn watch_result_submissions(
     network_db_path: &std::path::Path,
     query: &ResultIrTaskQuery,
-) -> ResultIrEvent {
+    targets: &[ResultIrSubmissionTarget],
+) -> Vec<ResultIrEvent> {
     const POLL_INTERVAL: Duration = Duration::from_millis(250);
     const MAX_POLLS: usize = 120;
     let (kind, local_score_id) = query.target.submission_job();
+    let mut latest_jobs = Vec::new();
 
     for _ in 0..MAX_POLLS {
         match crate::storage::network_db::NetworkDatabase::open(network_db_path)
             .and_then(|db| db.ir_score_jobs_for_local_score(kind, local_score_id))
         {
             Ok(jobs) => {
-                let primary_jobs = jobs
-                    .iter()
-                    .filter(|job| {
-                        job.provider == query.provider && job.account_id == query.account_id
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
-                if let Some((submitted, failed, message)) =
-                    submission_result_from_jobs(&primary_jobs)
-                {
-                    return ResultIrEvent::Submit { submitted, failed, message };
+                latest_jobs = jobs;
+                let mut events = Vec::with_capacity(targets.len());
+                let mut all_finished = true;
+                for target in targets {
+                    let provider_jobs = latest_jobs
+                        .iter()
+                        .filter(|job| {
+                            job.provider == target.provider && job.account_id == target.account_id
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if let Some((submitted, failed, message)) =
+                        submission_result_from_jobs(&provider_jobs)
+                    {
+                        events.push(ResultIrEvent::Submit {
+                            provider: target.provider.clone(),
+                            submitted,
+                            failed,
+                            message,
+                        });
+                    } else {
+                        all_finished = false;
+                    }
+                }
+                if all_finished {
+                    return events;
                 }
             }
             Err(error) => {
-                return ResultIrEvent::Submit {
-                    submitted: 0,
-                    failed: 0,
-                    message: Some(format!("failed to read IR submission status: {error:#}")),
-                };
+                let message = format!("failed to read IR submission status: {error:#}");
+                return targets
+                    .iter()
+                    .map(|target| ResultIrEvent::Submit {
+                        provider: target.provider.clone(),
+                        submitted: 0,
+                        failed: 0,
+                        message: Some(message.clone()),
+                    })
+                    .collect();
             }
         }
         tokio::time::sleep(POLL_INTERVAL).await;
     }
 
-    ResultIrEvent::Submit {
-        submitted: 0,
-        failed: 0,
-        message: Some("timed out waiting for IR submission".to_string()),
-    }
+    targets
+        .iter()
+        .map(|target| {
+            let provider_jobs = latest_jobs
+                .iter()
+                .filter(|job| {
+                    job.provider == target.provider && job.account_id == target.account_id
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let (submitted, failed, message) = submission_result_from_jobs(&provider_jobs)
+                .unwrap_or_else(|| (0, 0, Some("timed out waiting for IR submission".to_string())));
+            ResultIrEvent::Submit { provider: target.provider.clone(), submitted, failed, message }
+        })
+        .collect()
 }
 
 pub(super) fn submission_result_from_jobs(
@@ -379,7 +452,7 @@ pub(super) async fn fetch_ranking_and_send(
     sender: &Sender<ResultIrEvent>,
 ) {
     let result = fetch_result_ranking(query, scope).await.map_err(|error| format!("{error:#}"));
-    let _ = sender.send(ResultIrEvent::Ranking { scope, result });
+    let _ = sender.send(ResultIrEvent::Ranking { provider: query.provider.clone(), scope, result });
 }
 
 pub(super) async fn fetch_result_ranking(
