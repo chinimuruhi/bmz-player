@@ -29,7 +29,7 @@ pub struct SkinGraphDef {
     /// Lua `value = function()` から変換した fill 比率式 (0.0–1.0)。空なら `graph_type` を使う。
     #[serde(default)]
     pub value_expr: String,
-    #[serde(default, rename = "isRefNum", deserialize_with = "deserialize_skin_bool")]
+    #[serde(default, rename = "isRefNum")]
     pub is_ref_num: bool,
     #[serde(default)]
     pub min: i32,

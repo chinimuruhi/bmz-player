@@ -53,34 +53,6 @@ fn skin_document_normalizes_numeric_and_string_ids() {
 }
 
 #[test]
-fn skin_document_accepts_lua_integer_flags_for_is_ref_num() {
-    let document: SkinDocument = serde_json::from_str(
-        r#"
-        {
-            "slider": [
-                { "id": "integer-true", "isRefNum": 1 },
-                { "id": "integer-false", "isRefNum": 0 },
-                { "id": "boolean-true", "isRefNum": true }
-            ],
-            "graph": [
-                { "id": "integer-true", "isRefNum": 1 },
-                { "id": "integer-false", "isRefNum": 0 },
-                { "id": "boolean-false", "isRefNum": false }
-            ]
-        }
-        "#,
-    )
-    .unwrap();
-
-    assert!(document.slider[0].is_ref_num);
-    assert!(!document.slider[1].is_ref_num);
-    assert!(document.slider[2].is_ref_num);
-    assert!(document.graph[0].is_ref_num);
-    assert!(!document.graph[1].is_ref_num);
-    assert!(!document.graph[2].is_ref_num);
-}
-
-#[test]
 fn panel_and_destination_action_deserialize() {
     let document: SkinDocument = serde_json::from_str(
         r##"

@@ -28,8 +28,7 @@ Luaで解析するResult skinも通せる専用の命令数上限を持ち、run
 skin catalogのJSON候補はトップレベルに数値の`type`を明示した文書だけを受理する。
 これによりskin配下のplayer dataやparts JSONが既定値`type=0`のPlay 7KEYS skinとして
 候補へ混入することを防ぐ。Selectの曲行テキストIDは区切り文字を無視して`bartext`を
-照合し、`bar_text` / `folderbar_text`形式もbar textへ割り当てる。Lua skinのslider / graph
-で使う`isRefNum`はJSONのbooleanに加えて互換表現の整数`0` / `1`も受理する。
+照合し、`bar_text` / `folderbar_text`形式もbar textへ割り当てる。
 
 ## Skin Type
 

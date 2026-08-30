@@ -496,7 +496,7 @@ pub struct SkinSliderDef {
     pub slider_type: i32,
     #[serde(default = "default_true")]
     pub changeable: bool,
-    #[serde(default, rename = "isRefNum", deserialize_with = "deserialize_skin_bool")]
+    #[serde(default, rename = "isRefNum")]
     pub is_ref_num: bool,
     #[serde(default)]
     pub min: i32,
