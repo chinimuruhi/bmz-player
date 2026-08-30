@@ -14,8 +14,11 @@ pub(super) fn should_bypass_analog_scratch_bounce(
         .is_some_and(|binding| matches!(binding.lane, Lane::Scratch | Lane::Scratch2))
 }
 
-pub(super) fn should_play_select_bgm_on_enter(select_preview_playing: bool) -> bool {
-    !select_preview_playing
+pub(super) fn should_play_select_bgm_on_enter(
+    select_preview_playing: bool,
+    system_sound_load_pending: bool,
+) -> bool {
+    !select_preview_playing && !system_sound_load_pending
 }
 
 pub(super) fn should_shuffle_system_sound_sets_on_scene_enter(

@@ -19,9 +19,10 @@ fn select_score_context_changes_only_for_rule_or_ln_mode() {
 }
 
 #[test]
-fn select_bgm_is_skipped_when_preview_is_already_playing() {
-    assert!(should_play_select_bgm_on_enter(false));
-    assert!(!should_play_select_bgm_on_enter(true));
+fn select_bgm_waits_for_preview_and_pending_system_sound_set() {
+    assert!(should_play_select_bgm_on_enter(false, false));
+    assert!(!should_play_select_bgm_on_enter(true, false));
+    assert!(!should_play_select_bgm_on_enter(false, true));
 }
 
 #[test]

@@ -227,9 +227,10 @@ impl WinitApp {
     }
 
     pub(super) fn start_system_sound_load(&mut self) {
-        if self.audio.system_audio.is_none() {
+        let Some(system_audio) = self.audio.system_audio.as_ref() else {
             return;
-        }
+        };
+        let output_sample_rate = system_audio.engine().output_sample_rate();
         let selection = system_sound_selection_from_catalog(&self.audio.system_sound_catalog);
         let normalize_bgm_volume = self.boot.profile_config.audio_mix.normalize_system_bgm_volume;
         let cache_dir = self.boot.app_paths.cache_dir.clone();
@@ -241,6 +242,7 @@ impl WinitApp {
             let prepared = crate::system_sound_manager::SystemSoundManager::prepare(
                 &selection,
                 normalize_bgm_volume,
+                output_sample_rate,
                 Some(&cache_dir),
             );
             let _ = tx.send(SystemSoundLoadWorkerResult { generation, prepared });
@@ -312,7 +314,10 @@ impl WinitApp {
             ));
         self.sync_realtime_profile_settings();
         if matches!(self.view_state(), AppViewState::Select)
-            && should_play_select_bgm_on_enter(self.select.select_assets.preview_playing())
+            && should_play_select_bgm_on_enter(
+                self.select.select_assets.preview_playing(),
+                self.audio.pending_system_sound.is_some(),
+            )
         {
             self.play_system_sound(crate::system_sound::SoundType::Select);
         }

@@ -115,15 +115,18 @@ impl SystemSoundManager {
         normalize_bgm_volume: bool,
         cache_dir: Option<&Path>,
     ) -> Self {
-        let prepared = Self::prepare(selection, normalize_bgm_volume, cache_dir);
+        let output_sample_rate = engine.output_sample_rate();
+        let prepared =
+            Self::prepare(selection, normalize_bgm_volume, output_sample_rate, cache_dir);
         Self::from_prepared(engine, prepared, normalize_bgm_volume)
     }
 
-    /// ファイルI/O、decode、loudness解析だけを行うworker向け処理。
+    /// ファイルI/O、decode、loudness解析、出力レート化を行うworker向け処理。
     /// AudioEngineへの登録は [`Self::from_prepared`] でapp threadから行う。
     pub fn prepare(
         selection: &SoundSetSelection,
         normalize_bgm_volume: bool,
+        output_sample_rate: u32,
         cache_dir: Option<&Path>,
     ) -> PreparedSystemSoundSet {
         let total_started_at = Instant::now();
@@ -198,6 +201,11 @@ impl SystemSoundManager {
                             bgm_normalization_gains.insert(*sound_type, gain);
                         }
                     }
+                    let sample = if sample.sample_rate == output_sample_rate {
+                        sample
+                    } else {
+                        sample.resampled_to(output_sample_rate)
+                    };
                     samples.push((*sound_type, id, sample));
                 }
                 Err(error) => {
@@ -245,7 +253,7 @@ impl SystemSoundManager {
             .into_iter()
             .map(|(sound_type, id, sample)| {
                 id_map.insert(sound_type, id);
-                AudioEngineCommand::InsertSample { id, sample }
+                AudioEngineCommand::InsertPreparedSample { id, sample }
             })
             .collect::<Vec<_>>();
         if !commands.is_empty() && !engine.push_commands(commands) {
@@ -564,25 +572,49 @@ mod tests {
         let selection =
             SoundSetSelection { bgm_dir: Some(root.clone()), se_dir: None, default_dir: None };
 
-        let disabled = SystemSoundManager::prepare(&selection, false, Some(&root));
+        let disabled = SystemSoundManager::prepare(&selection, false, 48_000, Some(&root));
         assert_eq!(disabled.stats.analysis_count, 0);
         assert_eq!(disabled.stats.cache_hit_count, 0);
         assert!(!disabled.normalization_analysis_enabled);
         assert!(!root.join(SYSTEM_BGM_LOUDNESS_CACHE_FILE).exists());
 
-        let first = SystemSoundManager::prepare(&selection, true, Some(&root));
+        let first = SystemSoundManager::prepare(&selection, true, 48_000, Some(&root));
         assert_eq!(first.stats.analysis_count, 1);
         assert_eq!(first.stats.cache_hit_count, 0);
         assert!(root.join(SYSTEM_BGM_LOUDNESS_CACHE_FILE).is_file());
 
-        let cached = SystemSoundManager::prepare(&selection, true, Some(&root));
+        let cached = SystemSoundManager::prepare(&selection, true, 48_000, Some(&root));
         assert_eq!(cached.stats.analysis_count, 0);
         assert_eq!(cached.stats.cache_hit_count, 1);
 
         write_test_wav(&select, 48_001);
-        let changed = SystemSoundManager::prepare(&selection, true, Some(&root));
+        let changed = SystemSoundManager::prepare(&selection, true, 48_000, Some(&root));
         assert_eq!(changed.stats.analysis_count, 1);
         assert_eq!(changed.stats.cache_hit_count, 0);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn prepare_resamples_system_sounds_to_output_rate() {
+        let root = test_temp_dir("output-rate");
+        std::fs::create_dir_all(&root).unwrap();
+        let select = root.join("select.wav");
+        write_test_wav_at_rate(&select, 2, 24_000);
+        let selection =
+            SoundSetSelection { bgm_dir: Some(root.clone()), se_dir: None, default_dir: None };
+
+        let prepared = SystemSoundManager::prepare(&selection, false, 48_000, None);
+        let sample = prepared
+            .samples
+            .iter()
+            .find_map(|(sound_type, _, sample)| {
+                (*sound_type == SoundType::Select).then_some(sample)
+            })
+            .expect("select sample should be prepared");
+
+        assert_eq!(sample.sample_rate, 48_000);
+        assert_eq!(sample.frames.len(), 4);
 
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -859,6 +891,10 @@ mod tests {
     }
 
     fn write_test_wav(path: &Path, frames: u32) {
+        write_test_wav_at_rate(path, frames, 48_000);
+    }
+
+    fn write_test_wav_at_rate(path: &Path, frames: u32, sample_rate: u32) {
         let data_len = frames.saturating_mul(2);
         let mut bytes = Vec::with_capacity(44 + data_len as usize);
         bytes.extend_from_slice(b"RIFF");
@@ -867,8 +903,8 @@ mod tests {
         bytes.extend_from_slice(&16u32.to_le_bytes());
         bytes.extend_from_slice(&1u16.to_le_bytes());
         bytes.extend_from_slice(&1u16.to_le_bytes());
-        bytes.extend_from_slice(&48_000u32.to_le_bytes());
-        bytes.extend_from_slice(&96_000u32.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.saturating_mul(2).to_le_bytes());
         bytes.extend_from_slice(&2u16.to_le_bytes());
         bytes.extend_from_slice(&16u16.to_le_bytes());
         bytes.extend_from_slice(b"data");

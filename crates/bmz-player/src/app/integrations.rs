@@ -164,7 +164,10 @@ impl WinitApp {
         }
         match scene_kind {
             AppSceneKind::Select
-                if should_play_select_bgm_on_enter(self.select.select_assets.preview_playing()) =>
+                if should_play_select_bgm_on_enter(
+                    self.select.select_assets.preview_playing(),
+                    self.audio.pending_system_sound.is_some(),
+                ) =>
             {
                 self.play_system_sound(SoundType::Select);
             }
