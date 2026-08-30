@@ -1,4 +1,5 @@
 use super::*;
+use anyhow::Context as _;
 
 pub(super) fn enabled_provider(ir_config: &IrConfig) -> Option<(String, String)> {
     let provider = crate::ir::provider_key::primary_provider_config(ir_config)?;
@@ -158,38 +159,13 @@ pub(super) fn spawn_rival_fetch(
                     .await?
             };
             if response.not_modified {
-                return database.rival_scores(
-                    &target.provider,
-                    &target.rival_id,
-                    &target.body,
-                );
+                return database.rival_scores(&target.provider, &target.rival_id, &target.body);
             }
             let scores = response
                 .scores
                 .into_iter()
-                .filter_map(|score| {
-                    let chart_sha256 = match hex_to_hash::<32>(&score.sha256) {
-                        Ok(hash) => hash,
-                        Err(error) => {
-                            tracing::warn!(hash = %score.sha256, %error, "discarding invalid rival score hash");
-                            return None;
-                        }
-                    };
-                    Some(IrRivalScoreRecord {
-                        chart_sha256,
-                        ln_mode: score.ln_mode,
-                        ex_score: score.ex_score,
-                        clear_type: score.clear_type,
-                        max_combo: score.max_combo,
-                        min_bp: score.min_bp,
-                        play_option: score.play_option,
-                        arrange_1p: score.arrange_1p,
-                        arrange_2p: score.arrange_2p,
-                        double_option: score.double_option,
-                        play_seed: score.play_seed,
-                    })
-                })
-                .collect::<Vec<_>>();
+                .map(convert_rival_score)
+                .collect::<anyhow::Result<Vec<_>>>()?;
             let fetched_at = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|duration| duration.as_secs().min(i64::MAX as u64) as i64)
@@ -208,6 +184,25 @@ pub(super) fn spawn_rival_fetch(
         .map_err(|error| format!("{error:#}"));
         let _ = sender.send((target, requested_at, result));
     });
+}
+
+fn convert_rival_score(
+    score: crate::ir::rian_ir::RianRivalScore,
+) -> anyhow::Result<IrRivalScoreRecord> {
+    Ok(IrRivalScoreRecord {
+        chart_sha256: hex_to_hash::<32>(&score.sha256)
+            .with_context(|| format!("invalid rival score SHA-256: {}", score.sha256))?,
+        ln_mode: score.ln_mode,
+        ex_score: score.ex_score,
+        clear_type: score.clear_type,
+        max_combo: score.max_combo,
+        min_bp: score.min_bp,
+        play_option: score.play_option,
+        arrange_1p: score.arrange_1p,
+        arrange_2p: score.arrange_2p,
+        double_option: score.double_option,
+        play_seed: score.play_seed,
+    })
 }
 
 fn now_unix_seconds() -> i64 {

@@ -44,10 +44,19 @@ pub(super) fn upsert_difficulty_table(
     conn: &mut Connection,
     table: &FetchedDifficultyTable,
 ) -> Result<i64> {
-    let level_order_json = serde_json::to_string(&table.level_order)?;
     let tx = conn.transaction()?;
+    let table_id = upsert_difficulty_table_in_transaction(&tx, table)?;
+    tx.commit()?;
+    Ok(table_id)
+}
 
-    tx.execute(
+pub(super) fn upsert_difficulty_table_in_transaction(
+    conn: &Connection,
+    table: &FetchedDifficultyTable,
+) -> Result<i64> {
+    let level_order_json = serde_json::to_string(&table.level_order)?;
+
+    conn.execute(
         "INSERT INTO difficulty_tables (
              source_url, head_url, name, symbol, level_order, fetched_at,
              download_metadata_version
@@ -71,16 +80,16 @@ pub(super) fn upsert_difficulty_table(
         ],
     )?;
 
-    let table_id: i64 = tx.query_row(
+    let table_id: i64 = conn.query_row(
         "SELECT id FROM difficulty_tables WHERE source_url = ?1",
         params![table.source_url],
         |row| row.get(0),
     )?;
 
-    tx.execute("DELETE FROM difficulty_table_entries WHERE table_id = ?1", params![table_id])?;
+    conn.execute("DELETE FROM difficulty_table_entries WHERE table_id = ?1", params![table_id])?;
 
     for entry in &table.entries {
-        tx.execute(
+        conn.execute(
             "INSERT INTO difficulty_table_entries
              (table_id, level, md5, sha256, title, artist, comment,
               url, append_url, ipfs, append_ipfs)
@@ -101,7 +110,6 @@ pub(super) fn upsert_difficulty_table(
         )?;
     }
 
-    tx.commit()?;
     Ok(table_id)
 }
 

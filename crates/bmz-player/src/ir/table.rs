@@ -4,7 +4,6 @@
 //! `difficulty_tables` にキャッシュする。source URL は provider/base/account ごとの
 //! digest を含むため、別アカウントの POPULAR / rival 表が混ざらない。
 
-use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::time::Duration;
 
@@ -116,29 +115,7 @@ pub fn store_account_tables(
     identity: &RianTableIdentity,
     tables: &[FetchedDifficultyTable],
 ) -> Result<(usize, usize)> {
-    let current_sources: HashSet<&str> =
-        tables.iter().map(|table| table.source_url.as_str()).collect();
-    let stale_sources: Vec<String> = library_db
-        .list_difficulty_tables()?
-        .into_iter()
-        .filter(|table| {
-            identity.owns_source(&table.source_url)
-                && !current_sources.contains(table.source_url.as_str())
-        })
-        .map(|table| table.source_url)
-        .collect();
-    for source in stale_sources {
-        library_db.delete_difficulty_table(&source)?;
-        library_db.delete_courses_by_source(&format!("table:{source}"))?;
-    }
-
-    let mut entries = 0;
-    for table in tables {
-        library_db.delete_courses_by_source(&format!("table:{}", table.source_url))?;
-        crate::table_cmd::store_fetched_table(library_db, table)?;
-        entries += table.entries.len();
-    }
-    Ok((tables.len(), entries))
+    library_db.replace_account_difficulty_tables(identity.source_prefix(), tables)
 }
 
 fn convert_resources(

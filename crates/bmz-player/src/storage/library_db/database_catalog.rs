@@ -8,6 +8,56 @@ impl LibraryDatabase {
         super::super::difficulty_table_db::upsert_difficulty_table(&mut self.conn, table)
     }
 
+    /// Replaces one account-owned table snapshot atomically, including courses.
+    ///
+    /// Validation must happen before this call. If any table or course fails to
+    /// store, SQLite rolls back both the new rows and stale-row deletions.
+    pub fn replace_account_difficulty_tables(
+        &mut self,
+        source_prefix: &str,
+        tables: &[crate::difficulty_table::FetchedDifficultyTable],
+    ) -> Result<(usize, usize)> {
+        let current_sources: std::collections::HashSet<&str> =
+            tables.iter().map(|table| table.source_url.as_str()).collect();
+        if tables.iter().any(|table| !table.source_url.starts_with(source_prefix)) {
+            anyhow::bail!("difficulty-table snapshot contains a source outside its account scope");
+        }
+
+        let tx = self.conn.transaction()?;
+        let stale_sources: Vec<String> =
+            super::super::difficulty_table_db::list_difficulty_tables(&tx)?
+                .into_iter()
+                .filter(|table| {
+                    table.source_url.starts_with(source_prefix)
+                        && !current_sources.contains(table.source_url.as_str())
+                })
+                .map(|table| table.source_url)
+                .collect();
+        for source in stale_sources {
+            super::super::difficulty_table_db::delete_difficulty_table(&tx, &source)?;
+            super::super::course_db::delete_courses_by_source(&tx, &format!("table:{source}"))?;
+        }
+
+        let mut entries = 0;
+        for table in tables {
+            let course_source = format!("table:{}", table.source_url);
+            super::super::course_db::delete_courses_by_source(&tx, &course_source)?;
+            super::super::difficulty_table_db::upsert_difficulty_table_in_transaction(&tx, table)?;
+            for (position, course) in table.courses.iter().enumerate() {
+                super::super::course_db::upsert_course_in_transaction(
+                    &tx,
+                    &course_source,
+                    course,
+                    position as i64,
+                    table.fetched_at,
+                )?;
+            }
+            entries += table.entries.len();
+        }
+        tx.commit()?;
+        Ok((tables.len(), entries))
+    }
+
     pub fn list_difficulty_tables(&self) -> Result<Vec<DifficultyTableRecord>> {
         super::super::difficulty_table_db::list_difficulty_tables(&self.conn)
     }
@@ -200,5 +250,69 @@ impl LibraryDatabase {
             Ok((chart, level))
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bmz_core::course::{CourseConstraints, CourseDefinition, CourseEntry, CourseKind};
+    use rusqlite::Connection;
+
+    use super::*;
+    use crate::difficulty_table::FetchedDifficultyTable;
+    use crate::storage::common::configure_connection;
+    use crate::storage::migration::{LIBRARY_MIGRATIONS, run_migrations};
+
+    fn open_db() -> LibraryDatabase {
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure_connection(&conn).unwrap();
+        run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
+        LibraryDatabase::from_connection(conn)
+    }
+
+    fn table(source_url: &str) -> FetchedDifficultyTable {
+        FetchedDifficultyTable {
+            source_url: source_url.to_string(),
+            head_url: "https://example.test/header.json".to_string(),
+            name: source_url.to_string(),
+            symbol: String::new(),
+            level_order: Vec::new(),
+            entries: Vec::new(),
+            courses: Vec::new(),
+            fetched_at: 1,
+        }
+    }
+
+    #[test]
+    fn account_table_snapshot_rolls_back_stale_deletes_when_a_course_fails() {
+        let prefix = "bmz-bms-ir-table:test:";
+        let mut db = open_db();
+        let old = table(&format!("{prefix}old"));
+        db.replace_account_difficulty_tables(prefix, std::slice::from_ref(&old)).unwrap();
+
+        let mut invalid = table(&format!("{prefix}new"));
+        invalid.courses.push(CourseDefinition {
+            key: "course".to_string(),
+            title: "Broken course".to_string(),
+            kind: CourseKind::Course,
+            entries: vec![CourseEntry {
+                title_hint: "Missing chart".to_string(),
+                md5: None,
+                sha256: None,
+                chart_id: Some(i64::MAX),
+            }],
+            constraints: CourseConstraints::default(),
+            trophies: Vec::new(),
+            release: true,
+        });
+
+        assert!(db.replace_account_difficulty_tables(prefix, &[invalid]).is_err());
+        let sources = db
+            .list_difficulty_tables()
+            .unwrap()
+            .into_iter()
+            .map(|table| table.source_url)
+            .collect::<Vec<_>>();
+        assert_eq!(sources, vec![old.source_url]);
     }
 }
