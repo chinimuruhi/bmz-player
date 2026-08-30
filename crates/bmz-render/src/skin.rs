@@ -36,6 +36,8 @@ pub use bmz_skin_document::*;
 
 mod condition;
 mod document_render;
+#[path = "skin/pm_chara.rs"]
+mod pm_chara;
 mod runtime;
 mod select_state;
 #[path = "skin/state_values/gauge_graph.rs"]
@@ -60,6 +62,7 @@ mod state_value_timing_graph;
 pub use condition::test_skin_ops;
 use condition::*;
 pub use document_render::SkinDocumentRenderExt;
+use pm_chara::*;
 use runtime::*;
 pub use runtime::{
     DynamicTimerRuntime, JudgeRegionState, MAX_JUDGE_REGIONS, SkinClickHit, SkinClickTarget,

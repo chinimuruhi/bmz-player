@@ -137,6 +137,19 @@ macro_rules! skin_document_render_core_resolve_methods {
                     runtime_graphs.play_bpm_graph_segments,
                 ));
             }
+            if let Some(pmchara) = self.pmchara.iter().find(|pmchara| pmchara.id == destination.id)
+            {
+                return Some(pm_chara_render_items(
+                    pmchara,
+                    destination,
+                    frame,
+                    elapsed,
+                    state,
+                    sources,
+                    self.w,
+                    self.h,
+                ));
+            }
             if let Some(item) = self.direct_source_image_render_item(destination, frame, sources) {
                 return Some(vec![item]);
             }

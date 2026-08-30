@@ -1,9 +1,11 @@
 use crate::skin_loader::*;
 
 mod font;
+mod pm_chara;
 mod source;
 
 use font::decode_skin_fonts;
+use pm_chara::prepare_pm_chara;
 use source::decode_skin_sources;
 
 /// beatoraja JSON skin の document/フォント/PNG ソースを並列にデコードする。
@@ -168,6 +170,7 @@ pub fn decode_beatoraja_skin_request(
         }
     }
     let skin_root = skin_path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
+    prepare_pm_chara(&mut document, &skin_root, &resolved_files, path_context.as_ref());
     let audio_assets = decode_skin_audio_assets(kind, &skin_root, path_context.as_ref(), &document);
     let required_sources: HashSet<String> =
         required_skin_source_ids(&document).into_iter().map(str::to_string).collect();
