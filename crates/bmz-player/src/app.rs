@@ -391,6 +391,8 @@ const SAMPLE_PLAYABLE_TITLE: &str = "BMZ Sample Playable";
 #[derive(Debug, Clone, Copy)]
 enum AppUserEvent {
     SkinUpload { sent_at: Instant },
+    SystemSoundReady { generation: u64 },
+    CourseLinkRepair,
     TableFetch,
     RivalSync,
 }
@@ -416,7 +418,12 @@ pub async fn run_with_options_log_buffer_and_paths(
     log_buffer: LogBuffer,
     app_paths: AppPaths,
 ) -> Result<()> {
+    let startup_started_at = Instant::now();
     let boot = bootstrap::bootstrap_with_paths(app_paths)?;
+    tracing::info!(
+        startup_elapsed_ms = startup_started_at.elapsed().as_millis(),
+        "application bootstrap complete"
+    );
 
     // Raw Input へ実行中に切り替えられるよう、Windows message hook は起動時から
     // 常設する。デバイス usage の登録は RawInputBackend の attach 時まで行わない。
@@ -456,6 +463,7 @@ pub async fn run_with_options_log_buffer_and_paths(
     let mut app = Box::new(WinitApp::new(
         boot,
         options,
+        startup_started_at,
         None,
         None,
         shutdown_requested,

@@ -4,6 +4,7 @@ impl WinitApp {
     pub(super) fn new(
         boot: BootstrappedApp,
         options: AppOptions,
+        startup_started_at: Instant,
         audio_runtime: Option<AudioRuntime>,
         system_audio: Option<crate::audio::SystemAudio>,
         shutdown_requested: Arc<AtomicBool>,
@@ -121,19 +122,12 @@ impl WinitApp {
         let applied_obs_config = boot.app_config.obs.clone();
         let obs_controller = crate::obs::ObsController::spawn(applied_obs_config.clone());
 
-        // システム SE / BGM の候補を起動時に一度だけスキャンし、facade を構築する。
+        // システム SE / BGM の候補を起動時に一度だけスキャンする。
         // - `profile.[system_sound].bgm_dir` / `se_dir` が指定されていれば再帰スキャンして
         //   セットを集め、その中からランダム選択する(beatoraja 互換)。選曲画面へ戻る
         //   ときはスキャン済み候補から再抽選する。
         // - 空なら scan を省略し、`default_sound_dir` だけにフォールバックする。
         let system_sound_catalog = system_sound_catalog_from_boot(&boot);
-        let system_sound = system_audio.as_ref().map(|audio| {
-            system_sound_manager_from_catalog(
-                &system_sound_catalog,
-                audio,
-                boot.profile_config.audio_mix.normalize_system_bgm_volume,
-            )
-        });
         let select_preview =
             system_audio.as_ref().map(|audio| SelectChartPreview::new(audio.engine()));
         let select_assets =
@@ -324,6 +318,8 @@ impl WinitApp {
                 update_dismissed_session_version: None,
                 startup_rival_sync,
                 pending_rival_sync: None,
+                startup_course_link_repair: true,
+                pending_course_link_repair: None,
                 maintenance_select_tx,
             },
             integrations: IntegrationRuntimeState {
@@ -346,6 +342,8 @@ impl WinitApp {
                 rendered_play_frames: 0,
                 rendered_result_frames: 0,
                 app_started_at: now,
+                startup_started_at,
+                first_present_logged: false,
             },
             skin: SkinRuntimeState {
                 lua_runtime_mode: options.lua_skin_runtime_mode,
@@ -367,7 +365,9 @@ impl WinitApp {
                 input_diagnostics_last_sequence: 0,
                 system_audio,
                 system_sound_catalog,
-                system_sound,
+                system_sound: None,
+                pending_system_sound: None,
+                system_sound_generation: 0,
             },
             ui: UiRuntimeState {
                 egui: None,
@@ -394,6 +394,9 @@ impl WinitApp {
             app.result.result_key5_held = false;
             app.result.result_key7_held = false;
             app.result.result_scene_started_at = Instant::now();
+        }
+        if app.audio.system_audio.is_some() {
+            app.start_system_sound_load();
         }
         app.sync_discord_presence_config();
         Ok(app)

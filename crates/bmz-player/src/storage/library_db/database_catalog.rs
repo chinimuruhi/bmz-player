@@ -158,6 +158,10 @@ impl LibraryDatabase {
         super::super::course_db::course_by_id(&self.conn, course_id)
     }
 
+    pub fn repair_course_entry_chart_links_for_course(&self, course_id: i64) -> Result<usize> {
+        super::super::course_db::repair_course_entry_chart_links_for_course(&self.conn, course_id)
+    }
+
     pub fn list_courses_by_source(&self, source: &str) -> Result<Vec<StoredCourse>> {
         super::super::course_db::list_courses_by_source(&self.conn, source)
     }

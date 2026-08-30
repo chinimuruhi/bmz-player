@@ -221,9 +221,30 @@ pub(super) fn refresh_course_entries_for_chart(
     repair_course_entry_rows(conn, entries)
 }
 
-/// Repairs stale course links already stored in an existing library database.
-pub(super) fn repair_course_entry_chart_links(conn: &Connection) -> Result<usize> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct CourseLinkRepairStats {
+    pub(super) scanned_entries: usize,
+    pub(super) repaired_entries: usize,
+}
+
+pub(super) fn repair_course_entry_chart_links_with_stats(
+    conn: &Connection,
+) -> Result<CourseLinkRepairStats> {
     let entries = course_entries_for_link_repair(conn, "", [])?;
+    let scanned_entries = entries.len();
+    let repaired_entries = repair_course_entry_rows(conn, entries)?;
+    Ok(CourseLinkRepairStats { scanned_entries, repaired_entries })
+}
+
+pub(super) fn repair_course_entry_chart_links_for_course(
+    conn: &Connection,
+    course_id: i64,
+) -> Result<usize> {
+    let entries = course_entries_for_link_repair(
+        conn,
+        "WHERE course_entries.course_id = ?1",
+        params![course_id],
+    )?;
     repair_course_entry_rows(conn, entries)
 }
 

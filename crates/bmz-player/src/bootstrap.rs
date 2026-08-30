@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 
@@ -90,8 +90,10 @@ pub fn bootstrap() -> Result<BootstrappedApp> {
 
 /// 起動前loggerと同じ解決済みpathを使って通常bootstrapを行う。
 pub fn bootstrap_with_paths(app_paths: AppPaths) -> Result<BootstrappedApp> {
+    let bootstrap_started_at = Instant::now();
     app_paths.ensure_required_dirs()?;
 
+    let config_started_at = Instant::now();
     let mut app_config = load_or_create_app_config(&app_paths)?;
     if let Some(sample_root) = bundled_sample_song_root(&app_paths) {
         let sample_root_str = normalize_library_path(&sample_root.to_string_lossy());
@@ -106,17 +108,36 @@ pub fn bootstrap_with_paths(app_paths: AppPaths) -> Result<BootstrappedApp> {
     let profile_paths = resolve_profile_paths(&app_paths, &app_config.active_profile)?;
     profile_paths.ensure_dirs()?;
     let profile_config = load_or_create_profile_config(&profile_paths, &app_config.active_profile)?;
+    tracing::info!(
+        config_ms = config_started_at.elapsed().as_millis(),
+        "startup configuration loaded"
+    );
     // IR 秘密情報の保存先 (File / OS credential store) をプロセス全体へ反映する。
     crate::ir::secret_store::set_store_mode(profile_config.ir.credential_store);
 
+    let migration_started_at = Instant::now();
     crate::storage::migration::migrate_library_db(&app_paths.library_db)?;
+    let library_migration_ms = migration_started_at.elapsed().as_millis();
+    let collection_started_at = Instant::now();
     crate::storage::migration::migrate_collection_db(&profile_paths.collection_db)?;
+    let collection_migration_ms = collection_started_at.elapsed().as_millis();
+    let score_started_at = Instant::now();
     crate::storage::migration::migrate_score_db(&profile_paths.score_db)?;
+    let score_migration_ms = score_started_at.elapsed().as_millis();
+    let network_started_at = Instant::now();
     crate::storage::migration::migrate_network_db(&profile_paths.network_db)?;
+    tracing::info!(
+        library_migration_ms,
+        collection_migration_ms,
+        score_migration_ms,
+        network_migration_ms = network_started_at.elapsed().as_millis(),
+        "startup database migrations complete"
+    );
 
     let mut library_db = LibraryDatabase::open(&app_paths.library_db)?;
     let bundled_sample_root = bundled_sample_song_root(&app_paths);
     let scan_roots = startup_scan_roots(&app_config, bundled_sample_root.as_deref());
+    let scan_started_at = Instant::now();
     let startup_scan = if scan_roots.is_empty() {
         None
     } else {
@@ -128,11 +149,16 @@ pub fn bootstrap_with_paths(app_paths: AppPaths) -> Result<BootstrappedApp> {
             false,
         )?)
     };
+    tracing::info!(
+        scan_root_count = scan_roots.len(),
+        scan_ms = scan_started_at.elapsed().as_millis(),
+        "startup song scan complete"
+    );
     let collection_db = CollectionDatabase::open(&profile_paths.collection_db)?;
     let score_db = ScoreDatabase::open(&profile_paths.score_db)?;
     let network_db = NetworkDatabase::open(&profile_paths.network_db)?;
 
-    Ok(BootstrappedApp {
+    let boot = BootstrappedApp {
         app_config,
         profile_config,
         app_paths,
@@ -142,7 +168,12 @@ pub fn bootstrap_with_paths(app_paths: AppPaths) -> Result<BootstrappedApp> {
         score_db,
         network_db,
         startup_scan,
-    })
+    };
+    tracing::info!(
+        bootstrap_total_ms = bootstrap_started_at.elapsed().as_millis(),
+        "startup bootstrap timings"
+    );
+    Ok(boot)
 }
 
 fn load_or_create_app_config(paths: &AppPaths) -> Result<AppConfig> {

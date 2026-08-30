@@ -912,4 +912,13 @@ pub const LIBRARY_MIGRATIONS: &[Migration] = &[
             "ALTER TABLE chart_analysis ADD COLUMN sample_peak REAL;",
         ],
     },
+    Migration {
+        version: 33,
+        // Filesystemを走査するmaintenanceを通常migrationから分離し、成功済みtaskを
+        // 次回起動以降に繰り返さないためのledgerを持つ。
+        statements: &["CREATE TABLE library_maintenance (
+            task TEXT PRIMARY KEY,
+            completed_at INTEGER NOT NULL
+        );"],
+    },
 ];

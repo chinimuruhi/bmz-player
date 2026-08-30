@@ -296,7 +296,8 @@ fn moved_chart_import_repairs_existing_course_path() {
             params![old_chart_id, course_id],
         )
         .unwrap();
-    crate::storage::course_db::repair_course_entry_chart_links(db.conn()).unwrap();
+    crate::storage::course_db::repair_course_entry_chart_links_for_course(db.conn(), course_id)
+        .unwrap();
     assert_eq!(db.list_course_entries(course_id).unwrap()[0].entry.chart_id, Some(new_chart_id));
 
     std::fs::remove_dir_all(root).unwrap();

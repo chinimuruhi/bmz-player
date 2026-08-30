@@ -246,6 +246,10 @@ pub(super) struct AppJobs {
     /// 起動時に1回だけ実行するrianIRライバル一覧同期。
     pub(super) startup_rival_sync: Option<RianRivalSyncRequest>,
     pub(super) pending_rival_sync: Option<Receiver<RianRivalSyncWorkerResult>>,
+    /// 0.3.0以前の全course link修復を初回描画後に一度だけ開始する。
+    pub(super) startup_course_link_repair: bool,
+    pub(super) pending_course_link_repair:
+        Option<Receiver<Result<crate::storage::migration::CourseLinkRepairRun>>>,
     /// worker群へ、Selectかつ直接起動待ちでない期間だけ実行許可を通知する。
     pub(super) maintenance_select_tx: tokio::sync::watch::Sender<bool>,
 }
@@ -272,6 +276,8 @@ pub(super) struct SmokeRuntime {
     pub(super) rendered_play_frames: u32,
     pub(super) rendered_result_frames: u32,
     pub(super) app_started_at: Instant,
+    pub(super) startup_started_at: Instant,
+    pub(super) first_present_logged: bool,
 }
 
 pub(super) struct SkinRuntimeState {
@@ -310,6 +316,10 @@ pub(super) struct AppAudioRuntimeState {
     /// `system_audio` が `None` の場合や、サウンドセット未指定の場合も `Some` で
     /// 構築されるが id_map が空なので各 play/stop は no-op になる。
     pub(super) system_sound: Option<crate::system_sound_manager::SystemSoundManager>,
+    /// decode / loudness解析中のシステム音セット。重いファイルI/Oをapp threadから外す。
+    pub(super) pending_system_sound: Option<PendingSystemSoundLoad>,
+    /// サウンドセット再抽選や設定変更で古いworker結果を破棄する世代番号。
+    pub(super) system_sound_generation: u64,
 }
 
 pub(super) struct UiRuntimeState {

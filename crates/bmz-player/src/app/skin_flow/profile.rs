@@ -3,9 +3,12 @@ use super::*;
 impl WinitApp {
     pub(super) fn sync_realtime_profile_settings(&mut self) {
         self.sync_active_play_realtime_profile_settings();
+        let mut needs_system_sound_analysis = false;
         if let Some(manager) = &self.audio.system_sound {
             let mix = self.boot.profile_config.audio_mix.clone();
             manager.set_bgm_normalization_enabled(mix.normalize_system_bgm_volume);
+            needs_system_sound_analysis =
+                mix.normalize_system_bgm_volume && !manager.normalization_analysis_enabled();
             let preview_factor = select_preview_fade_factor(
                 self.select.select_assets.preview_fade(),
                 Instant::now(),
@@ -18,6 +21,9 @@ impl WinitApp {
                     volume
                 }
             });
+        }
+        if needs_system_sound_analysis && self.audio.pending_system_sound.is_none() {
+            self.start_system_sound_load();
         }
         self.apply_select_preview_audio_mix();
     }

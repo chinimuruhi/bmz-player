@@ -63,6 +63,15 @@ impl WinitApp {
     ) {
         let started_at = Instant::now();
         let course_load_started_at = Instant::now();
+        match self.boot.library_db.repair_course_entry_chart_links_for_course(course_id) {
+            Ok(repaired) if repaired != 0 => {
+                tracing::info!(course_id, repaired, "repaired course links before course start");
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(%error, course_id, "failed to repair course links before course start");
+            }
+        }
         let stored = match self.boot.library_db.course_by_id(course_id) {
             Ok(course) => course,
             Err(error) => {
@@ -196,6 +205,15 @@ impl WinitApp {
     ) {
         let started_at = Instant::now();
         let course_load_started_at = Instant::now();
+        match self.boot.library_db.repair_course_entry_chart_links_for_course(course_id) {
+            Ok(repaired) if repaired != 0 => {
+                tracing::info!(course_id, repaired, "repaired course links before course replay");
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(%error, course_id, "failed to repair course links before course replay");
+            }
+        }
         let stored = match self.boot.library_db.course_by_id(course_id) {
             Ok(course) => course,
             Err(error) => {

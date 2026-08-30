@@ -13,12 +13,19 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Instant, UNIX_EPOCH};
 
 use bmz_audio::command::{AudioEngineCommand, AudioEngineHandle};
 use bmz_audio::ffmpeg_loader::FfmpegSampleLoader;
 use bmz_audio::loader::SampleLoader;
-use bmz_audio::loudness::{analyze_decoded_loudness, system_bgm_normalization_gain_for_analysis};
+use bmz_audio::loudness::{
+    LoudnessAnalysis, analyze_decoded_loudness, system_bgm_normalization_gain_for_analysis,
+};
+use bmz_audio::sample::DecodedSample;
 use bmz_core::ids::SoundId;
+use serde::{Deserialize, Serialize};
 
 use crate::system_sound::{SoundSetSelection, SoundType};
 
@@ -29,6 +36,65 @@ use crate::system_sound::{SoundSetSelection, SoundType};
 const SYSTEM_SOUND_BASE: u32 = 100_000;
 const VOLUME_EPSILON: f32 = 0.000_1;
 const MAX_SCRATCH_VOICES: usize = 3;
+const SYSTEM_BGM_LOUDNESS_CACHE_FILE: &str = "system-bgm-loudness-v1.json";
+const SYSTEM_BGM_LOUDNESS_CACHE_FORMAT_VERSION: u32 = 1;
+const SYSTEM_BGM_LOUDNESS_ANALYSIS_VERSION: u32 = 1;
+const MAX_SYSTEM_BGM_LOUDNESS_CACHE_ENTRIES: usize = 256;
+static SYSTEM_BGM_LOUDNESS_CACHE_IO: OnceLock<Mutex<()>> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SystemSoundPrepareStats {
+    pub decoded_count: usize,
+    pub cache_hit_count: usize,
+    pub analysis_count: usize,
+    pub decode_ms: u64,
+    pub analysis_ms: u64,
+    pub total_ms: u64,
+}
+
+#[derive(Debug)]
+pub struct PreparedSystemSoundSet {
+    samples: Vec<(SoundType, SoundId, DecodedSample)>,
+    bgm_normalization_gains: HashMap<SoundType, f32>,
+    pub normalization_analysis_enabled: bool,
+    pub stats: SystemSoundPrepareStats,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct LoudnessCacheKey {
+    path: String,
+    file_len: u64,
+    modified_ns: u64,
+    analysis_version: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LoudnessCacheEntry {
+    key: LoudnessCacheKey,
+    loudness_lufs: f32,
+    short_term_lufs: f32,
+    peak_abs: f32,
+}
+
+impl LoudnessCacheEntry {
+    fn analysis(&self) -> Option<LoudnessAnalysis> {
+        let analysis = LoudnessAnalysis {
+            loudness_lufs: self.loudness_lufs,
+            short_term_lufs: self.short_term_lufs,
+            peak_abs: self.peak_abs,
+        };
+        (analysis.loudness_lufs.is_finite()
+            && analysis.short_term_lufs.is_finite()
+            && analysis.peak_abs.is_finite())
+        .then_some(analysis)
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct LoudnessCacheFile {
+    version: u32,
+    entries: Vec<LoudnessCacheEntry>,
+}
 
 pub struct SystemSoundManager {
     engine: AudioEngineHandle,
@@ -37,16 +103,37 @@ pub struct SystemSoundManager {
     master_gain: Cell<f32>,
     bgm_normalization_gains: HashMap<SoundType, f32>,
     normalize_bgm_volume: Cell<bool>,
+    normalization_analysis_enabled: bool,
 }
 
 impl SystemSoundManager {
     /// `selection` から各 [`SoundType`] のパスを解決し、デコードして engine へ登録する。
     /// 解決失敗は info、デコード失敗は warn をサウンド単位で出してスキップする。
-    pub fn new(engine: AudioEngineHandle, selection: &SoundSetSelection) -> Self {
-        let mut id_map = HashMap::new();
+    pub fn new(
+        engine: AudioEngineHandle,
+        selection: &SoundSetSelection,
+        normalize_bgm_volume: bool,
+        cache_dir: Option<&Path>,
+    ) -> Self {
+        let prepared = Self::prepare(selection, normalize_bgm_volume, cache_dir);
+        Self::from_prepared(engine, prepared, normalize_bgm_volume)
+    }
+
+    /// ファイルI/O、decode、loudness解析だけを行うworker向け処理。
+    /// AudioEngineへの登録は [`Self::from_prepared`] でapp threadから行う。
+    pub fn prepare(
+        selection: &SoundSetSelection,
+        normalize_bgm_volume: bool,
+        cache_dir: Option<&Path>,
+    ) -> PreparedSystemSoundSet {
+        let total_started_at = Instant::now();
         let mut bgm_normalization_gains = HashMap::new();
         let mut loader = FfmpegSampleLoader::default();
-        let mut commands = Vec::new();
+        let mut samples = Vec::new();
+        let mut stats = SystemSoundPrepareStats::default();
+        let cache_path = cache_dir.map(|dir| dir.join(SYSTEM_BGM_LOUDNESS_CACHE_FILE));
+        let mut cache = cache_path.as_deref().map(load_loudness_cache).unwrap_or_default();
+        let mut cache_changed = false;
 
         for (i, sound_type) in SoundType::ALL.iter().enumerate() {
             let id = SoundId(SYSTEM_SOUND_BASE + i as u32);
@@ -58,30 +145,68 @@ impl SystemSoundManager {
                 );
                 continue;
             };
+            let decode_started_at = Instant::now();
             match loader.load(&path) {
                 Ok(sample) => {
-                    if sound_type.is_bgm()
-                        && let Some(analysis) = analyze_decoded_loudness(&sample)
-                    {
-                        let gain = system_bgm_normalization_gain_for_analysis(analysis);
-                        tracing::debug!(
-                            sound_type = ?sound_type,
-                            path = %path.display(),
-                            loudness_lufs = analysis.loudness_lufs,
-                            short_term_lufs = analysis.short_term_lufs,
-                            sample_peak = analysis.peak_abs,
-                            normalization_gain = gain,
-                            "analyzed system BGM loudness"
-                        );
-                        bgm_normalization_gains.insert(*sound_type, gain);
+                    let decode_ms = elapsed_ms_u64(decode_started_at);
+                    stats.decode_ms = stats.decode_ms.saturating_add(decode_ms);
+                    stats.decoded_count = stats.decoded_count.saturating_add(1);
+                    if normalize_bgm_volume && sound_type.is_bgm() {
+                        let key = loudness_cache_key(&path);
+                        let cached = key.as_ref().and_then(|key| {
+                            cache
+                                .entries
+                                .iter()
+                                .find(|entry| entry.key == *key)
+                                .and_then(LoudnessCacheEntry::analysis)
+                        });
+                        let analysis = if let Some(analysis) = cached {
+                            stats.cache_hit_count = stats.cache_hit_count.saturating_add(1);
+                            Some(analysis)
+                        } else {
+                            let analysis_started_at = Instant::now();
+                            let analysis = analyze_decoded_loudness(&sample);
+                            stats.analysis_ms = stats
+                                .analysis_ms
+                                .saturating_add(elapsed_ms_u64(analysis_started_at));
+                            stats.analysis_count = stats.analysis_count.saturating_add(1);
+                            if let (Some(key), Some(analysis)) = (key, analysis) {
+                                cache.entries.retain(|entry| entry.key.path != key.path);
+                                cache.entries.push(LoudnessCacheEntry {
+                                    key,
+                                    loudness_lufs: analysis.loudness_lufs,
+                                    short_term_lufs: analysis.short_term_lufs,
+                                    peak_abs: analysis.peak_abs,
+                                });
+                                cache_changed = true;
+                            }
+                            analysis
+                        };
+                        if let Some(analysis) = analysis {
+                            let gain = system_bgm_normalization_gain_for_analysis(analysis);
+                            tracing::debug!(
+                                sound_type = ?sound_type,
+                                path = %path.display(),
+                                loudness_lufs = analysis.loudness_lufs,
+                                short_term_lufs = analysis.short_term_lufs,
+                                sample_peak = analysis.peak_abs,
+                                normalization_gain = gain,
+                                cache_hit = cached.is_some(),
+                                decode_ms,
+                                "prepared system BGM loudness"
+                            );
+                            bgm_normalization_gains.insert(*sound_type, gain);
+                        }
                     }
-                    commands.push(AudioEngineCommand::InsertSample { id, sample });
-                    id_map.insert(*sound_type, id);
+                    samples.push((*sound_type, id, sample));
                 }
                 Err(error) => {
+                    let decode_ms = elapsed_ms_u64(decode_started_at);
+                    stats.decode_ms = stats.decode_ms.saturating_add(decode_ms);
                     tracing::warn!(
                         sound_type = ?sound_type,
                         path = %path.display(),
+                        decode_ms,
                         %error,
                         "failed to decode system sound; skipping"
                     );
@@ -89,22 +214,64 @@ impl SystemSoundManager {
             }
         }
 
+        if cache_changed {
+            cache.version = SYSTEM_BGM_LOUDNESS_CACHE_FORMAT_VERSION;
+            if cache.entries.len() > MAX_SYSTEM_BGM_LOUDNESS_CACHE_ENTRIES {
+                cache.entries.drain(
+                    ..cache.entries.len().saturating_sub(MAX_SYSTEM_BGM_LOUDNESS_CACHE_ENTRIES),
+                );
+            }
+            if let Some(path) = cache_path.as_deref() {
+                save_loudness_cache(path, &cache);
+            }
+        }
+        stats.total_ms = elapsed_ms_u64(total_started_at);
+        PreparedSystemSoundSet {
+            samples,
+            bgm_normalization_gains,
+            normalization_analysis_enabled: normalize_bgm_volume,
+            stats,
+        }
+    }
+
+    pub fn from_prepared(
+        engine: AudioEngineHandle,
+        prepared: PreparedSystemSoundSet,
+        normalize_bgm_volume: bool,
+    ) -> Self {
+        let mut id_map = HashMap::new();
+        let commands = prepared
+            .samples
+            .into_iter()
+            .map(|(sound_type, id, sample)| {
+                id_map.insert(sound_type, id);
+                AudioEngineCommand::InsertSample { id, sample }
+            })
+            .collect::<Vec<_>>();
         if !commands.is_empty() && !engine.push_commands(commands) {
             tracing::warn!("failed to enqueue decoded system sounds");
         }
 
-        Self::with_id_map_and_normalization_gains(engine, id_map, bgm_normalization_gains)
+        Self::with_id_map_and_normalization_gains(
+            engine,
+            id_map,
+            prepared.bgm_normalization_gains,
+            normalize_bgm_volume,
+            prepared.normalization_analysis_enabled,
+        )
     }
 
     #[cfg(test)]
     fn with_id_map(engine: AudioEngineHandle, id_map: HashMap<SoundType, SoundId>) -> Self {
-        Self::with_id_map_and_normalization_gains(engine, id_map, HashMap::new())
+        Self::with_id_map_and_normalization_gains(engine, id_map, HashMap::new(), false, false)
     }
 
     fn with_id_map_and_normalization_gains(
         engine: AudioEngineHandle,
         id_map: HashMap<SoundType, SoundId>,
         bgm_normalization_gains: HashMap<SoundType, f32>,
+        normalize_bgm_volume: bool,
+        normalization_analysis_enabled: bool,
     ) -> Self {
         Self {
             engine,
@@ -112,12 +279,17 @@ impl SystemSoundManager {
             last_volumes: RefCell::new(HashMap::new()),
             master_gain: Cell::new(1.0),
             bgm_normalization_gains,
-            normalize_bgm_volume: Cell::new(false),
+            normalize_bgm_volume: Cell::new(normalize_bgm_volume),
+            normalization_analysis_enabled,
         }
     }
 
     pub fn set_bgm_normalization_enabled(&self, enabled: bool) {
         self.normalize_bgm_volume.set(enabled);
+    }
+
+    pub fn normalization_analysis_enabled(&self) -> bool {
+        self.normalization_analysis_enabled
     }
 
     /// 引数で指定した SoundType を再生する。BGM はループ、SE は 1 ショット。
@@ -291,11 +463,80 @@ fn volume_matches(left: f32, right: f32) -> bool {
     (left - right).abs() <= VOLUME_EPSILON
 }
 
+fn loudness_cache_key(path: &Path) -> Option<LoudnessCacheKey> {
+    let metadata = path.metadata().ok()?;
+    let modified_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(duration_ns_u64)
+        .unwrap_or_default();
+    Some(LoudnessCacheKey {
+        path: cache_path_text(path),
+        file_len: metadata.len(),
+        modified_ns,
+        analysis_version: SYSTEM_BGM_LOUDNESS_ANALYSIS_VERSION,
+    })
+}
+
+fn cache_path_text(path: &Path) -> String {
+    path.canonicalize().unwrap_or_else(|_| PathBuf::from(path)).to_string_lossy().into_owned()
+}
+
+fn load_loudness_cache(path: &Path) -> LoudnessCacheFile {
+    let _cache_guard = system_bgm_loudness_cache_io_guard();
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return LoudnessCacheFile {
+            version: SYSTEM_BGM_LOUDNESS_CACHE_FORMAT_VERSION,
+            entries: Vec::new(),
+        };
+    };
+    match serde_json::from_str::<LoudnessCacheFile>(&text) {
+        Ok(cache) if cache.version == SYSTEM_BGM_LOUDNESS_CACHE_FORMAT_VERSION => cache,
+        Ok(_) => LoudnessCacheFile {
+            version: SYSTEM_BGM_LOUDNESS_CACHE_FORMAT_VERSION,
+            entries: Vec::new(),
+        },
+        Err(error) => {
+            tracing::warn!(%error, path = %path.display(), "ignored invalid system BGM loudness cache");
+            LoudnessCacheFile {
+                version: SYSTEM_BGM_LOUDNESS_CACHE_FORMAT_VERSION,
+                entries: Vec::new(),
+            }
+        }
+    }
+}
+
+fn save_loudness_cache(path: &Path, cache: &LoudnessCacheFile) {
+    let _cache_guard = system_bgm_loudness_cache_io_guard();
+    let result = serde_json::to_vec(cache)
+        .map_err(anyhow::Error::from)
+        .and_then(|bytes| std::fs::write(path, bytes).map_err(anyhow::Error::from));
+    if let Err(error) = result {
+        tracing::warn!(%error, path = %path.display(), "failed to save system BGM loudness cache");
+    }
+}
+
+fn system_bgm_loudness_cache_io_guard() -> std::sync::MutexGuard<'static, ()> {
+    SYSTEM_BGM_LOUDNESS_CACHE_IO
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn duration_ns_u64(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+}
+
+fn elapsed_ms_u64(started_at: Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 #[cfg(test)]
 mod tests {
     use bmz_audio::command::CommandedAudioEngine;
     use bmz_audio::engine::AudioEngine;
-    use bmz_audio::sample::DecodedSample;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
 
@@ -305,13 +546,45 @@ mod tests {
         let (engine, _processor) = test_engine();
         let selection = SoundSetSelection::default();
 
-        let manager = SystemSoundManager::new(engine, &selection);
+        let manager = SystemSoundManager::new(engine, &selection, false, None);
 
         assert!(manager.id_map.is_empty());
         // 未登録の SoundType の play / stop は no-op で問題ないこと。
         manager.play(SoundType::Scratch, 1.0);
         manager.stop(SoundType::Select);
         manager.stop_all_bgm();
+    }
+
+    #[test]
+    fn prepare_skips_disabled_analysis_and_reuses_valid_cache() {
+        let root = test_temp_dir("loudness-cache");
+        std::fs::create_dir_all(&root).unwrap();
+        let select = root.join("select.wav");
+        write_test_wav(&select, 48_000);
+        let selection =
+            SoundSetSelection { bgm_dir: Some(root.clone()), se_dir: None, default_dir: None };
+
+        let disabled = SystemSoundManager::prepare(&selection, false, Some(&root));
+        assert_eq!(disabled.stats.analysis_count, 0);
+        assert_eq!(disabled.stats.cache_hit_count, 0);
+        assert!(!disabled.normalization_analysis_enabled);
+        assert!(!root.join(SYSTEM_BGM_LOUDNESS_CACHE_FILE).exists());
+
+        let first = SystemSoundManager::prepare(&selection, true, Some(&root));
+        assert_eq!(first.stats.analysis_count, 1);
+        assert_eq!(first.stats.cache_hit_count, 0);
+        assert!(root.join(SYSTEM_BGM_LOUDNESS_CACHE_FILE).is_file());
+
+        let cached = SystemSoundManager::prepare(&selection, true, Some(&root));
+        assert_eq!(cached.stats.analysis_count, 0);
+        assert_eq!(cached.stats.cache_hit_count, 1);
+
+        write_test_wav(&select, 48_001);
+        let changed = SystemSoundManager::prepare(&selection, true, Some(&root));
+        assert_eq!(changed.stats.analysis_count, 1);
+        assert_eq!(changed.stats.cache_hit_count, 0);
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -459,6 +732,8 @@ mod tests {
             engine,
             id_map,
             HashMap::from([(SoundType::Select, 0.5)]),
+            false,
+            true,
         );
         manager.set_bgm_normalization_enabled(true);
         manager.play(SoundType::Select, 1.0);
@@ -488,6 +763,8 @@ mod tests {
             engine,
             id_map,
             HashMap::from([(SoundType::ResultClear, 0.25)]),
+            false,
+            true,
         );
         manager.set_bgm_normalization_enabled(true);
 
@@ -574,6 +851,33 @@ mod tests {
     ) {
         assert!(engine.insert_sample(id, sample));
         processor.apply_pending_commands_for_tests();
+    }
+
+    fn test_temp_dir(label: &str) -> PathBuf {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        std::env::temp_dir().join(format!("bmz-system-sound-{label}-{}-{now}", std::process::id()))
+    }
+
+    fn write_test_wav(path: &Path, frames: u32) {
+        let data_len = frames.saturating_mul(2);
+        let mut bytes = Vec::with_capacity(44 + data_len as usize);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36u32.saturating_add(data_len)).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&48_000u32.to_le_bytes());
+        bytes.extend_from_slice(&96_000u32.to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data_len.to_le_bytes());
+        for frame in 0..frames {
+            let sample = if frame.is_multiple_of(2) { 10_000i16 } else { -10_000i16 };
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        std::fs::write(path, bytes).unwrap();
     }
 
     fn render(processor: &mut CommandedAudioEngine, start_frame: u64, frames: usize) -> Vec<f32> {
