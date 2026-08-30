@@ -419,31 +419,6 @@ fn skin_draw_options_match_judge_fast_slow_regions() {
 }
 
 #[test]
-fn play_judgement_existence_options_gate_full_combo_effects() {
-    let clean = SkinDrawState { play_screen: true, ..SkinDrawState::default() };
-    assert!(!test_skin_op(2244, &[], &clean));
-    assert!(!test_skin_op(2245, &[], &clean));
-    assert!(test_skin_op(-2244, &[], &clean));
-    assert!(test_skin_op(-2245, &[], &clean));
-
-    let failed = SkinDrawState {
-        play_screen: true,
-        judge_counts: DisplayJudgeCounts {
-            bad: 1,
-            poor: 2,
-            empty_poor: 3,
-            ..DisplayJudgeCounts::default()
-        },
-        ..SkinDrawState::default()
-    };
-    assert!(test_skin_op(2244, &[], &failed));
-    assert!(test_skin_op(2245, &[], &failed));
-    assert!(test_skin_op(2246, &[], &failed));
-    assert!(!test_skin_op(-2244, &[], &failed));
-    assert!(!test_skin_op(-2245, &[], &failed));
-}
-
-#[test]
 fn skin_draw_options_match_live_score_ranks() {
     let base = SkinDrawState { total_notes: 100, ..SkinDrawState::default() };
     let aaa = SkinDrawState { ex_score: 178, ..base.clone() };

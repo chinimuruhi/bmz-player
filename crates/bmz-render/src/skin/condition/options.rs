@@ -257,15 +257,14 @@ pub(in crate::skin) fn test_skin_op(
         // OPTION_1P_0_9 .. OPTION_1P_100. beatoraja evaluates these only on
         // BMSPlayer and compares the displayed gauge value with its configured maximum.
         230..=240 => gauge_range_option_matches(op, state),
-        // Judgement-existence options are live on BMSPlayer as well as Result.
-        // Play skins use negative BAD/POOR ops to gate full-combo effects.
-        // EmptyPoor is beatoraja's MISS bucket.
-        2241 => state.judge_counts.pgreat > 0,
-        2242 => state.judge_counts.great > 0,
-        2243 => state.judge_counts.good > 0,
-        2244 => state.judge_counts.bad > 0,
-        2245 => state.judge_counts.poor > 0,
-        2246 => state.judge_counts.empty_poor > 0,
+        // Result judgement-existence options. EmptyPoor is beatoraja's MISS bucket.
+        2241 if state.result_failed.is_some() => state.judge_counts.pgreat > 0,
+        2242 if state.result_failed.is_some() => state.judge_counts.great > 0,
+        2243 if state.result_failed.is_some() => state.judge_counts.good > 0,
+        2244 if state.result_failed.is_some() => state.judge_counts.bad > 0,
+        2245 if state.result_failed.is_some() => state.judge_counts.poor > 0,
+        2246 if state.result_failed.is_some() => state.judge_counts.empty_poor > 0,
+        2241..=2246 => false,
         // Result/update comparison options. In play skins these are often reused
         // as target-reached draw conditions.
         330 => state.previous_best_ex_score.is_some_and(|best| state.ex_score > best),
