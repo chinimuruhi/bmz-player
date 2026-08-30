@@ -118,12 +118,25 @@ fn skin_catalog_rejects_json_without_explicit_skin_type() {
     std::fs::write(&player_data, r#"{"20260829":{"songs":[]}}"#).unwrap();
     let valid_skin = root.join("result.json");
     std::fs::write(&valid_skin, r#"{"type":7,"name":"Result"}"#).unwrap();
+    let included_skin = root.join("included-result.json");
+    let included_document = root.join("result-main.json");
+    std::fs::write(&included_skin, r#"{"include":"result-main.json"}"#).unwrap();
+    std::fs::write(&included_document, r#"{"type":7.0,"name":"Included Result"}"#).unwrap();
+    let untyped_include = root.join("untyped-include.json");
+    let untyped_document = root.join("untyped-main.json");
+    std::fs::write(&untyped_include, r#"{"include":"untyped-main.json"}"#).unwrap();
+    std::fs::write(&untyped_document, r#"{"name":"Not a skin"}"#).unwrap();
 
     assert!(load_skin_candidate(&root, &player_data, SkinCandidateOrigin::User).is_none());
     let (skin_type, candidate) =
         load_skin_candidate(&root, &valid_skin, SkinCandidateOrigin::User).unwrap();
     assert_eq!(skin_type, 7);
     assert_eq!(candidate.name, "Result");
+    let (skin_type, candidate) =
+        load_skin_candidate(&root, &included_skin, SkinCandidateOrigin::User).unwrap();
+    assert_eq!(skin_type, 7);
+    assert_eq!(candidate.name, "Included Result");
+    assert!(load_skin_candidate(&root, &untyped_include, SkinCandidateOrigin::User).is_none());
 }
 
 #[test]

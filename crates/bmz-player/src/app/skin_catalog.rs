@@ -107,14 +107,7 @@ pub(super) fn load_skin_header_document_with_library_roots(
         .ok()
         .map(|loaded| loaded.document)
     } else {
-        let declares_skin_type = bmz_render::skin::load_json_value(path)
-            .ok()
-            .and_then(|value| value.get("type").and_then(serde_json::Value::as_i64))
-            .is_some();
-        if !declares_skin_type {
-            return None;
-        }
-        SkinDocument::load_beatoraja_json(path).ok()
+        SkinDocument::load_typed_beatoraja_json(path).ok().flatten()
     }
 }
 

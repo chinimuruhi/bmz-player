@@ -47,8 +47,14 @@ pub(super) fn create_os_stub(lua: &Lua, probe: Arc<Mutex<MainStateProbe>>) -> ml
                     _ => None,
                 })
                 .unwrap_or_else(lua_os_now_seconds);
-            let date = unix_seconds_to_utc_datetime(seconds);
-            if format == "*t" || format == "!*t" {
+            let (utc, format) =
+                format.strip_prefix('!').map_or((false, format.as_str()), |format| (true, format));
+            let date = if utc {
+                unix_seconds_to_utc_datetime(seconds)
+            } else {
+                unix_seconds_to_local_datetime(seconds).map_err(mlua::Error::external)?
+            };
+            if format == "*t" {
                 let result = lua.create_table()?;
                 result.set("year", date.year)?;
                 result.set("month", date.month)?;
@@ -58,10 +64,10 @@ pub(super) fn create_os_stub(lua: &Lua, probe: Arc<Mutex<MainStateProbe>>) -> ml
                 result.set("sec", date.second)?;
                 result.set("wday", date.weekday)?;
                 result.set("yday", date.yearday)?;
-                result.set("isdst", false)?;
+                result.set("isdst", date.isdst)?;
                 Ok(Value::Table(result))
             } else {
-                Ok(Value::String(lua.create_string(format_lua_date(&format, date))?))
+                Ok(Value::String(lua.create_string(format_lua_date(format, date))?))
             }
         })?,
     )?;
@@ -292,29 +298,79 @@ pub(super) fn lua_os_now_seconds() -> i64 {
 
 pub(super) fn lua_os_time_from_table(date: &Table) -> anyhow::Result<i64> {
     let year = date.get::<i64>("year").context("os.time table requires year")?;
-    let month = date.get::<u32>("month").context("os.time table requires month")?;
-    let day = date.get::<u32>("day").context("os.time table requires day")?;
-    let hour = date.get::<Option<u32>>("hour")?.unwrap_or(12);
-    let minute = date.get::<Option<u32>>("min")?.unwrap_or_default();
-    let second = date.get::<Option<u32>>("sec")?.unwrap_or_default();
-    if !(1..=12).contains(&month) {
-        bail!("os.time month must be in 1..=12");
+    let month = date.get::<i64>("month").context("os.time table requires month")?;
+    let day = date.get::<i64>("day").context("os.time table requires day")?;
+    let hour = date.get::<Option<i64>>("hour")?.unwrap_or(12);
+    let minute = date.get::<Option<i64>>("min")?.unwrap_or_default();
+    let second = date.get::<Option<i64>>("sec")?.unwrap_or_default();
+    let isdst = date.get::<Option<bool>>("isdst")?;
+
+    let mut local_time: libc::tm = unsafe { std::mem::zeroed() };
+    local_time.tm_year =
+        checked_tm_field(year.checked_sub(1900).context("os.time year is out of range")?, "year")?;
+    local_time.tm_mon =
+        checked_tm_field(month.checked_sub(1).context("os.time month is out of range")?, "month")?;
+    local_time.tm_mday = checked_tm_field(day, "day")?;
+    local_time.tm_hour = checked_tm_field(hour, "hour")?;
+    local_time.tm_min = checked_tm_field(minute, "minute")?;
+    local_time.tm_sec = checked_tm_field(second, "second")?;
+    local_time.tm_isdst = isdst.map_or(-1, c_int::from);
+
+    let timestamp = native_mktime(&mut local_time)?;
+    write_normalized_lua_date_table(date, &local_time)?;
+    Ok(timestamp)
+}
+
+fn checked_tm_field(value: i64, name: &str) -> anyhow::Result<c_int> {
+    c_int::try_from(value).with_context(|| format!("os.time {name} is out of range"))
+}
+
+fn write_normalized_lua_date_table(date: &Table, value: &libc::tm) -> anyhow::Result<()> {
+    date.set("year", i64::from(value.tm_year) + 1900)?;
+    date.set("month", i64::from(value.tm_mon) + 1)?;
+    date.set("day", value.tm_mday)?;
+    date.set("hour", value.tm_hour)?;
+    date.set("min", value.tm_min)?;
+    date.set("sec", value.tm_sec)?;
+    date.set("wday", value.tm_wday + 1)?;
+    date.set("yday", value.tm_yday + 1)?;
+    date.set("isdst", value.tm_isdst > 0)?;
+    Ok(())
+}
+
+fn native_mktime(value: &mut libc::tm) -> anyhow::Result<i64> {
+    #[cfg(unix)]
+    let timestamp = unsafe { libc::mktime(value) };
+    #[cfg(windows)]
+    let timestamp = unsafe { windows_mktime64(value) };
+
+    let timestamp = i64::try_from(timestamp as i128).context("os.time value is out of range")?;
+    if timestamp == -1 {
+        let round_trip = native_tm_from_timestamp(-1, false)?;
+        if !same_tm_calendar_fields(value, &round_trip) {
+            bail!("os.time value is out of range");
+        }
     }
-    if !(1..=days_in_month(year, month)).contains(&day) {
-        bail!("os.time day is out of range for the month");
-    }
-    if hour > 23 || minute > 59 || second > 59 {
-        bail!("os.time clock fields are out of range");
-    }
-    let days = days_from_civil(year, month, day);
-    days.checked_mul(86_400)
-        .and_then(|seconds_since_epoch| {
-            seconds_since_epoch
-                .checked_add(i64::from(hour) * 3_600)
-                .and_then(|value| value.checked_add(i64::from(minute) * 60))
-                .and_then(|value| value.checked_add(i64::from(second)))
-        })
-        .context("os.time value is out of range")
+    Ok(timestamp)
+}
+
+fn same_tm_calendar_fields(left: &libc::tm, right: &libc::tm) -> bool {
+    left.tm_year == right.tm_year
+        && left.tm_mon == right.tm_mon
+        && left.tm_mday == right.tm_mday
+        && left.tm_hour == right.tm_hour
+        && left.tm_min == right.tm_min
+        && left.tm_sec == right.tm_sec
+}
+
+#[cfg(windows)]
+unsafe extern "C" {
+    #[link_name = "_mktime64"]
+    fn windows_mktime64(value: *mut libc::tm) -> i64;
+    #[link_name = "_localtime64_s"]
+    fn windows_localtime64_s(result: *mut libc::tm, timestamp: *const i64) -> c_int;
+    #[link_name = "_gmtime64_s"]
+    fn windows_gmtime64_s(result: *mut libc::tm, timestamp: *const i64) -> c_int;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -327,6 +383,7 @@ pub(super) struct LuaDateTime {
     pub(super) second: u32,
     pub(super) weekday: u32,
     pub(super) yearday: u32,
+    pub(super) isdst: bool,
 }
 
 pub(super) fn unix_seconds_to_utc_datetime(seconds: i64) -> LuaDateTime {
@@ -343,6 +400,60 @@ pub(super) fn unix_seconds_to_utc_datetime(seconds: i64) -> LuaDateTime {
         // Lua's wday is 1-based with Sunday == 1. 1970-01-01 was Thursday.
         weekday: ((days + 4).rem_euclid(7) + 1) as u32,
         yearday: yearday(year, month, day),
+        isdst: false,
+    }
+}
+
+pub(super) fn unix_seconds_to_local_datetime(seconds: i64) -> anyhow::Result<LuaDateTime> {
+    native_tm_from_timestamp(seconds, false).and_then(lua_datetime_from_tm)
+}
+
+fn lua_datetime_from_tm(value: libc::tm) -> anyhow::Result<LuaDateTime> {
+    Ok(LuaDateTime {
+        year: i32::try_from(i64::from(value.tm_year) + 1900)
+            .context("local date year is out of range")?,
+        month: u32::try_from(value.tm_mon + 1).context("local date month is out of range")?,
+        day: u32::try_from(value.tm_mday).context("local date day is out of range")?,
+        hour: u32::try_from(value.tm_hour).context("local date hour is out of range")?,
+        minute: u32::try_from(value.tm_min).context("local date minute is out of range")?,
+        second: u32::try_from(value.tm_sec).context("local date second is out of range")?,
+        weekday: u32::try_from(value.tm_wday + 1).context("local date weekday is out of range")?,
+        yearday: u32::try_from(value.tm_yday + 1).context("local date yearday is out of range")?,
+        isdst: value.tm_isdst > 0,
+    })
+}
+
+fn native_tm_from_timestamp(seconds: i64, utc: bool) -> anyhow::Result<libc::tm> {
+    #[cfg(unix)]
+    {
+        let timestamp = libc::time_t::try_from(seconds).context("date value is out of range")?;
+        let mut result: libc::tm = unsafe { std::mem::zeroed() };
+        let converted = unsafe {
+            if utc {
+                libc::gmtime_r(&timestamp, &mut result)
+            } else {
+                libc::localtime_r(&timestamp, &mut result)
+            }
+        };
+        if converted.is_null() {
+            bail!("date value is out of range");
+        }
+        Ok(result)
+    }
+    #[cfg(windows)]
+    {
+        let mut result: libc::tm = unsafe { std::mem::zeroed() };
+        let status = unsafe {
+            if utc {
+                windows_gmtime64_s(&mut result, &seconds)
+            } else {
+                windows_localtime64_s(&mut result, &seconds)
+            }
+        };
+        if status != 0 {
+            bail!("date value is out of range");
+        }
+        Ok(result)
     }
 }
 
@@ -358,30 +469,6 @@ pub(super) fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let month = mp + if mp < 10 { 3 } else { -9 };
     let year = y + if month <= 2 { 1 } else { 0 };
     (year as i32, month as u32, day as u32)
-}
-
-pub(super) fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
-    let year = year - i64::from(month <= 2);
-    let era = if year >= 0 { year } else { year - 399 } / 400;
-    let year_of_era = year - era * 400;
-    let shifted_month = i64::from(month) + if month > 2 { -3 } else { 9 };
-    let day_of_year = (153 * shifted_month + 2) / 5 + i64::from(day) - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    era * 146_097 + day_of_era - 719_468
-}
-
-pub(super) fn days_in_month(year: i64, month: u32) -> u32 {
-    match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if is_leap_year_i64(year) => 29,
-        2 => 28,
-        _ => 0,
-    }
-}
-
-pub(super) fn is_leap_year_i64(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 pub(super) fn yearday(year: i32, month: u32, day: u32) -> u32 {

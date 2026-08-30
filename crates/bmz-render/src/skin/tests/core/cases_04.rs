@@ -305,6 +305,20 @@ fn skin_state_text_maps_string_refs() {
             "select bar text id {id}"
         );
     }
+    for id in ["foobar_texture", "bartexture", "folderbar_textured"] {
+        assert_eq!(
+            skin_state_text(
+                &SkinTextDef { id: id.to_string(), ref_id: 10, ..SkinTextDef::default() },
+                &SkinTextState {
+                    title: "Ordinary Text",
+                    bar_text: "Wrong Bar Text",
+                    ..SkinTextState::default()
+                },
+            ),
+            "Ordinary Text",
+            "non-bar text id {id}"
+        );
+    }
 }
 
 #[test]

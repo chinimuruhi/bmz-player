@@ -335,10 +335,19 @@ fn lua_skin_os_stub_supports_date_clock_and_time() {
     fs::write(
         root.join("play7.luaskin"),
         r#"
-            local t = os.date("*t", 0)
+            local utc = os.date("!*t", 0)
             local elapsed = os.clock()
-            local epoch = os.time({ year = 1970, month = 1, day = 1, hour = 0 })
-            local default_hour = os.time({ year = 1970, month = 1, day = 1 })
+            local epoch_input = { year = 1970, month = 1, day = 1, hour = 0 }
+            local epoch = os.time(epoch_input)
+            local epoch_round_trip = os.date("*t", epoch)
+            local default_hour_input = { year = 2000, month = 1, day = 1 }
+            os.time(default_hour_input)
+            local normalized = { year = 2024, month = 13, day = 1, hour = 25 }
+            local normalized_epoch = os.time(normalized)
+            local normalized_round_trip = os.date("*t", normalized_epoch)
+            local extreme_ok = pcall(os.time, {
+                year = math.mininteger, month = 1, day = 1
+            })
             local now = os.time()
             return {
                 type = 0,
@@ -347,11 +356,20 @@ fn lua_skin_os_stub_supports_date_clock_and_time() {
                         id = "timestamp",
                         font = 1,
                         size = 16,
-                        constantText = os.date("%Y-%m-%d %H:%M:%S", 0)
-                            .. "|" .. t.year
+                        constantText = os.date("!%Y-%m-%d %H:%M:%S", 0)
+                            .. "|" .. utc.year
                             .. "|" .. tostring(elapsed >= 0)
-                            .. "|" .. epoch
-                            .. "|" .. default_hour
+                            .. "|" .. epoch_input.year .. "-" .. epoch_input.month
+                            .. "-" .. epoch_input.day .. " " .. epoch_input.hour
+                            .. "|" .. epoch_round_trip.year .. "-" .. epoch_round_trip.month
+                            .. "-" .. epoch_round_trip.day .. " " .. epoch_round_trip.hour
+                            .. "|" .. default_hour_input.hour
+                            .. "|" .. normalized.year .. "-" .. normalized.month
+                            .. "-" .. normalized.day .. " " .. normalized.hour
+                            .. "|" .. normalized_round_trip.year .. "-" .. normalized_round_trip.month
+                            .. "-" .. normalized_round_trip.day .. " " .. normalized_round_trip.hour
+                            .. "|" .. tostring(type(normalized.isdst) == "boolean")
+                            .. "|" .. tostring(extreme_ok)
                             .. "|" .. tostring(now >= 0)
                     }
                 }
@@ -366,8 +384,82 @@ fn lua_skin_os_stub_supports_date_clock_and_time() {
 
     assert_eq!(
         loaded.value["text"][0]["constantText"],
-        "1970-01-01 00:00:00|1970|true|0|43200|true"
+        "1970-01-01 00:00:00|1970|true|1970-1-1 0|1970-1-1 0|12|2025-1-2 1|2025-1-2 1|true|false|true"
     );
+}
+
+#[test]
+fn lua_skin_load_budget_accepts_large_fixture_and_stops_runaway_code() {
+    const FINITE_FIXTURE: &str = r#"
+        local checksum = 0
+        for i = 1, 1000000 do
+            checksum = checksum + (i % 7)
+        end
+        return checksum
+    "#;
+
+    let old_limit_lua = mlua::Lua::new();
+    crate::lua::install_test_instruction_limit(&old_limit_lua, 2_000_000, 2_000_000);
+    assert!(old_limit_lua.load(FINITE_FIXTURE).eval::<i64>().is_err());
+
+    let load_limit_lua = mlua::Lua::new();
+    crate::lua::install_test_instruction_limit(&load_limit_lua, 16_000_000, 16_000_000);
+    assert!(load_limit_lua.load(FINITE_FIXTURE).eval::<i64>().is_ok());
+
+    let runaway_lua = mlua::Lua::new();
+    crate::lua::install_test_instruction_limit(&runaway_lua, 16_000_000, 16_000_000);
+    let error = runaway_lua.load("while true do end").exec().unwrap_err();
+    assert!(error.to_string().contains("instruction limit"));
+}
+
+#[test]
+fn lua_skin_litone_result_fixtures_cover_compatibility_apis() {
+    let root = unique_test_dir("bmz-skin-litone-result-fixture");
+    fs::create_dir_all(&root).unwrap();
+
+    for (file_name, skin_type) in [("result.luaskin", 7), ("course.luaskin", 15)] {
+        let source = format!(
+            r#"
+                local Controllers = luajava.bindClass(
+                    "com.badlogic.gdx.controllers.Controllers"
+                )
+                local controllers = Controllers:getControllers()
+                local date = {{ year = 2024, month = 13, day = 1, hour = 25 }}
+                local timestamp = os.time(date)
+                return {{
+                    type = {skin_type},
+                    name = "LITONE compatibility fixture",
+                    slider = {{
+                        {{ id = "history", isRefNum = 1, value = 1 }}
+                    }},
+                    graph = {{
+                        {{ id = "timing", isRefNum = 0, value = 2 }}
+                    }},
+                    text = {{
+                        {{
+                            id = "compat",
+                            font = 1,
+                            size = 16,
+                            constantText = tostring(controllers:first() == nil)
+                                .. "|" .. date.year .. "-" .. date.month
+                                .. "-" .. date.day .. " " .. date.hour
+                                .. "|" .. tostring(timestamp > 0)
+                        }}
+                    }}
+                }}
+            "#
+        );
+        let path = root.join(file_name);
+        fs::write(&path, source).unwrap();
+
+        let loaded = load_lua_skin_value(&path, &BTreeMap::new(), &BTreeMap::new()).unwrap();
+        let document: bmz_skin_document::SkinDocument =
+            serde_json::from_value(loaded.value).unwrap();
+        assert_eq!(document.skin_type, skin_type);
+        assert!(document.slider[0].is_ref_num);
+        assert!(!document.graph[0].is_ref_num);
+        assert_eq!(document.text[0].constant_text, "true|2025-1-2 1|true");
+    }
 }
 
 #[test]

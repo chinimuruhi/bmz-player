@@ -53,6 +53,11 @@ use sandbox_io::*;
 use sandbox_main_state::*;
 use sandbox_probe::*;
 
+#[cfg(test)]
+pub(crate) fn install_test_instruction_limit(lua: &Lua, total_limit: i64, callback_limit: i64) {
+    let _ = install_instruction_limit_with_ceilings(lua, total_limit, callback_limit);
+}
+
 const LUA_INSTRUCTION_LIMIT: i64 = 2_000_000;
 const LUA_LOAD_INSTRUCTION_LIMIT: i64 = 16_000_000;
 const LUA_INFERENCE_INSTRUCTION_LIMIT: i64 = 16_000_000;

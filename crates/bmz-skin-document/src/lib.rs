@@ -292,19 +292,53 @@ impl SkinDocument {
     pub fn load_beatoraja_json(path: &Path) -> Result<Self> {
         let raw = load_json_value(path)?;
         let options = default_enabled_options(&raw);
-        Self::load_beatoraja_json_with_options(path, &options)
+        Self::load_beatoraja_json_value_with_options(path, raw, &options)
     }
 
     pub fn load_beatoraja_json_with_options(path: &Path, enabled_options: &[i32]) -> Result<Self> {
         let raw = load_json_value(path)?;
-        let root = path.parent().unwrap_or_else(|| Path::new("."));
-        let expanded = expand_json_skin_value(raw, root, root, enabled_options)
-            .with_context(|| format!("failed to expand skin json: {}", path.display()))?;
-        let expanded = normalize_json_skin_integer_numbers(expanded);
+        Self::load_beatoraja_json_value_with_options(path, raw, enabled_options)
+    }
+
+    /// Loads a JSON skin through the normal include/condition/number pipeline,
+    /// but returns `None` when the expanded document does not explicitly declare
+    /// a numeric skin type. This is intended for catalog discovery, where an
+    /// unrelated JSON object must not inherit `SkinDocument`'s type-0 default.
+    pub fn load_typed_beatoraja_json(path: &Path) -> Result<Option<Self>> {
+        let raw = load_json_value(path)?;
+        let options = default_enabled_options(&raw);
+        let expanded = load_expanded_beatoraja_json_value(path, raw, &options)?;
+        if expanded.get("type").and_then(JsonValue::as_i64).is_none() {
+            return Ok(None);
+        }
+        serde_json::from_value(expanded)
+            .with_context(|| format!("failed to parse skin json: {}", path.display()))
+            .map(Some)
+    }
+
+    fn load_beatoraja_json_value_with_options(
+        path: &Path,
+        raw: JsonValue,
+        enabled_options: &[i32],
+    ) -> Result<Self> {
+        let expanded = load_expanded_beatoraja_json_value(path, raw, enabled_options)?;
         serde_json::from_value(expanded)
             .with_context(|| format!("failed to parse skin json: {}", path.display()))
     }
+}
 
+fn load_expanded_beatoraja_json_value(
+    path: &Path,
+    raw: JsonValue,
+    enabled_options: &[i32],
+) -> Result<JsonValue> {
+    let root = path.parent().unwrap_or_else(|| Path::new("."));
+    let expanded = expand_json_skin_value(raw, root, root, enabled_options)
+        .with_context(|| format!("failed to expand skin json: {}", path.display()))?;
+    Ok(normalize_json_skin_integer_numbers(expanded))
+}
+
+impl SkinDocument {
     pub fn source_map(&self) -> HashMap<&str, &SkinSourceDef> {
         self.source.iter().map(|source| (source.id.as_str(), source)).collect()
     }
