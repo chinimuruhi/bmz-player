@@ -47,13 +47,13 @@ async fn main() -> ExitCode {
                 }
             };
             if options.skip_result {
-                match bmz_player::viewer_ipc::request_stop() {
+                match bmz_player::viewer_ipc::request_quit() {
                     Ok(true) => {
                         // 明示的なone-shot起動は常駐プロセスへ転送できないため、旧viewerが
                         // 名前付きpipeを解放する短い間だけ待ってから新規起動する。
                         for _ in 0..100 {
                             std::thread::sleep(Duration::from_millis(10));
-                            if matches!(bmz_player::viewer_ipc::request_stop(), Ok(false)) {
+                            if matches!(bmz_player::viewer_ipc::request_quit(), Ok(false)) {
                                 break;
                             }
                         }
@@ -61,7 +61,7 @@ async fn main() -> ExitCode {
                     Ok(false) => {}
                     Err(error) => {
                         bmz_player::stdio::stderr_line(format_args!(
-                            "Error: could not stop the active viewer: {error:#}"
+                            "Error: could not close the active viewer: {error:#}"
                         ));
                         return ExitCode::FAILURE;
                     }

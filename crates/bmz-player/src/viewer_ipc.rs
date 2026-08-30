@@ -16,7 +16,12 @@ const COMMAND_ACK: u8 = 0x06;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewerCommand {
     Stop,
-    Play { path: PathBuf, measure: u32 },
+    Play {
+        path: PathBuf,
+        measure: u32,
+    },
+    /// `-P --skip-result` で常駐viewerをone-shot起動へ入れ替えるための内部命令。
+    Quit,
 }
 
 /// 実行中のビューワーへ停止要求を送る。未起動なら `false`。
@@ -27,6 +32,11 @@ pub fn request_stop() -> Result<bool> {
 /// 実行中のビューワーへ譜面再生要求を送る。未起動なら `false`。
 pub fn request_play(path: &Path, measure: u32) -> Result<bool> {
     request_command(&ViewerCommand::Play { path: path.to_path_buf(), measure })
+}
+
+/// 実行中のビューワーへプロセス終了要求を送る。one-shot起動への入れ替え専用。
+pub fn request_quit() -> Result<bool> {
+    request_command(&ViewerCommand::Quit)
 }
 
 fn request_command(command: &ViewerCommand) -> Result<bool> {
@@ -259,8 +269,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn play_and_stop_requests_round_trip_to_persistent_listener() {
-        let (tx, rx) = mpsc::sync_channel(2);
+    fn play_stop_and_quit_requests_round_trip_to_persistent_listener() {
+        let (tx, rx) = mpsc::sync_channel(4);
         start_listener(move |command| tx.send(command).unwrap()).unwrap();
 
         let path = PathBuf::from(r"C:\譜面\_temp.bms");
@@ -272,5 +282,15 @@ mod tests {
 
         assert!(request_stop().unwrap());
         assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), ViewerCommand::Stop);
+
+        let replacement = PathBuf::from(r"C:\譜面\replacement.bms");
+        assert!(request_play(&replacement, 3).unwrap());
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            ViewerCommand::Play { path: replacement, measure: 3 }
+        );
+
+        assert!(request_quit().unwrap());
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), ViewerCommand::Quit);
     }
 }

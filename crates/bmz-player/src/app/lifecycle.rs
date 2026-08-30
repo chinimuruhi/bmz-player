@@ -452,14 +452,19 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             }
             AppUserEvent::ViewerCommand(command) => match command {
                 crate::viewer_ipc::ViewerCommand::Stop => {
-                    tracing::info!("external viewer stop requested");
-                    event_loop.exit();
+                    tracing::info!("external viewer playback stopped; waiting for next command");
+                    self.stop_viewer_playback();
+                    self.request_redraw();
                 }
                 crate::viewer_ipc::ViewerCommand::Play { path, measure } => {
                     if let Err(error) = self.play_viewer_chart(&path, measure) {
                         tracing::error!(path = %path.display(), measure, %error, "external viewer play request failed");
                     }
                     self.request_redraw();
+                }
+                crate::viewer_ipc::ViewerCommand::Quit => {
+                    tracing::info!("external viewer exit requested");
+                    event_loop.exit();
                 }
             },
         }

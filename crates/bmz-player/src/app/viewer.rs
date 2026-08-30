@@ -1,6 +1,12 @@
 use super::*;
 
 impl WinitApp {
+    pub(super) fn stop_viewer_playback(&mut self) {
+        self.reset_viewer_playback();
+        self.select.session_mode = SessionMode::Autoplay;
+        self.viewer_waiting = true;
+    }
+
     pub(super) fn play_viewer_chart(&mut self, path: &Path, measure: u32) -> Result<()> {
         let path = path
             .canonicalize()
