@@ -19,7 +19,18 @@ pub(super) async fn download_scores(
         now_unix_seconds(),
     )
     .await?;
-    let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
+    let client = if crate::ir::bms_ir::is_bms_ir_config(&provider) {
+        crate::ir::download::IrOwnScoreHistoryClient::BmsIr {
+            client: crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?,
+            player_id: credentials.account_id.clone(),
+            game_token: credentials.access_token,
+        }
+    } else {
+        crate::ir::download::IrOwnScoreHistoryClient::BmzOfficial(BmzOfficialIrClient::new(
+            &provider.base_url,
+            credentials.access_token,
+        )?)
+    };
     let mut score_db = ScoreDatabase::open(&profile_paths.score_db)?;
     let network_db = NetworkDatabase::open(&profile_paths.network_db)?;
     let report = download_ir_scores(
@@ -111,7 +122,7 @@ pub(super) fn selected_provider<'a>(
                 && crate::ir::provider_key::configured_provider_key(entry)
                     .is_some_and(|provider_key| provider_key == provider_name)
         })
-        .context("no IR provider configured; run `bmz ir login` first")
+        .context("no read-capable IR provider configured")
 }
 
 pub(super) fn parse_scope(value: &str) -> Result<IrRankingScope> {

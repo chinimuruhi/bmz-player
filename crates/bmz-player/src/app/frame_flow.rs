@@ -490,7 +490,12 @@ impl WinitApp {
                 course.ln_policy,
                 course.rule_mode.as_str()
             );
-            self.select.select_ir.update_course(&ir_config, &context, Some(course));
+            self.select.select_ir.update_course(
+                &ir_config,
+                &self.boot.profile_paths.root_dir,
+                &context,
+                Some(course),
+            );
             return;
         }
 

@@ -201,6 +201,7 @@ impl SelectIrRanking {
     pub fn update_course(
         &mut self,
         ir_config: &IrConfig,
+        profile_root: &Path,
         context: &str,
         selected: Option<SelectCourseIrTarget>,
     ) {
@@ -266,6 +267,7 @@ impl SelectIrRanking {
                     spawn_course_fetch(
                         provider.0,
                         provider.1,
+                        profile_root.to_path_buf(),
                         self.context.clone(),
                         target,
                         requested_at,

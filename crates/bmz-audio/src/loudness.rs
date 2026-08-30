@@ -725,6 +725,7 @@ mod tests {
         PlayableChart {
             identity: ChartIdentity { file_md5: [0; 16], file_sha256: [0; 32] },
             metadata: ChartMetadata {
+                source_format: Default::default(),
                 title: String::new(),
                 subtitle: String::new(),
                 artist: String::new(),

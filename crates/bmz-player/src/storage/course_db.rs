@@ -23,7 +23,20 @@ pub(super) fn upsert_course(
     imported_at: i64,
 ) -> Result<i64> {
     let tx = conn.transaction()?;
-    tx.execute(
+    let course_id =
+        upsert_course_in_transaction(&tx, source, course, source_position, imported_at)?;
+    tx.commit()?;
+    Ok(course_id)
+}
+
+pub(super) fn upsert_course_in_transaction(
+    conn: &Connection,
+    source: &str,
+    course: &CourseDefinition,
+    source_position: i64,
+    imported_at: i64,
+) -> Result<i64> {
+    conn.execute(
         "INSERT INTO courses (
             source, course_key, title, kind, class_constraint, speed_constraint,
             judge_constraint, gauge_constraint, ln_constraint, source_constraints,
@@ -61,16 +74,16 @@ pub(super) fn upsert_course(
         ],
     )?;
 
-    let course_id: i64 = tx.query_row(
+    let course_id: i64 = conn.query_row(
         "SELECT id FROM courses WHERE source = ?1 AND course_key = ?2",
         params![source, course.key],
         |row| row.get(0),
     )?;
-    tx.execute("DELETE FROM course_entries WHERE course_id = ?1", params![course_id])?;
+    conn.execute("DELETE FROM course_entries WHERE course_id = ?1", params![course_id])?;
 
     for (position, entry) in course.entries.iter().enumerate() {
-        let chart_id = resolve_entry_chart_id(&tx, entry)?;
-        tx.execute(
+        let chart_id = resolve_entry_chart_id(conn, entry)?;
+        conn.execute(
             "INSERT INTO course_entries
              (course_id, position, md5, sha256, title_hint, chart_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -85,7 +98,6 @@ pub(super) fn upsert_course(
         )?;
     }
 
-    tx.commit()?;
     Ok(course_id)
 }
 

@@ -9,7 +9,7 @@ pub mod normalize;
 
 use std::path::Path;
 
-use crate::model::PlayableChart;
+use crate::model::{ChartSourceFormat, PlayableChart};
 
 use self::error::{ImportError, ImportWarning};
 
@@ -18,6 +18,16 @@ enum ChartFileFormat {
     Bms,
     Bmson,
     Pms,
+}
+
+impl ChartFileFormat {
+    const fn source_format(self) -> ChartSourceFormat {
+        match self {
+            Self::Bms => ChartSourceFormat::Bms,
+            Self::Bmson => ChartSourceFormat::Bmson,
+            Self::Pms => ChartSourceFormat::Pms,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +68,8 @@ pub fn import_chart_with_random_source(
 ) -> Result<ImportResult, ImportError> {
     let mut warnings = Vec::new();
     let mut bms_random_choices = Vec::new();
-    let intermediate = match chart_file_format(path) {
+    let file_format = chart_file_format(path);
+    let intermediate = match file_format {
         ChartFileFormat::Bmson => bmson_adapter::import_bmson_to_intermediate(path, &mut warnings)?,
         ChartFileFormat::Bms => bms_rs_adapter::import_bms_to_intermediate_with_random_source(
             path,
@@ -73,8 +84,9 @@ pub fn import_chart_with_random_source(
             &mut warnings,
         )?,
     };
-    let chart =
+    let mut chart =
         normalize::normalize_chart(path, intermediate, &mut warnings, check_resource_existence)?;
+    chart.metadata.source_format = file_format.source_format();
     Ok(ImportResult { chart, warnings, bms_random_choices })
 }
 

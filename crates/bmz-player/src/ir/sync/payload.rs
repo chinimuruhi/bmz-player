@@ -6,6 +6,9 @@ pub(super) async fn submit_score_attestation_job(
     payload_json: &str,
     now: i64,
 ) -> Result<(String, String, String)> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR score attestation is not supported");
+    }
     const ATTESTATION_PURPOSE: &str = "score_attestation";
     const ATTESTATION_SCHEMA: &str = "bmz-score-attestation-v1";
 
@@ -56,6 +59,13 @@ pub(super) async fn submit_course_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        let client = crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_course_score(&payload, &credentials.account_id, &credentials.access_token)
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     if crate::ir::rian_ir::is_rian_ir_config(provider) {
         let client = crate::ir::rian_ir::RianIrClient::new(&provider.base_url)?;
         let outcome = client

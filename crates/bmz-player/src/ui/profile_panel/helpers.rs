@@ -256,7 +256,9 @@ pub(in crate::ui) fn ir_provider_text_row(ui: &mut egui::Ui, label: &str, value:
 }
 
 pub(in crate::ui) fn ir_provider_family(provider: &str) -> &'static str {
-    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+    if crate::ir::bms_ir::is_bms_ir_provider(provider) {
+        crate::ir::bms_ir::BMS_IR_PROVIDER
+    } else if crate::ir::rian_ir::is_rian_ir_provider(provider) {
         crate::ir::rian_ir::RIAN_IR_PROVIDER
     } else {
         crate::ir::bmz_official::BMZ_IR_PROVIDER
@@ -284,8 +286,8 @@ pub(in crate::ui) fn ir_primary_provider_label(
 }
 
 pub(in crate::ui) fn sync_ir_provider_roles(ir_config: &mut IrConfig) -> bool {
-    let primary_provider = ir_config.primary_provider.trim();
     let mut changed = false;
+    let primary_provider = ir_config.primary_provider.trim();
     for provider in &mut ir_config.providers {
         let next_role = if !primary_provider.is_empty()
             && crate::ir::provider_key::configured_provider_key(provider)

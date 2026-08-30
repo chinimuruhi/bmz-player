@@ -470,6 +470,7 @@ fn finish_session_snapshot_result(
                 score_key,
                 applied_arrange,
                 source_ln_profile,
+                finish_mode,
                 chart_length_ms,
                 play_duration_ms,
                 summary: &mut summary,
@@ -525,6 +526,7 @@ struct EnqueueIrJobsRequest<'a> {
     score_key: ScoreKey,
     applied_arrange: &'a AppliedArrange,
     source_ln_profile: ChartLnProfile,
+    finish_mode: FinishResultMode,
     chart_length_ms: Option<u64>,
     play_duration_ms: Option<u64>,
     summary: &'a mut ResultSummary,
@@ -544,6 +546,7 @@ fn enqueue_ir_jobs(
         score_key,
         applied_arrange,
         source_ln_profile,
+        finish_mode,
         chart_length_ms,
         play_duration_ms,
         summary,
@@ -562,6 +565,15 @@ fn enqueue_ir_jobs(
                     || crate::ir::rian_ir::score_submission_supported(
                         score_key.ln_policy,
                         applied_arrange.double_option,
+                    ))
+                && (!crate::ir::bms_ir::is_bms_ir_config(provider)
+                    || crate::ir::bms_ir::score_submission_supported(
+                        snapshot.rule_mode,
+                        snapshot.chart.metadata.source_format,
+                        source_ln_profile,
+                        score_key.ln_policy,
+                        applied_arrange.double_option,
+                        finish_mode == FinishResultMode::CourseStage,
                     ))
         })
         .collect();

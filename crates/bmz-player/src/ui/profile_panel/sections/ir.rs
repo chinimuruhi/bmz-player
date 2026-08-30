@@ -109,13 +109,13 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         && provider_key.is_none()
                         && !ir_login.busy;
                     match index {
-                        0 | 1 => {
+                        0..=2 => {
                             ui.horizontal(|ui| {
                                 ui.label(tr!(text, "profile-ir-provider-kind"));
-                                ui.label(if index == 0 {
-                                    tr!(text, "profile-ir-provider-bmz")
-                                } else {
-                                    tr!(text, "profile-ir-provider-rian")
+                                ui.label(match index {
+                                    0 => tr!(text, "profile-ir-provider-bmz"),
+                                    1 => tr!(text, "profile-ir-provider-rian"),
+                                    _ => tr!(text, "profile-ir-provider-bms-ir"),
                                 });
                             });
                             ui.horizontal(|ui| {
@@ -171,6 +171,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                         provider.provider.clone(),
                         provider.base_url.clone(),
                     );
+                    let is_bms_ir = crate::ir::bms_ir::is_bms_ir_config(provider);
                     let is_rian = crate::ir::rian_ir::is_rian_ir_config(provider);
                     if index >= BUILTIN_IR_PROVIDER_COUNT {
                         let provider_key_text = provider_key
@@ -233,7 +234,7 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                     } else {
                         let form = ir_login.provider_form_mut(index);
                         ui.horizontal(|ui| {
-                            ui.label(if is_rian {
+                            ui.label(if is_rian || is_bms_ir {
                                 tr!(text, "profile-ir-login-id")
                             } else {
                                 tr!(text, "profile-ir-email")
@@ -241,9 +242,16 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                             ui.text_edit_singleline(&mut form.email);
                         });
                         ui.horizontal(|ui| {
-                            ui.label(tr!(text, "profile-ir-password"));
+                            ui.label(if is_bms_ir {
+                                tr!(text, "profile-ir-game-token")
+                            } else {
+                                tr!(text, "profile-ir-password")
+                            });
                             ui.add(egui::TextEdit::singleline(&mut form.password).password(true));
                         });
+                        if is_bms_ir {
+                            ui.small(tr!(text, "profile-ir-bms-ir-help"));
+                        }
                         let credentials_ready = !form.email.is_empty() && !form.password.is_empty();
                         let can_login = !ir_login.busy
                             && normalized_ir_base_url(&provider.base_url).is_some()
@@ -294,7 +302,8 @@ pub(in crate::ui::profile_panel) fn build_profile_ir_section(
                             let can_rotate = !busy
                                 && !provider.base_url.is_empty()
                                 && provider_key.is_some()
-                                && !is_rian;
+                                && !is_rian
+                                && !is_bms_ir;
                             if ui
                                 .add_enabled(
                                     can_rotate,

@@ -281,6 +281,7 @@ fn imports_bmson_into_playable_chart() {
     }"#;
     let path = write_temp_file_with_ext(json, "bmson");
     let result = import_chart(&path, None, false).unwrap();
+    assert_eq!(result.chart.metadata.source_format, crate::model::ChartSourceFormat::Bmson);
     assert_eq!(result.chart.metadata.title, "Bmson Song");
     assert_eq!(result.chart.metadata.difficulty_name, "BEGINNER");
     assert_eq!(result.chart.metadata.total, Some(520.0));
@@ -816,4 +817,18 @@ fn imports_lnmode_from_bms_header() {
     let result = import_chart(&path, None, false).unwrap();
     assert_eq!(result.chart.metadata.long_note_mode, crate::model::LongNoteMode::Hcn);
     std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn import_records_bms_and_pms_source_formats() {
+    let text = "#TITLE Source Format\n#BPM 120\n#00111:01\n";
+    for (extension, expected) in [
+        ("bms", crate::model::ChartSourceFormat::Bms),
+        ("pms", crate::model::ChartSourceFormat::Pms),
+    ] {
+        let path = write_temp_file_with_ext(text, extension);
+        let result = import_chart(&path, None, false).unwrap();
+        assert_eq!(result.chart.metadata.source_format, expected);
+        std::fs::remove_file(path).unwrap();
+    }
 }
