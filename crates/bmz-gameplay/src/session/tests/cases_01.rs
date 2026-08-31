@@ -84,6 +84,9 @@ fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
         autoplay: None,
         display_uses_primary_arrangement: false,
         publish_display_judgements: false,
+        gauge_increase_started_at: None,
+        gauge_max_started_at: None,
+        full_combo_started_at: None,
         lane_keyon_started_at: Default::default(),
     });
     session.display_only_lane_mask[Lane::Key8.index()] = true;
@@ -113,6 +116,9 @@ fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
     let opponent = session.battle_opponent.as_ref().unwrap();
     assert_eq!(opponent.score.ex_score(), 2);
     assert_eq!(opponent.score.past_notes, 1);
+    assert_eq!(opponent.gauge_increase_started_at, None);
+    assert_eq!(opponent.gauge_max_started_at, Some(TimeUs(0)));
+    assert_eq!(opponent.full_combo_started_at, Some(TimeUs(0)));
     assert!(session.recent_display_judgements.is_empty());
     assert!(session.pending_skin_events.is_empty());
     assert!(!session
@@ -136,11 +142,14 @@ fn independent_battle_opponent_without_replay_uses_autoplay() {
         base_judge_windows: JudgeWindows::uniform(window),
         rule_mode: RuleMode::Beatoraja,
         score: ScoreState::default(),
-        gauge: GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 1),
+        gauge: GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 100),
         replay_player: None,
         autoplay: Some(AutoplayController::default()),
         display_uses_primary_arrangement: true,
         publish_display_judgements: true,
+        gauge_increase_started_at: None,
+        gauge_max_started_at: None,
+        full_combo_started_at: None,
         lane_keyon_started_at: Default::default(),
     });
     let mut audio = TestAudio::default();
@@ -150,6 +159,9 @@ fn independent_battle_opponent_without_replay_uses_autoplay() {
     let opponent = session.battle_opponent.as_ref().unwrap();
     assert_eq!(opponent.score.ex_score(), 2);
     assert_eq!(opponent.score.past_notes, 1);
+    assert_eq!(opponent.gauge_increase_started_at, Some(TimeUs(0)));
+    assert_eq!(opponent.gauge_max_started_at, None);
+    assert_eq!(opponent.full_combo_started_at, Some(TimeUs(0)));
     assert!(
         session
             .recent_display_judgements

@@ -302,6 +302,11 @@ pub struct BattleOpponentSession {
     /// Normal mode still advances the opponent score for comparison, but its
     /// single-player judgement/combo presentation must remain primary-only.
     pub publish_display_judgements: bool,
+    /// Skin timer 43/45/49 state owned by the independent opponent rather than
+    /// the legacy display-only 2P path on `GameSession`.
+    pub gauge_increase_started_at: Option<TimeUs>,
+    pub gauge_max_started_at: Option<TimeUs>,
+    pub full_combo_started_at: Option<TimeUs>,
     pub lane_keyon_started_at: [Option<TimeUs>; LANE_COUNT],
 }
 

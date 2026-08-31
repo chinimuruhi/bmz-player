@@ -18,7 +18,10 @@ pub fn sync_judge_windows(session: &mut GameSession, now: TimeUs) {
     ));
 }
 
-use super::judgement::{update_failed_state_from_gauge, update_gauge_max_timer};
+use super::judgement::{
+    update_failed_state_from_gauge, update_gauge_increase_timer_state, update_gauge_max_timer,
+    update_gauge_max_timer_state,
+};
 
 pub(super) fn sync_input_timestamp_anchor(session: &mut GameSession, audio_now: TimeUs) {
     session.input_timestamp_anchor = if session.audio_clock.running {
@@ -158,6 +161,7 @@ fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
     display_judgements.extend(apply_battle_opponent_outcome(opponent, mine_outcome));
     let miss_outcome = opponent.judge.process_misses(&opponent.chart, now);
     display_judgements.extend(apply_battle_opponent_outcome(opponent, miss_outcome));
+    update_battle_opponent_skin_timers(opponent, &display_judgements, now);
 
     if !publish_display_judgements {
         return;
@@ -194,7 +198,16 @@ fn apply_battle_opponent_outcome(
     for event in outcome.events {
         if event.affects_score {
             opponent.score.apply(&event);
+            let previous_gauge = opponent.gauge.current().value;
             opponent.gauge.apply_judge(event.judge, 1.0);
+            let current = opponent.gauge.current();
+            update_gauge_increase_timer_state(
+                &mut opponent.gauge_increase_started_at,
+                previous_gauge,
+                current.value,
+                current.definition.max,
+                event.time,
+            );
         }
         display_judgements
             .push(DisplayJudgementEvent { judgement: event, combo: opponent.score.combo });
@@ -203,6 +216,34 @@ fn apply_battle_opponent_outcome(
         opponent.gauge.apply_mine(mine.damage);
     }
     display_judgements
+}
+
+fn update_battle_opponent_skin_timers(
+    opponent: &mut BattleOpponentSession,
+    display_judgements: &[DisplayJudgementEvent],
+    now: TimeUs,
+) {
+    let current = opponent.gauge.current();
+    update_gauge_max_timer_state(
+        &mut opponent.gauge_increase_started_at,
+        &mut opponent.gauge_max_started_at,
+        current.value,
+        current.definition.max,
+        now,
+    );
+    if opponent.full_combo_started_at.is_some()
+        || opponent.scored_total_notes == 0
+        || opponent.score.past_notes < opponent.scored_total_notes
+        || opponent.score.combo < opponent.scored_total_notes
+    {
+        return;
+    }
+    opponent.full_combo_started_at = display_judgements
+        .iter()
+        .rev()
+        .find(|display| display.judgement.affects_score && display.judgement.note_id.is_some())
+        .map(|display| display.judgement.time)
+        .or(Some(TimeUs(now.0.max(0))));
 }
 
 fn second_player_lane(lane: Lane) -> Lane {

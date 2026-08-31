@@ -483,6 +483,9 @@ pub fn build_game_session_with_input_backend(
                 replay_player: opponent.replay_player,
                 display_uses_primary_arrangement: session_mode == SessionMode::GBattle,
                 publish_display_judgements: session_mode.uses_battle_skin(),
+                gauge_increase_started_at: None,
+                gauge_max_started_at: None,
+                full_combo_started_at: None,
                 lane_keyon_started_at: Default::default(),
             }
         });
