@@ -116,6 +116,7 @@ fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
         return;
     };
     let display_uses_primary_arrangement = opponent.display_uses_primary_arrangement;
+    let publish_display_judgements = opponent.publish_display_judgements;
 
     let percent = judge_percent_at_time_for_keymode(
         opponent.chart.metadata.judge_rank_spec,
@@ -157,6 +158,10 @@ fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
     display_judgements.extend(apply_battle_opponent_outcome(opponent, mine_outcome));
     let miss_outcome = opponent.judge.process_misses(&opponent.chart, now);
     display_judgements.extend(apply_battle_opponent_outcome(opponent, miss_outcome));
+
+    if !publish_display_judgements {
+        return;
+    }
 
     for display in &mut display_judgements {
         let source_lane = if display_uses_primary_arrangement {

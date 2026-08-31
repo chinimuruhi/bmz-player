@@ -74,6 +74,7 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
     assert!(opponent.replay_player.is_none());
     assert!(opponent.autoplay.is_some());
     assert!(opponent.display_uses_primary_arrangement);
+    assert!(opponent.publish_display_judgements);
     assert_eq!(session.primary_key_mode, KeyMode::K7);
 }
 
@@ -82,6 +83,11 @@ fn battle_target_uses_battle_presentation_while_session_mode_stays_normal() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut primary = chart();
     primary.metadata.key_mode = KeyMode::K14;
+    primary.lane_notes[Lane::Key1.index()].push(note(1, Lane::Key1, 1_000_000));
+    primary.lane_notes[Lane::Key8.index()].push(note(2, Lane::Key8, 1_000_000));
+    // The cloned opponent note is presentation-only, so the chart semantic
+    // total remains owned by the one primary note.
+    primary.total_notes = 1;
     let mut opponent = chart();
     opponent.metadata.key_mode = KeyMode::K7;
     let session = build_game_session(
@@ -115,6 +121,8 @@ fn battle_target_uses_battle_presentation_while_session_mode_stays_normal() {
     assert_eq!(session.primary_key_mode, KeyMode::K7);
     assert!(session.display_only_lane_mask[Lane::Key8.index()]);
     assert!(session.battle_opponent.is_some());
+    assert_eq!(session.scored_total_notes, 1);
+    assert!(!session.battle_opponent.as_ref().unwrap().publish_display_judgements);
 }
 
 #[test]

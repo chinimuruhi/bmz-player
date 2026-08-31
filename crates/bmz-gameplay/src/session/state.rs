@@ -298,6 +298,10 @@ pub struct BattleOpponentSession {
     /// G-BATTLE presents the opponent on the primary player's final lane
     /// arrangement even when replay judgement uses the rival's arrangement.
     pub display_uses_primary_arrangement: bool,
+    /// Publish opponent judgements to the battle skin's 2P judgement region.
+    /// Normal mode still advances the opponent score for comparison, but its
+    /// single-player judgement/combo presentation must remain primary-only.
+    pub publish_display_judgements: bool,
     pub lane_keyon_started_at: [Option<TimeUs>; LANE_COUNT],
 }
 

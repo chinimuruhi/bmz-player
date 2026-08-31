@@ -48,6 +48,8 @@ fn prepared_chart_populates_play_skin_data_without_marking_media_ready() {
 fn prepared_battle_chart_keeps_7k_as_the_skin_key_mode() {
     let mut chart = chart();
     chart.metadata.key_mode = KeyMode::K14;
+    chart.lane_notes[Lane::Key8.index()].push(tap_note(2, Lane::Key8, 0, 1_000_000));
+    chart.total_notes = 1;
     let cache = PlayRenderSnapshotCache::from_chart(&chart);
     let mut snapshot = bmz_render::snapshot::RenderSnapshot::default();
 

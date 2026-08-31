@@ -83,6 +83,7 @@ fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
         }),
         autoplay: None,
         display_uses_primary_arrangement: false,
+        publish_display_judgements: false,
         lane_keyon_started_at: Default::default(),
     });
     session.display_only_lane_mask[Lane::Key8.index()] = true;
@@ -112,13 +113,8 @@ fn independent_battle_opponent_replay_advances_without_taking_primary_lanes() {
     let opponent = session.battle_opponent.as_ref().unwrap();
     assert_eq!(opponent.score.ex_score(), 2);
     assert_eq!(opponent.score.past_notes, 1);
-    assert!(
-        session
-            .recent_display_judgements
-            .iter()
-            .any(|event| event.judgement.lane == Lane::Key8
-                && event.judgement.judge == Judge::PGreat)
-    );
+    assert!(session.recent_display_judgements.is_empty());
+    assert!(session.pending_skin_events.is_empty());
     assert!(!session
         .recent_display_judgements
         .iter()
@@ -144,6 +140,7 @@ fn independent_battle_opponent_without_replay_uses_autoplay() {
         replay_player: None,
         autoplay: Some(AutoplayController::default()),
         display_uses_primary_arrangement: true,
+        publish_display_judgements: true,
         lane_keyon_started_at: Default::default(),
     });
     let mut audio = TestAudio::default();

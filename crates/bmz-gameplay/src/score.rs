@@ -25,15 +25,18 @@ pub fn scored_note_count_excluding_lanes(
     chart: &PlayableChart,
     excluded_lanes: &[bool; LANE_COUNT],
 ) -> u32 {
-    let excluded_base_notes = chart
+    // Battle presentation charts keep `total_notes` owned by the primary side
+    // even after display-only opponent notes are cloned into the 2P lanes.
+    // Count the included resolved notes directly instead of subtracting those
+    // clones from the already-primary-only semantic total.
+    let base_notes = chart
         .lane_notes
         .iter()
         .enumerate()
-        .filter(|(lane, _)| excluded_lanes[*lane])
+        .filter(|(lane, _)| !excluded_lanes[*lane])
         .flat_map(|(_, notes)| notes)
         .filter(|note| matches!(note.kind, NoteKind::Tap | NoteKind::LongStart))
         .count() as u32;
-    let base_notes = chart.total_notes.saturating_sub(excluded_base_notes);
     chart.long_notes.iter().fold(base_notes, |count, pair| {
         let mode = pair.mode.unwrap_or(chart.metadata.long_note_mode);
         count.saturating_add(u32::from(
