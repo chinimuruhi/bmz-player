@@ -132,6 +132,37 @@ type 0 は通常・判定・曲終了状態からモーションを選び、type
 現状は PMchara の `--` 座標補間と、画像右下色を透過色にする chroma-key 処理には未対応。
 PNG 等が持つ alpha は通常どおり反映する。
 
+## Text Overflow
+
+beatoraja互換のtext `overflow` は次の値を使用する。
+
+| `overflow` | behavior |
+| ---: | --- |
+| `0` | destination幅を超えて描画する |
+| `1` | destination幅へ収まるよう縮小する |
+| `2` | destination幅へ収まる位置で文字列を打ち切る |
+
+`overflow: 1` の既定動作はbeatorajaと同じ横方向のみの縮小で、文字の高さとY位置を
+維持する。BMZ拡張の `shrinkMode: 1` を指定すると、従来のBMZと同じ縦横等比縮小へ
+切り替わり、縮小後のtextはdestination内で上下中央に配置される。
+
+| `shrinkMode` | behavior |
+| ---: | --- |
+| 省略 / `0` / その他 | 横方向のみ縮小（beatoraja互換） |
+| `1` | 縦横等比縮小（BMZ拡張） |
+
+`shrinkMode` は `overflow: 1` かつ `wrapping: false` の場合だけ参照する。
+`wrapping: true` は縮小より優先される。JSON skinとLua skinで同じフィールドを使用できる。
+
+```json
+{
+  "text": [
+    { "id": "beatoraja-title", "size": 30, "overflow": 1 },
+    { "id": "uniform-title", "size": 30, "overflow": 1, "shrinkMode": 1 }
+  ]
+}
+```
+
 ## BMZ Default JSON Skin
 
 `data/skins/default/` のデフォルトスキンは JSON skin document を主経路にする。
