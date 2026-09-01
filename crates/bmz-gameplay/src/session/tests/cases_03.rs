@@ -54,6 +54,50 @@ fn bgm_scheduler_starting_at_skips_past_events_and_keeps_boundary() {
 }
 
 #[test]
+fn bgm_scheduler_viewer_seek_carries_only_live_latest_bgm_voices() {
+    let mut chart = chart_with_bgm();
+    chart.bgm_events = vec![
+        SoundEvent { tick: ChartTick(0), time: TimeUs(0), sound: SoundId(10) },
+        SoundEvent { tick: ChartTick(0), time: TimeUs(0), sound: SoundId(11) },
+        SoundEvent { tick: ChartTick(0), time: TimeUs(0), sound: SoundId(12) },
+        SoundEvent { tick: ChartTick(0), time: TimeUs(0), sound: SoundId(13) },
+        SoundEvent { tick: ChartTick(288), time: TimeUs(1_500_000), sound: SoundId(12) },
+        SoundEvent { tick: ChartTick(384), time: TimeUs(2_000_000), sound: SoundId(13) },
+        SoundEvent { tick: ChartTick(576), time: TimeUs(3_000_000), sound: SoundId(14) },
+    ];
+    let clock =
+        AudioClock::with_position(48_000, 512, 2_000_000, Arc::new(AtomicU64::new(512)), true);
+
+    let (mut scheduler, carryover) = BgmScheduler::starting_at_with_carryover(
+        &chart,
+        TimeUs(2_000_000),
+        &clock,
+        0.5,
+        |sound_id| match sound_id {
+            SoundId(10) => Some(3_000_000),
+            SoundId(11) => Some(1_000_000),
+            SoundId(12) => Some(250_000),
+            SoundId(13) => Some(3_000_000),
+            _ => None,
+        },
+    );
+
+    assert_eq!(carryover.len(), 1);
+    assert_eq!(carryover[0].sound_id, SoundId(10));
+    assert_eq!(carryover[0].start_frame, 512);
+    assert_eq!(carryover[0].sample_offset_frames, 96_000);
+    assert_eq!(carryover[0].volume, 0.5);
+    assert_eq!(carryover[0].restart_policy, RestartPolicy::StopSameSound);
+
+    let mut audio = TestAudio::default();
+    scheduler.schedule_until(&chart, &clock, TimeUs(3_000_000), 1.0, &mut audio);
+    assert_eq!(
+        audio.scheduled.iter().map(|sound| sound.sound_id).collect::<Vec<_>>(),
+        vec![SoundId(13), SoundId(14)]
+    );
+}
+
+#[test]
 fn advance_session_frame_applies_chart_volume_channels() {
     let mut chart = chart_with_keysound();
     chart.key_volume_events.push(bmz_chart::model::ChartVolumeEvent {

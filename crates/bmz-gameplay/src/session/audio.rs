@@ -16,6 +16,7 @@ pub fn schedule_keysounds(session: &mut GameSession, audio: &mut dyn AudioSchedu
         for sound_id in note.sounds() {
             audio.schedule(ScheduledSound {
                 start_frame: session.audio_clock.time_to_output_frame(event.time),
+                sample_offset_frames: 0,
                 sound_id,
                 volume,
                 pan: 0.0,

@@ -12,6 +12,12 @@ pub enum RestartPolicy {
 #[derive(Debug, Clone, Copy)]
 pub struct ScheduledSound {
     pub start_frame: u64,
+    /// Sample frame to begin reading from when this voice starts.
+    ///
+    /// Viewer seek uses this for a BGM event that began before the requested
+    /// chart position but is still playing there. Late callback catch-up is
+    /// applied on top of this offset.
+    pub sample_offset_frames: u64,
     pub sound_id: SoundId,
     pub volume: f32,
     pub pan: f32,
@@ -33,6 +39,7 @@ impl ScheduledSound {
     pub fn one_shot(start_frame: u64, sound_id: SoundId, volume: f32, pan: f32) -> Self {
         Self {
             start_frame,
+            sample_offset_frames: 0,
             sound_id,
             volume,
             pan,
@@ -178,6 +185,7 @@ mod tests {
     fn sound(start_frame: u64, sound_id: u32) -> ScheduledSound {
         ScheduledSound {
             start_frame,
+            sample_offset_frames: 0,
             sound_id: SoundId(sound_id),
             volume: 1.0,
             pan: 0.0,

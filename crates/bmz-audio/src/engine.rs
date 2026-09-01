@@ -131,6 +131,7 @@ impl AudioEngine {
     ) {
         self.schedule(ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id,
             volume: volume.clamp(0.0, 1.0),
             pan: 0.0,
@@ -150,6 +151,7 @@ impl AudioEngine {
     ) {
         self.schedule(ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id,
             volume: volume.clamp(0.0, 1.0),
             pan: 0.0,
@@ -171,6 +173,7 @@ impl AudioEngine {
         let voice_start = self.mixer.voices.len();
         self.mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id,
             volume: volume.clamp(0.0, 1.0),
             pan: 0.0,
@@ -230,6 +233,7 @@ mod tests {
         );
         engine.schedule(ScheduledSound {
             start_frame: 2,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -254,6 +258,7 @@ mod tests {
         );
         engine.schedule(ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -264,6 +269,7 @@ mod tests {
         });
         engine.schedule(ScheduledSound {
             start_frame: 2,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -322,6 +328,7 @@ mod tests {
         engine.schedule_all([
             ScheduledSound {
                 start_frame: 0,
+                sample_offset_frames: 0,
                 sound_id: SoundId(1),
                 volume: 1.0,
                 pan: 0.0,
@@ -332,6 +339,7 @@ mod tests {
             },
             ScheduledSound {
                 start_frame: 2,
+                sample_offset_frames: 0,
                 sound_id: SoundId(2),
                 volume: 1.0,
                 pan: 0.0,
@@ -387,6 +395,7 @@ mod tests {
         engine.schedule_all([
             ScheduledSound {
                 start_frame: 20,
+                sample_offset_frames: 0,
                 sound_id: SoundId(2),
                 volume: 1.0,
                 pan: 0.0,
@@ -397,6 +406,7 @@ mod tests {
             },
             ScheduledSound {
                 start_frame: 10,
+                sample_offset_frames: 0,
                 sound_id: SoundId(1),
                 volume: 1.0,
                 pan: 0.0,
@@ -448,6 +458,7 @@ mod tests {
         );
         source.schedule(ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -528,6 +539,7 @@ mod tests {
         );
         engine.schedule(ScheduledSound {
             start_frame: 2,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -564,6 +576,7 @@ mod tests {
         );
         engine.schedule(ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,

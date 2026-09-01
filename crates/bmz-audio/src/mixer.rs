@@ -62,8 +62,8 @@ impl MixerState {
             }
             self.voices.push(ActiveVoice {
                 next_output_frame: sound.start_frame,
+                sample_position: sound.sample_offset_frames as f64,
                 sound,
-                sample_position: 0.0,
                 played_output_frames: 0,
                 started: false,
                 stop_at_frame: None,
@@ -322,6 +322,7 @@ mod tests {
         let mut mixer = MixerState::default();
         mixer.push_scheduled([ScheduledSound {
             start_frame: 10,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 2.0,
             pan: 0.0,
@@ -348,6 +349,7 @@ mod tests {
         let mut mixer = MixerState { master_gain: 0.25, ..MixerState::default() };
         mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -374,6 +376,7 @@ mod tests {
         let mut mixer = MixerState::default();
         mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -402,6 +405,7 @@ mod tests {
         let mut mixer = MixerState::default();
         mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -427,6 +431,7 @@ mod tests {
         let mut mixer = MixerState::default();
         mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -456,6 +461,7 @@ mod tests {
         let mut mixer = MixerState::new(48_000);
         mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -482,6 +488,7 @@ mod tests {
         let mut mixer = MixerState::default();
         mixer.push_scheduled([ScheduledSound {
             start_frame: 10,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -499,6 +506,37 @@ mod tests {
     }
 
     #[test]
+    fn sample_offset_and_late_catch_up_are_combined() {
+        let mut bank = SampleBank::default();
+        bank.insert(
+            SoundId(1),
+            DecodedSample {
+                channels: 1,
+                sample_rate: 48_000,
+                frames: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+            },
+        );
+        let mut mixer = MixerState::default();
+        mixer.push_scheduled([ScheduledSound {
+            start_frame: 10,
+            sample_offset_frames: 2,
+            sound_id: SoundId(1),
+            volume: 1.0,
+            pan: 0.0,
+            loop_playback: false,
+            fade_in_frames: 0,
+            catch_up: true,
+            restart_policy: RestartPolicy::Overlap,
+        }]);
+        let mut output = vec![0.0; 4];
+
+        mixer.mix_stereo(&bank, 12, &mut output);
+
+        assert_eq!(output, vec![0.4, 0.4, 0.5, 0.5]);
+        assert!(mixer.voices.is_empty());
+    }
+
+    #[test]
     fn immediate_sound_starts_from_head_when_first_render_is_late() {
         let mut bank = SampleBank::default();
         bank.insert(
@@ -508,6 +546,7 @@ mod tests {
         let mut mixer = MixerState::default();
         mixer.push_scheduled([ScheduledSound {
             start_frame: 0,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -538,6 +577,7 @@ mod tests {
         let mut mixer = MixerState::default();
         mixer.push_scheduled([ScheduledSound {
             start_frame: 100,
+            sample_offset_frames: 0,
             sound_id: SoundId(1),
             volume: 1.0,
             pan: 0.0,
@@ -669,6 +709,7 @@ mod tests {
     ) -> ScheduledSound {
         ScheduledSound {
             start_frame,
+            sample_offset_frames: 0,
             sound_id: SoundId(sound_id),
             volume,
             pan: 0.0,

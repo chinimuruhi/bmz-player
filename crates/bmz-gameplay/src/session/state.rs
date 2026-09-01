@@ -374,6 +374,64 @@ impl BgmScheduler {
         Self { next_index: chart.bgm_events.partition_point(|event| event.time < start_time) }
     }
 
+    /// Starts scheduling at `start_time` and recreates only BGM voices that
+    /// began earlier but whose decoded sample still spans the seek position.
+    ///
+    /// BGM events use `StopSameSound`, so only the latest past event for each
+    /// sound ID can still be active. A later short event therefore prevents an
+    /// older long event with the same ID from being resurrected.
+    pub fn starting_at_with_carryover(
+        chart: &PlayableChart,
+        start_time: TimeUs,
+        clock: &AudioClock,
+        volume: f32,
+        mut sample_duration_us: impl FnMut(SoundId) -> Option<i64>,
+    ) -> (Self, Vec<ScheduledSound>) {
+        let scheduler = Self::starting_at(chart, start_time);
+        // A boundary event restarts the same sound at the requested position,
+        // so its pre-seek voice must not be heard even for the first callback.
+        let mut seen_sounds = chart.bgm_events[scheduler.next_index..]
+            .iter()
+            .take_while(|event| event.time == start_time)
+            .map(|event| event.sound)
+            .collect::<std::collections::HashSet<_>>();
+        let mut carryover = chart.bgm_events[..scheduler.next_index]
+            .iter()
+            .rev()
+            .filter(|event| seen_sounds.insert(event.sound))
+            .filter_map(|event| {
+                let duration_us = sample_duration_us(event.sound)?.max(0);
+                let elapsed_us = start_time.0.saturating_sub(event.time.0);
+                if duration_us <= elapsed_us {
+                    return None;
+                }
+                let sample_offset_frames = (u128::try_from(elapsed_us).unwrap_or(0)
+                    * u128::from(clock.sample_rate)
+                    / 1_000_000)
+                    .min(u128::from(u64::MAX)) as u64;
+                let chart_volume = bmz_chart::volume::chart_channel_volume_factor(
+                    bmz_chart::volume::chart_volume_at_time(&chart.bgm_volume_events, event.time),
+                );
+                Some((
+                    event.time,
+                    ScheduledSound {
+                        start_frame: clock.start_output_frame,
+                        sample_offset_frames,
+                        sound_id: event.sound,
+                        volume: (volume * chart_volume).clamp(0.0, 1.0),
+                        pan: 0.0,
+                        loop_playback: false,
+                        fade_in_frames: 0,
+                        catch_up: true,
+                        restart_policy: RestartPolicy::StopSameSound,
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
+        carryover.sort_by_key(|(time, _)| *time);
+        (scheduler, carryover.into_iter().map(|(_, sound)| sound).collect())
+    }
+
     pub fn schedule_until(
         &mut self,
         chart: &PlayableChart,
@@ -392,6 +450,7 @@ impl BgmScheduler {
             );
             audio.schedule(ScheduledSound {
                 start_frame: clock.time_to_output_frame(event.time),
+                sample_offset_frames: 0,
                 sound_id: event.sound,
                 volume: (volume * chart_volume).clamp(0.0, 1.0),
                 pan: 0.0,
