@@ -2,6 +2,15 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn advance_active_play(&mut self) {
+        if self.viewer_mode && self.viewer_waiting {
+            if self.stop_play_if_exit_hold_elapsed() {
+                self.clear_play_control_holds();
+            }
+            if self.play.play_ending.is_some() {
+                self.update_play_ending_snapshot();
+            }
+            return;
+        }
         if self.viewer_mode && self.viewer_paused && self.play.play_ready_sound_started_at.is_some()
         {
             self.update_viewer_paused_snapshot();
@@ -654,7 +663,7 @@ impl WinitApp {
 
     pub(super) fn stop_play_like_escape(&mut self, reason: &'static str) -> bool {
         if self.viewer_mode {
-            return self.leave_viewer_for_select(reason);
+            return self.begin_viewer_exit_transition(reason);
         }
         let practice_phase = self.play.practice_session.as_ref().map(|practice| practice.phase);
         if play_exit_should_leave_practice(practice_phase) {

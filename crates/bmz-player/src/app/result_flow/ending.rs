@@ -51,9 +51,13 @@ impl WinitApp {
         match ending.completion {
             PlayEndingCompletion::ViewerWait => {
                 tracing::info!("viewer play finished; keeping Play scene for the next command");
-                drop(self.play.active_play.take());
                 self.stop_viewer_playback();
                 self.request_redraw();
+                return;
+            }
+            PlayEndingCompletion::ViewerSelect => {
+                tracing::info!("viewer fadeout completed; returning to select");
+                self.leave_viewer_for_select("viewer fadeout completed");
                 return;
             }
             PlayEndingCompletion::Select => {
@@ -145,8 +149,8 @@ impl WinitApp {
         ) {
             FinishedPlayAction::ViewerWait => {
                 tracing::info!("viewer play finished; waiting for the next command");
-                drop(started);
                 drop(finished);
+                self.play.active_play = Some(started);
                 self.stop_viewer_playback();
                 self.request_redraw();
                 return;

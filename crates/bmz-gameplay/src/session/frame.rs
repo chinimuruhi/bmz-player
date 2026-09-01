@@ -114,12 +114,22 @@ pub fn advance_session_frame(
 }
 
 /// Viewer の途中再生開始前に、過去の入力・判定 cursor を無音で進める。
-/// スコア・ゲージは新しいセッションの初期値のままなので、シーク先より前の
-/// ノートが PGREAT / POOR としてまとめて計上されることはない。
+/// 開始時刻より前に判定時刻を迎えたscore対象ノートはPGREATとして事前集計し、
+/// 境界時刻のノートはその位置からのAutoplay対象として残す。
 pub fn prepare_viewer_seek(session: &mut GameSession, start_time: TimeUs) {
     session.judge.skip_before(&session.chart, start_time);
+    apply_viewer_pgreat_prefix(session, start_time);
     if let Some(autoplay) = &mut session.autoplay {
         autoplay.skip_before(&session.chart, start_time);
+        for lane in Lane::ALL {
+            if autoplay.is_lane_enabled(lane)
+                && session.judge.lanes[lane.index()].active_long.is_some()
+            {
+                session.lane_keyon_started_at[lane.index()] = Some(start_time);
+                session.lane_keyoff_started_at[lane.index()] = None;
+                session.lane_auto_release_at[lane.index()] = None;
+            }
+        }
     }
     if let Some(replay) = &mut session.replay_player {
         replay.skip_before(start_time);
@@ -134,6 +144,87 @@ pub fn prepare_viewer_seek(session: &mut GameSession, start_time: TimeUs) {
         }
     }
     session.bgm_scheduler = BgmScheduler::starting_at(&session.chart, start_time);
+}
+
+fn apply_viewer_pgreat_prefix(session: &mut GameSession, start_time: TimeUs) {
+    let events =
+        viewer_pgreat_prefix_events(&session.chart, start_time, &session.display_only_lane_mask);
+    for event in events {
+        session.score.apply(&event);
+        session.gauge.apply_judge(Judge::PGreat, 1.0);
+        if let Some(note_id) = event.note_id {
+            session.judge.judged_notes.insert(note_id, Judge::PGreat);
+            session.result_judgements.insert(
+                note_id,
+                ResultJudgementDetail {
+                    judge: Judge::PGreat,
+                    side: TimingSide::Slow,
+                    delta: TimeUs(0),
+                    time: event.time,
+                },
+            );
+        }
+    }
+    session.course_max_combo = session.course_max_combo.max(session.display_combo());
+    if session.scored_total_notes != 0
+        && session.score.past_notes == session.scored_total_notes
+        && session.score.combo == session.scored_total_notes
+    {
+        session.full_combo_started_at = Some(start_time);
+    }
+}
+
+fn viewer_pgreat_prefix_events(
+    chart: &PlayableChart,
+    start_time: TimeUs,
+    excluded_lanes: &[bool; LANE_COUNT],
+) -> Vec<JudgementEvent> {
+    let mut events = Vec::new();
+    for lane in Lane::ALL {
+        if excluded_lanes[lane.index()] {
+            continue;
+        }
+        for note in chart.notes_for_lane(lane).iter().filter(|note| note.time < start_time) {
+            let note_id = match note.kind {
+                NoteKind::Tap => Some(note.id),
+                NoteKind::LongStart => chart
+                    .long_notes
+                    .iter()
+                    .find(|pair| pair.start_note_id == note.id)
+                    .filter(|pair| {
+                        matches!(
+                            pair.mode.unwrap_or(chart.metadata.long_note_mode),
+                            LongNoteMode::Cn | LongNoteMode::Hcn
+                        )
+                    })
+                    .map(|_| note.id),
+                NoteKind::LongEnd => {
+                    chart.long_notes.iter().find(|pair| pair.end_note_id == note.id).map(|pair| {
+                        if pair.mode.unwrap_or(chart.metadata.long_note_mode) == LongNoteMode::Ln {
+                            pair.start_note_id
+                        } else {
+                            pair.end_note_id
+                        }
+                    })
+                }
+                NoteKind::Invisible | NoteKind::Mine => None,
+            };
+            let Some(note_id) = note_id else {
+                continue;
+            };
+            events.push(JudgementEvent {
+                note_id: Some(note_id),
+                lane,
+                judge: Judge::PGreat,
+                side: TimingSide::Slow,
+                delta: TimeUs(0),
+                time: note.time,
+                affects_score: true,
+            });
+        }
+    }
+    events.sort_by_key(|event| (event.time, event.lane.index(), event.note_id));
+    events
 }
 
 fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {

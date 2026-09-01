@@ -10,12 +10,10 @@ impl WinitApp {
             self.sync_play_control_holds_from_pressed_controls();
         }
         if self.viewer_waiting {
-            if event.physical_key == PhysicalKey::Code(KeyCode::Escape)
-                && event.state == ElementState::Pressed
-                && !event.repeat
-            {
-                self.leave_viewer_for_select("escape pressed while viewer waiting");
-            } else if !event.repeat {
+            if self.route_waiting_viewer_keyboard(event) {
+                return;
+            }
+            if !event.repeat {
                 self.sync_viewer_wait_exit_holds();
             }
             return;

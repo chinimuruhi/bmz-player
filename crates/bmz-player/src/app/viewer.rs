@@ -13,7 +13,29 @@ enum ViewerSeek {
 
 impl WinitApp {
     pub(super) fn stop_viewer_playback(&mut self) {
-        self.reset_viewer_playback();
+        if self.play.active_play.is_some() {
+            self.commit_active_play_lane_state_to_profile();
+            let pause_result = {
+                let active = self.play.active_play.as_mut().expect("checked above");
+                let chart_time = active.running.session.audio_clock.now();
+                active.running.pause_viewer_playback(chart_time)
+            };
+            if let Err(error) = pause_result {
+                tracing::warn!(%error, "failed to pause viewer audio while waiting");
+            }
+            self.invalidate_play_preload();
+            self.play.pending_play_start = None;
+            self.play.play_ending = None;
+            self.result.finished_play = None;
+            self.result.result_exit = None;
+            self.audio.draining_audio = None;
+            self.viewer_paused = false;
+            self.viewer_paused_play_elapsed = None;
+            self.clear_play_control_holds();
+            self.stop_system_sound(crate::system_sound::SoundType::PlayReady);
+        } else {
+            self.reset_viewer_playback();
+        }
         self.select.session_mode = SessionMode::Autoplay;
         self.viewer_waiting = true;
         if let Some(snapshot) = &mut self.play.last_play_snapshot {
@@ -133,9 +155,61 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn route_viewer_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
-        if !self.viewer_mode || self.viewer_waiting || self.play.active_play.is_none() {
+    pub(super) fn route_waiting_viewer_keyboard(&mut self, event: &winit::event::KeyEvent) -> bool {
+        if !self.viewer_mode || !self.viewer_waiting {
             return false;
+        }
+        if self.play.play_ending.is_some() {
+            return true;
+        }
+        if event.state != ElementState::Pressed || self.play.active_play.is_none() {
+            return false;
+        }
+
+        let shift = self.viewer_modifier_held(["LShift", "RShift"]);
+        let control = self.viewer_modifier_held(["LControl", "RControl"]);
+        if let Some(seek) = viewer_keyboard_seek(event.physical_key, shift, control) {
+            if let Err(error) = self.seek_active_viewer(seek) {
+                tracing::warn!(%error, ?seek, "viewer waiting seek failed");
+                self.show_left_overlay_toast(format!("Viewer seek failed: {error:#}"));
+            }
+            return true;
+        }
+        if event.repeat {
+            return matches!(
+                event.physical_key,
+                PhysicalKey::Code(KeyCode::Space | KeyCode::F5 | KeyCode::Escape)
+            );
+        }
+        match event.physical_key {
+            PhysicalKey::Code(KeyCode::Space) => {
+                if let Err(error) = self.seek_active_viewer(ViewerSeek::Seconds(0)) {
+                    tracing::warn!(%error, "viewer waiting resume failed");
+                    self.show_left_overlay_toast(format!("Viewer resume failed: {error:#}"));
+                }
+                true
+            }
+            PhysicalKey::Code(KeyCode::F5) => {
+                if let Err(error) = self.reload_active_viewer(shift) {
+                    tracing::warn!(%error, reroll = shift, "viewer waiting reload failed");
+                    self.show_left_overlay_toast(format!("Viewer reload failed: {error:#}"));
+                }
+                true
+            }
+            PhysicalKey::Code(KeyCode::Escape) => {
+                self.begin_viewer_exit_transition("escape pressed while viewer waiting");
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub(super) fn route_viewer_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
+        if !self.viewer_mode || self.play.active_play.is_none() {
+            return false;
+        }
+        if self.play.play_ending.is_some() {
+            return true;
         }
         let Some(direction) = viewer_wheel_direction(delta) else {
             return true;
@@ -153,6 +227,33 @@ impl WinitApp {
             tracing::warn!(%error, ?seek, "viewer mouse-wheel seek failed");
             self.show_left_overlay_toast(format!("Viewer seek failed: {error:#}"));
         }
+        true
+    }
+
+    pub(super) fn begin_viewer_exit_transition(&mut self, reason: &'static str) -> bool {
+        if !self.viewer_mode
+            || (!self.viewer_waiting
+                && self.play.active_play.is_none()
+                && self.play.pending_play_start.is_none())
+        {
+            return false;
+        }
+        if self.play.play_ending.is_some() {
+            return true;
+        }
+
+        tracing::info!(reason, "started viewer fadeout to select");
+        if let Some(active) = &mut self.play.active_play {
+            let chart_time = active.running.session.audio_clock.now();
+            if let Err(error) = active.running.pause_viewer_playback(chart_time) {
+                tracing::warn!(%error, "failed to pause viewer audio during exit");
+            }
+        }
+        self.invalidate_play_preload();
+        self.clear_play_control_holds();
+        self.stop_system_sound(crate::system_sound::SoundType::PlayReady);
+        self.play.play_ending = Some(viewer_select_ending(Instant::now()));
+        self.update_play_ending_snapshot();
         true
     }
 
@@ -313,7 +414,11 @@ impl WinitApp {
         }
 
         tracing::info!(reason, "leaving viewer playback for select");
-        if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
+        // 自然終了時は待機へ入る前に通知済み。保持中のactive_playだけを見て
+        // Select退出時に二重通知しない。
+        if !self.viewer_waiting
+            && (self.play.active_play.is_some() || self.play.pending_play_start.is_some())
+        {
             self.notify_obs_play_ended();
         }
         self.reset_viewer_playback();
@@ -344,7 +449,7 @@ impl WinitApp {
         self.play.play_e3_held = e3_held;
         self.update_play_exit_hold_timer();
         if play_exit_chord_pressed(e2_held, e3_held) {
-            return self.leave_viewer_for_select("E2+E3 pressed while viewer waiting");
+            return self.begin_viewer_exit_transition("E2+E3 pressed while viewer waiting");
         }
         false
     }

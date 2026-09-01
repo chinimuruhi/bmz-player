@@ -2,10 +2,10 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn route_mouse_wheel(&mut self, delta: MouseScrollDelta) {
-        if self.viewer_waiting {
+        if self.route_viewer_mouse_wheel(delta) {
             return;
         }
-        if self.route_viewer_mouse_wheel(delta) {
+        if self.viewer_waiting {
             return;
         }
         if let Some(change) = lane_cover_wheel_change(delta)

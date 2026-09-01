@@ -73,7 +73,56 @@ fn viewer_seek_skips_past_autoplay_judgements_and_keeps_boundary_note() {
 
     assert_eq!(frame.judgements.len(), 1);
     assert_eq!(frame.judgements[0].note_id, Some(NoteId(2)));
+    assert_eq!(session.score.past_notes, 2);
+    assert_eq!(session.score.combo, 2);
+    assert_eq!(session.score.ex_score(), 4);
+}
+
+#[test]
+fn viewer_seek_prefills_pgreats_and_restores_crossing_hcn() {
+    let mut session = session_with_autoplay(chart_with_hcn_long_note());
+
+    prepare_viewer_seek(&mut session, TimeUs(500_000));
+
     assert_eq!(session.score.past_notes, 1);
+    assert_eq!(session.score.combo, 1);
+    assert_eq!(session.score.ex_score(), 2);
+    assert_eq!(session.judge.judged_notes.get(&NoteId(1)), Some(&Judge::PGreat));
+    assert!(session.judge.lanes[Lane::Key1.index()].active_long.is_some());
+    assert_eq!(session.lane_keyon_started_at[Lane::Key1.index()], Some(TimeUs(500_000)));
+
+    session.audio_clock =
+        AudioClock::with_position(48_000, 0, 1_000_000, Arc::new(AtomicU64::new(0)), true);
+    let mut audio = TestAudio::default();
+    advance_session_frame(&mut session, &mut audio);
+
+    assert_eq!(session.score.past_notes, 2);
+    assert_eq!(session.score.combo, 2);
+    assert_eq!(session.score.ex_score(), 4);
+    assert!(session.judge.lanes[Lane::Key1.index()].active_long.is_none());
+}
+
+#[test]
+fn viewer_seek_prefills_completed_ln_only_at_its_end() {
+    let mut session = session_with_autoplay(ln_chart_with_start_sound_and_end_sound(None));
+
+    prepare_viewer_seek(&mut session, TimeUs(500_000));
+    assert_eq!(session.score.past_notes, 0);
+    assert!(session.judge.lanes[Lane::Key1.index()].active_long.is_some());
+
+    session.audio_clock =
+        AudioClock::with_position(48_000, 0, 1_000_000, Arc::new(AtomicU64::new(0)), true);
+    let mut audio = TestAudio::default();
+    advance_session_frame(&mut session, &mut audio);
+    assert_eq!(session.score.past_notes, 1);
+    assert_eq!(session.score.combo, 1);
+    assert_eq!(session.score.ex_score(), 2);
+
+    let mut session = session_with_autoplay(ln_chart_with_start_sound_and_end_sound(None));
+    prepare_viewer_seek(&mut session, TimeUs(1_500_000));
+    assert_eq!(session.score.past_notes, 1);
+    assert_eq!(session.score.combo, 1);
+    assert_eq!(session.score.ex_score(), 2);
 }
 
 #[test]

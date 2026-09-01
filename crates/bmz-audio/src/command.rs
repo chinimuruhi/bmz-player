@@ -264,9 +264,10 @@ impl AudioEngineHandle {
     }
 
     /// 現在の voice / schedule を破棄し、その直後にシーク位置の carry-over 音を
-    /// 同じ command batch で登録する。古い frame 基準の音が新しい再生へ漏れない。
+    /// 同じ command batch で登録して再開する。古い frame 基準の音が新しい再生へ漏れない。
     pub fn replace_playback(&self, sounds: Vec<ScheduledSound>) -> bool {
-        let mut commands = Vec::with_capacity(usize::from(!sounds.is_empty()) + 1);
+        let mut commands = Vec::with_capacity(usize::from(!sounds.is_empty()) + 2);
+        commands.push(AudioEngineCommand::SetPlaybackPaused { paused: false });
         commands.push(AudioEngineCommand::ClearPlayback);
         if !sounds.is_empty() {
             commands.push(AudioEngineCommand::ScheduleAll(sounds));
@@ -641,6 +642,28 @@ mod tests {
         assert!(processor.render_stereo(0, &mut output));
 
         assert_eq!(output, vec![0.75, 0.75]);
+    }
+
+    #[test]
+    fn replace_playback_resumes_a_waiting_engine() {
+        let mut engine = AudioEngine::new(48_000);
+        engine.insert_sample(
+            SoundId(1),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![1.0] },
+        );
+        let handle = AudioEngineHandle::with_capacity(engine, 8);
+        let mut processor = handle.processor();
+        let mut output = vec![0.0; 2];
+
+        assert!(handle.set_playback_paused(true));
+        assert!(processor.render_stereo(0, &mut output));
+        assert_eq!(output, vec![0.0, 0.0]);
+
+        assert!(
+            handle.replace_playback(vec![ScheduledSound::one_shot(100, SoundId(1), 1.0, 0.0,)])
+        );
+        assert!(processor.render_stereo(100, &mut output));
+        assert_eq!(output, vec![1.0, 1.0]);
     }
 
     #[test]

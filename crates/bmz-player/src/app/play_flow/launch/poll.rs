@@ -2,12 +2,12 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn poll_play_preload(&mut self) {
-        if self
-            .play
-            .play_ending
-            .as_ref()
-            .is_some_and(|ending| ending.completion == PlayEndingCompletion::Select)
-        {
+        if self.play.play_ending.as_ref().is_some_and(|ending| {
+            matches!(
+                ending.completion,
+                PlayEndingCompletion::Select | PlayEndingCompletion::ViewerSelect
+            )
+        }) {
             return;
         }
         // 1) preload worker からの結果を受け取り (Decide 演出中でも受信して退避する)。
