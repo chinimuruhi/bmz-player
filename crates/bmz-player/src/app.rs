@@ -698,8 +698,6 @@ struct WinitApp {
     /// Spaceで停止したviewerの譜面時刻とPlay skin経過時刻を凍結する。
     viewer_paused: bool,
     viewer_paused_play_elapsed: Option<TimeUs>,
-    /// Viewer起動時に省略したSelect用runtimeを遅延初期化済みか。
-    viewer_select_initialized: bool,
     skip_result: bool,
     select: SelectRuntimeState,
     play: PlayRuntimeState,

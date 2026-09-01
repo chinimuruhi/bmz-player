@@ -236,7 +236,6 @@ impl WinitApp {
             viewer_bms_random_seed: options.boot_bms_random_seed,
             viewer_paused: false,
             viewer_paused_play_elapsed: None,
-            viewer_select_initialized: !options.viewer_play,
             skip_result: options.skip_result,
             select: SelectRuntimeState {
                 autoplay_folder: None,

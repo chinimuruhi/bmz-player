@@ -5,7 +5,7 @@ impl WinitApp {
         if self.play.play_ending.as_ref().is_some_and(|ending| {
             matches!(
                 ending.completion,
-                PlayEndingCompletion::Select | PlayEndingCompletion::ViewerSelect
+                PlayEndingCompletion::Select | PlayEndingCompletion::ViewerExit
             )
         }) {
             return;

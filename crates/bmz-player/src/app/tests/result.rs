@@ -112,12 +112,12 @@ fn pre_play_abort_starts_fadeout_and_returns_to_select_without_result() {
 }
 
 #[test]
-fn viewer_select_exit_uses_the_pre_ready_fade_route() {
+fn viewer_app_exit_uses_the_pre_ready_fade_route() {
     let started_at = Instant::now();
-    let ending = viewer_select_ending(started_at);
+    let ending = viewer_exit_ending(started_at);
 
     assert_eq!(ending.started_at, started_at);
-    assert_eq!(ending.completion, PlayEndingCompletion::ViewerSelect);
+    assert_eq!(ending.completion, PlayEndingCompletion::ViewerExit);
     assert_eq!(ending.fadeout_started_at, Some(started_at));
     assert!(ending.music_end_started_at.is_none());
     assert!(ending.finished.is_none());

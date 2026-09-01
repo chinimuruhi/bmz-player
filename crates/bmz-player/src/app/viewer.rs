@@ -148,7 +148,7 @@ impl WinitApp {
                 true
             }
             PhysicalKey::Code(KeyCode::Escape) => {
-                self.stop_viewer_playback();
+                self.begin_viewer_exit_transition("escape pressed during viewer play");
                 true
             }
             _ => false,
@@ -242,7 +242,7 @@ impl WinitApp {
             return true;
         }
 
-        tracing::info!(reason, "started viewer fadeout to select");
+        tracing::info!(reason, "started viewer fadeout before app exit");
         if let Some(active) = &mut self.play.active_play {
             let chart_time = active.running.session.audio_clock.now();
             if let Err(error) = active.running.pause_viewer_playback(chart_time) {
@@ -252,7 +252,7 @@ impl WinitApp {
         self.invalidate_play_preload();
         self.clear_play_control_holds();
         self.stop_system_sound(crate::system_sound::SoundType::PlayReady);
-        self.play.play_ending = Some(viewer_select_ending(Instant::now()));
+        self.play.play_ending = Some(viewer_exit_ending(Instant::now()));
         self.update_play_ending_snapshot();
         true
     }
@@ -403,9 +403,8 @@ impl WinitApp {
         }
     }
 
-    /// ViewerのPlay/待機画面を明示的に抜け、通常のSelect画面を表示する。
-    /// 起動時間短縮のため省略したSelect資源は、この操作が行われた時点で初めて初期化する。
-    pub(super) fn leave_viewer_for_select(&mut self, reason: &'static str) -> bool {
+    /// ViewerのPlay/待機画面を明示的に抜け、プロセスを終了する。
+    pub(super) fn finish_viewer_exit(&mut self, reason: &'static str) -> bool {
         if !self.viewer_mode
             || (!self.viewer_waiting
                 && self.play.active_play.is_none()
@@ -415,7 +414,7 @@ impl WinitApp {
             return false;
         }
 
-        tracing::info!(reason, "leaving viewer playback for select");
+        tracing::info!(reason, "leaving viewer playback and exiting app");
         // 自然終了時は待機へ入る前に通知済み。保持中のactive_playだけを見て
         // Select退出時に二重通知しない。
         if !self.viewer_waiting
@@ -427,13 +426,9 @@ impl WinitApp {
         self.viewer_waiting = false;
         self.viewer_chart_path = None;
         self.viewer_bms_random_seed = None;
-        self.initialize_viewer_select_runtime();
         self.play.last_play_snapshot = None;
         self.clear_play_meta_image_state();
-        self.reload_select_items();
-        self.sync_select_holds_from_pressed_controls();
-        self.reload_skin_for_scene_entry(SkinKind::Select);
-        self.restart_select_scene_timers();
+        self.shutdown_requested.store(true, Ordering::SeqCst);
         self.request_redraw();
         true
     }
@@ -454,41 +449,6 @@ impl WinitApp {
             return self.begin_viewer_exit_transition("E2+E3 pressed while viewer waiting");
         }
         false
-    }
-
-    fn initialize_viewer_select_runtime(&mut self) {
-        if self.viewer_select_initialized {
-            return;
-        }
-        self.viewer_select_initialized = true;
-        self.skin.skin_catalog = scan_skin_catalog(&self.boot.app_paths);
-        self.audio.system_sound_catalog = system_sound_catalog_from_boot(&self.boot);
-        self.refresh_player_stats_snapshot();
-        self.select.difficulty_tables = match self.boot.library_db.list_difficulty_tables() {
-            Ok(tables) => tables,
-            Err(error) => {
-                tracing::warn!(%error, "failed to list difficulty tables after leaving viewer");
-                Vec::new()
-            }
-        };
-        match SelectFolderSummaryRuntime::new(
-            self.boot.app_paths.library_db.clone(),
-            self.boot.profile_paths.score_db.clone(),
-            &self.select.folder_stack,
-            self.boot.profile_config.play.ln_mode_policy,
-            self.boot.profile_config.play.rule_mode,
-        ) {
-            Ok(runtime) => self.select.select_folder_summaries = runtime,
-            Err(error) => {
-                tracing::warn!(%error, "failed to start select folder summary worker after leaving viewer");
-            }
-        }
-        if self.audio.system_audio.is_some()
-            && self.audio.system_sound.is_none()
-            && self.audio.pending_system_sound.is_none()
-        {
-            self.start_system_sound_load();
-        }
     }
 
     fn reset_viewer_playback(&mut self) {

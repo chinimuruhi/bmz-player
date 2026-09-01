@@ -55,9 +55,9 @@ impl WinitApp {
                 self.request_redraw();
                 return;
             }
-            PlayEndingCompletion::ViewerSelect => {
-                tracing::info!("viewer fadeout completed; returning to select");
-                self.leave_viewer_for_select("viewer fadeout completed");
+            PlayEndingCompletion::ViewerExit => {
+                tracing::info!("viewer fadeout completed; exiting app");
+                self.finish_viewer_exit("viewer fadeout completed");
                 return;
             }
             PlayEndingCompletion::Select => {

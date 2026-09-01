@@ -225,7 +225,7 @@ impl WinitApp {
                 .install_preview(SelectChartPreview::new(system_audio.engine()));
         }
         self.audio.system_audio = Some(system_audio);
-        if (!self.viewer_mode || self.viewer_select_initialized)
+        if !self.viewer_mode
             && self.audio.system_sound.is_none()
             && self.audio.pending_system_sound.is_none()
         {

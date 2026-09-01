@@ -57,20 +57,20 @@ pub(super) struct PlayEndingTransition {
 pub(super) enum PlayEndingCompletion {
     Result,
     ViewerWait,
-    ViewerSelect,
+    ViewerExit,
     Select,
     PracticeConfig,
     PracticeLeave,
 }
 
-pub(super) fn viewer_select_ending(started_at: Instant) -> PlayEndingTransition {
+pub(super) fn viewer_exit_ending(started_at: Instant) -> PlayEndingTransition {
     PlayEndingTransition {
         started_at,
         music_end_started_at: None,
         fadeout_started_at: Some(started_at),
         finished: None,
         failed: false,
-        completion: PlayEndingCompletion::ViewerSelect,
+        completion: PlayEndingCompletion::ViewerExit,
         full_combo_elapsed_at_finish_ms: None,
     }
 }
