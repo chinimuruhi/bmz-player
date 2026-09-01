@@ -422,12 +422,15 @@ impl WinitApp {
         {
             self.notify_obs_play_ended();
         }
+        let completed_fadeout_ms = self
+            .play_fadeout_duration(PlayEndingCompletion::ViewerExit)
+            .as_millis()
+            .min(i32::MAX as u128) as i32;
         self.reset_viewer_playback();
         self.viewer_waiting = false;
         self.viewer_chart_path = None;
         self.viewer_bms_random_seed = None;
-        self.play.last_play_snapshot = None;
-        self.clear_play_meta_image_state();
+        complete_viewer_exit_fade(&mut self.play.last_play_snapshot, completed_fadeout_ms);
         self.shutdown_requested.store(true, Ordering::SeqCst);
         self.request_redraw();
         true
@@ -468,6 +471,12 @@ impl WinitApp {
         self.audio.draining_audio = None;
         self.play.play_media_cache = None;
     }
+}
+
+pub(super) fn complete_viewer_exit_fade(snapshot: &mut Option<RenderSnapshot>, fadeout_ms: i32) {
+    let snapshot = snapshot.get_or_insert_with(RenderSnapshot::default);
+    snapshot.fadeout_elapsed_ms =
+        Some(fadeout_ms.max(bmz_render::snapshot::DEFAULT_PLAY_FADEOUT_DURATION_MS));
 }
 
 fn instant_for_elapsed(elapsed: TimeUs) -> Instant {

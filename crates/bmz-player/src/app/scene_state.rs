@@ -8,9 +8,10 @@ impl WinitApp {
         if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             return AppViewState::Play;
         }
-        if viewer_wait_uses_play_scene(
+        if viewer_uses_play_scene(
             self.viewer_mode,
             self.viewer_waiting,
+            self.shutdown_requested.load(Ordering::SeqCst),
             self.play.last_play_snapshot.is_some(),
         ) {
             return AppViewState::Play;
@@ -30,9 +31,10 @@ impl WinitApp {
         if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             return AppSceneKind::Play;
         }
-        if viewer_wait_uses_play_scene(
+        if viewer_uses_play_scene(
             self.viewer_mode,
             self.viewer_waiting,
+            self.shutdown_requested.load(Ordering::SeqCst),
             self.play.last_play_snapshot.is_some(),
         ) {
             return AppSceneKind::Play;
@@ -534,12 +536,13 @@ impl WinitApp {
     }
 }
 
-pub(super) const fn viewer_wait_uses_play_scene(
+pub(super) const fn viewer_uses_play_scene(
     viewer_mode: bool,
     viewer_waiting: bool,
+    shutdown_requested: bool,
     has_play_snapshot: bool,
 ) -> bool {
-    viewer_mode && viewer_waiting && has_play_snapshot
+    viewer_mode && (viewer_waiting || shutdown_requested) && has_play_snapshot
 }
 
 pub(super) const fn playback_overlay_suffix(

@@ -493,13 +493,27 @@ fn window_title_uses_scene_name() {
 }
 
 #[test]
-fn viewer_wait_keeps_the_last_play_snapshot_as_the_active_scene() {
-    use crate::app::scene_state::viewer_wait_uses_play_scene;
+fn viewer_wait_and_shutdown_keep_the_last_play_snapshot_as_the_active_scene() {
+    use crate::app::scene_state::viewer_uses_play_scene;
 
-    assert!(viewer_wait_uses_play_scene(true, true, true));
-    assert!(!viewer_wait_uses_play_scene(true, true, false));
-    assert!(!viewer_wait_uses_play_scene(true, false, true));
-    assert!(!viewer_wait_uses_play_scene(false, true, true));
+    assert!(viewer_uses_play_scene(true, true, false, true));
+    assert!(viewer_uses_play_scene(true, false, true, true));
+    assert!(!viewer_uses_play_scene(true, true, false, false));
+    assert!(!viewer_uses_play_scene(true, false, false, true));
+    assert!(!viewer_uses_play_scene(false, true, true, true));
+}
+
+#[test]
+fn viewer_shutdown_completes_and_retains_the_faded_play_snapshot() {
+    use crate::app::viewer::complete_viewer_exit_fade;
+
+    let mut snapshot = Some(RenderSnapshot::default());
+    complete_viewer_exit_fade(&mut snapshot, 300);
+
+    assert_eq!(
+        snapshot.and_then(|snapshot| snapshot.fadeout_elapsed_ms),
+        Some(bmz_render::snapshot::DEFAULT_PLAY_FADEOUT_DURATION_MS)
+    );
 }
 
 #[test]
