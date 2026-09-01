@@ -116,7 +116,7 @@ pub fn bootstrap() -> Result<BootstrappedApp> {
 
 /// 起動前loggerと同じ解決済みpathを使って通常bootstrapを行う。
 pub fn bootstrap_with_paths(app_paths: AppPaths) -> Result<BootstrappedApp> {
-    bootstrap_with_paths_mode(app_paths, true)
+    bootstrap_with_paths_mode(app_paths, true, None)
 }
 
 pub fn bootstrap_viewer_with_paths(
@@ -124,6 +124,7 @@ pub fn bootstrap_viewer_with_paths(
     chart_path: &Path,
     start_measure: u32,
     bms_random_seed: u64,
+    profile_id: Option<&str>,
 ) -> Result<ViewerBootstrap> {
     let chart_path = chart_path
         .canonicalize()
@@ -134,7 +135,7 @@ pub fn bootstrap_viewer_with_paths(
     let library_path = viewer_library_path();
     let cleanup = ViewerLibraryCleanup { path: library_path.clone() };
     app_paths.library_db = library_path;
-    let mut app = bootstrap_with_paths_mode(app_paths, false)?;
+    let mut app = bootstrap_with_paths_mode(app_paths, false, profile_id)?;
     let imported = crate::storage::import::import_chart_file(
         &mut app.library_db,
         &chart_path,
@@ -149,6 +150,7 @@ pub fn bootstrap_viewer_with_paths(
 fn bootstrap_with_paths_mode(
     app_paths: AppPaths,
     startup_scan_enabled: bool,
+    profile_id_override: Option<&str>,
 ) -> Result<BootstrappedApp> {
     let bootstrap_started_at = Instant::now();
     app_paths.ensure_required_dirs()?;
@@ -165,10 +167,21 @@ fn bootstrap_with_paths_mode(
             });
         }
     }
-    let profile_paths = resolve_profile_paths(&app_paths, &app_config.active_profile)?;
+    let profile_id = profile_id_override.unwrap_or(&app_config.active_profile).to_string();
+    let profile_paths = resolve_profile_paths(&app_paths, &profile_id)?;
+    if profile_id_override.is_some() && !profile_paths.profile_toml.is_file() {
+        bail!("profile not found: {profile_id}");
+    }
     profile_paths.ensure_dirs()?;
-    let profile_config = load_or_create_profile_config(&profile_paths, &app_config.active_profile)?;
+    let profile_config = if profile_id_override.is_some() {
+        load_profile_config(&profile_paths.profile_toml)
+            .with_context(|| format!("failed to load profile {profile_id}"))?
+    } else {
+        load_or_create_profile_config(&profile_paths, &profile_id)?
+    };
     tracing::info!(
+        profile_id,
+        profile_override = profile_id_override.is_some(),
         config_ms = config_started_at.elapsed().as_millis(),
         "startup configuration loaded"
     );
@@ -454,5 +467,38 @@ mod tests {
         assert!(viewer_measure_start_time(&chart, 99).is_err());
 
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn viewer_profile_override_loads_existing_profile_without_changing_active_profile() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("bmz-viewer-profile-{}-{nonce}", std::process::id()));
+        let app_paths = AppPaths::from_dirs(
+            root.join("resources"),
+            root.join("data"),
+            root.join("cache"),
+            root.join("logs"),
+        );
+        app_paths.ensure_required_dirs().unwrap();
+
+        let app_config = AppConfig::default();
+        save_app_config(&app_paths.config_toml, &app_config).unwrap();
+        let alt_paths = resolve_profile_paths(&app_paths, "alt").unwrap();
+        alt_paths.ensure_dirs().unwrap();
+        save_profile_config(&alt_paths.profile_toml, &ProfileConfig::new_default("alt", "Alt", 1))
+            .unwrap();
+
+        let boot = bootstrap_with_paths_mode(app_paths.clone(), false, Some("alt")).unwrap();
+        assert_eq!(boot.profile_config.id, "alt");
+        assert_eq!(boot.profile_paths.root_dir, alt_paths.root_dir);
+        drop(boot);
+
+        let saved = load_app_config(&app_paths.config_toml).unwrap();
+        assert_eq!(saved.active_profile, "default");
+        assert!(bootstrap_with_paths_mode(app_paths.clone(), false, Some("missing")).is_err());
+        assert!(!app_paths.profiles_dir.join("missing").exists());
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

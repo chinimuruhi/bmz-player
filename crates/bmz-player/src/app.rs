@@ -55,6 +55,7 @@ use crate::cli::{
     AUTOPLAY_ON_START_ARG, AppOptions, BOOT_RESULT_SAMPLE_ARG, LUA_SKIN_RUNTIME_ARG,
     SMOKE_EXIT_AFTER_FRAMES_ARG, SMOKE_EXIT_AFTER_PLAY_FRAMES_ARG,
     SMOKE_EXIT_AFTER_RESULT_FRAMES_ARG, SMOKE_EXIT_ON_RESULT_ARG, SMOKE_SCREENSHOT_ARG,
+    VIEWER_BATTLE_ARG, VIEWER_PROFILE_ARG,
 };
 use crate::config::app_config::{
     AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind,
@@ -432,6 +433,7 @@ pub async fn run_with_options_log_buffer_and_paths(
             path,
             options.start_measure.unwrap_or(0),
             bms_random_seed,
+            options.profile_id.as_deref(),
         )?;
         options.boot_play_path = Some(viewer.chart_path.to_string_lossy().into_owned());
         options.boot_start_time_us = Some(viewer.start_time.0);

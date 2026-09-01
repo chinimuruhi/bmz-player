@@ -64,11 +64,12 @@ impl WinitApp {
         let boot_chart_id = resolve_boot_chart_id(&boot.library_db, &options);
         log_startup_options(&options);
 
-        let session_mode = if options.autoplay_on_start {
-            SessionMode::Autoplay
-        } else {
-            session_mode_from_profile(&boot.profile_config.play)
-        };
+        let session_mode = initial_session_mode(
+            viewer_mode,
+            options.viewer_battle,
+            options.autoplay_on_start,
+            session_mode_from_profile(&boot.profile_config.play),
+        );
         let selected_replay_slot =
             select_items.first().and_then(crate::app::play_flow_replay::first_replay_slot_for_item);
         let gauge_option = if boot.profile_config.play.gauge == GaugeTypeConfig::AutoShift {
@@ -450,5 +451,20 @@ impl WinitApp {
         }
         app.sync_discord_presence_config();
         Ok(app)
+    }
+}
+
+pub(super) const fn initial_session_mode(
+    viewer_mode: bool,
+    viewer_battle: bool,
+    autoplay_on_start: bool,
+    configured: SessionMode,
+) -> SessionMode {
+    if viewer_mode && viewer_battle {
+        SessionMode::AutoplayBattle
+    } else if autoplay_on_start {
+        SessionMode::Autoplay
+    } else {
+        configured
     }
 }

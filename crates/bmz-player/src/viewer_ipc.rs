@@ -19,6 +19,8 @@ pub enum ViewerCommand {
     Play {
         path: PathBuf,
         measure: u32,
+        #[serde(default)]
+        battle: bool,
     },
     /// `-P --skip-result` で常駐viewerをone-shot起動へ入れ替えるための内部命令。
     Quit,
@@ -30,8 +32,8 @@ pub fn request_stop() -> Result<bool> {
 }
 
 /// 実行中のビューワーへ譜面再生要求を送る。未起動なら `false`。
-pub fn request_play(path: &Path, measure: u32) -> Result<bool> {
-    request_command(&ViewerCommand::Play { path: path.to_path_buf(), measure })
+pub fn request_play(path: &Path, measure: u32, battle: bool) -> Result<bool> {
+    request_command(&ViewerCommand::Play { path: path.to_path_buf(), measure, battle })
 }
 
 /// 実行中のビューワーへプロセス終了要求を送る。one-shot起動への入れ替え専用。
@@ -269,25 +271,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn legacy_play_command_without_battle_defaults_to_normal_viewer() {
+        let command: ViewerCommand =
+            serde_json::from_str(r#"{"Play":{"path":"C:\\譜面\\_temp.bms","measure":12}}"#)
+                .unwrap();
+
+        assert_eq!(
+            command,
+            ViewerCommand::Play {
+                path: PathBuf::from(r"C:\譜面\_temp.bms"),
+                measure: 12,
+                battle: false,
+            }
+        );
+    }
+
+    #[test]
     fn play_stop_and_quit_requests_round_trip_to_persistent_listener() {
         let (tx, rx) = mpsc::sync_channel(4);
         start_listener(move |command| tx.send(command).unwrap()).unwrap();
 
         let path = PathBuf::from(r"C:\譜面\_temp.bms");
-        assert!(request_play(&path, 12).unwrap());
+        assert!(request_play(&path, 12, true).unwrap());
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(2)).unwrap(),
-            ViewerCommand::Play { path, measure: 12 }
+            ViewerCommand::Play { path, measure: 12, battle: true }
         );
 
         assert!(request_stop().unwrap());
         assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), ViewerCommand::Stop);
 
         let replacement = PathBuf::from(r"C:\譜面\replacement.bms");
-        assert!(request_play(&replacement, 3).unwrap());
+        assert!(request_play(&replacement, 3, false).unwrap());
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(2)).unwrap(),
-            ViewerCommand::Play { path: replacement, measure: 3 }
+            ViewerCommand::Play { path: replacement, measure: 3, battle: false }
         );
 
         assert!(request_quit().unwrap());

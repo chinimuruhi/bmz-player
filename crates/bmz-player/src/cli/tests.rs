@@ -30,6 +30,8 @@ fn app_options_parse_ubmplay_viewer_arguments() {
     assert!(attached.autoplay_on_start);
     assert!(attached.skip_decide);
     assert!(!attached.skip_result);
+    assert!(!attached.viewer_battle);
+    assert_eq!(attached.profile_id, None);
     assert_eq!(attached.start_measure, Some(12));
     assert_eq!(attached.boot_play_path.as_deref(), Some("_temp.bms"));
 
@@ -39,6 +41,16 @@ fn app_options_parse_ubmplay_viewer_arguments() {
 
     let exit_after_play = AppOptions::parse_args(["-P", "--skip-result", "song.bms"]).unwrap();
     assert!(exit_after_play.skip_result);
+
+    let battle = AppOptions::parse_args(["-P", "-B", "--profile", "playtest", "song.bms"]).unwrap();
+    assert!(battle.viewer_battle);
+    assert_eq!(battle.profile_id.as_deref(), Some("playtest"));
+    assert!(battle.requires_fresh_viewer_process());
+
+    let equals =
+        AppOptions::parse_args(["--viewer-play", "--battle", "--profile=alt", "song.bms"]).unwrap();
+    assert!(equals.viewer_battle);
+    assert_eq!(equals.profile_id.as_deref(), Some("alt"));
 
     let long = AppOptions::parse_args(["--start-measure=3", "--skip-decide", "song.bms"]).unwrap();
     assert_eq!(long.start_measure, Some(3));
@@ -54,6 +66,10 @@ fn app_options_parse_viewer_stop_as_standalone_command() {
     assert!(AppOptions::parse_args(["-S", "song.bms"]).is_err());
     assert!(AppOptions::parse_args(["-P"]).is_err());
     assert!(AppOptions::parse_args(["-Nbad", "song.bms"]).is_err());
+    assert!(AppOptions::parse_args(["-B", "song.bms"]).is_err());
+    assert!(AppOptions::parse_args(["--profile", "alt", "song.bms"]).is_err());
+    assert!(AppOptions::parse_args(["-P", "--profile", "../alt", "song.bms"]).is_err());
+    assert!(AppOptions::parse_args(["-P", "--profile=", "song.bms"]).is_err());
 }
 
 #[test]
@@ -195,6 +211,8 @@ fn help_text_lists_supported_options() {
     assert!(help.contains("--boot-result-sample"));
     assert!(help.contains("--autoplay-on-start"));
     assert!(help.contains("-P | --viewer-play"));
+    assert!(help.contains("-B | --battle"));
+    assert!(help.contains("--profile <ID>"));
     assert!(help.contains("-N<N> | -N <N> | --start-measure <N>"));
     assert!(help.contains("-S | --viewer-stop"));
     assert!(help.contains("--skip-decide"));

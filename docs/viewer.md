@@ -8,10 +8,16 @@ BMZ Playerは、BMSE / iBMSC系のuBMplay互換コマンドラインを使って
 
 ```text
 bmz-player.exe -P -N12 "C:\path\to\_temp.bms"
+bmz-player.exe -P -B --profile playtest -N12 "C:\path\to\_temp.bms"
 bmz-player.exe -S
 ```
 
 - `-P` / `--viewer-play`: 指定譜面を外部ビューワーモードで開きます。
+- `-B` / `--battle`: Viewerの5K/7K譜面を`AUTOPLAY BATTLE`で開き、profileの
+  `battle5` / `battle7` skinを使います。専用skinが未設定なら同じkey modeの
+  `play5` / `play7`へフォールバックします。
+- `--profile <ID>`: `data/config.toml`の`active_profile`を変更せず、このViewer
+  プロセスだけで指定profileを使います。存在しないprofileはエラーにします。
 - `-N<N>` / `-N <N>` / `--start-measure <N>`: 元譜面の0始まりの小節番号から
   再生します。BMSの先頭ノーツ余白をBMZが追加した場合も、元譜面の小節番号を指定します。
 - `-S` / `--viewer-stop`: 実行中の外部ビューワーへ停止要求を送り、このコマンド自身は
@@ -33,8 +39,13 @@ Viewer起動時に省略した選曲リスト、Select skin、skin catalog、シ
 従来どおり単曲終了時にプロセスも終了させる場合は、`-P --skip-result`を指定します。編集中の
 一時ファイルだけを一時ライブラリDBへ取り込むため、通常のライブラリDB、スコア、リプレイ、
 IRには記録しません。新しい`-P`起動時に既存の外部ビューワーがあれば、同じプロセスへ
-`Play { path, measure }`を転送して現在の再生を差し替えます。起動した側の短命プロセスは
+`Play { path, measure, battle }`を転送して現在の再生を差し替えます。`-B`の有無も
+再生要求ごとに反映されるため、通常ViewerとBattle Viewerを同じ常駐プロセスで切り替えられます。
+起動した側の短命プロセスは
 転送完了後すぐ終了します。既存ビューワーがなければ、そのプロセスが常駐ビューワーになります。
+`--profile`はプロセス単位の指定なので、既存Viewerがある場合はそのプロセスを終了し、指定profileで
+新しいViewerを起動します。profile指定がない後続`-P`は、常駐Viewerが起動時に読み込んだprofileを
+引き続き使用します。
 常駐ビューワーが受け取る後続の`Play`は、Play skinの開始時計を継続し、ロード演出、
 READYアニメーション、READY SEを再生しません。譜面と音声の再読込完了後、指定小節から
 シークしたように再生を差し替えます。初回の`-P`起動では通常の開始・READY演出を表示します。
@@ -83,7 +94,7 @@ BMSエディタはBMZと直接通信する必要はありません。従来のuB
 - Windows: 名前付きパイプ `\\.\pipe\bmz-player-viewer-v2`
 - macOS / Linux: loopback TCP `127.0.0.1:39077`
 
-受信側はプロセス終了まで接続待ちを繰り返し、`Play { path, measure }`と`Stop`を処理します。
+受信側はプロセス終了まで接続待ちを繰り返し、`Play { path, measure, battle }`と`Stop`を処理します。
 `Stop`は常駐プロセスを終了せず、現在の再生位置とPlay画面を保持して無音の待機状態へ戻します。
 `path`は送信側で絶対パスへ解決するため、エディタと常駐ビューワーの作業ディレクトリが
 異なっていても同じ一時ファイルを開けます。

@@ -8,6 +8,10 @@ pub struct AppOptions {
     pub autoplay_on_start: bool,
     /// uBMplay 互換の外部ビューワー起動 (`-P`)。
     pub viewer_play: bool,
+    /// Viewerの5K/7KをAutoplay Battleとして起動し、battle skinを使用する。
+    pub viewer_battle: bool,
+    /// `active_profile`を書き換えず、Viewerプロセスだけで使用するprofile id。
+    pub profile_id: Option<String>,
     /// 起動済みの外部ビューワーを停止する (`-S`)。
     pub viewer_stop: bool,
     /// uBMplay 互換の開始小節 (`-N0`, `-N 0`)。
@@ -113,6 +117,10 @@ impl AppOptions {
                 options.start_measure = Some(parse_start_measure(value)?);
                 continue;
             }
+            if let Some(value) = arg.strip_prefix("--profile=") {
+                options.profile_id = Some(parse_viewer_profile_id(value)?);
+                continue;
+            }
             if let Some(value) = arg.strip_prefix(START_MEASURE_SHORT_ARG)
                 && !value.is_empty()
             {
@@ -128,6 +136,13 @@ impl AppOptions {
                     options.viewer_play = true;
                     options.autoplay_on_start = true;
                     options.skip_decide = true;
+                }
+                VIEWER_BATTLE_ARG | VIEWER_BATTLE_SHORT_ARG => options.viewer_battle = true,
+                VIEWER_PROFILE_ARG => {
+                    let Some(value) = args.next() else {
+                        bail!("{VIEWER_PROFILE_ARG} requires a profile id");
+                    };
+                    options.profile_id = Some(parse_viewer_profile_id(value.as_ref())?);
                 }
                 VIEWER_STOP_ARG | VIEWER_STOP_SHORT_ARG => options.viewer_stop = true,
                 SKIP_DECIDE_ARG => options.skip_decide = true,
@@ -239,9 +254,25 @@ impl AppOptions {
         if options.viewer_play && options.boot_play_path.is_none() {
             bail!("{VIEWER_PLAY_SHORT_ARG} requires a chart path");
         }
+        if options.viewer_battle && !options.viewer_play {
+            bail!("{VIEWER_BATTLE_SHORT_ARG} requires {VIEWER_PLAY_SHORT_ARG}");
+        }
+        if options.profile_id.is_some() && !options.viewer_play {
+            bail!("{VIEWER_PROFILE_ARG} requires {VIEWER_PLAY_SHORT_ARG}");
+        }
 
         Ok(options)
     }
+
+    /// profileはプロセス単位で読み込むため、明示指定時は既存Viewerへ転送しない。
+    pub fn requires_fresh_viewer_process(&self) -> bool {
+        self.skip_result || self.profile_id.is_some()
+    }
+}
+
+fn parse_viewer_profile_id(value: &str) -> Result<String> {
+    crate::paths::validate_profile_id(value)?;
+    Ok(value.to_string())
 }
 use super::help::{
     parse_beatoraja_replay_flag, parse_boot_course_id, parse_boot_course_replay_id,

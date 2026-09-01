@@ -517,6 +517,21 @@ fn viewer_shutdown_completes_and_retains_the_faded_play_snapshot() {
 }
 
 #[test]
+fn viewer_battle_starts_in_autoplay_battle_without_affecting_normal_boot() {
+    use crate::app::constructor::initial_session_mode;
+
+    assert_eq!(
+        initial_session_mode(true, true, true, SessionMode::Normal),
+        SessionMode::AutoplayBattle
+    );
+    assert_eq!(initial_session_mode(true, false, true, SessionMode::Normal), SessionMode::Autoplay);
+    assert_eq!(
+        initial_session_mode(false, false, false, SessionMode::GBattle),
+        SessionMode::GBattle
+    );
+}
+
+#[test]
 fn deferred_boot_action_keeps_practice_boot_after_window_init() {
     let mut options = AppOptions {
         boot_practice: true,

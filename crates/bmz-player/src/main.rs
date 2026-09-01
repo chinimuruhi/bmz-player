@@ -46,7 +46,30 @@ async fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
-            if options.skip_result {
+            if let Some(profile_id) = options.profile_id.as_deref() {
+                let app_paths = match bmz_player::paths::resolve_app_paths() {
+                    Ok(paths) => paths,
+                    Err(error) => {
+                        bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
+                        return ExitCode::FAILURE;
+                    }
+                };
+                let profile_paths =
+                    match bmz_player::paths::resolve_profile_paths(&app_paths, profile_id) {
+                        Ok(paths) => paths,
+                        Err(error) => {
+                            bmz_player::stdio::stderr_line(format_args!("Error: {error:#}"));
+                            return ExitCode::FAILURE;
+                        }
+                    };
+                if !profile_paths.profile_toml.is_file() {
+                    bmz_player::stdio::stderr_line(format_args!(
+                        "Error: profile not found: {profile_id}"
+                    ));
+                    return ExitCode::FAILURE;
+                }
+            }
+            if options.requires_fresh_viewer_process() {
                 match bmz_player::viewer_ipc::request_quit() {
                     Ok(true) => {
                         // 明示的なone-shot起動は常駐プロセスへ転送できないため、旧viewerが
@@ -70,6 +93,7 @@ async fn main() -> ExitCode {
                 match bmz_player::viewer_ipc::request_play(
                     &path,
                     options.start_measure.unwrap_or(0),
+                    options.viewer_battle,
                 ) {
                     Ok(true) => return ExitCode::SUCCESS,
                     Ok(false) => {}

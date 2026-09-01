@@ -191,6 +191,8 @@ cargo run -p bmz-player -- songs list
 
 - `[PATH]` — 譜面 PATH を通常プレイで起動（未登録ならその1ファイルをライブラリへ取り込む。ファイル不存在なら通常起動）
 - `-P` / `--viewer-play` — 外部BMSエディタ向けビューワーとして起動（オートプレイ、Decide/Result省略、スコア非保存）
+- `-B` / `--battle` — Viewerの5K/7KをAUTOPLAY BATTLEで起動し、`battle5` / `battle7` skinを使用
+- `--profile <ID>` / `--profile=<ID>` — `active_profile`を変更せず、Viewerプロセスだけで指定profileを使用
 - `-N<N>` / `-N <N>` / `--start-measure <N>` — 元譜面の0始まり小節Nから起動
 - `-S` / `--viewer-stop` — 実行中の外部ビューワーへ停止要求を送信
 - `--skip-decide` — 起動譜面でDecide画面を省略

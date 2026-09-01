@@ -164,6 +164,12 @@ pub(super) fn log_startup_options(options: &AppOptions) {
     if options.autoplay_on_start {
         tracing::info!(arg = AUTOPLAY_ON_START_ARG, "autoplay enabled for started charts");
     }
+    if options.viewer_battle {
+        tracing::info!(arg = VIEWER_BATTLE_ARG, "viewer battle mode enabled");
+    }
+    if let Some(profile_id) = &options.profile_id {
+        tracing::info!(arg = VIEWER_PROFILE_ARG, profile_id, "viewer profile override enabled");
+    }
     if let Some(frames) = options.smoke_exit_after_frames {
         tracing::info!(arg = SMOKE_EXIT_AFTER_FRAMES_ARG, frames, "smoke auto-exit enabled");
     }

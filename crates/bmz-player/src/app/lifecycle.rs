@@ -464,9 +464,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     self.stop_viewer_playback();
                     self.request_redraw();
                 }
-                crate::viewer_ipc::ViewerCommand::Play { path, measure } => {
-                    if let Err(error) = self.play_viewer_chart(&path, measure) {
-                        tracing::error!(path = %path.display(), measure, %error, "external viewer play request failed");
+                crate::viewer_ipc::ViewerCommand::Play { path, measure, battle } => {
+                    if let Err(error) = self.play_viewer_chart(&path, measure, battle) {
+                        tracing::error!(path = %path.display(), measure, battle, %error, "external viewer play request failed");
                     }
                     self.request_redraw();
                 }

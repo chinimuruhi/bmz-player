@@ -36,7 +36,6 @@ impl WinitApp {
         } else {
             self.reset_viewer_playback();
         }
-        self.select.session_mode = SessionMode::Autoplay;
         self.viewer_waiting = true;
         if let Some(snapshot) = &mut self.play.last_play_snapshot {
             // 通常の Result 遷移用 fade を解除し、最終 Play frame を待機画面にする。
@@ -44,7 +43,12 @@ impl WinitApp {
         }
     }
 
-    pub(super) fn play_viewer_chart(&mut self, path: &Path, measure: u32) -> Result<()> {
+    pub(super) fn play_viewer_chart(
+        &mut self,
+        path: &Path,
+        measure: u32,
+        battle: bool,
+    ) -> Result<()> {
         let path = path
             .canonicalize()
             .with_context(|| format!("failed to resolve viewer chart: {}", path.display()))?;
@@ -55,7 +59,7 @@ impl WinitApp {
         // RANDOM分岐と実プレイで同じ譜面を使うため、importとPlayStartOptionsへ同じseedを渡す。
         // importが失敗した場合は現在の再生を維持し、成功してから差し替える。
         let bms_random_seed = crate::random_option_seed::fresh_bms_random_seed();
-        self.load_viewer_chart(&path, measure, bms_random_seed, None, None)
+        self.load_viewer_chart(&path, measure, bms_random_seed, battle, None, None)
     }
 
     fn load_viewer_chart(
@@ -63,6 +67,7 @@ impl WinitApp {
         path: &Path,
         measure: u32,
         bms_random_seed: u64,
+        battle: bool,
         preserved_options: Option<PlayStartOptions>,
         paused_play_elapsed: Option<TimeUs>,
     ) -> Result<()> {
@@ -83,9 +88,11 @@ impl WinitApp {
             "replacing external viewer chart"
         );
         self.reset_viewer_playback();
-        self.select.session_mode = SessionMode::Autoplay;
+        self.select.session_mode = viewer_session_mode(battle);
         self.viewer_waiting = false;
         let mut options = preserved_options.unwrap_or_else(|| self.play_start_options());
+        options.session_mode = viewer_session_mode(battle);
+        options.autoplay = true;
         options.score_save_disabled = true;
         options.bms_random_seed = Some(bms_random_seed);
         if !self.prepare_session_mode_or_show_error(imported.chart_id, &mut options) {
@@ -345,7 +352,8 @@ impl WinitApp {
         let options =
             (!reroll).then(|| self.active_play_retry_options(ResultRetryMode::SameArrange));
         let paused_play_elapsed = self.viewer_paused.then_some(self.play_elapsed_time());
-        self.load_viewer_chart(&path, measure, seed, options, paused_play_elapsed)?;
+        let battle = self.select.session_mode == SessionMode::AutoplayBattle;
+        self.load_viewer_chart(&path, measure, seed, battle, options, paused_play_elapsed)?;
         self.show_left_overlay_toast(if reroll {
             format!("Reloaded measure {measure} with a new RANDOM")
         } else {
@@ -477,6 +485,10 @@ pub(super) fn complete_viewer_exit_fade(snapshot: &mut Option<RenderSnapshot>, f
     let snapshot = snapshot.get_or_insert_with(RenderSnapshot::default);
     snapshot.fadeout_elapsed_ms =
         Some(fadeout_ms.max(bmz_render::snapshot::DEFAULT_PLAY_FADEOUT_DURATION_MS));
+}
+
+const fn viewer_session_mode(battle: bool) -> SessionMode {
+    if battle { SessionMode::AutoplayBattle } else { SessionMode::Autoplay }
 }
 
 fn instant_for_elapsed(elapsed: TimeUs) -> Instant {
