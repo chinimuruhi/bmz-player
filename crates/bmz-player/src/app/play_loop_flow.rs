@@ -406,6 +406,13 @@ impl WinitApp {
             &mut active_play.running.session,
             play_elapsed_time,
         );
+        if self.viewer_mode {
+            active_play.running.session.bgm_scheduler =
+                bmz_gameplay::session::BgmScheduler::starting_at(
+                    &active_play.running.session.chart,
+                    chart_zero_time,
+                );
+        }
         if let Err(error) = active_play.running.start(chart_zero_time) {
             tracing::error!(%error, "failed to start preloaded play audio");
             self.abort_pending_play_start();

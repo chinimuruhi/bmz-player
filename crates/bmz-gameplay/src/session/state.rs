@@ -368,6 +368,12 @@ pub enum SkinRuntimeEventKind {
 }
 
 impl BgmScheduler {
+    /// Starts scheduling at `start_time` without recreating BGM events that
+    /// have already passed. Events exactly on the boundary remain playable.
+    pub fn starting_at(chart: &PlayableChart, start_time: TimeUs) -> Self {
+        Self { next_index: chart.bgm_events.partition_point(|event| event.time < start_time) }
+    }
+
     pub fn schedule_until(
         &mut self,
         chart: &PlayableChart,

@@ -29,6 +29,31 @@ fn advance_session_frame_schedules_bgm_with_mix_volume() {
 }
 
 #[test]
+fn bgm_scheduler_starting_at_skips_past_events_and_keeps_boundary() {
+    let mut chart = chart_with_bgm();
+    chart.bgm_events = vec![
+        SoundEvent { tick: ChartTick(192), time: TimeUs(1_000_000), sound: SoundId(3) },
+        SoundEvent { tick: ChartTick(384), time: TimeUs(2_000_000), sound: SoundId(4) },
+        SoundEvent { tick: ChartTick(576), time: TimeUs(3_000_000), sound: SoundId(5) },
+    ];
+    let mut scheduler = BgmScheduler::starting_at(&chart, TimeUs(2_000_000));
+    let mut audio = TestAudio::default();
+
+    scheduler.schedule_until(
+        &chart,
+        &AudioClock::stopped(48_000),
+        TimeUs(3_000_000),
+        1.0,
+        &mut audio,
+    );
+
+    assert_eq!(
+        audio.scheduled.iter().map(|sound| sound.sound_id).collect::<Vec<_>>(),
+        vec![SoundId(4), SoundId(5)]
+    );
+}
+
+#[test]
 fn advance_session_frame_applies_chart_volume_channels() {
     let mut chart = chart_with_keysound();
     chart.key_volume_events.push(bmz_chart::model::ChartVolumeEvent {
