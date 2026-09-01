@@ -136,8 +136,16 @@ pub fn prepare_viewer_seek(session: &mut GameSession, start_time: TimeUs) {
     }
     if let Some(opponent) = &mut session.battle_opponent {
         opponent.judge.skip_before(&opponent.chart, start_time);
+        apply_battle_opponent_viewer_pgreat_prefix(opponent, start_time);
         if let Some(autoplay) = &mut opponent.autoplay {
             autoplay.skip_before(&opponent.chart, start_time);
+            for lane in Lane::ALL {
+                if autoplay.is_lane_enabled(lane)
+                    && opponent.judge.lanes[lane.index()].active_long.is_some()
+                {
+                    opponent.lane_keyon_started_at[lane.index()] = Some(start_time);
+                }
+            }
         }
         if let Some(replay) = &mut opponent.replay_player {
             replay.skip_before(start_time);
@@ -147,8 +155,10 @@ pub fn prepare_viewer_seek(session: &mut GameSession, start_time: TimeUs) {
 }
 
 fn apply_viewer_pgreat_prefix(session: &mut GameSession, start_time: TimeUs) {
-    let events =
-        viewer_pgreat_prefix_events(&session.chart, start_time, &session.display_only_lane_mask);
+    let display_only_lane_mask = session.display_only_lane_mask;
+    let events = viewer_pgreat_prefix_events(&session.chart, start_time, |lane| {
+        !display_only_lane_mask[lane.index()]
+    });
     for event in events {
         session.score.apply(&event);
         session.gauge.apply_judge(Judge::PGreat, 1.0);
@@ -172,16 +182,54 @@ fn apply_viewer_pgreat_prefix(session: &mut GameSession, start_time: TimeUs) {
     {
         session.full_combo_started_at = Some(start_time);
     }
+
+    if session.battle_opponent.is_none() {
+        let opponent_events = viewer_pgreat_prefix_events(&session.chart, start_time, |lane| {
+            display_only_lane_mask[lane.index()]
+        });
+        for event in opponent_events {
+            if let Some(score) = &mut session.opponent_score {
+                score.apply(&event);
+            }
+            if let Some(gauge) = &mut session.opponent_gauge {
+                gauge.apply_judge(Judge::PGreat, 1.0);
+            }
+        }
+        if session.scored_total_notes != 0
+            && session.opponent_score.as_ref().is_some_and(|score| {
+                score.past_notes == session.scored_total_notes
+                    && score.combo == session.scored_total_notes
+            })
+        {
+            session.opponent_full_combo_started_at = Some(start_time);
+        }
+    }
+}
+
+fn apply_battle_opponent_viewer_pgreat_prefix(
+    opponent: &mut BattleOpponentSession,
+    start_time: TimeUs,
+) {
+    for event in viewer_pgreat_prefix_events(&opponent.chart, start_time, |_| true) {
+        opponent.score.apply(&event);
+        opponent.gauge.apply_judge(Judge::PGreat, 1.0);
+    }
+    if opponent.scored_total_notes != 0
+        && opponent.score.past_notes == opponent.scored_total_notes
+        && opponent.score.combo == opponent.scored_total_notes
+    {
+        opponent.full_combo_started_at = Some(start_time);
+    }
 }
 
 fn viewer_pgreat_prefix_events(
     chart: &PlayableChart,
     start_time: TimeUs,
-    excluded_lanes: &[bool; LANE_COUNT],
+    mut includes_lane: impl FnMut(Lane) -> bool,
 ) -> Vec<JudgementEvent> {
     let mut events = Vec::new();
     for lane in Lane::ALL {
-        if excluded_lanes[lane.index()] {
+        if !includes_lane(lane) {
             continue;
         }
         for note in chart.notes_for_lane(lane).iter().filter(|note| note.time < start_time) {

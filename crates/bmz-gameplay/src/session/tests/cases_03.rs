@@ -79,6 +79,68 @@ fn viewer_seek_skips_past_autoplay_judgements_and_keeps_boundary_note() {
 }
 
 #[test]
+fn viewer_seek_prefills_display_only_battle_score_and_gauge() {
+    let mut chart = chart_with_keysound();
+    let mut opponent_note = chart.lane_notes[Lane::Key1.index()][0].clone();
+    opponent_note.id = NoteId(2);
+    opponent_note.lane = Lane::Key8;
+    chart.lane_notes[Lane::Key8.index()].push(opponent_note);
+    chart.total_notes = 2;
+    let mut session = session_with_autoplay(chart);
+    session.scored_total_notes = 1;
+    session.display_only_lane_mask[Lane::Key8.index()] = true;
+    session.opponent_score = Some(ScoreState::default());
+    session.opponent_gauge = Some(session.gauge.clone());
+    let opponent_gauge_before = session.opponent_gauge.as_ref().unwrap().current().value;
+
+    prepare_viewer_seek(&mut session, TimeUs(500_000));
+
+    assert_eq!(session.score.ex_score(), 2);
+    assert_eq!(session.score.past_notes, 1);
+    let opponent_score = session.opponent_score.as_ref().unwrap();
+    assert_eq!(opponent_score.ex_score(), 2);
+    assert_eq!(opponent_score.past_notes, 1);
+    assert_eq!(opponent_score.combo, 1);
+    assert!(session.opponent_gauge.as_ref().unwrap().current().value > opponent_gauge_before);
+    assert_eq!(session.opponent_full_combo_started_at, Some(TimeUs(500_000)));
+}
+
+#[test]
+fn viewer_seek_prefills_independent_battle_opponent() {
+    let opponent_chart = Arc::new(chart_with_keysound());
+    let window = JudgeWindow::symmetric(16_000, 40_000, 80_000, 120_000, 500_000, 200_000, 16_000);
+    let mut session = session_with_autoplay(chart_with_keysound());
+    session.battle_opponent = Some(BattleOpponentSession {
+        chart: Arc::clone(&opponent_chart),
+        key_mode: opponent_chart.metadata.key_mode,
+        scored_total_notes: 1,
+        judge: JudgeEngine::new(window),
+        base_judge_windows: JudgeWindows::uniform(window),
+        rule_mode: RuleMode::Beatoraja,
+        score: ScoreState::default(),
+        gauge: GaugeState::new(bmz_core::clear::GaugeType::Normal, 160.0, 1),
+        replay_player: None,
+        autoplay: Some(AutoplayController::default()),
+        display_uses_primary_arrangement: true,
+        publish_display_judgements: true,
+        gauge_increase_started_at: None,
+        gauge_max_started_at: None,
+        full_combo_started_at: None,
+        lane_keyon_started_at: Default::default(),
+    });
+    let opponent_gauge_before = session.battle_opponent.as_ref().unwrap().gauge.current().value;
+
+    prepare_viewer_seek(&mut session, TimeUs(500_000));
+
+    let opponent = session.battle_opponent.as_ref().unwrap();
+    assert_eq!(opponent.score.ex_score(), 2);
+    assert_eq!(opponent.score.past_notes, 1);
+    assert_eq!(opponent.score.combo, 1);
+    assert!(opponent.gauge.current().value > opponent_gauge_before);
+    assert_eq!(opponent.full_combo_started_at, Some(TimeUs(500_000)));
+}
+
+#[test]
 fn viewer_seek_prefills_pgreats_and_restores_crossing_hcn() {
     let mut session = session_with_autoplay(chart_with_hcn_long_note());
 
