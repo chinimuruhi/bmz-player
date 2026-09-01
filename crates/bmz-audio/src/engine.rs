@@ -9,6 +9,7 @@ pub struct AudioEngine {
     pub queue: ScheduledSoundQueue,
     pub mixer: MixerState,
     pub samples: SampleBank,
+    paused_at_output_frame: Option<u64>,
 }
 
 impl AudioEngine {
@@ -17,6 +18,7 @@ impl AudioEngine {
             queue: ScheduledSoundQueue::new(),
             mixer: MixerState::new(output_sample_rate),
             samples: SampleBank::default(),
+            paused_at_output_frame: None,
         }
     }
 
@@ -26,6 +28,7 @@ impl AudioEngine {
             queue: ScheduledSoundQueue::new(),
             mixer: MixerState::new(output_sample_rate),
             samples,
+            paused_at_output_frame: None,
         }
     }
 
@@ -100,6 +103,25 @@ impl AudioEngine {
         self.queue.clear();
         self.mixer.voices.clear();
         self.mixer.master_gain = 1.0;
+    }
+
+    /// callbackの出力frameを基準に、予約音と再生中voiceを同じ位置で凍結する。
+    /// 再開時は停止中に進んだhardware frame分だけ絶対frameを後ろへずらす。
+    pub fn set_playback_paused(&mut self, paused: bool, output_frame: u64) {
+        match (paused, self.paused_at_output_frame) {
+            (true, None) => self.paused_at_output_frame = Some(output_frame),
+            (false, Some(paused_at)) => {
+                let paused_frames = output_frame.saturating_sub(paused_at);
+                self.queue.shift_output_frames(paused_frames);
+                self.mixer.shift_output_frames(paused_frames);
+                self.paused_at_output_frame = None;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn playback_paused(&self) -> bool {
+        self.paused_at_output_frame.is_some()
     }
 
     /// 出力全体に掛かるマスターゲインを設定する。リザルト退出時に残響を
@@ -207,6 +229,9 @@ impl AudioEngine {
 
     pub fn render_stereo(&mut self, output_start_frame: u64, output: &mut [f32]) {
         output.fill(0.0);
+        if self.playback_paused() {
+            return;
+        }
         let frame_count = output.len() / 2;
         let output_end_frame = output_start_frame + frame_count.saturating_sub(1) as u64;
         // 中間 Vec を確保せず、期日到来分を直接 mixer へ流し込む(RT 安全)。

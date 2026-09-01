@@ -168,6 +168,22 @@ impl AppAudioOutput {
         Ok(())
     }
 
+    pub fn pause_playback_at(&mut self, chart_time: TimeUs) -> Result<()> {
+        if !self.engine.set_playback_paused(true) {
+            bail!("playback pause was dropped by the audio command queue");
+        }
+        self.source.pause_at(chart_time);
+        Ok(())
+    }
+
+    pub fn resume_playback(&mut self, chart_time: TimeUs) -> Result<()> {
+        if !self.engine.set_playback_paused(false) {
+            bail!("playback resume was dropped by the audio command queue");
+        }
+        self.source.play(chart_time);
+        Ok(())
+    }
+
     pub fn play(&mut self, chart_zero_time: TimeUs) -> Result<()> {
         self.source.play(chart_zero_time);
         self.runtime.play().context("failed to start audio output stream")?;
@@ -192,9 +208,17 @@ impl RunningPlaySession {
         Ok(())
     }
 
-    pub fn start_viewer_seek(&mut self, chart_zero_time: TimeUs) -> Result<usize> {
+    pub fn start_viewer_seek(
+        &mut self,
+        chart_zero_time: TimeUs,
+        remain_paused: bool,
+    ) -> Result<usize> {
         bmz_gameplay::session::prepare_viewer_seek(&mut self.session, chart_zero_time);
         self.start(chart_zero_time)?;
+        if remain_paused {
+            self.audio.source.pause_at(chart_zero_time);
+            self.session.audio_clock = self.audio.clock();
+        }
         let bgm_volume = self.session.audio_mix.master_volume
             * self.session.audio_mix.effective_normalization_gain()
             * self.session.audio_mix.bgm_volume;
@@ -208,12 +232,30 @@ impl RunningPlaySession {
             );
         self.session.bgm_scheduler = scheduler;
         let carryover_count = carryover.len();
-        if !self.audio.engine.replace_playback(carryover) {
+        let replaced = if remain_paused {
+            self.audio.engine.replace_playback_paused(carryover)
+        } else {
+            self.audio.engine.replace_playback(carryover)
+        };
+        if !replaced {
             bail!(
                 "viewer seek audio replacement was dropped ({carryover_count} carry-over voices)"
             );
         }
         Ok(carryover_count)
+    }
+
+    pub fn pause_viewer_playback(&mut self, chart_time: TimeUs) -> Result<()> {
+        self.audio.pause_playback_at(chart_time)?;
+        self.session.audio_clock = self.audio.clock();
+        Ok(())
+    }
+
+    pub fn resume_viewer_playback(&mut self) -> Result<()> {
+        let chart_time = self.session.audio_clock.now();
+        self.audio.resume_playback(chart_time)?;
+        self.session.audio_clock = self.audio.clock();
+        Ok(())
     }
 
     pub fn pause_audio(&mut self) -> Result<()> {

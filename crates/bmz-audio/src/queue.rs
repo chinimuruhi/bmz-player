@@ -94,6 +94,15 @@ impl ScheduledSoundQueue {
         self.sounds.clear();
     }
 
+    pub fn shift_output_frames(&mut self, frames: u64) {
+        if frames == 0 {
+            return;
+        }
+        for sound in &mut self.sounds {
+            sound.start_frame = sound.start_frame.saturating_add(frames);
+        }
+    }
+
     /// 述語が `true` を返すスケジュール音だけを保持する。`stop_sound` 等で使う。
     pub fn retain(&mut self, mut keep: impl FnMut(&ScheduledSound) -> bool) {
         self.sounds.retain(|sound| keep(sound));

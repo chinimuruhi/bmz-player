@@ -80,6 +80,19 @@ impl MixerState {
         }
     }
 
+    pub fn shift_output_frames(&mut self, frames: u64) {
+        if frames == 0 {
+            return;
+        }
+        for voice in &mut self.voices {
+            voice.sound.start_frame = voice.sound.start_frame.saturating_add(frames);
+            voice.next_output_frame = voice.next_output_frame.saturating_add(frames);
+            if let Some(stop_at_frame) = voice.stop_at_frame.as_mut() {
+                *stop_at_frame = stop_at_frame.saturating_add(frames);
+            }
+        }
+    }
+
     pub fn apply_playback_rate_change(&mut self, change: crate::clock::PlaybackRateChange) {
         self.playback_rate = f64::from(change.new_rate_percent) / 100.0;
         for voice in &mut self.voices {

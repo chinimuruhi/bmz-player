@@ -2,6 +2,11 @@ use super::*;
 
 impl WinitApp {
     pub(super) fn advance_active_play(&mut self) {
+        if self.viewer_mode && self.viewer_paused && self.play.play_ready_sound_started_at.is_some()
+        {
+            self.update_viewer_paused_snapshot();
+            return;
+        }
         self.sync_autoplay_replay_playback_rate();
         self.poll_pending_finished_play();
         if self.play.play_ending.is_some() {
@@ -407,13 +412,16 @@ impl WinitApp {
             play_elapsed_time,
         );
         let start_result = if self.viewer_mode {
-            active_play.running.start_viewer_seek(chart_zero_time).map(|carryover_count| {
-                tracing::info!(
-                    chart_time_us = chart_zero_time.0,
-                    carryover_count,
-                    "started viewer audio from requested chart position"
-                );
-            })
+            active_play.running.start_viewer_seek(chart_zero_time, self.viewer_paused).map(
+                |carryover_count| {
+                    tracing::info!(
+                        chart_time_us = chart_zero_time.0,
+                        carryover_count,
+                        paused = self.viewer_paused,
+                        "started viewer audio from requested chart position"
+                    );
+                },
+            )
         } else {
             active_play.running.start(chart_zero_time)
         };

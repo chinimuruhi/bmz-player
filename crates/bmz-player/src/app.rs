@@ -695,6 +695,9 @@ struct WinitApp {
     /// 現在の外部ビューワー譜面。F5 reload と同じ #RANDOM seed の再利用に使う。
     viewer_chart_path: Option<PathBuf>,
     viewer_bms_random_seed: Option<u64>,
+    /// Spaceで停止したviewerの譜面時刻とPlay skin経過時刻を凍結する。
+    viewer_paused: bool,
+    viewer_paused_play_elapsed: Option<TimeUs>,
     /// Viewer起動時に省略したSelect用runtimeを遅延初期化済みか。
     viewer_select_initialized: bool,
     skip_result: bool,

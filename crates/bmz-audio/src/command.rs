@@ -31,6 +31,9 @@ pub enum AudioEngineCommand {
     Schedule(ScheduledSound),
     ScheduleAll(Vec<ScheduledSound>),
     ClearPlayback,
+    SetPlaybackPaused {
+        paused: bool,
+    },
     StopSound {
         id: SoundId,
     },
@@ -75,7 +78,7 @@ pub enum AudioEngineCommand {
 }
 
 impl AudioEngineCommand {
-    pub fn apply(self, engine: &mut AudioEngine) {
+    pub fn apply(self, engine: &mut AudioEngine, output_frame: u64) {
         match self {
             Self::InsertSample { id, sample } => engine.insert_sample(id, sample),
             Self::ReserveSampleSlot { id } => engine.reserve_sample_slot(id),
@@ -83,6 +86,9 @@ impl AudioEngineCommand {
             Self::Schedule(sound) => engine.schedule(sound),
             Self::ScheduleAll(sounds) => engine.schedule_all(sounds),
             Self::ClearPlayback => engine.clear_playback(),
+            Self::SetPlaybackPaused { paused } => {
+                engine.set_playback_paused(paused, output_frame);
+            }
             Self::StopSound { id } => engine.stop_sound(id),
             Self::StopSoundWithFadeOut { id, fade_out_frames } => {
                 engine.stop_sound_with_fade_out(id, fade_out_frames);
@@ -268,6 +274,19 @@ impl AudioEngineHandle {
         self.push_commands(commands)
     }
 
+    /// 一時停止中のviewer seek用。既存のpause区間を閉じて再生内容を差し替え、
+    /// 同じcallback frameを新しいpause開始点として設定する。
+    pub fn replace_playback_paused(&self, sounds: Vec<ScheduledSound>) -> bool {
+        let mut commands = Vec::with_capacity(usize::from(!sounds.is_empty()) + 3);
+        commands.push(AudioEngineCommand::SetPlaybackPaused { paused: false });
+        commands.push(AudioEngineCommand::ClearPlayback);
+        if !sounds.is_empty() {
+            commands.push(AudioEngineCommand::ScheduleAll(sounds));
+        }
+        commands.push(AudioEngineCommand::SetPlaybackPaused { paused: true });
+        self.push_commands(commands)
+    }
+
     pub fn push_command(&self, command: AudioEngineCommand) -> bool {
         self.push_commands(vec![command])
     }
@@ -346,6 +365,10 @@ impl AudioEngineHandle {
 
     pub fn set_master_gain(&self, gain: f32) -> bool {
         self.push_command(AudioEngineCommand::SetMasterGain { gain })
+    }
+
+    pub fn set_playback_paused(&self, paused: bool) -> bool {
+        self.push_command(AudioEngineCommand::SetPlaybackPaused { paused })
     }
 
     pub fn apply_playback_rate_change(&self, change: crate::clock::PlaybackRateChange) -> bool {
@@ -457,7 +480,7 @@ impl CommandedAudioEngine {
                 return false;
             }
         };
-        self.apply_pending_commands(&mut engine);
+        self.apply_pending_commands(&mut engine, output_start_frame);
         engine.render_stereo(output_start_frame, output);
         self.inner.output_sample_rate.store(engine.output_sample_rate(), Ordering::Relaxed);
         self.inner.idle.store(engine.is_idle(), Ordering::Relaxed);
@@ -469,12 +492,12 @@ impl CommandedAudioEngine {
         let Ok(mut engine) = engine.lock() else {
             return;
         };
-        self.apply_pending_commands(&mut engine);
+        self.apply_pending_commands(&mut engine, 0);
         self.inner.output_sample_rate.store(engine.output_sample_rate(), Ordering::Relaxed);
         self.inner.idle.store(engine.is_idle(), Ordering::Relaxed);
     }
 
-    fn apply_pending_commands(&mut self, engine: &mut AudioEngine) {
+    fn apply_pending_commands(&mut self, engine: &mut AudioEngine, output_frame: u64) {
         self.command_scratch.clear();
         match self.inner.queue.try_lock() {
             Ok(mut queue) => {
@@ -495,7 +518,7 @@ impl CommandedAudioEngine {
 
         let drained = self.command_scratch.len() as u64;
         for command in self.command_scratch.drain(..) {
-            command.apply(engine);
+            command.apply(engine, output_frame);
         }
         if drained != 0 {
             self.inner.counters.drained.fetch_add(drained, Ordering::Relaxed);
@@ -618,6 +641,59 @@ mod tests {
         assert!(processor.render_stereo(0, &mut output));
 
         assert_eq!(output, vec![0.75, 0.75]);
+    }
+
+    #[test]
+    fn playback_pause_freezes_active_voice_until_resume() {
+        let mut engine = AudioEngine::new(48_000);
+        engine.insert_sample(
+            SoundId(1),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![1.0, 0.75, 0.5, 0.25] },
+        );
+        let handle = AudioEngineHandle::with_capacity(engine, 8);
+        let mut processor = handle.processor();
+        assert!(handle.schedule_sound(ScheduledSound::one_shot(100, SoundId(1), 1.0, 0.0,)));
+
+        let mut output = vec![0.0; 2];
+        assert!(processor.render_stereo(100, &mut output));
+        assert_eq!(output, vec![1.0, 1.0]);
+
+        assert!(handle.set_playback_paused(true));
+        assert!(processor.render_stereo(101, &mut output));
+        assert_eq!(output, vec![0.0, 0.0]);
+        assert!(processor.render_stereo(110, &mut output));
+        assert_eq!(output, vec![0.0, 0.0]);
+
+        assert!(handle.set_playback_paused(false));
+        assert!(processor.render_stereo(111, &mut output));
+        assert_eq!(output, vec![0.75, 0.75]);
+    }
+
+    #[test]
+    fn paused_playback_replacement_reanchors_pause_for_new_schedule() {
+        let mut engine = AudioEngine::new(48_000);
+        engine.insert_sample(
+            SoundId(1),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![1.0] },
+        );
+        let handle = AudioEngineHandle::with_capacity(engine, 8);
+        let mut processor = handle.processor();
+
+        assert!(handle.set_playback_paused(true));
+        let mut output = vec![0.0; 2];
+        assert!(processor.render_stereo(100, &mut output));
+        assert!(handle.replace_playback_paused(vec![ScheduledSound::one_shot(
+            200,
+            SoundId(1),
+            1.0,
+            0.0,
+        )]));
+        assert!(processor.render_stereo(200, &mut output));
+        assert_eq!(output, vec![0.0, 0.0]);
+
+        assert!(handle.set_playback_paused(false));
+        assert!(processor.render_stereo(300, &mut output));
+        assert_eq!(output, vec![1.0, 1.0]);
     }
 
     #[test]

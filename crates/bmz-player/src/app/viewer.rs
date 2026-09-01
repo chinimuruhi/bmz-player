@@ -33,7 +33,7 @@ impl WinitApp {
         // RANDOM分岐と実プレイで同じ譜面を使うため、importとPlayStartOptionsへ同じseedを渡す。
         // importが失敗した場合は現在の再生を維持し、成功してから差し替える。
         let bms_random_seed = crate::random_option_seed::fresh_bms_random_seed();
-        self.load_viewer_chart(&path, measure, bms_random_seed, None)
+        self.load_viewer_chart(&path, measure, bms_random_seed, None, None)
     }
 
     fn load_viewer_chart(
@@ -42,6 +42,7 @@ impl WinitApp {
         measure: u32,
         bms_random_seed: u64,
         preserved_options: Option<PlayStartOptions>,
+        paused_play_elapsed: Option<TimeUs>,
     ) -> Result<()> {
         let imported = crate::storage::import::import_chart_file(
             &mut self.boot.library_db,
@@ -78,6 +79,8 @@ impl WinitApp {
         );
         self.viewer_chart_path = Some(path.to_path_buf());
         self.viewer_bms_random_seed = Some(bms_random_seed);
+        self.viewer_paused = paused_play_elapsed.is_some();
+        self.viewer_paused_play_elapsed = paused_play_elapsed;
         Ok(())
     }
 
@@ -102,9 +105,19 @@ impl WinitApp {
         }
 
         if event.repeat {
-            return matches!(event.physical_key, PhysicalKey::Code(KeyCode::F5 | KeyCode::Escape));
+            return matches!(
+                event.physical_key,
+                PhysicalKey::Code(KeyCode::Space | KeyCode::F5 | KeyCode::Escape)
+            );
         }
         match event.physical_key {
+            PhysicalKey::Code(KeyCode::Space) => {
+                if let Err(error) = self.toggle_viewer_pause() {
+                    tracing::warn!(%error, "viewer pause toggle failed");
+                    self.show_left_overlay_toast(format!("Viewer pause failed: {error:#}"));
+                }
+                true
+            }
             PhysicalKey::Code(KeyCode::F5) => {
                 if let Err(error) = self.reload_active_viewer(shift) {
                     tracing::warn!(%error, reroll = shift, "viewer reload failed");
@@ -199,7 +212,7 @@ impl WinitApp {
                 crate::screens::result_model::ResultGraphCollector::default();
             active.running.failed_video_bga.clear();
             crate::video_bga::prepare_reused_video_decoders(&mut active.running.video_bga_decoders);
-            let carryover_count = active.running.start_viewer_seek(target)?;
+            let carryover_count = active.running.start_viewer_seek(target, self.viewer_paused)?;
             let feedback = viewer_seek_feedback(&active.running.session.chart, target);
             (carryover_count, feedback)
         };
@@ -228,13 +241,63 @@ impl WinitApp {
         };
         let options =
             (!reroll).then(|| self.active_play_retry_options(ResultRetryMode::SameArrange));
-        self.load_viewer_chart(&path, measure, seed, options)?;
+        let paused_play_elapsed = self.viewer_paused.then_some(self.play_elapsed_time());
+        self.load_viewer_chart(&path, measure, seed, options, paused_play_elapsed)?;
         self.show_left_overlay_toast(if reroll {
             format!("Reloaded measure {measure} with a new RANDOM")
         } else {
             format!("Reloaded measure {measure}")
         });
         Ok(())
+    }
+
+    fn toggle_viewer_pause(&mut self) -> Result<()> {
+        if self.play.play_ready_sound_started_at.is_none() {
+            return Ok(());
+        }
+        if self.viewer_paused {
+            let frozen_play_elapsed =
+                self.viewer_paused_play_elapsed.unwrap_or_else(|| self.play_elapsed_time());
+            let chart_time = {
+                let active = self.play.active_play.as_mut().context("viewer play is not active")?;
+                active.running.resume_viewer_playback()?;
+                active.running.session.audio_clock.now()
+            };
+            self.viewer_paused = false;
+            self.viewer_paused_play_elapsed = None;
+            self.play.play_scene_started_at = instant_for_elapsed(frozen_play_elapsed);
+            self.show_left_overlay_toast(viewer_resume_feedback(chart_time));
+        } else {
+            let frozen_play_elapsed = self.play_elapsed_time();
+            let chart_time = {
+                let active = self.play.active_play.as_mut().context("viewer play is not active")?;
+                let chart_time = active.running.session.audio_clock.now();
+                active.running.pause_viewer_playback(chart_time)?;
+                chart_time
+            };
+            self.viewer_paused = true;
+            self.viewer_paused_play_elapsed = Some(frozen_play_elapsed);
+            if let Some(snapshot) = &mut self.play.last_play_snapshot {
+                snapshot.time = chart_time;
+                snapshot.play_elapsed_time = frozen_play_elapsed;
+            }
+            self.show_left_overlay_toast(viewer_pause_feedback(chart_time));
+        }
+        Ok(())
+    }
+
+    pub(super) fn update_viewer_paused_snapshot(&mut self) {
+        let Some(play_elapsed) = self.viewer_paused_play_elapsed else {
+            return;
+        };
+        let chart_time =
+            self.play.active_play.as_ref().map(|active| active.running.session.audio_clock.now());
+        if let Some(snapshot) = &mut self.play.last_play_snapshot {
+            snapshot.play_elapsed_time = play_elapsed;
+            if let Some(chart_time) = chart_time {
+                snapshot.time = chart_time;
+            }
+        }
     }
 
     /// ViewerのPlay/待機画面を明示的に抜け、通常のSelect画面を表示する。
@@ -322,6 +385,8 @@ impl WinitApp {
     }
 
     fn reset_viewer_playback(&mut self) {
+        self.viewer_paused = false;
+        self.viewer_paused_play_elapsed = None;
         self.stop_select_preview();
         if let Some(manager) = &self.audio.system_sound {
             manager.stop_all_bgm();
@@ -336,6 +401,19 @@ impl WinitApp {
         self.audio.draining_audio = None;
         self.play.play_media_cache = None;
     }
+}
+
+fn instant_for_elapsed(elapsed: TimeUs) -> Instant {
+    let micros = elapsed.0.max(0) as u64;
+    Instant::now().checked_sub(Duration::from_micros(micros)).unwrap_or_else(Instant::now)
+}
+
+fn viewer_pause_feedback(chart_time: TimeUs) -> String {
+    format!("Paused at {:.3} s", chart_time.0 as f64 / 1_000_000.0)
+}
+
+fn viewer_resume_feedback(chart_time: TimeUs) -> String {
+    format!("Resumed at {:.3} s", chart_time.0 as f64 / 1_000_000.0)
 }
 
 fn viewer_wheel_direction(delta: MouseScrollDelta) -> Option<i32> {
