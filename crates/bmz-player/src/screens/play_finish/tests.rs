@@ -269,6 +269,7 @@ fn finish_session_result_returns_summary() {
         s_random_scheme_2p: None,
         h_random_threshold_ms: None,
         bms_random_choices: vec![1, 2],
+        bms_switch_choices: vec![2_000_000_000_000],
         pattern: Some(lane_shuffle_pattern.clone()),
         key_mode_conversion: KeyModeConversionConfig::Off,
         seven_to_nine_pattern: Default::default(),

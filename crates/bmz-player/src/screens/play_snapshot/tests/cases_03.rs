@@ -165,6 +165,7 @@ fn build_render_snapshot_reports_independent_opponent_skin_timers() {
                 legacy_arrange_seed: false,
                 packed_seed: None,
                 bms_random_choices: None,
+                bms_switch_choices: None,
                 arrange_pattern: None,
                 s_random_scheme: SRandomScheme::default(),
                 s_random_scheme_2p: None,
