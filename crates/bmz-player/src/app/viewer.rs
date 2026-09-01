@@ -312,7 +312,9 @@ impl WinitApp {
             active.running.result_graph =
                 crate::screens::result_model::ResultGraphCollector::default();
             active.running.failed_video_bga.clear();
-            crate::video_bga::prepare_reused_video_decoders(&mut active.running.video_bga_decoders);
+            crate::video_bga::prepare_reused_video_decoders_for_seek(
+                &mut active.running.video_bga_decoders,
+            );
             let carryover_count = active.running.start_viewer_seek(target, self.viewer_paused)?;
             let feedback = viewer_seek_feedback(&active.running.session.chart, target);
             (carryover_count, feedback)
