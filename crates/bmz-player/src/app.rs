@@ -692,6 +692,8 @@ struct WinitApp {
     viewer_mode: bool,
     /// ビューワーの単曲再生が終わり、次のIPC命令を待っている状態。
     viewer_waiting: bool,
+    /// Viewer起動時に省略したSelect用runtimeを遅延初期化済みか。
+    viewer_select_initialized: bool,
     skip_result: bool,
     select: SelectRuntimeState,
     play: PlayRuntimeState,

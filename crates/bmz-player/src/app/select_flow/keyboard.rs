@@ -9,6 +9,17 @@ impl WinitApp {
             self.sync_select_holds_from_pressed_controls();
             self.sync_play_control_holds_from_pressed_controls();
         }
+        if self.viewer_waiting {
+            if event.physical_key == PhysicalKey::Code(KeyCode::Escape)
+                && event.state == ElementState::Pressed
+                && !event.repeat
+            {
+                self.leave_viewer_for_select("escape pressed while viewer waiting");
+            } else if !event.repeat {
+                self.sync_viewer_wait_exit_holds();
+            }
+            return;
+        }
         if !event.repeat
             && let Some(device_event) = key_event_to_device_input(event)
             && self.filter_app_input_bounce(device_event).is_none()

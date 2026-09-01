@@ -78,6 +78,10 @@ impl WinitApp {
         // holdは物理状態を正とする。2回押しなどの単発操作はこの後のフィルターを通す。
         self.sync_select_holds_from_pressed_controls();
         self.sync_play_control_holds_from_pressed_controls();
+        if self.viewer_waiting {
+            self.sync_viewer_wait_exit_holds();
+            return;
+        }
         if self.capture_egui_key_config_gamepad(&event.name, event.pressed) {
             return;
         }
@@ -117,6 +121,7 @@ impl WinitApp {
         self.input.replace_gamepad_pressed_controls(pressed_buttons);
         self.sync_select_holds_from_pressed_controls();
         self.sync_play_control_holds_from_pressed_controls();
+        self.sync_viewer_wait_exit_holds();
     }
 
     pub(super) fn should_log_gamepad_key_config_raw_input(&self) -> bool {

@@ -61,8 +61,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
         let select_course_builder = self.select.course_builder.is_some();
-        let has_play_context =
-            self.play.active_play.is_some() || self.play.pending_play_start.is_some();
+        let has_play_context = self.play.active_play.is_some()
+            || self.play.pending_play_start.is_some()
+            || self.viewer_waiting;
         let play_owns_keyboard_input = match &event {
             WindowEvent::KeyboardInput { event, .. } => {
                 let control = physical_key_to_control(event.physical_key);
@@ -293,8 +294,8 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let skin_drain_stats = self.drain_pending_skins();
                 let drain_us = instant_elapsed_us_u64(drain_start);
                 let input_start = Instant::now();
+                self.poll_gamepad_events();
                 if !self.viewer_waiting {
-                    self.poll_gamepad_events();
                     self.advance_select_hold_move();
                     self.advance_select_ir_battle_hold();
                     self.advance_select_analog_scroll();
