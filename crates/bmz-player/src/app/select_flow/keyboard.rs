@@ -26,6 +26,9 @@ impl WinitApp {
         {
             return;
         }
+        if self.route_viewer_keyboard(event) {
+            return;
+        }
         let play_control = control_event.name.as_deref();
         let play_physical_control = control_event.physical.as_ref();
         let has_play_control_context =

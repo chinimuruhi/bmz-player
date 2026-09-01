@@ -692,6 +692,9 @@ struct WinitApp {
     viewer_mode: bool,
     /// ビューワーの単曲再生が終わり、次のIPC命令を待っている状態。
     viewer_waiting: bool,
+    /// 現在の外部ビューワー譜面。F5 reload と同じ #RANDOM seed の再利用に使う。
+    viewer_chart_path: Option<PathBuf>,
+    viewer_bms_random_seed: Option<u64>,
     /// Viewer起動時に省略したSelect用runtimeを遅延初期化済みか。
     viewer_select_initialized: bool,
     skip_result: bool,

@@ -30,6 +30,7 @@ pub enum AudioEngineCommand {
     },
     Schedule(ScheduledSound),
     ScheduleAll(Vec<ScheduledSound>),
+    ClearPlayback,
     StopSound {
         id: SoundId,
     },
@@ -81,6 +82,7 @@ impl AudioEngineCommand {
             Self::InsertPreparedSample { id, sample } => engine.insert_prepared_sample(id, sample),
             Self::Schedule(sound) => engine.schedule(sound),
             Self::ScheduleAll(sounds) => engine.schedule_all(sounds),
+            Self::ClearPlayback => engine.clear_playback(),
             Self::StopSound { id } => engine.stop_sound(id),
             Self::StopSoundWithFadeOut { id, fade_out_frames } => {
                 engine.stop_sound_with_fade_out(id, fade_out_frames);
@@ -253,6 +255,17 @@ impl AudioEngineHandle {
             return None;
         };
         Some((engine.output_sample_rate(), engine.samples.clone()))
+    }
+
+    /// 現在の voice / schedule を破棄し、その直後にシーク位置の carry-over 音を
+    /// 同じ command batch で登録する。古い frame 基準の音が新しい再生へ漏れない。
+    pub fn replace_playback(&self, sounds: Vec<ScheduledSound>) -> bool {
+        let mut commands = Vec::with_capacity(usize::from(!sounds.is_empty()) + 1);
+        commands.push(AudioEngineCommand::ClearPlayback);
+        if !sounds.is_empty() {
+            commands.push(AudioEngineCommand::ScheduleAll(sounds));
+        }
+        self.push_commands(commands)
     }
 
     pub fn push_command(&self, command: AudioEngineCommand) -> bool {
@@ -583,6 +596,28 @@ mod tests {
         assert_eq!(output, vec![0.25, 0.25, 0.25, 0.25]);
         assert_eq!(handle.diagnostics().submitted, 2);
         assert_eq!(handle.diagnostics().drained, 2);
+    }
+
+    #[test]
+    fn replace_playback_clears_older_schedule_in_the_same_batch() {
+        let mut engine = AudioEngine::new(48_000);
+        engine.insert_sample(
+            SoundId(1),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![0.25] },
+        );
+        engine.insert_sample(
+            SoundId(2),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![0.75] },
+        );
+        let handle = AudioEngineHandle::with_capacity(engine, 8);
+        let mut processor = handle.processor();
+        assert!(handle.schedule_all(vec![ScheduledSound::one_shot(0, SoundId(1), 1.0, 0.0,)]));
+        assert!(handle.replace_playback(vec![ScheduledSound::one_shot(0, SoundId(2), 1.0, 0.0,)]));
+
+        let mut output = vec![0.0; 2];
+        assert!(processor.render_stereo(0, &mut output));
+
+        assert_eq!(output, vec![0.75, 0.75]);
     }
 
     #[test]

@@ -104,6 +104,21 @@ impl JudgeEngine {
         self.scratch_lane_mask = scratch_lane_mask;
     }
 
+    /// Viewer の開始位置より前のノートを未判定のまま読み飛ばす。
+    /// 新しいセッションに対して呼ぶことを前提とし、境界時刻のノートは残す。
+    pub fn skip_before(&mut self, chart: &PlayableChart, start_time: TimeUs) {
+        self.judged_notes.clear();
+        self.bad_attempted_notes.clear();
+        for lane in Lane::ALL {
+            let next = chart.notes_for_lane(lane).partition_point(|note| note.time < start_time);
+            self.lanes[lane.index()] = LaneJudgeState {
+                next_note_index: next,
+                next_mine_index: next,
+                ..Default::default()
+            };
+        }
+    }
+
     pub fn process_input(&mut self, chart: &PlayableChart, input: InputEvent) -> JudgeOutcome {
         match input.kind {
             InputKind::Press => self.process_press(chart, input),

@@ -5,6 +5,9 @@ impl WinitApp {
         if self.viewer_waiting {
             return;
         }
+        if self.route_viewer_mouse_wheel(delta) {
+            return;
+        }
         if let Some(change) = lane_cover_wheel_change(delta)
             && (self.play.active_play.is_some() || self.play.pending_play_start.is_some())
         {

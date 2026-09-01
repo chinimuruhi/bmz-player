@@ -232,6 +232,8 @@ impl WinitApp {
             deferred_boot: deferred_boot_action(boot_chart_id, &options),
             viewer_mode: options.viewer_play,
             viewer_waiting: false,
+            viewer_chart_path: options.boot_play_path.as_deref().map(PathBuf::from),
+            viewer_bms_random_seed: options.boot_bms_random_seed,
             viewer_select_initialized: !options.viewer_play,
             skip_result: options.skip_result,
             select: SelectRuntimeState {

@@ -113,6 +113,29 @@ pub fn advance_session_frame(
     }
 }
 
+/// Viewer の途中再生開始前に、過去の入力・判定 cursor を無音で進める。
+/// スコア・ゲージは新しいセッションの初期値のままなので、シーク先より前の
+/// ノートが PGREAT / POOR としてまとめて計上されることはない。
+pub fn prepare_viewer_seek(session: &mut GameSession, start_time: TimeUs) {
+    session.judge.skip_before(&session.chart, start_time);
+    if let Some(autoplay) = &mut session.autoplay {
+        autoplay.skip_before(&session.chart, start_time);
+    }
+    if let Some(replay) = &mut session.replay_player {
+        replay.skip_before(start_time);
+    }
+    if let Some(opponent) = &mut session.battle_opponent {
+        opponent.judge.skip_before(&opponent.chart, start_time);
+        if let Some(autoplay) = &mut opponent.autoplay {
+            autoplay.skip_before(&opponent.chart, start_time);
+        }
+        if let Some(replay) = &mut opponent.replay_player {
+            replay.skip_before(start_time);
+        }
+    }
+    session.bgm_scheduler = BgmScheduler::starting_at(&session.chart, start_time);
+}
+
 fn advance_battle_opponent(session: &mut GameSession, now: TimeUs) {
     let playback_rate_percent = session.audio_clock.playback_rate_percent();
     let Some(opponent) = &mut session.battle_opponent else {

@@ -93,6 +93,15 @@ impl AudioEngine {
         self.mixer.stop_sound_with_fade_out(id, fade_out_frames);
     }
 
+    /// デコード済み sample bank を維持したまま、再生待ちと再生中の音だけを破棄する。
+    /// Viewer のシークでは filesystem / decode をやり直さず、同じ譜面音源を新しい
+    /// output-frame 基準へ差し替えるために使う。
+    pub fn clear_playback(&mut self) {
+        self.queue.clear();
+        self.mixer.voices.clear();
+        self.mixer.master_gain = 1.0;
+    }
+
     /// 出力全体に掛かるマスターゲインを設定する。リザルト退出時に残響を
     /// フェードアウトさせる用途で、毎フレーム 1.0 → 0.0 へ更新する。
     pub fn set_master_gain(&mut self, gain: f32) {
@@ -247,6 +256,26 @@ mod tests {
         engine.render_stereo(0, &mut output);
 
         assert_eq!(output, vec![0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.25, 0.25]);
+    }
+
+    #[test]
+    fn clear_playback_keeps_samples_but_discards_queue_and_voices() {
+        let mut engine = AudioEngine::new(48_000);
+        engine.insert_sample(
+            SoundId(1),
+            DecodedSample { channels: 1, sample_rate: 48_000, frames: vec![1.0; 16] },
+        );
+        engine.play_now(SoundId(1), 1.0, false);
+        engine.schedule(ScheduledSound::one_shot(100, SoundId(1), 1.0, 0.0));
+        let mut output = vec![0.0; 2];
+        engine.render_stereo(0, &mut output);
+        assert!(!engine.mixer.voices.is_empty());
+
+        engine.clear_playback();
+
+        assert!(engine.queue.is_empty());
+        assert!(engine.mixer.voices.is_empty());
+        assert!(engine.samples.get(SoundId(1)).is_some());
     }
 
     #[test]

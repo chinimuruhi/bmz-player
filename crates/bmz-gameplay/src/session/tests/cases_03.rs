@@ -54,6 +54,29 @@ fn bgm_scheduler_starting_at_skips_past_events_and_keeps_boundary() {
 }
 
 #[test]
+fn viewer_seek_skips_past_autoplay_judgements_and_keeps_boundary_note() {
+    let mut chart = chart_with_keysound();
+    let mut boundary = chart.lane_notes[Lane::Key1.index()][0].clone();
+    boundary.id = NoteId(2);
+    boundary.tick = ChartTick(384);
+    boundary.time = TimeUs(2_000_000);
+    chart.lane_notes[Lane::Key1.index()].push(boundary);
+    chart.total_notes = 2;
+    chart.end_time = TimeUs(2_000_000);
+    let mut session = session_with_autoplay(chart);
+    prepare_viewer_seek(&mut session, TimeUs(2_000_000));
+    session.audio_clock =
+        AudioClock::with_position(48_000, 0, 2_000_000, Arc::new(AtomicU64::new(0)), true);
+    let mut audio = TestAudio::default();
+
+    let frame = advance_session_frame(&mut session, &mut audio);
+
+    assert_eq!(frame.judgements.len(), 1);
+    assert_eq!(frame.judgements[0].note_id, Some(NoteId(2)));
+    assert_eq!(session.score.past_notes, 1);
+}
+
+#[test]
 fn bgm_scheduler_viewer_seek_carries_only_live_latest_bgm_voices() {
     let mut chart = chart_with_bgm();
     chart.bgm_events = vec![

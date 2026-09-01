@@ -193,6 +193,7 @@ impl RunningPlaySession {
     }
 
     pub fn start_viewer_seek(&mut self, chart_zero_time: TimeUs) -> Result<usize> {
+        bmz_gameplay::session::prepare_viewer_seek(&mut self.session, chart_zero_time);
         self.start(chart_zero_time)?;
         let bgm_volume = self.session.audio_mix.master_volume
             * self.session.audio_mix.effective_normalization_gain()
@@ -207,10 +208,9 @@ impl RunningPlaySession {
             );
         self.session.bgm_scheduler = scheduler;
         let carryover_count = carryover.len();
-        if !self.audio.engine.schedule_all(carryover) {
-            tracing::warn!(
-                carryover_count,
-                "viewer seek BGM carryover was dropped by the audio command queue"
+        if !self.audio.engine.replace_playback(carryover) {
+            bail!(
+                "viewer seek audio replacement was dropped ({carryover_count} carry-over voices)"
             );
         }
         Ok(carryover_count)

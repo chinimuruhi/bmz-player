@@ -90,6 +90,10 @@ impl ScheduledSoundQueue {
         self.sounds.is_empty()
     }
 
+    pub fn clear(&mut self) {
+        self.sounds.clear();
+    }
+
     /// 述語が `true` を返すスケジュール音だけを保持する。`stop_sound` 等で使う。
     pub fn retain(&mut self, mut keep: impl FnMut(&ScheduledSound) -> bool) {
         self.sounds.retain(|sound| keep(sound));
