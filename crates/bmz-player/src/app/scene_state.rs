@@ -8,6 +8,13 @@ impl WinitApp {
         if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
             return AppViewState::Play;
         }
+        if viewer_wait_uses_play_scene(
+            self.viewer_mode,
+            self.viewer_waiting,
+            self.play.last_play_snapshot.is_some(),
+        ) {
+            return AppViewState::Play;
+        }
 
         if self.result.finished_course.is_some() || self.result.finished_play.is_some() {
             return AppViewState::Result;
@@ -21,6 +28,13 @@ impl WinitApp {
             return AppSceneKind::Decide;
         }
         if self.play.active_play.is_some() || self.play.pending_play_start.is_some() {
+            return AppSceneKind::Play;
+        }
+        if viewer_wait_uses_play_scene(
+            self.viewer_mode,
+            self.viewer_waiting,
+            self.play.last_play_snapshot.is_some(),
+        ) {
             return AppSceneKind::Play;
         }
         if self.result.finished_course.is_some() || self.result.finished_play.is_some() {
@@ -518,6 +532,14 @@ impl WinitApp {
         snapshot.table_text_secondary = self.play.play_table_text_secondary.clone();
         snapshot.table_text_fallback = self.play.play_table_text_fallback.clone();
     }
+}
+
+pub(super) const fn viewer_wait_uses_play_scene(
+    viewer_mode: bool,
+    viewer_waiting: bool,
+    has_play_snapshot: bool,
+) -> bool {
+    viewer_mode && viewer_waiting && has_play_snapshot
 }
 
 pub(super) const fn playback_overlay_suffix(

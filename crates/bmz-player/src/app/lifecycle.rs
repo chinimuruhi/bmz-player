@@ -263,6 +263,13 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 if !self.begin_scheduled_frame(event_loop) {
                     return;
                 }
+                // 通常起動は最初の Select 描画後に direct boot するが、Viewer は
+                // 初回 surface frame から Play を描く。system sound を待たず、
+                // window/surface 準備直後に audio と preload を開始する。
+                if !self.first_frame_startup_completed && self.viewer_mode {
+                    self.ensure_audio_output();
+                    self.start_deferred_boot();
+                }
                 let pacing_timings = self.frame.current_pacing_timings();
                 let limit_us = instant_elapsed_us_u64(limit_start);
                 let redraw_started_at = Instant::now();

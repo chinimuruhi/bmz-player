@@ -1,5 +1,7 @@
 use super::*;
-use crate::app::result_flow_ending::{FinishedPlayAction, finished_play_action};
+use crate::app::result_flow_ending::{
+    FinishedPlayAction, finished_play_action, play_ending_completion,
+};
 use crate::app::result_flow_timing::{
     play_fadeout_duration_for_skin, practice_play_fadeout_duration_for_skin,
 };
@@ -36,6 +38,13 @@ fn finished_play_action_distinguishes_viewer_wait_and_explicit_exit() {
     assert_eq!(finished_play_action(false, true, false), FinishedPlayAction::Exit);
     assert_eq!(finished_play_action(false, false, false), FinishedPlayAction::ShowResult);
     assert_eq!(finished_play_action(true, true, true), FinishedPlayAction::ShowResult);
+}
+
+#[test]
+fn viewer_play_ending_freezes_play_instead_of_starting_result_fade() {
+    assert_eq!(play_ending_completion(true, false), PlayEndingCompletion::ViewerWait);
+    assert_eq!(play_ending_completion(true, true), PlayEndingCompletion::Result);
+    assert_eq!(play_ending_completion(false, false), PlayEndingCompletion::Result);
 }
 
 #[test]

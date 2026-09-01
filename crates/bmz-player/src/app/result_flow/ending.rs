@@ -5,6 +5,10 @@ impl WinitApp {
         let Some(ending) = &self.play.play_ending else {
             return;
         };
+        if ending.completion == PlayEndingCompletion::ViewerWait {
+            self.finish_play_ending();
+            return;
+        }
         if ending.failed {
             if ending.started_at.elapsed() >= self.play_close_duration() {
                 self.finish_play_ending();
@@ -45,6 +49,13 @@ impl WinitApp {
             return;
         };
         match ending.completion {
+            PlayEndingCompletion::ViewerWait => {
+                tracing::info!("viewer play finished; keeping Play scene for the next command");
+                drop(self.play.active_play.take());
+                self.stop_viewer_playback();
+                self.request_redraw();
+                return;
+            }
             PlayEndingCompletion::Select => {
                 tracing::info!("play fadeout before chart start completed; returning to select");
                 self.abort_pending_play_start();
@@ -136,12 +147,7 @@ impl WinitApp {
                 tracing::info!("viewer play finished; waiting for the next command");
                 drop(started);
                 drop(finished);
-                self.viewer_waiting = true;
-                self.stop_select_preview();
-                if let Some(manager) = &self.audio.system_sound {
-                    manager.stop_all_bgm();
-                }
-                self.leave_result();
+                self.stop_viewer_playback();
                 self.request_redraw();
                 return;
             }
@@ -363,5 +369,16 @@ pub(super) const fn finished_play_action(
         FinishedPlayAction::Exit
     } else {
         FinishedPlayAction::ShowResult
+    }
+}
+
+pub(super) const fn play_ending_completion(
+    viewer_mode: bool,
+    skip_result: bool,
+) -> PlayEndingCompletion {
+    if viewer_mode && !skip_result {
+        PlayEndingCompletion::ViewerWait
+    } else {
+        PlayEndingCompletion::Result
     }
 }

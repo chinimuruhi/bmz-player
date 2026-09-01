@@ -56,6 +56,7 @@ pub(super) struct PlayEndingTransition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PlayEndingCompletion {
     Result,
+    ViewerWait,
     Select,
     PracticeConfig,
     PracticeLeave,

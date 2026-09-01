@@ -14,6 +14,7 @@ impl WinitApp {
         raw_input_bridge: Option<crate::input::rawinput::RawInputBridge>,
     ) -> Result<Self> {
         let mut boot = boot;
+        let viewer_mode = options.viewer_play;
         if let Some(cli_renderer) = options.renderer.clone() {
             tracing::info!(?cli_renderer, "overriding renderer backend via CLI option");
             boot.app_config.video.renderer = cli_renderer;
@@ -21,8 +22,16 @@ impl WinitApp {
 
         // ネットワークへ出る前に、DBから必要なURLだけ選定しておく。実際の取得は
         // 最初の描画後に開始するため、初回起動でもウィンドウ表示を待たせない。
-        let startup_table_fetch_urls = startup_difficulty_table_fetch_urls_for_boot(&boot);
-        let startup_rival_sync = RianRivalSyncRequest::from_profile(&boot.profile_config);
+        let startup_table_fetch_urls = if viewer_mode {
+            Vec::new()
+        } else {
+            startup_difficulty_table_fetch_urls_for_boot(&boot)
+        };
+        let startup_rival_sync = if viewer_mode {
+            None
+        } else {
+            RianRivalSyncRequest::from_profile(&boot.profile_config)
+        };
 
         let folder_stack = initial_folder_stack(&boot.app_config);
         let initial_mode_filter =
@@ -31,19 +40,25 @@ impl WinitApp {
             &boot.profile_config.select.difficulty_filter,
         );
         let select_sort = SelectSort::from_str_or_default(&boot.profile_config.select.sort);
-        let (select_items, select_mode_filter) = load_items_for_stack(
-            &boot,
-            &folder_stack,
-            &[],
-            initial_mode_filter,
-            select_difficulty_filter,
-            select_sort,
-        );
+        let (select_items, select_mode_filter) = if viewer_mode {
+            (Vec::new(), initial_mode_filter)
+        } else {
+            load_items_for_stack(
+                &boot,
+                &folder_stack,
+                &[],
+                initial_mode_filter,
+                select_difficulty_filter,
+                select_sort,
+            )
+        };
         boot.profile_config.select.mode_filter = select_mode_filter.as_str().to_string();
-        if let Some(key_mode) = crate::app::select_flow_mode_config::select_item_play_mode(
-            select_items.first(),
-            select_mode_filter,
-        ) {
+        if !viewer_mode
+            && let Some(key_mode) = crate::app::select_flow_mode_config::select_item_play_mode(
+                select_items.first(),
+                select_mode_filter,
+            )
+        {
             boot.profile_config.activate_play_mode(key_mode);
         }
         let boot_chart_id = resolve_boot_chart_id(&boot.library_db, &options);
@@ -79,7 +94,8 @@ impl WinitApp {
         renderer.set_default_font_coverage(boot.profile_config.ui.locale().font_coverage());
         renderer
             .set_internal_resolution_mode(config_internal_resolution_mode(&boot.app_config.video));
-        let skin_catalog = scan_skin_catalog(&boot.app_paths);
+        let skin_catalog =
+            if viewer_mode { SkinCatalog::default() } else { scan_skin_catalog(&boot.app_paths) };
         let mut skin_pipeline = SkinPipelineRuntime::new();
         let (
             default_skin_manifest,
@@ -94,6 +110,7 @@ impl WinitApp {
             0,
             &boot.profile_config.display_name,
             &boot.profile_config.skin,
+            !viewer_mode,
             options.lua_skin_runtime_mode,
         );
         skin_pipeline.set_pending(SkinKind::Select, pending_select_skin);
@@ -127,52 +144,77 @@ impl WinitApp {
         //   セットを集め、その中からランダム選択する(beatoraja 互換)。選曲画面へ戻る
         //   ときはスキャン済み候補から再抽選する。
         // - 空なら scan を省略し、`default_sound_dir` だけにフォールバックする。
-        let system_sound_catalog = system_sound_catalog_from_boot(&boot);
+        let system_sound_catalog = if viewer_mode {
+            crate::system_sound::SoundSetCatalog::default()
+        } else {
+            system_sound_catalog_from_boot(&boot)
+        };
         let select_preview =
             system_audio.as_ref().map(|audio| SelectChartPreview::new(audio.engine()));
         let select_assets =
             SelectAssetRuntime::new(select_preview, boot.app_paths.library_db.clone());
         let audio_output_open_attempted = audio_runtime.is_some();
-        let player_stats = player_stats_snapshot(
-            &boot.score_db,
-            &boot.library_db,
-            boot.profile_config.statistics.day_start_hour,
-        );
-        let initial_result_skin_signature = result_skin_signature_for_config(
-            &boot.profile_config.skin,
-            ResultSkinSlot::Normal,
-            lua_runtime_state_with_mode(
-                lua_runtime_state_for_result(
-                    false,
-                    None,
-                    false,
-                    false,
-                    KeyMode::default(),
-                    BTreeMap::new(),
-                    &boot.profile_config.display_name,
+        let player_stats = if viewer_mode {
+            PlayerStatsSnapshot::default()
+        } else {
+            player_stats_snapshot(
+                &boot.score_db,
+                &boot.library_db,
+                boot.profile_config.statistics.day_start_hour,
+            )
+        };
+        let initial_result_skin_signature = (!viewer_mode).then(|| {
+            result_skin_signature_for_config(
+                &boot.profile_config.skin,
+                ResultSkinSlot::Normal,
+                lua_runtime_state_with_mode(
+                    lua_runtime_state_for_result(
+                        false,
+                        None,
+                        false,
+                        false,
+                        KeyMode::default(),
+                        BTreeMap::new(),
+                        &boot.profile_config.display_name,
+                    ),
+                    options.lua_skin_runtime_mode,
                 ),
-                options.lua_skin_runtime_mode,
-            ),
-        );
-        let difficulty_tables = match boot.library_db.list_difficulty_tables() {
-            Ok(tables) => tables,
-            Err(error) => {
-                tracing::warn!(%error, "failed to list difficulty tables for egui");
-                Vec::new()
+            )
+        });
+        let difficulty_tables = if viewer_mode {
+            Vec::new()
+        } else {
+            match boot.library_db.list_difficulty_tables() {
+                Ok(tables) => tables,
+                Err(error) => {
+                    tracing::warn!(%error, "failed to list difficulty tables for egui");
+                    Vec::new()
+                }
             }
         };
         let select_folder_summary_ln_policy = boot.profile_config.play.ln_mode_policy;
         let select_folder_summary_rule_mode = boot.profile_config.play.rule_mode;
-        let select_folder_summaries = SelectFolderSummaryRuntime::new(
-            boot.app_paths.library_db.clone(),
-            boot.profile_paths.score_db.clone(),
-            &folder_stack,
-            select_folder_summary_ln_policy,
-            select_folder_summary_rule_mode,
-        )?;
-        let rian_table_identity = RianTableIdentity::from_ir_config(&boot.profile_config.ir);
+        let select_folder_summaries = if viewer_mode {
+            SelectFolderSummaryRuntime::disabled(
+                &folder_stack,
+                select_folder_summary_ln_policy,
+                select_folder_summary_rule_mode,
+            )
+        } else {
+            SelectFolderSummaryRuntime::new(
+                boot.app_paths.library_db.clone(),
+                boot.profile_paths.score_db.clone(),
+                &folder_stack,
+                select_folder_summary_ln_policy,
+                select_folder_summary_rule_mode,
+            )?
+        };
+        let rian_table_identity = (!viewer_mode)
+            .then(|| RianTableIdentity::from_ir_config(&boot.profile_config.ir))
+            .flatten();
         let table_fetch = TableFetchRuntime::new(startup_table_fetch_urls, rian_table_identity);
-        let queued_update_check = (boot.app_config.updates.enabled
+        let queued_update_check = (!viewer_mode
+            && boot.app_config.updates.enabled
             && boot.app_config.updates.check_on_startup)
             .then_some(("startup update check", false));
 
@@ -322,7 +364,7 @@ impl WinitApp {
                 update_dismissed_session_version: None,
                 startup_rival_sync,
                 pending_rival_sync: None,
-                startup_course_link_repair: true,
+                startup_course_link_repair: !viewer_mode,
                 pending_course_link_repair: None,
                 maintenance_select_tx,
             },
@@ -358,7 +400,7 @@ impl WinitApp {
                 skin_video_sources: initial_skin_video_sources,
                 pending_skin_render_probe: None,
                 last_play_skin_signature: None,
-                last_result_skin_signature: Some(initial_result_skin_signature),
+                last_result_skin_signature: initial_result_skin_signature,
             },
             audio: AppAudioRuntimeState {
                 draining_audio: None,
@@ -399,7 +441,7 @@ impl WinitApp {
             app.result.result_key7_held = false;
             app.result.result_scene_started_at = Instant::now();
         }
-        if app.audio.system_audio.is_some() {
+        if app.audio.system_audio.is_some() && !app.viewer_mode {
             app.start_system_sound_load();
         }
         app.sync_discord_presence_config();

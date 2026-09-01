@@ -493,6 +493,16 @@ fn window_title_uses_scene_name() {
 }
 
 #[test]
+fn viewer_wait_keeps_the_last_play_snapshot_as_the_active_scene() {
+    use crate::app::scene_state::viewer_wait_uses_play_scene;
+
+    assert!(viewer_wait_uses_play_scene(true, true, true));
+    assert!(!viewer_wait_uses_play_scene(true, true, false));
+    assert!(!viewer_wait_uses_play_scene(true, false, true));
+    assert!(!viewer_wait_uses_play_scene(false, true, true));
+}
+
+#[test]
 fn deferred_boot_action_keeps_practice_boot_after_window_init() {
     let mut options = AppOptions {
         boot_practice: true,

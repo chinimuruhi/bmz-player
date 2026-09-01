@@ -5,6 +5,10 @@ impl WinitApp {
         self.reset_viewer_playback();
         self.select.session_mode = SessionMode::Autoplay;
         self.viewer_waiting = true;
+        if let Some(snapshot) = &mut self.play.last_play_snapshot {
+            // 通常の Result 遷移用 fade を解除し、最終 Play frame を待機画面にする。
+            snapshot.fadeout_elapsed_ms = None;
+        }
     }
 
     pub(super) fn play_viewer_chart(&mut self, path: &Path, measure: u32) -> Result<()> {
@@ -65,7 +69,5 @@ impl WinitApp {
         self.abort_pending_play_start();
         self.audio.draining_audio = None;
         self.play.play_media_cache = None;
-        self.play.last_play_snapshot = None;
-        self.clear_play_meta_image_state();
     }
 }

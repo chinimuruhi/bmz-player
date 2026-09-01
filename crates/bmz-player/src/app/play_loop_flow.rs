@@ -234,7 +234,10 @@ impl WinitApp {
                     music_end_started_at: (!failed).then_some(now),
                     fadeout_started_at: None,
                     failed,
-                    completion: PlayEndingCompletion::Result,
+                    completion: crate::app::result_flow_ending::play_ending_completion(
+                        self.viewer_mode,
+                        self.skip_result,
+                    ),
                     full_combo_elapsed_at_finish_ms,
                     finished: early_finished,
                 });
