@@ -119,6 +119,14 @@ pub fn bootstrap_with_paths(app_paths: AppPaths) -> Result<BootstrappedApp> {
     bootstrap_with_paths_mode(app_paths, true, None)
 }
 
+/// `active_profile`を書き換えず、指定profileで通常起動する。
+pub fn bootstrap_with_paths_profile(
+    app_paths: AppPaths,
+    profile_id: Option<&str>,
+) -> Result<BootstrappedApp> {
+    bootstrap_with_paths_mode(app_paths, true, profile_id)
+}
+
 pub fn bootstrap_viewer_with_paths(
     mut app_paths: AppPaths,
     chart_path: &Path,

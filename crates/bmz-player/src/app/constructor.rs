@@ -65,11 +65,14 @@ impl WinitApp {
         log_startup_options(&options);
 
         let session_mode = initial_session_mode(
-            viewer_mode,
-            options.viewer_battle,
+            options.battle_on_start,
             options.autoplay_on_start,
-            session_mode_from_profile(&boot.profile_config.play),
+            options.boot_practice,
         );
+        // CLIでmodeを指定しない起動は常にNormalとし、保存済みの旧auto_play値が
+        // session構築時に再びautoplayを有効化しないようprocess内設定も同期する。
+        boot.profile_config.play.session_mode = Some(session_mode);
+        boot.profile_config.play.auto_play = session_mode.primary_autoplay();
         let selected_replay_slot =
             select_items.first().and_then(crate::app::play_flow_replay::first_replay_slot_for_item);
         let gauge_option = if boot.profile_config.play.gauge == GaugeTypeConfig::AutoShift {
@@ -455,16 +458,19 @@ impl WinitApp {
 }
 
 pub(super) const fn initial_session_mode(
-    viewer_mode: bool,
-    viewer_battle: bool,
+    battle_on_start: bool,
     autoplay_on_start: bool,
-    configured: SessionMode,
+    practice_on_start: bool,
 ) -> SessionMode {
-    if viewer_mode && viewer_battle {
+    if battle_on_start && autoplay_on_start {
         SessionMode::AutoplayBattle
+    } else if battle_on_start {
+        SessionMode::GBattle
+    } else if practice_on_start {
+        SessionMode::Practice
     } else if autoplay_on_start {
         SessionMode::Autoplay
     } else {
-        configured
+        SessionMode::Normal
     }
 }

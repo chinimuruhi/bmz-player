@@ -517,18 +517,14 @@ fn viewer_shutdown_completes_and_retains_the_faded_play_snapshot() {
 }
 
 #[test]
-fn viewer_battle_starts_in_autoplay_battle_without_affecting_normal_boot() {
+fn cli_mode_flags_resolve_without_using_the_profile_default() {
     use crate::app::constructor::initial_session_mode;
 
-    assert_eq!(
-        initial_session_mode(true, true, true, SessionMode::Normal),
-        SessionMode::AutoplayBattle
-    );
-    assert_eq!(initial_session_mode(true, false, true, SessionMode::Normal), SessionMode::Autoplay);
-    assert_eq!(
-        initial_session_mode(false, false, false, SessionMode::GBattle),
-        SessionMode::GBattle
-    );
+    assert_eq!(initial_session_mode(true, true, false), SessionMode::AutoplayBattle);
+    assert_eq!(initial_session_mode(true, false, false), SessionMode::GBattle);
+    assert_eq!(initial_session_mode(false, true, false), SessionMode::Autoplay);
+    assert_eq!(initial_session_mode(false, false, true), SessionMode::Practice);
+    assert_eq!(initial_session_mode(false, false, false), SessionMode::Normal);
 }
 
 #[test]

@@ -55,7 +55,7 @@ use crate::cli::{
     AUTOPLAY_ON_START_ARG, AppOptions, BOOT_RESULT_SAMPLE_ARG, LUA_SKIN_RUNTIME_ARG,
     SMOKE_EXIT_AFTER_FRAMES_ARG, SMOKE_EXIT_AFTER_PLAY_FRAMES_ARG,
     SMOKE_EXIT_AFTER_RESULT_FRAMES_ARG, SMOKE_EXIT_ON_RESULT_ARG, SMOKE_SCREENSHOT_ARG,
-    VIEWER_BATTLE_ARG, VIEWER_PROFILE_ARG,
+    VIEWER_BATTLE_ARG,
 };
 use crate::config::app_config::{
     AppConfig, GamepadBackendKind, GlobalInputConfig, InputBackendKind,
@@ -416,9 +416,18 @@ pub async fn run_with_options_and_log_buffer(
 }
 
 pub async fn run_with_options_log_buffer_and_paths(
+    options: AppOptions,
+    log_buffer: LogBuffer,
+    app_paths: AppPaths,
+) -> Result<()> {
+    run_with_options_log_buffer_paths_and_profile(options, log_buffer, app_paths, None).await
+}
+
+pub async fn run_with_options_log_buffer_paths_and_profile(
     mut options: AppOptions,
     log_buffer: LogBuffer,
     app_paths: AppPaths,
+    profile_id: Option<&str>,
 ) -> Result<()> {
     let startup_started_at = Instant::now();
     let (mut boot, viewer_cleanup) = if options.viewer_play {
@@ -433,7 +442,7 @@ pub async fn run_with_options_log_buffer_and_paths(
             path,
             options.start_measure.unwrap_or(0),
             bms_random_seed,
-            options.profile_id.as_deref(),
+            profile_id,
         )?;
         options.boot_play_path = Some(viewer.chart_path.to_string_lossy().into_owned());
         options.boot_start_time_us = Some(viewer.start_time.0);
@@ -446,7 +455,7 @@ pub async fn run_with_options_log_buffer_and_paths(
         );
         (viewer.app, Some(viewer.cleanup))
     } else {
-        (bootstrap::bootstrap_with_paths(app_paths)?, None)
+        (bootstrap::bootstrap_with_paths_profile(app_paths, profile_id)?, None)
     };
     prepare_boot_chart_options(&mut boot, &mut options)?;
     tracing::info!(

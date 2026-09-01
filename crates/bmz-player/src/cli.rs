@@ -41,11 +41,11 @@ mod parse;
 use help::parse_beatoraja_replay_flag;
 pub use help::{app_help_text, args_request_help};
 pub use model::{
-    Command, CourseCommand, IrCommand, ProfileCommand, ReplayCommand, RivalAction, SongsCommand,
-    TableCommand,
+    Command, CourseCommand, IrCommand, ParsedCommand, ProfileCommand, ReplayCommand, RivalAction,
+    SongsCommand, TableCommand,
 };
 pub use options::AppOptions;
-pub use parse::parse_command;
+pub use parse::{parse_cli_command, parse_command};
 
 #[cfg(test)]
 #[path = "cli/tests.rs"]

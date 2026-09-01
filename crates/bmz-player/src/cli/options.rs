@@ -8,10 +8,8 @@ pub struct AppOptions {
     pub autoplay_on_start: bool,
     /// uBMplay 互換の外部ビューワー起動 (`-P`)。
     pub viewer_play: bool,
-    /// Viewerの5K/7KをAutoplay Battleとして起動し、battle skinを使用する。
-    pub viewer_battle: bool,
-    /// `active_profile`を書き換えず、Viewerプロセスだけで使用するprofile id。
-    pub profile_id: Option<String>,
+    /// 5K/7Kをbattle skinで起動する (`-B`)。
+    pub battle_on_start: bool,
     /// 起動済みの外部ビューワーを停止する (`-S`)。
     pub viewer_stop: bool,
     /// uBMplay 互換の開始小節 (`-N0`, `-N 0`)。
@@ -57,7 +55,18 @@ impl AppOptions {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
+        Ok(Self::parse_args_with_warnings(args)?.0)
+    }
+
+    pub(crate) fn parse_args_with_warnings<I, S>(args: I) -> Result<(Self, Vec<String>)>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
         let mut options = Self::default();
+        let mut mode = CliModeSelection::default();
+        let mut warnings = Vec::new();
+        let mut explicit_skip_decide = false;
         let mut args = args.into_iter().peekable();
 
         while let Some(arg) = args.next() {
@@ -86,7 +95,7 @@ impl AppOptions {
                 continue;
             }
             if let Some(value) = arg.strip_prefix("--boot-replay=") {
-                options.boot_replay_slot = Some(parse_boot_replay_slot(value)?);
+                mode.select_replay(parse_boot_replay_slot(value)?, arg, &mut warnings);
                 continue;
             }
             if let Some(value) = arg.strip_prefix("--boot-course-replay=") {
@@ -117,10 +126,6 @@ impl AppOptions {
                 options.start_measure = Some(parse_start_measure(value)?);
                 continue;
             }
-            if let Some(value) = arg.strip_prefix("--profile=") {
-                options.profile_id = Some(parse_viewer_profile_id(value)?);
-                continue;
-            }
             if let Some(value) = arg.strip_prefix(START_MEASURE_SHORT_ARG)
                 && !value.is_empty()
             {
@@ -131,21 +136,17 @@ impl AppOptions {
             match arg {
                 BOOT_PLAY_SAMPLE_ARG => options.boot_play_sample = true,
                 BOOT_RESULT_SAMPLE_ARG => options.boot_result_sample = true,
-                AUTOPLAY_ON_START_ARG | AUTOPLAY_SHORT_ARG => options.autoplay_on_start = true,
-                VIEWER_PLAY_ARG | VIEWER_PLAY_SHORT_ARG => {
-                    options.viewer_play = true;
-                    options.autoplay_on_start = true;
-                    options.skip_decide = true;
+                AUTOPLAY_ON_START_ARG | AUTOPLAY_SHORT_ARG => {
+                    mode.select_autoplay(arg, &mut warnings)
                 }
-                VIEWER_BATTLE_ARG | VIEWER_BATTLE_SHORT_ARG => options.viewer_battle = true,
-                VIEWER_PROFILE_ARG => {
-                    let Some(value) = args.next() else {
-                        bail!("{VIEWER_PROFILE_ARG} requires a profile id");
-                    };
-                    options.profile_id = Some(parse_viewer_profile_id(value.as_ref())?);
+                VIEWER_PLAY_ARG | VIEWER_PLAY_SHORT_ARG => {
+                    mode.select_viewer(arg, &mut warnings);
+                }
+                VIEWER_BATTLE_ARG | VIEWER_BATTLE_SHORT_ARG => {
+                    mode.select_battle(arg, &mut warnings)
                 }
                 VIEWER_STOP_ARG | VIEWER_STOP_SHORT_ARG => options.viewer_stop = true,
-                SKIP_DECIDE_ARG => options.skip_decide = true,
+                SKIP_DECIDE_ARG => explicit_skip_decide = true,
                 SKIP_RESULT_ARG => options.skip_result = true,
                 START_MEASURE_ARG | START_MEASURE_SHORT_ARG => {
                     let Some(value) = args.next() else {
@@ -194,7 +195,7 @@ impl AppOptions {
                     let Some(value) = args.next() else {
                         bail!("{BOOT_REPLAY_ARG} requires a slot number (1..4)");
                     };
-                    options.boot_replay_slot = Some(parse_boot_replay_slot(value.as_ref())?);
+                    mode.select_replay(parse_boot_replay_slot(value.as_ref())?, arg, &mut warnings);
                 }
                 BOOT_COURSE_REPLAY_ARG => {
                     let Some(value) = args.next() else {
@@ -215,7 +216,7 @@ impl AppOptions {
                     };
                     options.renderer = Some(parse_renderer_backend(value.as_ref())?);
                 }
-                PRACTICE_SHORT_ARG | PRACTICE_ARG => options.boot_practice = true,
+                PRACTICE_SHORT_ARG | PRACTICE_ARG => mode.select_practice(arg, &mut warnings),
                 PRACTICE_START_MS_ARG => {
                     let Some(value) = args.next() else {
                         bail!("{PRACTICE_START_MS_ARG} requires milliseconds");
@@ -237,42 +238,148 @@ impl AppOptions {
                     options.lua_skin_runtime_mode = parse_lua_skin_runtime_mode(value.as_ref())?;
                 }
                 _ if let Some(slot) = parse_beatoraja_replay_flag(arg) => {
-                    options.boot_replay_slot = Some(slot);
+                    mode.select_replay(slot, arg, &mut warnings);
                 }
                 _ if arg.starts_with('-') => bail!("unknown argument: {arg}"),
                 _ => options.boot_play_path = Some(arg.to_string()),
             }
         }
 
+        mode.apply(&mut options);
+        options.skip_decide = explicit_skip_decide || options.viewer_play;
+
+        if options.start_measure.is_some() && !options.viewer_play {
+            warnings.push(format!(
+                "{START_MEASURE_SHORT_ARG} is only valid in viewer mode; ignoring the start measure"
+            ));
+            options.start_measure = None;
+        } else if options.start_measure.is_some() && options.boot_replay_slot.is_some() {
+            warnings.push(format!(
+                "{START_MEASURE_SHORT_ARG} is not applied to replay playback; ignoring the start measure"
+            ));
+            options.start_measure = None;
+        }
+        if options.viewer_play && options.boot_play_path.is_none() && !options.viewer_stop {
+            bail!("{VIEWER_PLAY_SHORT_ARG} requires a chart path");
+        }
         if options.viewer_stop
             && (options.viewer_play
                 || options.boot_play_path.is_some()
-                || options.start_measure.is_some())
+                || options.start_measure.is_some()
+                || options.autoplay_on_start
+                || options.battle_on_start
+                || options.boot_practice
+                || options.boot_replay_slot.is_some())
         {
-            bail!("{VIEWER_STOP_SHORT_ARG} cannot be combined with viewer play arguments");
-        }
-        if options.viewer_play && options.boot_play_path.is_none() {
-            bail!("{VIEWER_PLAY_SHORT_ARG} requires a chart path");
-        }
-        if options.viewer_battle && !options.viewer_play {
-            bail!("{VIEWER_BATTLE_SHORT_ARG} requires {VIEWER_PLAY_SHORT_ARG}");
-        }
-        if options.profile_id.is_some() && !options.viewer_play {
-            bail!("{VIEWER_PROFILE_ARG} requires {VIEWER_PLAY_SHORT_ARG}");
+            warnings.push(format!(
+                "{VIEWER_STOP_SHORT_ARG} ignores all playback options and only stops the active viewer"
+            ));
         }
 
-        Ok(options)
+        Ok((options, warnings))
     }
 
     /// profileはプロセス単位で読み込むため、明示指定時は既存Viewerへ転送しない。
-    pub fn requires_fresh_viewer_process(&self) -> bool {
-        self.skip_result || self.profile_id.is_some()
+    pub fn requires_fresh_viewer_process(&self, profile_override: bool) -> bool {
+        self.skip_result || profile_override
     }
 }
 
-fn parse_viewer_profile_id(value: &str) -> Result<String> {
-    crate::paths::validate_profile_id(value)?;
-    Ok(value.to_string())
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum CliPrimaryMode {
+    #[default]
+    Normal,
+    Autoplay,
+    Practice,
+    Replay(u8),
+}
+
+#[derive(Debug, Default)]
+struct CliModeSelection {
+    primary: CliPrimaryMode,
+    primary_arg: Option<String>,
+    viewer: bool,
+    viewer_arg: Option<String>,
+    battle: bool,
+    battle_arg: Option<String>,
+}
+
+impl CliModeSelection {
+    fn select_autoplay(&mut self, arg: &str, warnings: &mut Vec<String>) {
+        if matches!(self.primary, CliPrimaryMode::Practice | CliPrimaryMode::Replay(_)) {
+            warn_override(warnings, arg, self.primary_arg.as_deref());
+        }
+        self.primary = CliPrimaryMode::Autoplay;
+        self.primary_arg = Some(arg.to_string());
+    }
+
+    fn select_practice(&mut self, arg: &str, warnings: &mut Vec<String>) {
+        if !matches!(self.primary, CliPrimaryMode::Normal | CliPrimaryMode::Practice) {
+            warn_override(warnings, arg, self.primary_arg.as_deref());
+        }
+        if self.viewer {
+            warn_override(warnings, arg, self.viewer_arg.as_deref());
+        }
+        if self.battle {
+            warn_override(warnings, arg, self.battle_arg.as_deref());
+        }
+        self.primary = CliPrimaryMode::Practice;
+        self.primary_arg = Some(arg.to_string());
+        self.viewer = false;
+        self.viewer_arg = None;
+        self.battle = false;
+        self.battle_arg = None;
+    }
+
+    fn select_replay(&mut self, slot: u8, arg: &str, warnings: &mut Vec<String>) {
+        if !matches!(self.primary, CliPrimaryMode::Normal) {
+            warn_override(warnings, arg, self.primary_arg.as_deref());
+        }
+        if self.battle {
+            warn_override(warnings, arg, self.battle_arg.as_deref());
+        }
+        self.primary = CliPrimaryMode::Replay(slot);
+        self.primary_arg = Some(arg.to_string());
+        self.battle = false;
+        self.battle_arg = None;
+    }
+
+    fn select_viewer(&mut self, arg: &str, warnings: &mut Vec<String>) {
+        if matches!(self.primary, CliPrimaryMode::Practice) {
+            warn_override(warnings, arg, self.primary_arg.as_deref());
+            self.primary = CliPrimaryMode::Normal;
+            self.primary_arg = None;
+        }
+        self.viewer = true;
+        self.viewer_arg = Some(arg.to_string());
+    }
+
+    fn select_battle(&mut self, arg: &str, warnings: &mut Vec<String>) {
+        if matches!(self.primary, CliPrimaryMode::Practice | CliPrimaryMode::Replay(_)) {
+            warn_override(warnings, arg, self.primary_arg.as_deref());
+            self.primary = CliPrimaryMode::Normal;
+            self.primary_arg = None;
+        }
+        self.battle = true;
+        self.battle_arg = Some(arg.to_string());
+    }
+
+    fn apply(self, options: &mut AppOptions) {
+        options.viewer_play = self.viewer;
+        options.battle_on_start = self.battle;
+        options.autoplay_on_start = self.viewer || self.primary == CliPrimaryMode::Autoplay;
+        options.boot_practice = self.primary == CliPrimaryMode::Practice;
+        options.boot_replay_slot = match self.primary {
+            CliPrimaryMode::Replay(slot) => Some(slot),
+            _ => None,
+        };
+    }
+}
+
+fn warn_override(warnings: &mut Vec<String>, winner: &str, loser: Option<&str>) {
+    if let Some(loser) = loser {
+        warnings.push(format!("{winner} overrides incompatible {loser}; ignoring {loser}"));
+    }
 }
 use super::help::{
     parse_beatoraja_replay_flag, parse_boot_course_id, parse_boot_course_replay_id,
