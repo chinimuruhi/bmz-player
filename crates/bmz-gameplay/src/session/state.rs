@@ -520,6 +520,7 @@ impl AutoKeysoundScheduler {
                 for sound_id in note.sounds() {
                     audio.schedule(ScheduledSound {
                         start_frame: clock.time_to_output_frame(note.time),
+                        sample_offset_frames: 0,
                         sound_id,
                         volume: (volume * chart_volume).clamp(0.0, 1.0),
                         pan: 0.0,
