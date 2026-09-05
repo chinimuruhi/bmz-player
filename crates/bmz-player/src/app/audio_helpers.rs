@@ -14,8 +14,11 @@ pub(super) fn should_bypass_analog_scratch_bounce(
         .is_some_and(|binding| matches!(binding.lane, Lane::Scratch | Lane::Scratch2))
 }
 
-pub(super) fn should_play_select_bgm_on_enter(select_preview_playing: bool) -> bool {
-    !select_preview_playing
+pub(super) fn should_play_select_bgm_on_enter(
+    select_preview_playing: bool,
+    system_sound_load_pending: bool,
+) -> bool {
+    !select_preview_playing && !system_sound_load_pending
 }
 
 pub(super) fn should_shuffle_system_sound_sets_on_scene_enter(
@@ -266,20 +269,16 @@ pub(super) fn system_sound_catalog_from_boot(
     }
 }
 
-pub(super) fn system_sound_manager_from_catalog(
+pub(super) fn system_sound_selection_from_catalog(
     catalog: &crate::system_sound::SoundSetCatalog,
-    audio: &crate::audio::SystemAudio,
-    normalize_bgm_volume: bool,
-) -> crate::system_sound_manager::SystemSoundManager {
+) -> crate::system_sound::SoundSetSelection {
     let selection = catalog.select_random();
     tracing::info!(
         bgm_dir = ?selection.bgm_dir,
         se_dir = ?selection.se_dir,
         "selected system sound sets"
     );
-    let manager = crate::system_sound_manager::SystemSoundManager::new(audio.engine(), &selection);
-    manager.set_bgm_normalization_enabled(normalize_bgm_volume);
-    manager
+    selection
 }
 
 pub(super) fn system_sound_volume_from_mix(

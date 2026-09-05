@@ -13,6 +13,10 @@ pub struct SkinDrawState {
     pub logical_input_held: [bool; SKIN_BMZ_INPUT_COUNT],
     /// Elapsed milliseconds since the latest aggregate false-to-true press edge.
     pub logical_input_press_ms: [Option<i32>; SKIN_BMZ_INPUT_COUNT],
+    /// E1/E2 aggregate timer while either input remains held.
+    pub e1_e2_press_ms: Option<i32>,
+    /// E1/E2 aggregate timer after the last held input is released.
+    pub e1_e2_release_ms: Option<i32>,
     /// beatoraja TIMER_STARTINPUT (1)。skin.input 待機後からの経過 ms。
     pub start_input_ms: Option<i32>,
     /// beatoraja NUMBER_CURRENT_FPS (20)。
@@ -159,9 +163,15 @@ pub struct SkinDrawState {
     pub skin_offsets: SkinOffsetValues,
     /// 現在のハイスピード倍率 (NUMBER_HISPEED=310, NUMBER_HISPEED_AFTERDOT=311 に使用)。
     pub hispeed: f32,
-    /// BMZ extension: current hispeed mode. 0=NHS, 1=FHS.
+    /// BMZ extension: current hispeed mode. 0=base, 1=Floating.
     pub hispeed_mode_index: i32,
-    /// BMZ extension: target green number used by FHS.
+    /// BMZ extension: configured base hispeed. 0=Classic, 1=Normal.
+    pub base_hispeed_index: i32,
+    /// BMZ extension: selected Normal hispeed level (1..=20).
+    pub normal_hispeed_level: u8,
+    /// BMZ extension: five-choice hispeed configuration index.
+    pub hispeed_config_index: i32,
+    /// BMZ extension: target green number used by Floating.
     pub target_green_number: u32,
     /// 曲残り時間 ms (NUMBER_TIMELEFT_MINUTE=163, NUMBER_TIMELEFT_SECOND=164 に使用)。
     pub timeleft_ms: i32,
@@ -436,6 +446,8 @@ impl Default for SkinDrawState {
             runtime_flags: HashMap::new(),
             logical_input_held: [false; SKIN_BMZ_INPUT_COUNT],
             logical_input_press_ms: [None; SKIN_BMZ_INPUT_COUNT],
+            e1_e2_press_ms: None,
+            e1_e2_release_ms: None,
             start_input_ms: None,
             current_fps: 0,
             operating_time_ms: 0,
@@ -534,6 +546,9 @@ impl Default for SkinDrawState {
             skin_offsets: SkinOffsetValues::default(),
             hispeed: 0.0,
             hispeed_mode_index: 0,
+            base_hispeed_index: 0,
+            normal_hispeed_level: 18,
+            hispeed_config_index: 4,
             target_green_number: 0,
             timeleft_ms: 0,
             total_duration_ms: 0,

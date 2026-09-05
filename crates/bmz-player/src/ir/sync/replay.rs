@@ -92,7 +92,10 @@ pub(super) fn replay_job_for_score(
     remote_score_id: &str,
     now: i64,
 ) -> Result<Option<NewIrScoreJob>> {
-    if job.kind != IrJobKind::Score || crate::ir::rian_ir::is_rian_ir_provider(&job.provider) {
+    if job.kind != IrJobKind::Score
+        || crate::ir::rian_ir::is_rian_ir_provider(&job.provider)
+        || crate::ir::bms_ir::is_bms_ir_provider(&job.provider)
+    {
         return Ok(None);
     }
     let payload: IrScoreSubmission =
@@ -125,6 +128,9 @@ pub(super) async fn submit_replay_job(
     local_score_id: i64,
     now: i64,
 ) -> Result<()> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR replay upload is not supported");
+    }
     let payload: IrReplayJobPayload =
         serde_json::from_str(payload_json).context("failed to parse stored IR replay payload")?;
     let replay_path = replay_path.with_context(|| {
@@ -163,11 +169,18 @@ pub(super) fn provider_config<'a>(
     crate::ir::provider_key::provider_config_for_key(ir_config, provider_key)
 }
 
+pub(super) fn score_submission_includes_ranking(ir_config: &IrConfig, provider_key: &str) -> bool {
+    crate::ir::provider_key::primary_provider_config(ir_config)
+        .and_then(crate::ir::provider_key::configured_provider_key)
+        .is_some_and(|primary_key| primary_key == provider_key)
+}
+
 pub(super) async fn submit_job_payload(
     profile_root: &Path,
     provider: &IrProviderConfig,
     payload_json: &str,
     now: i64,
+    include_ranking: bool,
 ) -> Result<(String, String)> {
     let mut payload: IrScoreSubmission =
         serde_json::from_str(payload_json).context("failed to parse stored IR payload")?;
@@ -177,24 +190,41 @@ pub(super) async fn submit_job_payload(
         .context("IR provider key is not set; log in again")?;
     let credentials =
         ensure_fresh_credentials(profile_root, provider_key, &provider.base_url, now).await?;
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        let client = crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?;
+        let outcome = client
+            .submit_score(
+                &payload,
+                &credentials.account_id,
+                &credentials.access_token,
+                include_ranking,
+            )
+            .await?;
+        return Ok((outcome.redacted_request_json, outcome.response_json));
+    }
     if crate::ir::rian_ir::is_rian_ir_config(provider) {
         let client = crate::ir::rian_ir::RianIrClient::new(&provider.base_url)?;
         let outcome = client
-            .submit_score(&payload, &credentials.account_id, &credentials.access_token)
+            .submit_score(
+                &payload,
+                &credentials.account_id,
+                &credentials.access_token,
+                include_ranking,
+            )
             .await?;
         return Ok((outcome.redacted_request_json, outcome.response_json));
     }
     let client = BmzOfficialIrClient::new(&provider.base_url, credentials.access_token)?;
     attach_evidence(profile_root, provider, &client, &mut payload).await;
     let request_json = serde_json::to_string(&payload)?;
-    let options = default_score_submit_options();
+    let options = score_submit_options(include_ranking);
     let response = client.submit_score(&payload, &options).await?;
     Ok((request_json, serde_json::to_string(&response)?))
 }
 
-pub(super) fn default_score_submit_options() -> IrSubmitOptions {
+pub(super) fn score_submit_options(include_ranking: bool) -> IrSubmitOptions {
     IrSubmitOptions {
-        ranking_scopes: vec![IrRankingScope::Global],
+        ranking_scopes: if include_ranking { vec![IrRankingScope::Global] } else { Vec::new() },
         ranking_limit: crate::ir::types::default_ranking_limit(),
     }
 }
@@ -203,6 +233,9 @@ pub(super) fn ensure_score_payload_allowed(
     provider: &IrProviderConfig,
     payload: &IrScoreSubmission,
 ) -> Result<()> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        return crate::ir::bms_ir::ensure_score_payload_supported(payload);
+    }
     if crate::ir::rian_ir::is_rian_ir_config(provider)
         && crate::ir::backfill::is_local_backfill_submission(payload)
     {

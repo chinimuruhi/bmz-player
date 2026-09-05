@@ -264,6 +264,71 @@ fn skin_document_resolves_gauge_nodes_into_parts() {
 }
 
 #[test]
+fn skin_gauge_expands_compact_node_layouts_like_beatoraja() {
+    let compact_to_logical: &[(usize, &[&[usize]])] = &[
+        (
+            4,
+            &[
+                &[0, 4, 6, 10, 12, 16, 18, 22, 24, 28, 30, 34],
+                &[1, 5, 7, 11, 13, 17, 19, 23, 25, 29, 31, 35],
+                &[2, 8, 14, 20, 26, 32],
+                &[3, 9, 15, 21, 27, 33],
+            ],
+        ),
+        (
+            8,
+            &[
+                &[12, 16, 18, 22],
+                &[13, 17, 19, 23],
+                &[14, 20],
+                &[15, 21],
+                &[0, 4, 6, 10, 24, 28, 30, 34],
+                &[1, 5, 7, 11, 25, 29, 31, 35],
+                &[2, 8, 26, 32],
+                &[3, 9, 27, 33],
+            ],
+        ),
+        (
+            12,
+            &[
+                &[12, 18],
+                &[13, 19],
+                &[14, 20],
+                &[15, 21],
+                &[0, 6, 24, 30],
+                &[1, 7, 25, 31],
+                &[2, 8, 26, 32],
+                &[3, 9, 27, 33],
+                &[16, 22],
+                &[17, 23],
+                &[4, 10, 28, 34],
+                &[5, 11, 29, 35],
+            ],
+        ),
+    ];
+
+    for &(node_count, groups) in compact_to_logical {
+        let mut expected = [usize::MAX; 36];
+        for (source_index, logical_indices) in groups.iter().enumerate() {
+            for &logical_index in *logical_indices {
+                expected[logical_index] = source_index;
+            }
+        }
+        for (logical_index, expected_source) in expected.into_iter().enumerate() {
+            assert_eq!(
+                skin_gauge_source_node_index(logical_index, node_count),
+                expected_source,
+                "node_count={node_count}, logical_index={logical_index}"
+            );
+        }
+    }
+
+    for logical_index in 0..36 {
+        assert_eq!(skin_gauge_source_node_index(logical_index, 36), logical_index);
+    }
+}
+
+#[test]
 fn skin_gauge_flickering_draws_normal_tip_overlay() {
     let mut document: SkinDocument = serde_json::from_str(
         r#"

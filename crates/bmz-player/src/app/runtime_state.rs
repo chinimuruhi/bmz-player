@@ -128,6 +128,8 @@ pub(super) struct PlayRuntimeState {
     pub(super) play_option_input: Option<PlayOptionInput>,
     pub(super) play_analog_scroll_buffer: i32,
     pub(super) play_analog_last_tick_at: Option<Instant>,
+    /// 現在のPlay入場で開始/READY演出を表示するかを表すapp側の表現状態。
+    pub(super) play_entry_presentation: PlayEntryPresentation,
     pub(super) play_scene_started_at: Instant,
     pub(super) play_ready_sound_started_at: Option<Instant>,
     /// READY 前に E1/E2 が最後に押されていた時刻。
@@ -145,6 +147,8 @@ pub(super) struct PlayRuntimeState {
     pub(super) play_backbmp_loaded: bool,
     /// プレイ中の Start キー直近の押下時刻。連続押し判定で使用。
     pub(super) last_play_start_press_at: Option<Instant>,
+    /// LIFT/HIDDEN+同時有効時に、SUDDEN+非表示中の変更対象を保持する。
+    pub(super) play_lane_target: PlayLaneTarget,
     /// Decide 中の E1 押下状態。E1+E2 キャンセルに使う。
     pub(super) decide_e1_held: bool,
     /// プレイ開始待ち/プレイ中の E1 押下状態。READY 前の緑数字表示にも使う。
@@ -244,6 +248,10 @@ pub(super) struct AppJobs {
     /// 起動時に1回だけ実行するrianIRライバル一覧同期。
     pub(super) startup_rival_sync: Option<RianRivalSyncRequest>,
     pub(super) pending_rival_sync: Option<Receiver<RianRivalSyncWorkerResult>>,
+    /// 0.3.0以前の全course link修復を初回描画後に一度だけ開始する。
+    pub(super) startup_course_link_repair: bool,
+    pub(super) pending_course_link_repair:
+        Option<Receiver<Result<crate::storage::migration::CourseLinkRepairRun>>>,
     /// worker群へ、Selectかつ直接起動待ちでない期間だけ実行許可を通知する。
     pub(super) maintenance_select_tx: tokio::sync::watch::Sender<bool>,
 }
@@ -270,6 +278,8 @@ pub(super) struct SmokeRuntime {
     pub(super) rendered_play_frames: u32,
     pub(super) rendered_result_frames: u32,
     pub(super) app_started_at: Instant,
+    pub(super) startup_started_at: Instant,
+    pub(super) first_present_logged: bool,
 }
 
 pub(super) struct SkinRuntimeState {
@@ -308,6 +318,10 @@ pub(super) struct AppAudioRuntimeState {
     /// `system_audio` が `None` の場合や、サウンドセット未指定の場合も `Some` で
     /// 構築されるが id_map が空なので各 play/stop は no-op になる。
     pub(super) system_sound: Option<crate::system_sound_manager::SystemSoundManager>,
+    /// decode / loudness解析中のシステム音セット。重いファイルI/Oをapp threadから外す。
+    pub(super) pending_system_sound: Option<PendingSystemSoundLoad>,
+    /// サウンドセット再抽選や設定変更で古いworker結果を破棄する世代番号。
+    pub(super) system_sound_generation: u64,
 }
 
 pub(super) struct UiRuntimeState {
@@ -319,6 +333,8 @@ pub(super) struct UiRuntimeState {
     /// 現在ウィンドウへ適用済みのウィンドウモード。
     /// config 側との差分検出でライブ反映の要否を判定する。
     pub(super) applied_window_mode: WindowMode,
+    /// 排他surface初期化失敗後、この起動セッションだけBorderlessを維持する。
+    pub(super) exclusive_fullscreen_fallback_active: bool,
     /// キーボード backend 変更後、次の about_to_wait で winit の
     /// DeviceEvent 購読を更新する。
     pub(super) device_events_reconfigure_pending: bool,

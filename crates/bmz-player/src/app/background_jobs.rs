@@ -376,6 +376,59 @@ impl WinitApp {
         self.spawn_table_fetches(vec![url], "table fetch".to_string());
     }
 
+    pub(super) fn start_startup_course_link_repair_after_first_frame(&mut self) {
+        if !self.select_maintenance_allowed()
+            || !self.jobs.startup_course_link_repair
+            || self.jobs.pending_course_link_repair.is_some()
+        {
+            return;
+        }
+        self.jobs.startup_course_link_repair = false;
+        let library_db_path = self.boot.app_paths.library_db.clone();
+        let (tx, rx) = mpsc::channel();
+        let event_proxy = self.event_proxy.clone();
+        match thread::Builder::new().name("course-link-repair".to_string()).spawn(move || {
+            let result =
+                crate::storage::migration::repair_course_entry_chart_links_once(&library_db_path);
+            let _ = tx.send(result);
+            let _ = event_proxy.send_event(AppUserEvent::CourseLinkRepair);
+        }) {
+            Ok(_) => {
+                self.jobs.pending_course_link_repair = Some(rx);
+                tracing::info!("started one-time course link repair worker");
+            }
+            Err(error) => {
+                tracing::warn!(%error, "failed to start course link repair worker");
+            }
+        }
+    }
+
+    pub(super) fn poll_pending_course_link_repair(&mut self) {
+        let Some(rx) = self.jobs.pending_course_link_repair.take() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(run)) => {
+                tracing::info!(
+                    already_completed = run.already_completed,
+                    scanned_entries = run.scanned_entries,
+                    repaired_entries = run.repaired_entries,
+                    "course link repair worker complete"
+                );
+            }
+            Ok(Err(error)) => {
+                tracing::warn!(%error, "course link repair worker failed");
+                // 次回起動ではmaintenance markerが無いため再試行される。
+            }
+            Err(mpsc::TryRecvError::Empty) => {
+                self.jobs.pending_course_link_repair = Some(rx);
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                tracing::warn!("course link repair worker disconnected");
+            }
+        }
+    }
+
     /// 起動直後の初回描画が完了してから、未取得の有効な表を取得する。
     pub(super) fn start_startup_table_fetch_after_first_frame(&mut self) {
         if !self.select_maintenance_allowed() {
@@ -419,6 +472,7 @@ impl WinitApp {
         let (tx, rx) = mpsc::channel();
         let event_proxy = self.event_proxy.clone();
         let worker_identity = identity.clone();
+        let worker_profile_root = self.boot.profile_paths.root_dir.clone();
         let mut maintenance_allowed = self.jobs.maintenance_select_tx.subscribe();
         thread::Builder::new()
             .name("rian-table-fetch".to_string())
@@ -439,6 +493,7 @@ impl WinitApp {
                             } => RianTableFetchOutcome::Paused,
                             result = crate::ir::table::fetch_account_tables(
                                 &worker_identity,
+                                &worker_profile_root,
                                 fetched_at,
                             ) => RianTableFetchOutcome::Completed(result),
                         }

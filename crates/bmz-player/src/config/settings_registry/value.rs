@@ -67,7 +67,6 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::DoubleOption => format_double_option(profile.play.double_option),
         SettingsEntryId::HsFix => format_hs_fix(profile.play.hs_fix),
         SettingsEntryId::Target => format_target(profile.play.target),
-        SettingsEntryId::LaneEffect => format_lane_effect(profile.play.lane_effect),
         SettingsEntryId::Assist => format_assist(profile.play.assist),
         SettingsEntryId::BgaMode => format_bga_mode(profile.play.bga),
         SettingsEntryId::BgaExpand => format_bga_expand(profile.play.bga_expand),
@@ -150,19 +149,31 @@ pub fn format_settings_value(profile: &ProfileConfig, id: SettingsEntryId) -> St
         SettingsEntryId::AssistLongNoteMarginRate => {
             format!("{}%", profile.play.assist.long_note_margin_rate)
         }
+        SettingsEntryId::NoteRetention => format_bool_on_off(profile.play.note_retention),
         SettingsEntryId::ShowLnTailCap => format_bool_on_off(profile.play.show_ln_tail_cap),
         SettingsEntryId::GuideSe => format_bool_on_off(profile.play.guide_se),
         SettingsEntryId::MisslayerDurationMs => {
             format!("{} ms", profile.play.misslayer_duration_ms)
         }
         SettingsEntryId::Hispeed => format!("{:.2}", profile.lane.hispeed),
-        SettingsEntryId::HispeedMode => format_hispeed_mode(profile.lane.hispeed_mode),
-        SettingsEntryId::HispeedStepNhs => format!("{:.2}", profile.lane.hispeed_step_nhs),
-        SettingsEntryId::HispeedStepFhs => format!("{:.2}", profile.lane.hispeed_step_fhs),
+        SettingsEntryId::HispeedMode => format_hispeed_mode(profile.lane.hispeed_config()),
+        SettingsEntryId::NormalHispeedLevel => {
+            format!("{}", profile.lane.normal_hispeed_level)
+        }
+        SettingsEntryId::ClassicHispeedStep => format!("{:.2}", profile.lane.classic_hispeed_step),
+        SettingsEntryId::FloatingHispeedStep => {
+            format!("{:.2}", profile.lane.floating_hispeed_step)
+        }
+        SettingsEntryId::SuddenEnabled => {
+            format_bool_on_off(profile.play.lane_effect.sudden_enabled())
+        }
         SettingsEntryId::Sudden => format_lane_unit(profile.lane.sudden),
         SettingsEntryId::LiftEnabled => format_bool_on_off(profile.lane.lift_enabled),
         SettingsEntryId::Lift => format_lane_unit(profile.lane.lift),
         SettingsEntryId::HispeedAutoAdjust => format_bool_on_off(profile.lane.hispeed_auto_adjust),
+        SettingsEntryId::HiddenEnabled => {
+            format_bool_on_off(profile.play.lane_effect.hidden_enabled())
+        }
         SettingsEntryId::Hidden => format_lane_unit(profile.lane.hidden),
         SettingsEntryId::TargetGreenNumber => format!("{}", profile.lane.target_green_number),
         SettingsEntryId::NoteDisplayDurationMs => {

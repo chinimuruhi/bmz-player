@@ -6,6 +6,7 @@ mod render;
 struct EguiProfileBefore {
     app_input: GlobalInputConfig,
     locale: crate::i18n::AppLocale,
+    random_select: bool,
     play: PlayDefaultsConfig,
     lane: LaneViewConfig,
     input: ProfileInputConfig,
@@ -183,6 +184,7 @@ impl WinitApp {
         let profile_before = EguiProfileBefore {
             app_input: self.boot.app_config.input.clone(),
             locale: self.boot.profile_config.ui.locale(),
+            random_select: self.boot.profile_config.select.random_select,
             play: self.boot.profile_config.play.clone(),
             lane: self.boot.profile_config.lane.clone(),
             input: self.boot.profile_config.input.clone(),
@@ -490,7 +492,12 @@ impl WinitApp {
                 course.ln_policy,
                 course.rule_mode.as_str()
             );
-            self.select.select_ir.update_course(&ir_config, &context, Some(course));
+            self.select.select_ir.update_course(
+                &ir_config,
+                &self.boot.profile_paths.root_dir,
+                &context,
+                Some(course),
+            );
             return;
         }
 
@@ -618,8 +625,11 @@ impl WinitApp {
     fn apply_egui_profile_changes(&mut self, before: &EguiProfileBefore) {
         let locale = self.boot.profile_config.ui.locale();
         self.renderer.set_default_font_coverage(locale.font_coverage());
-        if locale != before.locale {
+        let locale_changed = locale != before.locale;
+        if locale_changed {
             self.select.search.clear_message();
+        }
+        if locale_changed || before.random_select != self.boot.profile_config.select.random_select {
             self.reload_select_items();
         }
         self.sync_changed_select_play_options_from_profile(&before.play);
@@ -635,21 +645,47 @@ impl WinitApp {
             self.play.play_media_cache = None;
         }
         self.sync_changed_gamepad_analog_config_from_profile(&before.input);
-        if profile_lane_settings_changed(&before.lane, &self.boot.profile_config.lane) {
-            self.sync_active_play_lane_settings_from_profile(&before.lane);
+        if profile_lane_settings_changed(&before.lane, &self.boot.profile_config.lane)
+            || before.play.lane_effect != self.boot.profile_config.play.lane_effect
+        {
+            self.sync_active_play_lane_settings_from_profile(&before.lane, before.play.lane_effect);
         }
         self.sync_realtime_profile_settings();
         self.sync_discord_presence_config();
     }
 
     pub(super) fn apply_egui_video_config(&mut self, window: &Window) {
-        self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video));
-        self.renderer
-            .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video));
+        if let Err(error) =
+            self.renderer.set_present_mode(config_present_mode(&self.boot.app_config.video))
+        {
+            tracing::error!(
+                error = %format_error_chain(&error),
+                "failed to reconfigure renderer present mode"
+            );
+        }
+        if let Err(error) = self
+            .renderer
+            .set_frame_latency_mode(config_frame_latency_mode(&self.boot.app_config.video))
+        {
+            tracing::error!(
+                error = %format_error_chain(&error),
+                "failed to reconfigure renderer frame latency"
+            );
+        }
         self.renderer.set_internal_resolution_mode(config_internal_resolution_mode(
             &self.boot.app_config.video,
         ));
-        let desired_mode = self.boot.app_config.video.mode.clone();
+        let configured_mode = self.boot.app_config.video.mode.clone();
+        if self.ui.exclusive_fullscreen_fallback_active
+            && configured_mode != WindowMode::ExclusiveFullscreen
+        {
+            self.ui.exclusive_fullscreen_fallback_active = false;
+        }
+        let desired_mode = if self.ui.exclusive_fullscreen_fallback_active {
+            WindowMode::BorderlessFullscreen
+        } else {
+            configured_mode.clone()
+        };
         if desired_mode == self.ui.applied_window_mode {
             return;
         }
@@ -658,8 +694,14 @@ impl WinitApp {
             window.available_monitors(),
             window.primary_monitor(),
         );
-        window.set_fullscreen(fullscreen_from_config(&self.boot.app_config.video, monitor));
-        tracing::info!(mode = ?desired_mode, "window mode updated");
+        let mut effective_video = self.boot.app_config.video.clone();
+        effective_video.mode = desired_mode.clone();
+        window.set_fullscreen(fullscreen_from_config(&effective_video, monitor));
+        tracing::info!(
+            requested_window_mode = ?configured_mode,
+            effective_window_mode = ?desired_mode,
+            "window mode updated"
+        );
         self.ui.applied_window_mode = desired_mode;
     }
 
@@ -807,7 +849,14 @@ impl WinitApp {
                 self.play.pending_play_start.as_ref().map(|pending| ActiveLaneState {
                     lane_cover: pending.lane.lane_cover,
                     lift: pending.lane.lift,
+                    hidden_cover: pending.lane.hidden_cover,
+                    sudden_enabled: pending.lane.sudden_enabled,
+                    lift_enabled: pending.lane.lift_enabled,
+                    hidden_enabled: pending.lane.hidden_enabled,
                     hispeed_mode: pending.lane.hispeed_mode,
+                    base_hispeed_mode: pending.lane.base_hispeed_mode,
+                    floating_policy: pending.lane.floating_policy,
+                    normal_hispeed_level: pending.lane.normal_hispeed_level,
                     target_green_number: pending.lane.target_green_number,
                 })
             })
@@ -830,7 +879,14 @@ impl WinitApp {
             Some(ActiveLaneState {
                 lane_cover: pending.lane.lane_cover,
                 lift: pending.lane.lift,
+                hidden_cover: pending.lane.hidden_cover,
+                sudden_enabled: pending.lane.sudden_enabled,
+                lift_enabled: pending.lane.lift_enabled,
+                hidden_enabled: pending.lane.hidden_enabled,
                 hispeed_mode: pending.lane.hispeed_mode,
+                base_hispeed_mode: pending.lane.base_hispeed_mode,
+                floating_policy: pending.lane.floating_policy,
+                normal_hispeed_level: pending.lane.normal_hispeed_level,
                 target_green_number: pending.lane.target_green_number,
             }),
         );

@@ -194,15 +194,6 @@ pub(in crate::ui) fn target_label(value: TargetOptionConfig) -> String {
     }
 }
 
-pub(in crate::ui) fn lane_effect_label(value: LaneEffectConfig) -> &'static str {
-    match value {
-        LaneEffectConfig::Off => "OFF",
-        LaneEffectConfig::Hidden => "HIDDEN",
-        LaneEffectConfig::Sudden => "SUDDEN",
-        LaneEffectConfig::HiddenSudden => "HIDDEN+SUDDEN",
-    }
-}
-
 pub(in crate::ui) fn bga_mode_label(value: BgaModeConfig) -> &'static str {
     match value {
         BgaModeConfig::On => "ON",
@@ -219,10 +210,13 @@ pub(in crate::ui) fn bga_expand_label(value: BgaExpandConfig) -> &'static str {
     }
 }
 
-pub(in crate::ui) fn hispeed_mode_label(value: HispeedModeConfig) -> &'static str {
+pub(in crate::ui) fn hispeed_mode_label(value: HispeedConfigPreset) -> &'static str {
     match value {
-        HispeedModeConfig::Normal => "NORMAL",
-        HispeedModeConfig::Floating => "FLOATING",
+        HispeedConfigPreset::Normal => "NORMAL",
+        HispeedConfigPreset::Classic => "CLASSIC",
+        HispeedConfigPreset::Floating => "FLOATING",
+        HispeedConfigPreset::NormalFloating => "NORMAL+FLOATING",
+        HispeedConfigPreset::ClassicFloating => "CLASSIC+FLOATING",
     }
 }
 
@@ -262,7 +256,9 @@ pub(in crate::ui) fn ir_provider_text_row(ui: &mut egui::Ui, label: &str, value:
 }
 
 pub(in crate::ui) fn ir_provider_family(provider: &str) -> &'static str {
-    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+    if crate::ir::bms_ir::is_bms_ir_provider(provider) {
+        crate::ir::bms_ir::BMS_IR_PROVIDER
+    } else if crate::ir::rian_ir::is_rian_ir_provider(provider) {
         crate::ir::rian_ir::RIAN_IR_PROVIDER
     } else {
         crate::ir::bmz_official::BMZ_IR_PROVIDER
@@ -290,8 +286,8 @@ pub(in crate::ui) fn ir_primary_provider_label(
 }
 
 pub(in crate::ui) fn sync_ir_provider_roles(ir_config: &mut IrConfig) -> bool {
-    let primary_provider = ir_config.primary_provider.trim();
     let mut changed = false;
+    let primary_provider = ir_config.primary_provider.trim();
     for provider in &mut ir_config.providers {
         let next_role = if !primary_provider.is_empty()
             && crate::ir::provider_key::configured_provider_key(provider)

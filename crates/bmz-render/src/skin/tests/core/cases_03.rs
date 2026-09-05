@@ -535,6 +535,9 @@ fn skin_state_number_hispeed_and_timeleft() {
 fn skin_state_number_maps_bmz_hispeed_mode_refs() {
     let normal = SkinDrawState {
         hispeed_mode_index: 0,
+        base_hispeed_index: 1,
+        normal_hispeed_level: 13,
+        hispeed_config_index: 3,
         total_duration_ms: 500,
         duration_green_ms: Some(300),
         ..SkinDrawState::default()
@@ -548,15 +551,31 @@ fn skin_state_number_maps_bmz_hispeed_mode_refs() {
     };
     let clamped = SkinDrawState { hispeed_mode_index: 9, ..floating.clone() };
     let mode_text = SkinTextDef { ref_id: 1900, ..SkinTextDef::default() };
+    let base_text = SkinTextDef { ref_id: SKIN_REF_BMZ_BASE_HISPEED, ..SkinTextDef::default() };
+    let config_text = SkinTextDef { ref_id: SKIN_REF_BMZ_HISPEED_CONFIG, ..SkinTextDef::default() };
 
     assert_eq!(skin_state_number(1900, &normal), Some(0));
     assert_eq!(skin_state_number(1901, &normal), Some(0));
     assert_eq!(skin_state_number(1902, &normal), Some(300));
     assert_eq!(skin_state_event_index(1900, &normal), 0);
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_BASE_HISPEED, &normal), Some(1));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_NORMAL_HISPEED_LEVEL, &normal), Some(13));
+    assert_eq!(skin_state_number(SKIN_REF_BMZ_HISPEED_CONFIG, &normal), Some(3));
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_BASE_HISPEED, &normal), 1);
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_NORMAL_HISPEED_LEVEL, &normal), 13);
+    assert_eq!(skin_state_event_index(SKIN_REF_BMZ_HISPEED_CONFIG, &normal), 3);
     assert!(!test_skin_op(1901, &[], &normal));
     assert_eq!(
         skin_state_text_with_draw_state(&mode_text, Some(&normal), &SkinTextState::default()),
         "NHS"
+    );
+    assert_eq!(
+        skin_state_text_with_draw_state(&base_text, Some(&normal), &SkinTextState::default()),
+        "NHS"
+    );
+    assert_eq!(
+        skin_state_text_with_draw_state(&config_text, Some(&normal), &SkinTextState::default()),
+        "NORMAL+FLOATING"
     );
 
     assert_eq!(skin_state_number(1900, &floating), Some(1));

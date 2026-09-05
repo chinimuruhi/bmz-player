@@ -203,7 +203,7 @@ struct RianTablesResponse {
     data: Vec<RianTableResource>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct RianRivalScore {
     pub sha256: String,
     pub ln_mode: u8,
@@ -218,7 +218,7 @@ pub struct RianRivalScore {
     pub play_seed: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct RianRivalScoresResponse {
     pub scores: Vec<RianRivalScore>,
     pub etag: String,
@@ -254,6 +254,7 @@ mod tests {
                 platform: "test".to_string(),
             },
             chart: IrChartPayload {
+                source_format: "bms".to_string(),
                 sha256: "ab".repeat(32),
                 md5: Some("cd".repeat(16)),
                 length_ms: Some(123_456),
@@ -745,6 +746,20 @@ mod tests {
         assert_eq!(
             parse_base_url("https://example.test/api/").unwrap().as_str(),
             "https://example.test/api/"
+        );
+    }
+
+    #[test]
+    fn submit_only_score_request_omits_ranking_query() {
+        let client = RianIrClient::new("https://example.test/").unwrap();
+
+        assert_eq!(
+            client.score_submit_url(false).unwrap().as_str(),
+            "https://example.test/api/score/score.php"
+        );
+        assert_eq!(
+            client.score_submit_url(true).unwrap().as_str(),
+            "https://example.test/api/score/score.php?include=ranking"
         );
     }
 

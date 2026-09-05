@@ -515,6 +515,139 @@ fn lua_compat_mode_keeps_inferable_draw_in_runtime_vm() {
 }
 
 #[test]
+fn lua_scene_state_syncs_existing_module_practice_boolean() {
+    let root = unique_test_dir("bmz-skin-scene-practice-state");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("scene_state.lua"), "return { isPractice = false }").unwrap();
+    let path = root.join("skin.luaskin");
+    fs::write(
+        &path,
+        r#"
+            local main_state = require("main_state")
+            local scene_state = require("scene_state")
+            local is_auto = main_state.option(33)
+            local function is_course()
+                return main_state.option(290)
+            end
+            return {
+                type = 0,
+                destination = {
+                    {
+                        id = "demoplay",
+                        draw = function() return is_auto and not is_course() end,
+                        dst = {{ x = 0, y = 0, w = 1, h = 1 }}
+                    },
+                    {
+                        id = "extrastage",
+                        draw = function()
+                            return not scene_state.isPractice and not is_auto and not is_course()
+                        end,
+                        dst = {{ x = 0, y = 0, w = 1, h = 1 }}
+                    },
+                    {
+                        id = "practice",
+                        draw = function()
+                            return scene_state.isPractice and not is_auto and not is_course()
+                        end,
+                        dst = {{ x = 0, y = 0, w = 1, h = 1 }}
+                    }
+                }
+            }
+        "#,
+    )
+    .unwrap();
+
+    for (name, practice, autoplay, course, expected_draws, expected_visibility) in [
+        (
+            "normal",
+            false,
+            false,
+            false,
+            ["number(0) < 0", "!option(290)", "number(0) < 0"],
+            [false, true, false],
+        ),
+        (
+            "practice",
+            true,
+            false,
+            false,
+            ["number(0) < 0", "number(0) < 0", "!option(290)"],
+            [false, false, true],
+        ),
+        (
+            "autoplay",
+            false,
+            true,
+            false,
+            ["!option(290)", "number(0) < 0", "number(0) < 0"],
+            [true, false, false],
+        ),
+        (
+            "course",
+            false,
+            false,
+            true,
+            ["number(0) < 0", "!option(290)", "number(0) < 0"],
+            [false, false, false],
+        ),
+    ] {
+        let option_values = BTreeMap::from([(33, autoplay), (290, course), (1080, practice)]);
+        let compiled_state =
+            LuaLoadRuntimeState { option_values: option_values.clone(), ..Default::default() };
+        let compiled = load_lua_skin_with_runtime_state(
+            &path,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &compiled_state,
+        )
+        .unwrap();
+        let compiled_draws = compiled
+            .document
+            .destination
+            .iter()
+            .filter_map(|entry| match entry {
+                bmz_skin_document::DestinationListEntry::Single(destination) => {
+                    Some(destination.draw.as_str())
+                }
+                bmz_skin_document::DestinationListEntry::Conditional { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(compiled_draws, expected_draws, "compiled draws for {name}");
+        assert_eq!(
+            compiled.dependencies.option_values.get(&1080),
+            Some(&practice),
+            "compiled Practice dependency for {name}"
+        );
+
+        let runtime_state = LuaLoadRuntimeState {
+            runtime_mode: LuaSkinRuntimeMode::Compat,
+            option_values: option_values.clone(),
+            ..Default::default()
+        };
+        let mut loaded = load_lua_skin_with_runtime_state(
+            &path,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &runtime_state,
+        )
+        .unwrap();
+        assert_eq!(
+            loaded.dependencies.option_values.get(&1080),
+            Some(&practice),
+            "Practice dependency for {name}"
+        );
+        let runtime = loaded.lua_runtime.as_mut().expect("compat runtime");
+        let state = TestLuaMainState { options: option_values, ..Default::default() };
+        let actual = [
+            runtime.evaluate_draw(0, &state),
+            runtime.evaluate_draw(1, &state),
+            runtime.evaluate_draw(2, &state),
+        ];
+        assert_eq!(actual, expected_visibility, "stage visibility for {name}");
+    }
+}
+
+#[test]
 fn lua_compat_mode_evaluates_number_and_text_functions_from_current_state() {
     let mut loaded = load_runtime_value_fixture(
         "bmz-skin-compat-values",

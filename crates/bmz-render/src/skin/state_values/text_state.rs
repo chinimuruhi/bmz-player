@@ -98,7 +98,7 @@ pub(super) fn skin_state_text_with_draw_state(
             state.table_text_fallback,
         );
     }
-    if text.id.contains("bartext") {
+    if is_select_bar_text_id(&text.id) {
         return state.bar_text.to_string();
     }
     match text.id.as_str() {
@@ -124,6 +124,20 @@ pub(super) fn skin_state_text_with_draw_state(
         _ => {}
     }
     skin_main_state_text(text.ref_id, draw_state, state)
+}
+
+fn is_select_bar_text_id(id: &str) -> bool {
+    let id = id.to_ascii_lowercase();
+    ["bartext", "bar_text", "bar-text"].into_iter().any(|needle| {
+        id.match_indices(needle).any(|(start, _)| {
+            let suffix = &id[start + needle.len()..];
+            suffix.is_empty()
+                || suffix
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_digit() || matches!(byte, b'_' | b'-'))
+        })
+    })
 }
 
 pub(super) fn skin_main_state_text(
@@ -197,9 +211,30 @@ pub(super) fn skin_main_state_text(
         1900 => draw_state
             .filter(|state| !state.select_screen || state.duration_green_ms.is_some())
             .map(|state| {
-                if skin_hispeed_mode_is_floating(state) { "FHS" } else { "NHS" }.to_string()
+                if skin_hispeed_mode_is_floating(state) {
+                    "FHS"
+                } else if skin_base_hispeed_index(state) == 1 {
+                    "NHS"
+                } else {
+                    "CHS"
+                }
+                .to_string()
             })
             .unwrap_or_default(),
+        SKIN_REF_BMZ_BASE_HISPEED => draw_state
+            .map(|state| if skin_base_hispeed_index(state) == 1 { "NHS" } else { "CHS" })
+            .unwrap_or_default()
+            .to_string(),
+        SKIN_REF_BMZ_HISPEED_CONFIG => draw_state
+            .map(|state| match skin_hispeed_config_index(state) {
+                0 => "NORMAL",
+                1 => "CLASSIC",
+                2 => "FLOATING",
+                3 => "NORMAL+FLOATING",
+                _ => "CLASSIC+FLOATING",
+            })
+            .unwrap_or_default()
+            .to_string(),
         // beatoraja StringPropertyFactory: 1001=tablename, 1002=tablelevel,
         // 1003=tablefull.  Rm-skin's combined table label is handled above by
         // id/value_expr, so direct numeric refs follow the beatoraja mapping.
@@ -247,6 +282,8 @@ pub(super) fn lua_main_state_text_values(
         1020,
         1021,
         1900,
+        SKIN_REF_BMZ_BASE_HISPEED,
+        SKIN_REF_BMZ_HISPEED_CONFIG,
         SKIN_TEXT_BMZ_DAILY_RANK,
         SKIN_REF_BMZ_SCORE_GRADE_CURRENT,
         SKIN_REF_BMZ_SCORE_GRADE_NEXT,

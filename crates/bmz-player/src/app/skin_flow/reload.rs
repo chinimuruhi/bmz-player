@@ -36,8 +36,15 @@ impl WinitApp {
         }
         // 旧 generation 分の upload 結果は apply_uploaded_skin の generation
         // チェックで破棄されるため、ここでの明示的なキュー破棄は不要。
-        if let Some((key_mode, session_mode, old_path, old_options, old_files, runtime_state)) =
-            self.skin.last_play_skin_signature.clone()
+        if let Some((
+            key_mode,
+            session_mode,
+            old_path,
+            old_options,
+            old_files,
+            runtime_state,
+            play_preload_generation,
+        )) = self.skin.last_play_skin_signature.clone()
             && skin_reload_request_includes_key_mode(request, key_mode)
         {
             let selection = play_skin_selection_for_session(&skin, key_mode, session_mode);
@@ -58,6 +65,7 @@ impl WinitApp {
                     selection.options.clone(),
                     selection.files.clone(),
                     runtime_state,
+                    play_preload_generation,
                 ));
                 tracing::debug!(
                     ?key_mode,
@@ -76,6 +84,36 @@ impl WinitApp {
             let _ = self.drain_pending_skins();
             self.request_redraw();
         }
+    }
+
+    /// Select / Decide の論理シーン進入ごとに、現在の設定でskinを再decodeする。
+    ///
+    /// 決定的なLua documentと画像は共有cacheで再利用される一方、ロード時乱数や
+    /// wildcardのRandom指定はこのdecode要求を単位として再抽選される。
+    pub(super) fn reload_skin_for_scene_entry(&mut self, kind: SkinKind) {
+        let request = match kind {
+            SkinKind::Select => SkinReloadRequest { select: true, ..Default::default() },
+            SkinKind::Decide => SkinReloadRequest { decide: true, ..Default::default() },
+            SkinKind::Play | SkinKind::Result => {
+                unreachable!("play/result skins have scene-specific runtime state")
+            }
+        };
+        let skin = self.boot.profile_config.skin.clone();
+        let (pending_select, pending_decide, _) = reload_skin_textures(
+            &self.boot.app_paths,
+            &mut self.skin.skin_pipeline,
+            request,
+            &self.boot.profile_config.display_name,
+            &skin,
+            self.skin.lua_runtime_mode,
+        );
+        let pending = match kind {
+            SkinKind::Select => pending_select,
+            SkinKind::Decide => pending_decide,
+            SkinKind::Play | SkinKind::Result => unreachable!(),
+        };
+        self.skin.skin_pipeline.set_pending(kind, pending);
+        self.ensure_skin_ready(kind);
     }
 
     pub(super) fn apply_active_play_skin_options_fast_path(
@@ -154,13 +192,14 @@ impl WinitApp {
         runtime_state.offset_id_values.clear();
         apply_skin_offsets_to_lua_runtime_state(&mut runtime_state, selection.offsets);
         let trimmed = selection.path.trim();
-        let signature = (
+        let signature = play_skin_signature(
             key_mode,
             session_mode,
-            trimmed.to_string(),
-            selection.options.clone(),
-            selection.files.clone(),
-            runtime_state.clone(),
+            trimmed,
+            selection.options,
+            selection.files,
+            &runtime_state,
+            self.play.play_preload_generation,
         );
 
         if !self.skin.skin_pipeline.is_pending(SkinKind::Play)

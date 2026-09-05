@@ -1,4 +1,5 @@
 use super::*;
+use anyhow::Context as _;
 
 pub(super) fn enabled_provider(ir_config: &IrConfig) -> Option<(String, String)> {
     let provider = crate::ir::provider_key::primary_provider_config(ir_config)?;
@@ -57,6 +58,7 @@ pub(super) fn spawn_fetch(
 pub(super) fn spawn_course_fetch(
     provider: String,
     base_url: String,
+    profile_root: std::path::PathBuf,
     context: String,
     target: SelectCourseIrTarget,
     requested_at: Instant,
@@ -70,6 +72,28 @@ pub(super) fn spawn_course_fetch(
                         &target.rian_course_hash_v1,
                         crate::ir::rian_ir::body_for_rule_mode(target.rule_mode),
                         crate::ir::rian_ir::RIAN_IR_RANKING_LIMIT,
+                    )
+                    .await;
+            }
+            if crate::ir::bms_ir::is_bms_ir_provider(&provider) {
+                let credentials = crate::ir::sync::ensure_fresh_credentials(
+                    &profile_root,
+                    &provider,
+                    &base_url,
+                    now_unix_seconds(),
+                )
+                .await?;
+                return crate::ir::bms_ir::BmsIrClient::new(&base_url)?
+                    .fetch_course_ranking(
+                        &target.course_hash,
+                        &IrCourseRankingRequest {
+                            gauge: target.gauge.clone(),
+                            ln_policy: target.ln_policy.clone(),
+                            limit: 20,
+                        },
+                        target.rule_mode,
+                        &credentials.account_id,
+                        &credentials.access_token,
                     )
                     .await;
             }
@@ -98,6 +122,7 @@ pub(super) fn spawn_rival_fetch(
     sender: Sender<RivalFetchResult>,
 ) {
     let network_db_path = profile_root.join("network.db");
+    let profile_root = profile_root.to_path_buf();
     tokio::spawn(async move {
         let result = async {
             crate::storage::migration::migrate_network_db(&network_db_path)?;
@@ -107,46 +132,40 @@ pub(super) fn spawn_rival_fetch(
                 &target.rival_id,
                 &target.body,
             )?;
-            let response = crate::ir::rian_ir::RianIrClient::new(&target.base_url)?
-                .fetch_rival_scores(
-                    &target.rival_id,
-                    &target.body,
-                    (!cache.etag.is_empty()).then_some(cache.etag.as_str()),
+            let response = if crate::ir::bms_ir::is_bms_ir_provider(&target.provider) {
+                let credentials = crate::ir::sync::ensure_fresh_credentials(
+                    &profile_root,
+                    &target.provider,
+                    &target.base_url,
+                    now_unix_seconds(),
                 )
                 .await?;
+                crate::ir::bms_ir::BmsIrClient::new(&target.base_url)?
+                    .fetch_rival_scores(
+                        &target.rival_id,
+                        target.rule_mode,
+                        (!cache.etag.is_empty()).then_some(cache.etag.as_str()),
+                        &credentials.account_id,
+                        &credentials.access_token,
+                    )
+                    .await?
+            } else {
+                crate::ir::rian_ir::RianIrClient::new(&target.base_url)?
+                    .fetch_rival_scores(
+                        &target.rival_id,
+                        &target.body,
+                        (!cache.etag.is_empty()).then_some(cache.etag.as_str()),
+                    )
+                    .await?
+            };
             if response.not_modified {
-                return database.rival_scores(
-                    &target.provider,
-                    &target.rival_id,
-                    &target.body,
-                );
+                return database.rival_scores(&target.provider, &target.rival_id, &target.body);
             }
             let scores = response
                 .scores
                 .into_iter()
-                .filter_map(|score| {
-                    let chart_sha256 = match hex_to_hash::<32>(&score.sha256) {
-                        Ok(hash) => hash,
-                        Err(error) => {
-                            tracing::warn!(hash = %score.sha256, %error, "discarding invalid rival score hash");
-                            return None;
-                        }
-                    };
-                    Some(IrRivalScoreRecord {
-                        chart_sha256,
-                        ln_mode: score.ln_mode,
-                        ex_score: score.ex_score,
-                        clear_type: score.clear_type,
-                        max_combo: score.max_combo,
-                        min_bp: score.min_bp,
-                        play_option: score.play_option,
-                        arrange_1p: score.arrange_1p,
-                        arrange_2p: score.arrange_2p,
-                        double_option: score.double_option,
-                        play_seed: score.play_seed,
-                    })
-                })
-                .collect::<Vec<_>>();
+                .map(convert_rival_score)
+                .collect::<anyhow::Result<Vec<_>>>()?;
             let fetched_at = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|duration| duration.as_secs().min(i64::MAX as u64) as i64)
@@ -165,6 +184,32 @@ pub(super) fn spawn_rival_fetch(
         .map_err(|error| format!("{error:#}"));
         let _ = sender.send((target, requested_at, result));
     });
+}
+
+fn convert_rival_score(
+    score: crate::ir::rian_ir::RianRivalScore,
+) -> anyhow::Result<IrRivalScoreRecord> {
+    Ok(IrRivalScoreRecord {
+        chart_sha256: hex_to_hash::<32>(&score.sha256)
+            .with_context(|| format!("invalid rival score SHA-256: {}", score.sha256))?,
+        ln_mode: score.ln_mode,
+        ex_score: score.ex_score,
+        clear_type: score.clear_type,
+        max_combo: score.max_combo,
+        min_bp: score.min_bp,
+        play_option: score.play_option,
+        arrange_1p: score.arrange_1p,
+        arrange_2p: score.arrange_2p,
+        double_option: score.double_option,
+        play_seed: score.play_seed,
+    })
+}
+
+fn now_unix_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs().min(i64::MAX as u64) as i64)
+        .unwrap_or(0)
 }
 
 /// rivals scope ランキングの先頭 (ライバル中ベスト) をスキン用に変換する。

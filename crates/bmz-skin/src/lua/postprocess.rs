@@ -336,7 +336,6 @@ pub(super) fn postprocess_lua_skin_json(
     warnings: &mut Vec<String>,
 ) {
     repair_malformed_destination_ops(root, warnings);
-    repair_wmii_practice_stage_draws(root);
     let repaired = repair_keybeam_destination_draws(root);
     warnings.retain(|warning| {
         !repaired.iter().any(|index| {
@@ -345,57 +344,6 @@ pub(super) fn postprocess_lua_skin_json(
                     == &format!("skipping unsupported field `timer` at $.destination[{index}]")
         })
     });
-}
-
-/// WMII PLAY sets a module-local `property.isPractice` flag from a background
-/// destination. Load-time function inference folds that background callback to
-/// a constant and consequently observes the flag as already set when it later
-/// probes the EXTRA STAGE/PRACTICE callbacks. Rebuild the two predicates from
-/// the original public option instead of relying on that load-time side effect.
-///
-/// Keep this repair deliberately narrow: it only applies when both WMII object
-/// IDs are present and inference produced the characteristic inverted pair.
-fn repair_wmii_practice_stage_draws(root: &mut JsonMap<String, JsonValue>) {
-    let Some(destinations) = root.get_mut("destination").and_then(JsonValue::as_array_mut) else {
-        return;
-    };
-
-    let mut extrastage = None;
-    let mut practice = None;
-    for destination in destinations.iter() {
-        let Some(destination) = destination.as_object() else {
-            continue;
-        };
-        let Some(JsonValue::String(id)) = destination.get("id") else {
-            continue;
-        };
-        match id.as_str() {
-            "extrastage" => extrastage = destination.get("draw").and_then(JsonValue::as_str),
-            "practice" => practice = destination.get("draw").and_then(JsonValue::as_str),
-            _ => {}
-        }
-    }
-
-    if extrastage != Some("number(0) < 0") || practice != Some("number(0) >= 0") {
-        return;
-    }
-
-    for destination in destinations.iter_mut() {
-        let Some(destination) = destination.as_object_mut() else {
-            continue;
-        };
-        let Some(JsonValue::String(id)) = destination.get("id") else {
-            continue;
-        };
-        let draw = match id.as_str() {
-            "extrastage" => Some("!option(1080)"),
-            "practice" => Some("option(1080)"),
-            _ => None,
-        };
-        if let Some(draw) = draw {
-            destination.insert("draw".to_string(), JsonValue::String(draw.to_string()));
-        }
-    }
 }
 
 /// Repairs two malformed `op` table shapes accepted by Lua/beatoraja skins but

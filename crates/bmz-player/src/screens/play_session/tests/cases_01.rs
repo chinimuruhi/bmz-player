@@ -4,6 +4,7 @@ use super::*;
 fn build_game_session_uses_profile_play_settings() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
     profile.play.auto_play = true;
+    profile.play.note_retention = true;
     profile.judge.input_offset_us = 123;
     let chart = Arc::new(chart());
 
@@ -20,6 +21,7 @@ fn build_game_session_uses_profile_play_settings() {
     assert!(session.bga_enabled);
     assert_eq!(session.poor_bga_duration_us, 500_000);
     assert_eq!(session.bga_stretch, 1);
+    assert!(session.note_retention);
 }
 
 #[test]
@@ -45,7 +47,7 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
         PlaySessionOptions {
             session_mode: SessionMode::GBattle,
             battle_opponent: Some(BattleOpponentOptions {
-                replay_player: Some(ReplayPlayer::default()),
+                replay_player: None,
                 gauge: None,
                 arrange: ArrangeOption::Normal,
                 arrange_2p: ArrangeOption::Normal,
@@ -55,6 +57,7 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
                 legacy_arrange_seed: false,
                 packed_seed: None,
                 bms_random_choices: None,
+                bms_switch_choices: None,
                 arrange_pattern: None,
                 s_random_scheme: SRandomScheme::default(),
                 s_random_scheme_2p: None,
@@ -68,6 +71,11 @@ fn g_battle_keeps_primary_input_offset_auto_adjust_enabled() {
     assert!(session.input_offset_auto_adjust.is_some());
     assert!(session.replay_lane_mask.is_none());
     assert!(session.battle_opponent.is_some());
+    let opponent = session.battle_opponent.as_ref().unwrap();
+    assert!(opponent.replay_player.is_none());
+    assert!(opponent.autoplay.is_some());
+    assert!(opponent.display_uses_primary_arrangement);
+    assert!(opponent.publish_display_judgements);
     assert_eq!(session.primary_key_mode, KeyMode::K7);
 }
 
@@ -76,6 +84,11 @@ fn battle_target_uses_battle_presentation_while_session_mode_stays_normal() {
     let profile = ProfileConfig::new_default("default", "Default", 1);
     let mut primary = chart();
     primary.metadata.key_mode = KeyMode::K14;
+    primary.lane_notes[Lane::Key1.index()].push(note(1, Lane::Key1, 1_000_000));
+    primary.lane_notes[Lane::Key8.index()].push(note(2, Lane::Key8, 1_000_000));
+    // The cloned opponent note is presentation-only, so the chart semantic
+    // total remains owned by the one primary note.
+    primary.total_notes = 1;
     let mut opponent = chart();
     opponent.metadata.key_mode = KeyMode::K7;
     let session = build_game_session(
@@ -95,6 +108,7 @@ fn battle_target_uses_battle_presentation_while_session_mode_stays_normal() {
                 legacy_arrange_seed: false,
                 packed_seed: None,
                 bms_random_choices: None,
+                bms_switch_choices: None,
                 arrange_pattern: None,
                 s_random_scheme: SRandomScheme::default(),
                 s_random_scheme_2p: None,
@@ -109,6 +123,8 @@ fn battle_target_uses_battle_presentation_while_session_mode_stays_normal() {
     assert_eq!(session.primary_key_mode, KeyMode::K7);
     assert!(session.display_only_lane_mask[Lane::Key8.index()]);
     assert!(session.battle_opponent.is_some());
+    assert_eq!(session.scored_total_notes, 1);
+    assert!(!session.battle_opponent.as_ref().unwrap().publish_display_judgements);
 }
 
 #[test]
@@ -314,7 +330,7 @@ fn placeholder_session_visuals_preserve_preloaded_meta_images() {
 #[test]
 fn placeholder_session_visuals_initialize_floating_hispeed_for_ready_display() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.target_green_number = 300;
     // Stale value from a different BPM should not leak into READY display.
     profile.lane.hispeed = 4.0;
@@ -333,7 +349,6 @@ fn placeholder_session_visuals_initialize_floating_hispeed_for_ready_display() {
 #[test]
 fn placeholder_session_visuals_use_hsfix_to_select_hispeed_mode() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
     profile.lane.hispeed = 4.0;
     profile.lane.target_green_number = 300;
     let options = PlaySessionOptions::default();

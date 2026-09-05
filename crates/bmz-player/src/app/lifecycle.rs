@@ -61,8 +61,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             .as_ref()
             .is_some_and(|practice| practice.phase == PracticePhase::Config);
         let select_course_builder = self.select.course_builder.is_some();
-        let has_play_context =
-            self.play.active_play.is_some() || self.play.pending_play_start.is_some();
+        let has_play_context = self.play.active_play.is_some()
+            || self.play.pending_play_start.is_some()
+            || self.viewer_waiting;
         let play_owns_keyboard_input = match &event {
             WindowEvent::KeyboardInput { event, .. } => {
                 let control = physical_key_to_control(event.physical_key);
@@ -109,6 +110,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.save_configs_for_exit(self.active_hispeed(), "game exit");
                 event_loop.exit();
             }
+            WindowEvent::DroppedFile(path) => self.open_dropped_chart(path),
             WindowEvent::KeyboardInput { event, .. } => {
                 // F1 で egui メニューを開閉する。
                 if event.physical_key == PhysicalKey::Code(KeyCode::F1)
@@ -193,8 +195,17 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.route_ime_event(&ime);
             }
             WindowEvent::Resized(size) => {
-                self.renderer
-                    .resize_surface(SurfaceSize { width: size.width, height: size.height });
+                if let Err(error) = self
+                    .renderer
+                    .resize_surface(SurfaceSize { width: size.width, height: size.height })
+                {
+                    tracing::error!(
+                        width = size.width,
+                        height = size.height,
+                        error = %format_error_chain(&error),
+                        "failed to reconfigure renderer surface after resize"
+                    );
+                }
                 // 検索モード中はリサイズに合わせて IME 候補ウィンドウ位置を再計算する。
                 self.update_search_ime_cursor_area();
             }
@@ -253,6 +264,13 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 if !self.begin_scheduled_frame(event_loop) {
                     return;
                 }
+                // 通常起動は最初の Select 描画後に direct boot するが、Viewer は
+                // 初回 surface frame から Play を描く。system sound を待たず、
+                // window/surface 準備直後に audio と preload を開始する。
+                if !self.first_frame_startup_completed && self.viewer_mode {
+                    self.ensure_audio_output();
+                    self.start_deferred_boot();
+                }
                 let pacing_timings = self.frame.current_pacing_timings();
                 let limit_us = instant_elapsed_us_u64(limit_start);
                 let redraw_started_at = Instant::now();
@@ -277,13 +295,18 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let drain_us = instant_elapsed_us_u64(drain_start);
                 let input_start = Instant::now();
                 self.poll_gamepad_events();
-                self.advance_select_hold_move();
-                self.advance_select_ir_battle_hold();
+                if !self.viewer_waiting {
+                    self.advance_select_hold_move();
+                    self.advance_select_ir_battle_hold();
+                    self.advance_select_analog_scroll();
+                }
                 self.advance_result_ir_scroll_hold();
-                self.advance_select_analog_scroll();
                 self.advance_result_ir_analog_scroll();
                 let input_us = instant_elapsed_us_u64(input_start);
                 let background_start = Instant::now();
+                // 通常はworker完了eventで反映するが、worker panicなどでeventが届かない
+                // 場合もdirect bootを待たせ続けないよう、frame側でもchannelをpollする。
+                self.poll_system_sound_load();
                 self.poll_chart_bga_texture_load();
                 self.poll_play_preload();
                 self.refresh_play_target_from_source();
@@ -311,7 +334,9 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 let post_scene_start = Instant::now();
                 if !self.first_frame_startup_completed {
                     self.first_frame_startup_completed = true;
-                    self.start_deferred_boot();
+                    if !self.system_sound_load_blocks_deferred_boot() {
+                        self.start_deferred_boot();
+                    }
                     self.sync_select_maintenance_gate();
                     if self.current_scene_kind() == AppSceneKind::Result {
                         self.ensure_result_skin_ready(self.current_result_skin_slot());
@@ -396,7 +421,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
         }
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppUserEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppUserEvent) {
         match event {
             AppUserEvent::SkinUpload { sent_at } => {
                 let event_received_at = Instant::now();
@@ -416,6 +441,15 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                     "skin upload ready event timings"
                 );
             }
+            AppUserEvent::SystemSoundReady { generation } => {
+                self.poll_system_sound_load();
+                self.request_redraw();
+                tracing::debug!(generation, "handled system sound ready event");
+            }
+            AppUserEvent::CourseLinkRepair => {
+                self.poll_pending_course_link_repair();
+                self.request_redraw();
+            }
             AppUserEvent::TableFetch => {
                 self.poll_select_maintenance();
                 self.request_redraw();
@@ -424,6 +458,23 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
                 self.poll_select_maintenance();
                 self.request_redraw();
             }
+            AppUserEvent::ViewerCommand(command) => match command {
+                crate::viewer_ipc::ViewerCommand::Stop => {
+                    tracing::info!("external viewer playback stopped; waiting for next command");
+                    self.stop_viewer_playback();
+                    self.request_redraw();
+                }
+                crate::viewer_ipc::ViewerCommand::Play { path, measure, battle } => {
+                    if let Err(error) = self.play_viewer_chart(&path, measure, battle) {
+                        tracing::error!(path = %path.display(), measure, battle, %error, "external viewer play request failed");
+                    }
+                    self.request_redraw();
+                }
+                crate::viewer_ipc::ViewerCommand::Quit => {
+                    tracing::info!("external viewer exit requested");
+                    event_loop.exit();
+                }
+            },
         }
     }
 
@@ -454,7 +505,7 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
             }
         }
         if self.shutdown_requested.load(Ordering::SeqCst) {
-            tracing::info!("Ctrl-C received; exiting cleanly");
+            tracing::info!("shutdown requested; exiting cleanly");
             event_loop.exit();
             return;
         }
@@ -480,6 +531,52 @@ impl ApplicationHandler<AppUserEvent> for WinitApp {
 }
 
 impl WinitApp {
+    fn open_dropped_chart(&mut self, path: PathBuf) {
+        if !matches!(self.view_state(), AppViewState::Select) {
+            self.show_left_overlay_toast("BMS files can only be dropped on the select screen");
+            return;
+        }
+        let canonical = match path.canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "dropped chart path is unavailable");
+                self.show_left_overlay_toast(format!("Could not open {}", path.display()));
+                return;
+            }
+        };
+        if !crate::storage::scan::is_chart_file(&canonical) {
+            self.show_left_overlay_toast(format!(
+                "Unsupported chart file: {}",
+                canonical.display()
+            ));
+            return;
+        }
+        match crate::storage::import::import_chart_file(
+            &mut self.boot.library_db,
+            &canonical,
+            None,
+            None,
+            now_unix_seconds(),
+        ) {
+            Ok(imported) => {
+                tracing::info!(
+                    chart_id = imported.chart_id,
+                    path = %canonical.display(),
+                    "opening dropped chart"
+                );
+                self.reload_select_items();
+                self.start_chart(imported.chart_id);
+            }
+            Err(error) => {
+                tracing::error!(path = %canonical.display(), %error, "failed to import dropped chart");
+                self.show_left_overlay_toast(format!(
+                    "Could not open {}: {error:#}",
+                    canonical.display()
+                ));
+            }
+        }
+    }
+
     fn wait_for_pending_play_result_on_exit(&mut self) {
         let pending = self
             .play

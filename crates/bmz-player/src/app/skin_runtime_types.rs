@@ -33,6 +33,7 @@ pub(super) type PlaySkinSignature = (
     BTreeMap<String, String>,
     BTreeMap<String, String>,
     bmz_skin::LuaLoadRuntimeState,
+    u64,
 );
 pub(super) type ResultSkinSignature = (
     ResultSkinSlot,
@@ -41,6 +42,26 @@ pub(super) type ResultSkinSignature = (
     BTreeMap<String, String>,
     bmz_skin::LuaLoadRuntimeState,
 );
+
+pub(super) fn play_skin_signature(
+    key_mode: KeyMode,
+    session_mode: SessionMode,
+    path: &str,
+    options: &BTreeMap<String, String>,
+    files: &BTreeMap<String, String>,
+    runtime_state: &bmz_skin::LuaLoadRuntimeState,
+    play_preload_generation: u64,
+) -> PlaySkinSignature {
+    (
+        key_mode,
+        session_mode,
+        path.to_string(),
+        options.clone(),
+        files.clone(),
+        runtime_state.clone(),
+        play_preload_generation,
+    )
+}
 
 pub(super) fn skin_offset_values_from_config(offsets: &[SkinOffsetConfig]) -> SkinOffsetValues {
     let mut values = SkinOffsetValues::default();

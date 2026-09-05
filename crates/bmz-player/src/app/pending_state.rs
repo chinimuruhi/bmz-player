@@ -1,5 +1,16 @@
 use super::*;
 
+pub(super) struct SystemSoundLoadWorkerResult {
+    pub(super) generation: u64,
+    pub(super) prepared: crate::system_sound_manager::PreparedSystemSoundSet,
+}
+
+pub(super) struct PendingSystemSoundLoad {
+    pub(super) generation: u64,
+    pub(super) started_at: Instant,
+    pub(super) finished: Receiver<SystemSoundLoadWorkerResult>,
+}
+
 pub(super) struct PendingSongScan {
     pub(super) finished: Receiver<Result<ScanReport>>,
     pub(super) progress: Arc<AtomicU64>,
@@ -45,9 +56,23 @@ pub(super) struct PlayEndingTransition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PlayEndingCompletion {
     Result,
+    ViewerWait,
+    ViewerExit,
     Select,
     PracticeConfig,
     PracticeLeave,
+}
+
+pub(super) fn viewer_exit_ending(started_at: Instant) -> PlayEndingTransition {
+    PlayEndingTransition {
+        started_at,
+        music_end_started_at: None,
+        fadeout_started_at: Some(started_at),
+        finished: None,
+        failed: false,
+        completion: PlayEndingCompletion::ViewerExit,
+        full_combo_elapsed_at_finish_ms: None,
+    }
 }
 
 pub(super) fn pre_play_abort_ending(started_at: Instant) -> PlayEndingTransition {
@@ -231,6 +256,10 @@ pub(super) enum DeferredBoot {
     Chart {
         chart_id: i64,
         replay_slot: Option<u8>,
+        skip_decide: bool,
+        score_save_disabled: bool,
+        start_time_us: Option<i64>,
+        bms_random_seed: Option<u64>,
     },
     Practice {
         chart_id: i64,

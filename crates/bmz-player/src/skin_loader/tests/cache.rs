@@ -18,6 +18,82 @@ fn lua_document_cache_key_includes_explicit_library_roots() {
 }
 
 #[test]
+fn lua_document_cache_does_not_reuse_load_time_math_random() {
+    let root = unique_test_dir("bmz-lua-document-cache-math-random");
+    std::fs::create_dir_all(&root).unwrap();
+    let skin_path = root.join("select.luaskin");
+    std::fs::write(
+        &skin_path,
+        r#"
+return {
+    type = 5,
+    name = tostring(math.random(1, 1000000)),
+}
+"#,
+    )
+    .unwrap();
+    let cache = Arc::new(Mutex::new(SkinDocumentCache::default()));
+
+    for _ in 0..2 {
+        let loaded = load_skin_document(
+            &skin_path,
+            SkinKind::Select,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &LuaLoadRuntimeState::default(),
+            Some(cache.clone()),
+        )
+        .unwrap();
+        assert_eq!(loaded.cache_status, DocumentCacheStatus::Miss);
+    }
+    assert!(cache.lock().unwrap().entries.is_empty());
+}
+
+#[test]
+fn lua_document_cache_does_not_reuse_random_get_path_selection() {
+    let root = unique_test_dir("bmz-lua-document-cache-random-get-path");
+    std::fs::create_dir_all(root.join("bg")).unwrap();
+    std::fs::write(root.join("bg/one.png"), []).unwrap();
+    std::fs::write(root.join("bg/two.png"), []).unwrap();
+    let skin_path = root.join("result.luaskin");
+    std::fs::write(
+        &skin_path,
+        r#"
+local path = "bg/one.png"
+if skin_config and skin_config.get_path then
+    path = skin_config.get_path("bg/*.png")
+end
+return {
+    type = 7,
+    filepath = {
+        { name = "Background", path = "bg/*.png", def = "one" },
+    },
+    source = {
+        { id = "bg", path = path },
+    },
+}
+"#,
+    )
+    .unwrap();
+    let files = BTreeMap::from([("Background".to_string(), RANDOM_FILE_SELECTION.to_string())]);
+    let cache = Arc::new(Mutex::new(SkinDocumentCache::default()));
+
+    for _ in 0..2 {
+        let loaded = load_skin_document(
+            &skin_path,
+            SkinKind::Result,
+            &BTreeMap::new(),
+            &files,
+            &LuaLoadRuntimeState::default(),
+            Some(cache.clone()),
+        )
+        .unwrap();
+        assert_eq!(loaded.cache_status, DocumentCacheStatus::Miss);
+    }
+    assert!(cache.lock().unwrap().entries.is_empty());
+}
+
+#[test]
 fn lua_document_cache_invalidates_cross_package_module_changes() {
     let library_root = unique_test_dir("bmz-lua-document-cache-cross-package").join("skins");
     let entry_dir = library_root.join("GenericTheme-master/play");

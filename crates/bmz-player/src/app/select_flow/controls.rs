@@ -68,6 +68,12 @@ impl WinitApp {
     }
 
     pub(super) fn play_elapsed_time(&self) -> TimeUs {
+        if self.viewer_mode
+            && self.viewer_paused
+            && let Some(elapsed) = self.viewer_paused_play_elapsed
+        {
+            return elapsed;
+        }
         let micros =
             self.play.play_scene_started_at.elapsed().as_micros().min(i64::MAX as u128) as i64;
         TimeUs(micros)
@@ -506,6 +512,9 @@ impl WinitApp {
             self.sync_realtime_profile_settings();
         }
         if entry_id == SettingsEntryId::Language {
+            self.reload_select_items();
+        }
+        if entry_id == SettingsEntryId::HispeedMode {
             self.reload_select_items();
         }
         if entry_id == SettingsEntryId::ShowFps
@@ -953,6 +962,9 @@ impl WinitApp {
 
     pub(super) fn adjust_select_green_number(&mut self, delta: i32) -> bool {
         if !self.begin_selected_play_mode_edit() {
+            return false;
+        }
+        if self.boot.profile_config.lane.floating_policy == FloatingPolicyConfig::Disabled {
             return false;
         }
         let current = self.boot.profile_config.lane.target_green_number.max(1);

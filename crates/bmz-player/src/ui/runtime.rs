@@ -1,3 +1,5 @@
+use super::*;
+
 /// 設定パネルの出力デバイス選択 ComboBox 用キャッシュ。
 #[derive(Default)]
 pub(super) struct AudioDevicePickerState {
@@ -515,65 +517,6 @@ impl EguiKeyConfigUiState {
     }
 }
 
-#[cfg(test)]
-mod key_config_capture_tests {
-    use super::*;
-    use crate::config::profile_config::{InputActionConfig, LaneConfig};
-
-    fn keyboard_target() -> EguiKeyConfigListenTarget {
-        EguiKeyConfigListenTarget {
-            key_mode: KeyMode::K7,
-            target: KeyBindingTarget::Key {
-                lane: LaneConfig::Key1,
-                slot: KeyBindingSlot::KeyboardPrimary,
-            },
-        }
-    }
-
-    fn controller_target() -> EguiKeyConfigListenTarget {
-        EguiKeyConfigListenTarget {
-            key_mode: KeyMode::K7,
-            target: KeyBindingTarget::Action {
-                action: InputActionConfig::E1,
-                slot: KeyBindingSlot::Controller,
-            },
-        }
-    }
-
-    #[test]
-    fn keyboard_listener_ignores_gamepad_and_captures_keyboard() {
-        let mut state =
-            EguiKeyConfigUiState { listening: Some(keyboard_target()), ..Default::default() };
-        assert_eq!(state.capture_gamepad("Button1"), EguiKeyConfigInput::Consumed);
-        assert!(state.listening.is_some());
-        assert!(matches!(
-            state.capture_keyboard("Q"),
-            EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind { control, .. }) if control == "Q"
-        ));
-        assert!(state.listening.is_none());
-    }
-
-    #[test]
-    fn controller_listener_supports_axis_clear_and_escape() {
-        let mut state =
-            EguiKeyConfigUiState { listening: Some(controller_target()), ..Default::default() };
-        assert!(matches!(
-            state.capture_gamepad("Axis1+"),
-            EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind { control, .. }) if control == "Axis1+"
-        ));
-
-        state.listening = Some(controller_target());
-        assert!(matches!(
-            state.capture_keyboard("Delete"),
-            EguiKeyConfigInput::Action(EguiKeyConfigAction::Clear { .. })
-        ));
-
-        state.listening = Some(controller_target());
-        assert_eq!(state.capture_keyboard("Escape"), EguiKeyConfigInput::Consumed);
-        assert!(state.listening.is_none());
-    }
-}
-
 pub(super) fn egui_frame_needs_full_state(
     visible: bool,
     practice_overlay: bool,
@@ -633,4 +576,62 @@ pub(super) const fn cjk_font_name(coverage: bmz_render::FontCoverage) -> &'stati
         bmz_render::FontCoverage::HongKong => "bmz_cjk_hong_kong",
     }
 }
-use super::*;
+
+#[cfg(test)]
+mod key_config_capture_tests {
+    use super::*;
+    use crate::config::profile_config::{InputActionConfig, LaneConfig};
+
+    fn keyboard_target() -> EguiKeyConfigListenTarget {
+        EguiKeyConfigListenTarget {
+            key_mode: KeyMode::K7,
+            target: KeyBindingTarget::Key {
+                lane: LaneConfig::Key1,
+                slot: KeyBindingSlot::KeyboardPrimary,
+            },
+        }
+    }
+
+    fn controller_target() -> EguiKeyConfigListenTarget {
+        EguiKeyConfigListenTarget {
+            key_mode: KeyMode::K7,
+            target: KeyBindingTarget::Action {
+                action: InputActionConfig::E1,
+                slot: KeyBindingSlot::Controller,
+            },
+        }
+    }
+
+    #[test]
+    fn keyboard_listener_ignores_gamepad_and_captures_keyboard() {
+        let mut state =
+            EguiKeyConfigUiState { listening: Some(keyboard_target()), ..Default::default() };
+        assert_eq!(state.capture_gamepad("Button1"), EguiKeyConfigInput::Consumed);
+        assert!(state.listening.is_some());
+        assert!(matches!(
+            state.capture_keyboard("Q"),
+            EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind { control, .. }) if control == "Q"
+        ));
+        assert!(state.listening.is_none());
+    }
+
+    #[test]
+    fn controller_listener_supports_axis_clear_and_escape() {
+        let mut state =
+            EguiKeyConfigUiState { listening: Some(controller_target()), ..Default::default() };
+        assert!(matches!(
+            state.capture_gamepad("Axis1+"),
+            EguiKeyConfigInput::Action(EguiKeyConfigAction::Bind { control, .. }) if control == "Axis1+"
+        ));
+
+        state.listening = Some(controller_target());
+        assert!(matches!(
+            state.capture_keyboard("Delete"),
+            EguiKeyConfigInput::Action(EguiKeyConfigAction::Clear { .. })
+        ));
+
+        state.listening = Some(controller_target());
+        assert_eq!(state.capture_keyboard("Escape"), EguiKeyConfigInput::Consumed);
+        assert!(state.listening.is_none());
+    }
+}

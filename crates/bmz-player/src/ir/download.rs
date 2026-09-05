@@ -47,8 +47,27 @@ pub struct IrScoreDownloadReport {
     pub messages: Vec<String>,
 }
 
+pub enum IrOwnScoreHistoryClient {
+    BmzOfficial(BmzOfficialIrClient),
+    BmsIr { client: crate::ir::bms_ir::BmsIrClient, player_id: String, game_token: String },
+}
+
+impl IrOwnScoreHistoryClient {
+    async fn fetch(
+        &self,
+        request: &IrOwnScoreHistoryRequest,
+    ) -> Result<super::types::IrOwnScoreHistoryResult> {
+        match self {
+            Self::BmzOfficial(client) => client.fetch_own_scores(request).await,
+            Self::BmsIr { client, player_id, game_token } => {
+                client.fetch_own_scores(request, player_id, game_token).await
+            }
+        }
+    }
+}
+
 pub async fn download_ir_scores(
-    client: &BmzOfficialIrClient,
+    client: &IrOwnScoreHistoryClient,
     provider_key: &str,
     account_id: &str,
     score_db: &mut ScoreDatabase,
@@ -67,7 +86,7 @@ pub async fn download_ir_scores(
     while report.action_count() < limit {
         let page_limit = 100;
         let page = client
-            .fetch_own_scores(&IrOwnScoreHistoryRequest {
+            .fetch(&IrOwnScoreHistoryRequest {
                 limit: page_limit,
                 offset: 0,
                 cursor: cursor.clone(),

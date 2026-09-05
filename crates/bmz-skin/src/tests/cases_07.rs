@@ -123,6 +123,65 @@ fn hub_fixture(name: &str) -> (PathBuf, PathBuf) {
 }
 
 #[test]
+fn package_path_context_exposes_beatoraja_logical_entry_directory() {
+    let library_root = unique_test_dir("bmz-skin-logical-package-path").join("skins");
+    let entry_dir = library_root.join("simple-play-simple/system");
+    fs::create_dir_all(entry_dir.join("modules")).unwrap();
+    let entry = entry_dir.join("play7.luaskin");
+    fs::write(
+        &entry,
+        r#"
+            local path = tostring(package.path)
+            local folder = string.sub(path, 12, string.len(path) - 13)
+            assert(folder == "simple-play-simple")
+            return require("modules.init")
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        entry_dir.join("modules/init.lua"),
+        "return { type = 0, name = 'Logical package path' }",
+    )
+    .unwrap();
+
+    let context = SkinPathContext::new(&entry, [library_root]).unwrap();
+    assert_eq!(context.initial_package_path(), "?.lua;skin/simple-play-simple/system/?.lua");
+
+    let header = load_lua_skin_header_value_with_path_context(&context).unwrap();
+    assert_eq!(header.value.get("name").and_then(JsonValue::as_str), Some("Logical package path"));
+}
+
+#[test]
+fn package_path_context_keeps_entry_only_absolute_fallback() {
+    let root = unique_test_dir("bmz-skin-entry-only-package-path");
+    fs::create_dir_all(&root).unwrap();
+    let entry = root.join("play7.luaskin");
+    fs::write(&entry, "return { type = 0 }").unwrap();
+    let context = SkinPathContext::for_entry(&entry).unwrap();
+    let entry_dir = context.entry_dir().to_string_lossy().replace('\\', "/");
+
+    assert_eq!(context.initial_package_path(), format!("{entry_dir}/?.lua;{entry_dir}/?/init.lua"));
+}
+
+#[test]
+fn selected_basename_prefers_the_wildcard_directory() {
+    let library_root = unique_test_dir("bmz-skin-selected-basename-collision").join("skins");
+    let entry_dir = library_root.join("simple-play-simple/system");
+    let gauge = library_root.join("simple-play-simple/customize/gauge/default");
+    fs::create_dir_all(entry_dir.join("default")).unwrap();
+    fs::create_dir_all(&gauge).unwrap();
+    let entry = entry_dir.join("play7.luaskin");
+    fs::write(&entry, "return { type = 0 }").unwrap();
+    fs::write(gauge.join("parts.lua"), "return {}").unwrap();
+
+    let context = SkinPathContext::new(&entry, [library_root]).unwrap();
+    assert_eq!(
+        context.resolve_selected_for_pattern("../customize/gauge/*", "default").unwrap(),
+        canonicalize_skin_path(&gauge).unwrap()
+    );
+}
+
+#[test]
 fn package_aware_hub_load_uses_dynamic_package_path_in_every_vm() {
     let (library_root, entry) = hub_fixture("bmz-skin-package-aware-hub");
     let context = SkinPathContext::new(&entry, [library_root.clone()]).unwrap();

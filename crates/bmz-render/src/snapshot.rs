@@ -209,12 +209,15 @@ pub struct RenderSnapshot {
     pub skin_attempt: SkinAttemptState,
     /// READY timer (TIMER_READY=40) elapsed time. None while READY is not active yet.
     pub ready_elapsed_time: Option<TimeUs>,
+    /// Play sceneの時計を継続し、ロード表示とREADY timerを再始動しない入場。
+    /// 常駐viewerの後続Playなど、見た目だけをseek相当にする経路で使う。
+    pub seamless_play_entry: bool,
     /// 直近の小節線からの60 BPM換算拍時間 (TIMER_RHYTHM=140)。
     pub rhythm_timer_elapsed_ms: Option<i32>,
     /// 直近の4分拍からの実時間。PMS ノート拡縮に使い、TIMER_RHYTHM とは分けて扱う。
     pub quarter_note_elapsed_ms: Option<i32>,
     /// BMS リソース (WAV 等) のバックグラウンドロードが完了しているか。
-    /// READY 遷移可否の判定に使う。op 80/81 は ready_elapsed_time から判定する。
+    /// READY 遷移可否の判定に使う。op 80/81 の表現状態とは独立して保持する。
     /// preload 完了前の placeholder snapshot では false。
     pub resources_loaded: bool,
     /// Audio/BGA resource load progress in the beatoraja RateType 102 range (0.0..=1.0).
@@ -258,9 +261,15 @@ pub struct RenderSnapshot {
     pub gauge_border: f32,
     pub opponent: Option<OpponentRenderSnapshot>,
     pub hispeed: f32,
-    /// BMZ extension: current hispeed mode for play skin refs. 0=NHS, 1=FHS.
+    /// BMZ extension: current hispeed mode for play skin refs. 0=base, 1=Floating.
     pub hispeed_mode_index: i32,
-    /// BMZ extension: target green number used by FHS.
+    /// BMZ extension: configured base hispeed. 0=Classic, 1=Normal.
+    pub base_hispeed_index: i32,
+    /// BMZ extension: selected Normal hispeed level (1..=20).
+    pub normal_hispeed_level: u8,
+    /// BMZ extension: five-choice hispeed configuration index.
+    pub hispeed_config_index: i32,
+    /// BMZ extension: target green number used by Floating.
     pub target_green_number: u32,
     pub lift: f32,
     pub lane_cover: f32,

@@ -59,8 +59,11 @@ pub fn load_game_session_for_chart_with_input_backend(
 }
 
 pub(super) fn bms_random_source_for_chart(options: &PlaySessionOptions) -> BmsRandomSource {
-    if let Some(choices) = &options.bms_random_choices {
-        BmsRandomSource::Choices(choices.clone())
+    if options.bms_random_choices.is_some() || options.bms_switch_choices.is_some() {
+        BmsRandomSource::Choices {
+            random: options.bms_random_choices.clone().unwrap_or_default(),
+            switches: options.bms_switch_choices.clone().unwrap_or_default(),
+        }
     } else if options.legacy_arrange_seed {
         // Replay v3 and older derived `#RANDOM` from the shared arrange seed.
         BmsRandomSource::Seed(options.arrange_seed.map(|seed| seed as u64))
@@ -197,6 +200,7 @@ pub fn preload_play_session_for_chart_with_callbacks(
             opponent_options.arrange_seed_2p = seeds.p2.map(|seed| i64::from(seed.value()));
         }
         opponent_options.bms_random_choices = opponent.bms_random_choices.clone();
+        opponent_options.bms_switch_choices = opponent.bms_switch_choices.clone();
         opponent_options.arrange_pattern = opponent.arrange_pattern.clone();
         opponent_options.s_random_scheme = opponent.s_random_scheme;
         opponent_options.s_random_scheme_2p = opponent.s_random_scheme_2p;
@@ -239,7 +243,15 @@ pub fn preload_play_session_for_chart_with_callbacks(
     if (options.session_mode.is_battle() || options.battle_opponent.is_some())
         && let Some(opponent) = opponent_chart.as_deref()
     {
-        apply_battle_opponent_chart(&mut primary_chart, opponent);
+        if options.session_mode == SessionMode::GBattle {
+            // G-BATTLE always presents the same final arrangement on both
+            // sides. The independent opponent chart remains available below
+            // for replay judgement or autoplay fallback.
+            let primary_display = primary_chart.clone();
+            apply_battle_opponent_chart(&mut primary_chart, &primary_display);
+        } else {
+            apply_battle_opponent_chart(&mut primary_chart, opponent);
+        }
     }
     let chart = Arc::new(primary_chart);
     let prepared_chart = PreparedPlayChart {
@@ -489,12 +501,9 @@ pub(super) fn load_transformed_chart_for_play(
         apply_sp_to_dp(&mut chart);
     }
     apply_double_option(&mut chart, applied_double_option);
-    if key_mode_conversion == KeyModeConversionConfig::Off
+    let duplicate_primary_for_battle = key_mode_conversion == KeyModeConversionConfig::Off
         && battle_presentation
-        && options.battle_opponent.is_none()
-    {
-        apply_battle_double_option(&mut chart);
-    }
+        && options.battle_opponent.is_none();
     let second_arrange = if matches!(
         key_mode_conversion,
         KeyModeConversionConfig::SevenToNine | KeyModeConversionConfig::SevenToSix
@@ -515,6 +524,15 @@ pub(super) fn load_transformed_chart_for_play(
         options.h_random_threshold_ms,
         options.arrange_pattern.as_deref(),
     );
+    if duplicate_primary_for_battle {
+        // Arrange the 1P chart first, then clone that resolved placement to
+        // 2P. Applying arrange_2p independently made G-BATTLE's opponent fall
+        // in NORMAL while the player used RANDOM/MIRROR.
+        apply_battle_double_option(&mut chart);
+        applied_arrange.arrange_2p = applied_arrange.arrange;
+        applied_arrange.seed_2p = applied_arrange.seed;
+        applied_arrange.s_random_scheme_2p = Some(applied_arrange.s_random_scheme);
+    }
     crate::assist::merge_arrange_assist_level(
         &mut assist_runtime,
         applied_arrange.arrange,
@@ -530,6 +548,7 @@ pub(super) fn load_transformed_chart_for_play(
     }
     applied_arrange.double_option = applied_double_option;
     applied_arrange.bms_random_choices = import.bms_random_choices;
+    applied_arrange.bms_switch_choices = import.bms_switch_choices;
     applied_arrange.key_mode_conversion = key_mode_conversion;
     applied_arrange.seven_to_nine_pattern = options.seven_to_nine_pattern;
     applied_arrange.seven_to_nine_type = options.seven_to_nine_type;
@@ -659,7 +678,7 @@ pub fn build_practice_prepared_from_preloaded(
     let mut skin_attempt = preloaded.skin_attempt;
     skin_attempt.session_mode_index =
         Some(crate::skin_extension::session_mode_index(SessionMode::Practice));
-    skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
+    skin_attempt.effective_key_mode = Some(session.primary_key_mode);
     skin_attempt.double_option_index =
         Some(crate::skin_extension::double_option_index(applied_arrange.double_option));
     skin_attempt.hsfix_index = usize::try_from(session.hsfix_index).ok();
@@ -750,7 +769,7 @@ pub fn build_prepared_play_session_from_preloaded(
     let mut session = session;
     session.audio_mix.chart_normalization_gain = preloaded.chart_normalization_gain;
     let mut skin_attempt = preloaded.skin_attempt;
-    skin_attempt.effective_key_mode = Some(session.chart.metadata.key_mode);
+    skin_attempt.effective_key_mode = Some(session.primary_key_mode);
     skin_attempt.hsfix_index = usize::try_from(session.hsfix_index).ok();
     skin_attempt.gauge_auto_shift_index =
         Some(crate::skin_extension::gauge_auto_shift_index(session.gauge.auto_shift_mode));

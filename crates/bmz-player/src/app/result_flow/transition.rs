@@ -131,6 +131,7 @@ impl WinitApp {
             // out before the first chart actually began.
             self.clear_active_course_state();
             self.select.autoplay_folder = None;
+            self.reload_skin_for_scene_entry(SkinKind::Select);
             self.restart_select_scene_timers();
         } else {
             let practice = decide.launch.into_practice_session();

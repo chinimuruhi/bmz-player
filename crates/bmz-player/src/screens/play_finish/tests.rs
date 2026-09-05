@@ -271,6 +271,7 @@ fn finish_session_result_returns_summary() {
         s_random_scheme_2p: None,
         h_random_threshold_ms: None,
         bms_random_choices: vec![1, 2],
+        bms_switch_choices: vec![2_000_000_000_000],
         pattern: Some(lane_shuffle_pattern.clone()),
         key_mode_conversion: KeyModeConversionConfig::Off,
         seven_to_nine_pattern: Default::default(),
@@ -962,6 +963,27 @@ fn finish_snapshot_preserves_the_started_session_mode() {
 }
 
 #[test]
+fn battle_result_keeps_the_primary_key_mode_for_skin_state() {
+    for session_mode_index in [0, 4] {
+        let mut session = session();
+        Arc::make_mut(&mut session.chart).metadata.key_mode = bmz_core::lane::KeyMode::K14;
+        session.primary_key_mode = bmz_core::lane::KeyMode::K7;
+        session.session_mode_index = session_mode_index;
+
+        let snapshot = FinishSessionSnapshot::from_session(
+            &session,
+            ChartLnProfile::default(),
+            &AppliedArrange::default(),
+        );
+
+        assert_eq!(snapshot.chart.metadata.key_mode, bmz_core::lane::KeyMode::K14);
+        assert_eq!(snapshot.primary_key_mode, bmz_core::lane::KeyMode::K7);
+        assert_eq!(snapshot.skin_attempt.effective_key_mode, Some(bmz_core::lane::KeyMode::K7));
+        assert_eq!(snapshot.skin_attempt.session_mode_index, Some(usize::from(session_mode_index)));
+    }
+}
+
+#[test]
 fn seven_to_nine_7k_rule_keeps_source_mode_for_result_and_ir() {
     let mut session = session();
     Arc::make_mut(&mut session.chart).metadata.key_mode = bmz_core::lane::KeyMode::K9;
@@ -1063,11 +1085,15 @@ fn session() -> GameSession {
             auto_keysound_mine: true,
         },
         hispeed: 2.0,
-        hispeed_mode: bmz_gameplay::session::HispeedMode::Normal,
+        hispeed_mode: bmz_gameplay::session::HispeedMode::Classic,
+        base_hispeed_mode: bmz_gameplay::session::HispeedMode::Classic,
+        floating_policy: bmz_gameplay::session::FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
         constant_enabled: false,
         constant_fade_ms: 100,
         guide_se_enabled: false,
+        note_retention: false,
         hsfix_base_bpm: 120.0,
         lift: 0.0,
         lane_cover: 0.0,

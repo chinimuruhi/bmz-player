@@ -218,6 +218,9 @@ fn resolve_target_provider(
 }
 
 fn target_from_provider(provider: &IrProviderConfig) -> Result<TargetProvider> {
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        bail!("BMS-IR local score backfill is disabled");
+    }
     if crate::ir::rian_ir::is_rian_ir_config(provider) {
         bail!("rianIR local score backfill is disabled");
     }
@@ -599,6 +602,7 @@ fn chart_payload_from_library(
     let gauge_total = gauge_total_for_chart(metadata_total, score_total_notes);
 
     IrChartPayload {
+        source_format: String::new(),
         sha256: hash_to_hex(&chart.sha256),
         md5: Some(hash_to_hex(&chart.md5)),
         // Backfill scores do not have a hardware-clock play duration to pair with this value.

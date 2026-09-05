@@ -1,16 +1,16 @@
 use super::*;
 
 impl WgpuRenderer {
-    pub(in crate::renderer) fn resize(&mut self, size: SurfaceSize) {
+    pub(in crate::renderer) fn resize(&mut self, size: SurfaceSize) -> Result<()> {
         if !size.is_drawable() {
-            return;
+            return Ok(());
         }
 
         self.config.width = size.width;
         self.config.height = size.height;
         self.clear_internal_scene_target();
         self.clear_offscreen_rect_batches();
-        self.configure_surface();
+        self.configure_surface()
     }
 
     pub(in crate::renderer) fn surface_size(&self) -> SurfaceSize {

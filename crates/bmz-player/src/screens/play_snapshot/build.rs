@@ -42,7 +42,6 @@ pub fn apply_prepared_chart_to_render_snapshot(
     snapshot.has_long_notes = Some(!chart.long_notes.is_empty());
     snapshot.has_bpm_stop = cache.has_bpm_stop;
     snapshot.key_mode = chart.metadata.key_mode;
-    snapshot.skin_attempt.effective_key_mode = Some(chart.metadata.key_mode);
     snapshot.skin_attempt.ln_mode_index =
         Some(crate::skin_extension::long_note_mode_index(chart.metadata.long_note_mode));
     snapshot.skin_attempt.has_bga = Some(chart.metadata.has_bga);
@@ -56,6 +55,7 @@ pub fn apply_prepared_chart_to_render_snapshot(
     } else {
         chart.metadata.key_mode
     };
+    snapshot.skin_attempt.effective_key_mode = Some(primary_key_mode);
     snapshot.fs_threshold_ms = rm_skin_fs_threshold_ms(chart.metadata.judge_rank, primary_key_mode);
     snapshot.judge_graph_density = Arc::clone(&cache.judge_graph_density);
     snapshot.bpm_graph_segments = Arc::clone(&cache.bpm_graph_segments);
@@ -169,7 +169,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         cursor_tick,
     );
     let note_display_duration_ms = note_display_duration_ms(session, now_bpm, scroll_multiplier);
-    let lane_cover = if session.lane_cover_visible {
+    let lane_cover = if session.lanecover_enabled && session.lane_cover_visible {
         crate::config::play::clamp_lane_cover_for_lift(session.lane_cover, session.lift)
     } else {
         0.0
@@ -217,10 +217,19 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             gauge_type: gauge.definition.gauge_type as i32,
             gauge_max: gauge.definition.max,
             gauge_border: gauge.definition.border,
-            full_combo_elapsed_ms: None,
+            full_combo_elapsed_ms: optional_skin_timer_elapsed_ms(
+                chart_now,
+                opponent.full_combo_started_at,
+            ),
             end_of_note_elapsed_ms: end_of_note_elapsed_ms(chart_now, cache.end_of_note_time),
-            gauge_increase_elapsed_ms: None,
-            gauge_max_elapsed_ms: None,
+            gauge_increase_elapsed_ms: optional_skin_timer_elapsed_ms(
+                chart_now,
+                opponent.gauge_increase_started_at,
+            ),
+            gauge_max_elapsed_ms: optional_skin_timer_elapsed_ms(
+                chart_now,
+                opponent.gauge_max_started_at,
+            ),
         }
     });
     let legacy_opponent = session.opponent_score.as_ref().zip(session.opponent_gauge.as_ref()).map(
@@ -260,7 +269,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         operating_time_ms: 0,
         skin_input: Default::default(),
         skin_attempt: bmz_render::snapshot::SkinAttemptState {
-            effective_key_mode: Some(session.chart.metadata.key_mode),
+            effective_key_mode: Some(session.primary_key_mode),
             hsfix_index: usize::try_from(session.hsfix_index).ok(),
             gauge_auto_shift_index: Some(crate::skin_extension::gauge_auto_shift_index(
                 session.gauge.auto_shift_mode,
@@ -281,6 +290,7 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
             ..Default::default()
         },
         ready_elapsed_time: None,
+        seamless_play_entry: false,
         rhythm_timer_elapsed_ms: rhythm_timer_elapsed_ms(
             &session.timing_map,
             &session.chart.bar_lines,
@@ -327,6 +337,12 @@ pub fn build_render_snapshot_with_target_and_bga_frames_cached(
         opponent,
         hispeed: session.hispeed,
         hispeed_mode_index: hispeed_mode_index(session.hispeed_mode),
+        base_hispeed_index: base_hispeed_index(session.base_hispeed_mode),
+        normal_hispeed_level: session.normal_hispeed_level,
+        hispeed_config_index: hispeed_config_index(
+            session.base_hispeed_mode,
+            session.floating_policy,
+        ),
         target_green_number: session.target_green_number,
         lift: session.lift,
         lane_cover,
@@ -519,9 +535,13 @@ pub fn update_render_snapshot_play_options(
 ) {
     snapshot.hispeed = session.hispeed;
     snapshot.hispeed_mode_index = hispeed_mode_index(session.hispeed_mode);
+    snapshot.base_hispeed_index = base_hispeed_index(session.base_hispeed_mode);
+    snapshot.normal_hispeed_level = session.normal_hispeed_level;
+    snapshot.hispeed_config_index =
+        hispeed_config_index(session.base_hispeed_mode, session.floating_policy);
     snapshot.target_green_number = session.target_green_number;
     snapshot.lift = session.lift;
-    snapshot.lane_cover = if session.lane_cover_visible {
+    snapshot.lane_cover = if session.lanecover_enabled && session.lane_cover_visible {
         crate::config::play::clamp_lane_cover_for_lift(session.lane_cover, session.lift)
     } else {
         0.0
@@ -542,7 +562,35 @@ pub fn update_render_snapshot_play_options(
 
 pub(super) fn hispeed_mode_index(mode: bmz_gameplay::session::HispeedMode) -> i32 {
     match mode {
-        bmz_gameplay::session::HispeedMode::Normal => 0,
+        bmz_gameplay::session::HispeedMode::Normal
+        | bmz_gameplay::session::HispeedMode::Classic => 0,
         bmz_gameplay::session::HispeedMode::Floating => 1,
+    }
+}
+
+pub(super) const fn base_hispeed_index(mode: bmz_gameplay::session::HispeedMode) -> i32 {
+    match mode {
+        bmz_gameplay::session::HispeedMode::Normal => 1,
+        bmz_gameplay::session::HispeedMode::Classic
+        | bmz_gameplay::session::HispeedMode::Floating => 0,
+    }
+}
+
+pub(super) const fn hispeed_config_index(
+    base: bmz_gameplay::session::HispeedMode,
+    floating: bmz_gameplay::session::FloatingPolicy,
+) -> i32 {
+    match (base, floating) {
+        (_, bmz_gameplay::session::FloatingPolicy::Locked) => 2,
+        (
+            bmz_gameplay::session::HispeedMode::Normal,
+            bmz_gameplay::session::FloatingPolicy::Disabled,
+        ) => 0,
+        (_, bmz_gameplay::session::FloatingPolicy::Disabled) => 1,
+        (
+            bmz_gameplay::session::HispeedMode::Normal,
+            bmz_gameplay::session::FloatingPolicy::Toggle,
+        ) => 3,
+        (_, bmz_gameplay::session::FloatingPolicy::Toggle) => 4,
     }
 }

@@ -38,6 +38,8 @@ pub(super) fn plan_decide(
             table_song: !snapshot.table_text_primary.is_empty(),
             difficulty: skin_difficulty_code(&snapshot.difficulty_name),
             judge_rank: snapshot.judge_rank,
+            has_stagefile: snapshot.stagefile_background,
+            stagefile_image_size: snapshot.stagefile_image_size,
             now_bpm: snapshot.now_bpm,
             min_bpm: snapshot.min_bpm,
             max_bpm: snapshot.max_bpm,
@@ -47,6 +49,9 @@ pub(super) fn plan_decide(
             skin_offsets: snapshot.skin_offsets,
             hispeed: snapshot.hispeed,
             hispeed_mode_index: snapshot.hispeed_mode_index,
+            base_hispeed_index: snapshot.base_hispeed_index,
+            normal_hispeed_level: snapshot.normal_hispeed_level,
+            hispeed_config_index: snapshot.hispeed_config_index,
             target_green_number: snapshot.target_green_number,
             total_duration_ms: snapshot.note_display_duration_ms,
             duration_green_ms: Some(crate::skin::duration_to_green_number_ms(

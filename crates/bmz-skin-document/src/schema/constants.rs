@@ -30,6 +30,9 @@ pub const SKIN_EVENT_HSFIX: i32 = 55;
 pub const SKIN_REF_BMZ_KEY_MODE: i32 = 1903;
 /// BMZ extension: active physical lane count including scratch lanes.
 pub const SKIN_REF_BMZ_ACTIVE_LANE_COUNT: i32 = 1904;
+pub const SKIN_REF_BMZ_BASE_HISPEED: i32 = 1916;
+pub const SKIN_REF_BMZ_NORMAL_HISPEED_LEVEL: i32 = 1917;
+pub const SKIN_REF_BMZ_HISPEED_CONFIG: i32 = 1918;
 /// BMZ extension: exact key mode options in K4/K5/K6/K7/K8/K9/K10/K14 order.
 pub const SKIN_OPTION_BMZ_KEY_MODE_BASE: i32 = 1905;
 pub const SKIN_OPTION_BMZ_KEY_MODE_COUNT: usize = 8;
@@ -42,9 +45,14 @@ pub const SKIN_OPTION_BMZ_DOUBLE_PLAY: i32 = 1915;
 pub const SKIN_OPTION_BMZ_INPUT_BASE: i32 = 1920;
 pub const SKIN_OPTION_BMZ_INPUT_LAST: i32 = 1927;
 pub const SKIN_BMZ_INPUT_COUNT: usize = 8;
+/// BMZ extension: E1/E2 aggregate held option for shared control panels.
+pub const SKIN_OPTION_BMZ_E1_E2_HELD: i32 = 1928;
 /// BMZ extension: matching press-edge timers.
 pub const SKIN_TIMER_BMZ_INPUT_BASE: i32 = 19_000;
 pub const SKIN_TIMER_BMZ_INPUT_LAST: i32 = 19_007;
+/// BMZ extension: mutually exclusive E1/E2 aggregate press/hold and release timers.
+pub const SKIN_TIMER_BMZ_E1_E2_PRESS: i32 = 19_008;
+pub const SKIN_TIMER_BMZ_E1_E2_RELEASE: i32 = 19_009;
 /// BMZ extension: latest judgement timers split by judge region and lane kind.
 /// Slots are region 0 Scratch/Keys, region 1 Scratch/Keys, region 2 Scratch/Keys.
 pub const SKIN_TIMER_BMZ_JUDGE_LANE_BASE: i32 = 19_010;

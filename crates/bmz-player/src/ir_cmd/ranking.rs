@@ -39,6 +39,34 @@ pub(super) async fn ranking(
         print_ranking(&result, ln_policy, profile.play.rule_mode);
         return Ok(());
     }
+    if crate::ir::bms_ir::is_bms_ir_config(provider) {
+        let provider_key = crate::ir::provider_key::configured_provider_key(provider)
+            .context("IR provider key is not set; log in again")?;
+        let credentials = ensure_fresh_credentials(
+            profile_paths.root_dir.as_path(),
+            provider_key,
+            &provider.base_url,
+            now,
+        )
+        .await?;
+        let result = crate::ir::bms_ir::BmsIrClient::new(&provider.base_url)?
+            .fetch_ranking(
+                sha256,
+                &IrRankingRequest {
+                    scope,
+                    ln_policy: ln_policy.to_string(),
+                    double_option: crate::select_options::DoubleOptionScoreBucket::Off,
+                    rule_mode: profile.play.rule_mode,
+                    limit,
+                    offset: 0,
+                },
+                &credentials.account_id,
+                &credentials.access_token,
+            )
+            .await?;
+        print_ranking(&result, ln_policy, profile.play.rule_mode);
+        return Ok(());
+    }
     let mut client = BmzOfficialIrClient::anonymous(&provider.base_url)?;
     if let Some(provider_key) = crate::ir::provider_key::configured_provider_key(provider)
         && let Ok(credentials) = ensure_fresh_credentials(

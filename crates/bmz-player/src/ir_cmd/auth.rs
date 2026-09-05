@@ -9,32 +9,18 @@ pub(super) async fn login(
     password: Option<String>,
     base_url: Option<String>,
 ) -> Result<()> {
-    let requested_base_url = base_url.clone();
-    let existing_base_url = profile
-        .ir
-        .providers
-        .iter()
-        .find(|entry| {
-            same_provider_protocol(&entry.provider, provider)
-                && requested_base_url.as_ref().is_none_or(|url| entry.base_url == *url)
-        })
-        .map(|entry| entry.base_url.clone())
-        .filter(|url| !url.is_empty());
-    let base_url = base_url.or(existing_base_url).or_else(|| {
-        crate::ir::rian_ir::is_rian_ir_provider(provider)
-            .then(|| crate::ir::rian_ir::RIAN_IR_DEFAULT_BASE_URL.to_string())
-    });
-    let Some(base_url) = base_url else {
-        bail!("IR base URL is not configured. Pass --base-url <URL> on first login.");
-    };
+    let is_bms_ir = crate::ir::bms_ir::is_bms_ir_provider(provider);
+    let is_rian_ir = crate::ir::rian_ir::is_rian_ir_provider(provider);
+    let base_url = resolve_login_base_url(profile, provider, base_url.as_deref())?;
 
     let password = match password {
         Some(password) => password,
         None => prompt_password()?,
     };
 
-    let is_rian_ir = crate::ir::rian_ir::is_rian_ir_provider(provider);
-    let tokens = if is_rian_ir {
+    let tokens = if is_bms_ir {
+        crate::ir::bms_ir::BmsIrClient::new(&base_url)?.login(email, &password).await?
+    } else if is_rian_ir {
         crate::ir::rian_ir::RianIrClient::new(&base_url)?.login(email, &password).await?
     } else {
         BmzOfficialIrClient::anonymous(&base_url)?.login(email, &password).await?
@@ -42,6 +28,7 @@ pub(super) async fn login(
     let provider_key = tokens.provider_key.clone();
     let account_id = tokens.player.id.clone();
     let display_name = tokens.player.display_name.clone().unwrap_or_default();
+    let bms_ir_game_token = tokens.access_token.clone();
     let now = now_unix_seconds();
 
     save_credentials(
@@ -61,7 +48,8 @@ pub(super) async fn login(
         .providers
         .iter()
         .position(|entry| {
-            same_provider_protocol(&entry.provider, provider) && entry.base_url == base_url
+            same_provider_protocol(&entry.provider, provider)
+                && (is_bms_ir || entry.base_url == base_url)
         })
         .or_else(|| {
             profile.ir.providers.iter().position(|entry| {
@@ -109,6 +97,19 @@ pub(super) async fn login(
                 tracing::warn!(%error, "rianIR rival sync after login failed; login remains valid");
             }
         }
+    } else if is_bms_ir {
+        match crate::ir::bms_ir::BmsIrClient::new(&entry.base_url)?
+            .get_rivals(&account_id, &bms_ir_game_token)
+            .await
+        {
+            Ok(response) => {
+                sync_ir_rivals_into_profile(profile, &provider_key, &response.rivals);
+                tracing::info!(rivals = response.rivals.len(), "BMS-IR rivals synced after login");
+            }
+            Err(error) => {
+                tracing::warn!(%error, "BMS-IR rival sync after login failed; login remains valid");
+            }
+        }
     }
     profile.updated_at = now;
     save_profile_config(&profile_paths.profile_toml, profile)?;
@@ -118,6 +119,34 @@ pub(super) async fn login(
         if display_name.is_empty() { email } else { &display_name }
     );
     Ok(())
+}
+
+fn resolve_login_base_url(
+    profile: &ProfileConfig,
+    provider: &str,
+    requested_base_url: Option<&str>,
+) -> Result<String> {
+    if crate::ir::bms_ir::is_bms_ir_provider(provider) {
+        return crate::ir::bms_ir::fixed_base_url(requested_base_url);
+    }
+    let existing_base_url = profile
+        .ir
+        .providers
+        .iter()
+        .find(|entry| {
+            same_provider_protocol(&entry.provider, provider)
+                && requested_base_url.is_none_or(|url| entry.base_url == url)
+        })
+        .map(|entry| entry.base_url.clone())
+        .filter(|url| !url.is_empty());
+    requested_base_url
+        .map(str::to_string)
+        .or(existing_base_url)
+        .or_else(|| {
+            crate::ir::rian_ir::is_rian_ir_provider(provider)
+                .then(|| crate::ir::rian_ir::RIAN_IR_DEFAULT_BASE_URL.to_string())
+        })
+        .context("IR base URL is not configured. Pass --base-url <URL> on first login.")
 }
 
 pub(super) async fn logout(
@@ -140,6 +169,7 @@ pub(super) async fn logout(
     if let Some(credentials) = &credentials
         && let Some(entry) = entry
         && !crate::ir::rian_ir::is_rian_ir_config(entry)
+        && !crate::ir::bms_ir::is_bms_ir_config(entry)
     {
         let client = BmzOfficialIrClient::new(&entry.base_url, credentials.access_token.clone())?;
         if let Err(error) = client.logout(&credentials.refresh_token).await {
@@ -170,7 +200,9 @@ pub(super) async fn logout(
 }
 
 pub(super) fn canonical_provider_protocol(provider: &str) -> &'static str {
-    if crate::ir::rian_ir::is_rian_ir_provider(provider) {
+    if crate::ir::bms_ir::is_bms_ir_provider(provider) {
+        crate::ir::bms_ir::BMS_IR_PROVIDER
+    } else if crate::ir::rian_ir::is_rian_ir_provider(provider) {
         crate::ir::rian_ir::RIAN_IR_PROVIDER
     } else {
         crate::ir::bmz_official::BMZ_IR_PROVIDER
@@ -216,7 +248,15 @@ pub(super) async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig
                     .await
                     {
                         Ok(fresh) => {
-                            if crate::ir::rian_ir::is_rian_ir_config(entry) {
+                            if crate::ir::bms_ir::is_bms_ir_config(entry) {
+                                match crate::ir::bms_ir::BmsIrClient::new(&entry.base_url)?
+                                    .login(&fresh.account_id, &fresh.access_token)
+                                    .await
+                                {
+                                    Ok(_) => println!("  connection: OK ({})", fresh.account_id),
+                                    Err(error) => println!("  connection: NG ({error:#})"),
+                                }
+                            } else if crate::ir::rian_ir::is_rian_ir_config(entry) {
                                 println!(
                                     "  connection: credentials stored ({})",
                                     fresh.display_name
@@ -241,4 +281,46 @@ pub(super) async fn status(profile_paths: &ProfilePaths, profile: &ProfileConfig
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile() -> ProfileConfig {
+        ProfileConfig::new_default("test", "Test", 0)
+    }
+
+    #[test]
+    fn bms_ir_login_rejects_a_different_credential_origin() {
+        let error = resolve_login_base_url(
+            &profile(),
+            crate::ir::bms_ir::BMS_IR_PROVIDER,
+            Some("https://attacker.example/collect"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("does not allow a custom base URL"));
+    }
+
+    #[test]
+    fn bms_ir_login_uses_the_compiled_origin_and_ignores_legacy_profile_urls() {
+        let mut profile = profile();
+        let mut entry = IrProviderConfig::bms_ir();
+        entry.base_url = "https://attacker.example/legacy".to_string();
+        profile.ir.providers.push(entry);
+
+        assert_eq!(
+            resolve_login_base_url(&profile, crate::ir::bms_ir::BMS_IR_PROVIDER, None).unwrap(),
+            crate::ir::bms_ir::BMS_IR_DEFAULT_BASE_URL
+        );
+    }
+
+    #[test]
+    fn custom_provider_login_keeps_an_explicit_base_url() {
+        let requested = "https://self-hosted.example/ir";
+        assert_eq!(
+            resolve_login_base_url(&profile(), "custom-provider", Some(requested)).unwrap(),
+            requested
+        );
+    }
 }

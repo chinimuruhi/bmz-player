@@ -18,6 +18,32 @@ module stateを保持する。callbackからは現在フレームの `main_state
 draw=false、数値/文字列は未取得として扱う。runtime callbackを含むdocumentはVMをclone
 できないためdocument cacheとLua-to-JSON変換の対象外になる。
 
+Lua sandboxはロード時の互換APIとして`os.clock` / `os.date` / `os.time`を提供する。
+`os.time`の日付tableは標準Luaと同様にローカル時刻として正規化し、正規化後の値を
+tableへ書き戻す。引数なしでは現在時刻を返し、`os.date`は`!` prefixでUTCを選べる。libGDXの
+`Controllers.getControllers()`は入力のない空配列として`size` / `get()` / `first()`を
+提供する。`io`の書き込みstubは内容を永続化しない。初回document構築は、蓄積データを
+Luaで解析するResult skinも通せる専用の命令数上限を持ち、runtime callback単位の上限は
+従来の小さい値を維持する。
+
+判定の存在を表すoption `2241..2246` (PGREAT / GREAT / GOOD / BAD / POOR / EMPTY POOR)
+はResultだけでなくPlay中も現在の判定数を参照する。これにより、LITONE11などが
+`-2244` / `-2245`で制御するフルコンボ演出はBAD/POOR発生後に表示されない。
+
+skin catalogのJSON候補はinclude・条件・数値正規化後に数値の`type`を明示した文書だけを受理する。
+これによりskin配下のplayer dataやparts JSONが既定値`type=0`のPlay 7KEYS skinとして
+候補へ混入することを防ぐ。Selectの曲行テキストIDは区切り文字を無視して`bartext`を
+照合し、`bar_text` / `folderbar_text`形式もbar textへ割り当てる。Lua skinのslider / graph
+で使う`isRefNum`はJSONのbooleanに加えて互換表現の整数`0` / `1`も受理する。
+
+### Lua Module Path
+
+skin library root 配下の Lua skin へ公開する初期 `package.path` は、過去の beatoraja と同じ
+`?.lua;skin/<skin entry directory>/?.lua` 形式にする。sandbox 内の実ファイル解決はこの論理
+パスを library root に対応付け、`require` / `dofile` / `loadfile` が root 外へ出ないことを
+別途検証する。library root を持たない低レベル API は、従来どおり entry directory の絶対
+パスを使う fallback を維持する。
+
 ## Skin Type
 
 beatoraja 互換の主な play skin type:
@@ -88,6 +114,54 @@ beatoraja skin の `source.path` は PNG / BMP / JPEG / GIF / TGA に加え、li
 `PixmapIO` の CIM を読み込める。CIM は zlib stream 内の width / height /
 Gdx2DPixmap format と pixel buffer を RGBA8 へ展開する。MILLIONDOLLAR RESULT の
 主要 atlas は配布時点から `.cim` のため、PNG fallback へ書き換えずそのまま扱う。
+
+## Play Gauge Source Layout
+
+`gauge.nodes` が 4 / 8 / 12 枚だけ定義された skin は、beatoraja の
+`JsonSkinObjectLoader` と同じ index map で 36 段階へ展開する。これにより gauge type ごとの
+通常色・警告色・点滅色を取り違えずに表示する。36 枚定義は従来どおり直接対応させる。
+
+## PMchara
+
+JSON / Lua play skin の `pmchara` を decode し、source が指すディレクトリまたは `.chp` を
+Shift_JIS で読み込む。type `0..15`、`Pattern` / `Texture` / `Layer`、frame 時間、loop 開始、
+source / destination 矩形、alpha、angle を通常の skin source と render item へ展開する。
+type 0 は通常・判定・曲終了状態からモーションを選び、type 1..15 は beatoraja の固定
+モーション対応を使う。filepath のユーザ選択と既定値は通常画像と同じ優先順位で解決する。
+
+現状は PMchara の `--` 座標補間と、画像右下色を透過色にする chroma-key 処理には未対応。
+PNG 等が持つ alpha は通常どおり反映する。
+
+## Text Overflow
+
+beatoraja互換のtext `overflow` は次の値を使用する。
+
+| `overflow` | behavior |
+| ---: | --- |
+| `0` | destination幅を超えて描画する |
+| `1` | destination幅へ収まるよう縮小する |
+| `2` | destination幅へ収まる位置で文字列を打ち切る |
+
+`overflow: 1` の既定動作はbeatorajaと同じ横方向のみの縮小で、文字の高さとY位置を
+維持する。BMZ拡張の `shrinkMode: 1` を指定すると、従来のBMZと同じ縦横等比縮小へ
+切り替わり、縮小後のtextはdestination内で上下中央に配置される。
+
+| `shrinkMode` | behavior |
+| ---: | --- |
+| 省略 / `0` / その他 | 横方向のみ縮小（beatoraja互換） |
+| `1` | 縦横等比縮小（BMZ拡張） |
+
+`shrinkMode` は `overflow: 1` かつ `wrapping: false` の場合だけ参照する。
+`wrapping: true` は縮小より優先される。JSON skinとLua skinで同じフィールドを使用できる。
+
+```json
+{
+  "text": [
+    { "id": "beatoraja-title", "size": 30, "overflow": 1 },
+    { "id": "uniform-title", "size": 30, "overflow": 1, "shrinkMode": 1 }
+  ]
+}
+```
 
 ## BMZ Default JSON Skin
 
@@ -451,11 +525,14 @@ select snapshotへ予定配置を設定する。
 
 | ref | kind | meaning |
 | ---: | --- | --- |
-| 1900 | number / event_index / text | HS mode。number / event_index は `0=NHS`, `1=FHS`、text は `NHS` / `FHS` |
-| 1901 | number / option | FHS active flag。`0=NHS`, `1=FHS` |
-| 1902 | number | target green number。FHS 時は固定 target green、NHS 時は現在 green number |
+| 1900 | number / event_index / text | current HS mode。number / event_indexは `0=base`, `1=Floating`、textは `CHS` / `NHS` / `FHS` |
+| 1901 | number / option | Floating active flag。`0=OFF`, `1=ON` |
+| 1902 | number | target green number。Floating時は固定target、それ以外は現在green number |
+| 1916 | number / event_index / text | base HS。`0=Classic`, `1=Normal`、textは `CHS` / `NHS` |
+| 1917 | number / event_index | Normal HS level (`1..=20`) |
+| 1918 | number / event_index / text | HS設定。`0=NORMAL`, `1=CLASSIC`, `2=FLOATING`, `3=NORMAL+FLOATING`, `4=CLASSIC+FLOATING` |
 
-`op: [1901]` または `draw: "number(1901)==1"` で FHS 時だけ destination を表示できる。
+`op: [1901]` または `draw: "number(1901)==1"` でFloating時だけdestinationを表示できる。
 
 ### BMZ Key Mode Refs
 
@@ -542,6 +619,47 @@ option は論理入力の押下中、timer は直近の論理入力 press edge �
 同じ論理入力に複数の物理キーを割り当てた場合は OR 集約し、押下中に別キーを追加しても
 timer を再起動しない。scene 入場時から押されている入力は press edge として扱わない。
 E1 は設定済み E1 と legacy Start、E2 は設定済み E2 と legacy Select を含む。
+
+E1/E2共通パネル向けには次の集約状態を使う。
+
+| option | press / hold timer | release timer | aggregate input |
+| ---: | ---: | ---: | --- |
+| 1928 | 19008 | 19009 | E1 または E2 |
+
+option 1928はE1/E2のどちらかを押している間true。timer 19008は最初の一方を押した
+false-to-true edgeで0msから始まり、どちらかを押している間だけ有効になる。もう一方を追加で
+押しても再起動しない。両方を離すと19008はoffになり、timer 19009が0msから始まる。
+次の共通pressで19009はoffになる。scene入場時から押されている入力ではどちらも発火しない。
+
+入場後の表示を押下中に維持し、release後に退場させる場合は、同じ見た目を別IDで定義して
+次のように組み合わせる。
+
+```json
+{
+  "destination": [
+    {
+      "id": "hs-panel-held",
+      "timer": 19008,
+      "loop": 120,
+      "op": [1928],
+      "dst": [
+        { "time": 0, "x": 80, "y": 100, "w": 400, "h": 120, "a": 0 },
+        { "time": 120, "x": 100, "a": 255 }
+      ]
+    },
+    {
+      "id": "hs-panel-release",
+      "timer": 19009,
+      "loop": -1,
+      "op": [-1928],
+      "dst": [
+        { "time": 0, "x": 100, "y": 100, "w": 400, "h": 120, "a": 255 },
+        { "time": 180, "x": 80, "a": 0 }
+      ]
+    }
+  ]
+}
+```
 
 `runtimeEvent` に `triggerAction` を指定すると、Lua で入力状態を取得せずに runtime flag を
 切り替えられる。値は `e1_press`, `e2_press`, `e3_press`, `e4_press`,

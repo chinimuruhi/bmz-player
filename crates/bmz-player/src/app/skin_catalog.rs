@@ -107,7 +107,7 @@ pub(super) fn load_skin_header_document_with_library_roots(
         .ok()
         .map(|loaded| loaded.document)
     } else {
-        SkinDocument::load_beatoraja_json(path).ok()
+        SkinDocument::load_typed_beatoraja_json(path).ok().flatten()
     }
 }
 

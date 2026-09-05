@@ -1,25 +1,18 @@
 use super::*;
 
 impl WinitApp {
-    /// 既に開始済みの preload を維持したまま Play シーンへ入場する。
-    ///
-    /// Decide 中の通常 preload、Result retry、中間リザルト中のコース次曲先読みで
-    /// 共通利用する。ここでは preload generation を更新せず、未完了なら Play の
-    /// ロード演出中も同じ worker を継続する。
-    pub(super) fn begin_preloaded_play_scene(
+    pub(super) fn prepare_play_skin_for_scene(
         &mut self,
         chart_id: i64,
-        mut options: PlayStartOptions,
+        options: &PlayStartOptions,
     ) {
-        self.normalize_key_mode_conversion_options(chart_id, &mut options);
-        self.ensure_skin_ready(SkinKind::Decide);
-        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
-        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
+        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, options);
+        let skin_attempt = self.skin_attempt_for_chart(chart_id, options);
         let play_skin_runtime_state = lua_runtime_state_for_play(
-            &options,
+            options,
             self.boot.profile_config.play.auto_play,
             play_skin_key_mode,
-            self.play_skin_previous_best_ex_score(chart_id, &options),
+            self.play_skin_previous_best_ex_score(chart_id, options),
             &self.boot.profile_config.display_name,
             skin_attempt,
         );
@@ -29,6 +22,30 @@ impl WinitApp {
             play_skin_runtime_state,
         );
         self.ensure_skin_ready(SkinKind::Play);
+    }
+
+    /// 既に開始済みの preload を維持したまま Play シーンへ入場する。
+    ///
+    /// Decide 中の通常 preload、Result retry、中間リザルト中のコース次曲先読みで
+    /// 共通利用する。ここでは preload generation を更新せず、未完了なら Play の
+    /// ロード演出中も同じ worker を継続する。
+    pub(super) fn begin_preloaded_play_scene(&mut self, chart_id: i64, options: PlayStartOptions) {
+        self.begin_preloaded_play_scene_with_presentation(
+            chart_id,
+            options,
+            PlayEntryPresentation::Normal,
+        );
+    }
+
+    pub(super) fn begin_preloaded_play_scene_with_presentation(
+        &mut self,
+        chart_id: i64,
+        mut options: PlayStartOptions,
+        presentation: PlayEntryPresentation,
+    ) {
+        self.normalize_key_mode_conversion_options(chart_id, &mut options);
+        self.ensure_skin_ready(SkinKind::Decide);
+        self.prepare_play_skin_for_scene(chart_id, &options);
         if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
             self.play.play_media_cache = None;
         }
@@ -43,7 +60,12 @@ impl WinitApp {
             options.chart_zero_time = self.play_skin_playstart_offset();
         }
         self.audio.draining_audio = None;
-        self.enter_play_scene(chart_id, options, self.decide_snapshot_for_chart(chart_id));
+        self.enter_play_scene_with_presentation(
+            chart_id,
+            options,
+            self.decide_snapshot_for_chart(chart_id),
+            presentation,
+        );
         self.poll_play_preload();
     }
 
@@ -54,22 +76,10 @@ impl WinitApp {
     ) {
         self.normalize_key_mode_conversion_options(chart_id, &mut options);
         self.ensure_skin_ready(SkinKind::Decide);
-        let play_skin_key_mode = self.play_skin_key_mode_for_chart(chart_id, &options);
-        let skin_attempt = self.skin_attempt_for_chart(chart_id, &options);
-        let play_skin_runtime_state = lua_runtime_state_for_play(
-            &options,
-            self.boot.profile_config.play.auto_play,
-            play_skin_key_mode,
-            self.play_skin_previous_best_ex_score(chart_id, &options),
-            &self.boot.profile_config.display_name,
-            skin_attempt,
-        );
-        self.spawn_play_skin_decode_for(
-            play_skin_key_mode,
-            options.session_mode,
-            play_skin_runtime_state,
-        );
-        self.ensure_skin_ready(SkinKind::Play);
+        // Decide preload を通らない direct boot / replay / retry も新しい
+        // Play scene entry として必ずロード時Randomを再評価する。
+        self.skin.last_play_skin_signature = None;
+        self.prepare_play_skin_for_scene(chart_id, &options);
         self.invalidate_play_preload();
         if self.play.play_media_cache.as_ref().is_some_and(|cache| cache.chart_id != chart_id) {
             self.play.play_media_cache = None;
@@ -137,6 +147,14 @@ impl WinitApp {
         skin_duration_ms(ready_delay_ms)
     }
 
+    pub(super) fn play_ready_animation_elapsed_time(&self) -> Option<TimeUs> {
+        if self.play.play_entry_presentation.shows_ready_presentation() {
+            self.play.play_ready_sound_started_at.map(elapsed_since)
+        } else {
+            None
+        }
+    }
+
     pub(super) fn clear_play_meta_image_state(&mut self) {
         self.clear_play_stagefile_state();
         self.clear_play_backbmp_state();
@@ -197,8 +215,23 @@ impl WinitApp {
     pub(super) fn enter_play_scene(
         &mut self,
         chart_id: i64,
+        options: PlayStartOptions,
+        snapshot: RenderSnapshot,
+    ) {
+        self.enter_play_scene_with_presentation(
+            chart_id,
+            options,
+            snapshot,
+            PlayEntryPresentation::Normal,
+        );
+    }
+
+    pub(super) fn enter_play_scene_with_presentation(
+        &mut self,
+        chart_id: i64,
         mut options: PlayStartOptions,
         mut snapshot: RenderSnapshot,
+        presentation: PlayEntryPresentation,
     ) {
         self.normalize_key_mode_conversion_options(chart_id, &mut options);
         if let Some(score_key) = self.play_skin_score_key_for_chart_id(chart_id, &options) {
@@ -232,11 +265,16 @@ impl WinitApp {
         self.prepare_play_meta_image_textures(chart_id);
         self.result.finished_play = None;
         self.audio.draining_audio = None;
-        self.play.play_scene_started_at = Instant::now();
+        self.play.play_entry_presentation = presentation;
+        if !presentation.is_seamless() {
+            self.play.play_scene_started_at = Instant::now();
+        }
         snapshot.arrange = options.arrange.as_str().to_string();
         snapshot.arrange_2p = options.arrange_2p.as_str().to_string();
-        snapshot.play_elapsed_time = TimeUs(0);
+        snapshot.play_elapsed_time =
+            play_entry_elapsed_time(presentation, self.play_elapsed_time());
         snapshot.ready_elapsed_time = None;
+        snapshot.seamless_play_entry = presentation.is_seamless();
         snapshot.time = self.play_skin_playstart_offset();
         snapshot.stagefile_background = self.play.play_stagefile_loaded;
         snapshot.stagefile_image_size = self.play.play_stagefile_size;
@@ -344,16 +382,19 @@ impl WinitApp {
         chart_id: i64,
         mut active_play: StartedInputPlaySession,
     ) {
+        let mut lane_target = PlayLaneTarget::Lift;
         if let Some(pending) =
             self.play.pending_play_start.as_ref().filter(|pending| pending.chart_id == chart_id)
         {
             let speed_locked = active_course_speed_locked(self.play.active_course.as_ref());
             replay_pending_play_lane_actions(
                 &mut active_play.running.session,
+                &mut lane_target,
                 &pending.lane_actions,
                 &self.boot.profile_config,
                 speed_locked,
             );
+            debug_assert_eq!(lane_target, pending.lane.lane_target);
             // pending 中の入力は表示状態へ反映済み。共有 backend に残った同じイベントを
             // 再処理すると key-on/off が install 時刻へずれるため、ここで一度だけ破棄し、
             // placeholder の表示状態を実セッションへ引き継ぐ。
@@ -424,7 +465,8 @@ impl WinitApp {
         snapshot.backbmp_background = self.play.play_backbmp_loaded;
         let play_elapsed_time = self.play_elapsed_time();
         snapshot.play_elapsed_time = play_elapsed_time;
-        snapshot.ready_elapsed_time = self.play.play_ready_sound_started_at.map(elapsed_since);
+        snapshot.ready_elapsed_time = self.play_ready_animation_elapsed_time();
+        snapshot.seamless_play_entry = self.play.play_entry_presentation.is_seamless();
         self.apply_course_skin_context(&mut snapshot);
         self.apply_play_table_text(&mut snapshot);
         crate::screens::play_snapshot::refresh_play_skin_visuals_with_input_elapsed(
@@ -433,6 +475,7 @@ impl WinitApp {
             play_elapsed_time,
         );
         self.play.last_play_snapshot = Some(snapshot);
+        self.play.play_lane_target = lane_target;
         self.play.active_play = Some(active_play);
         // preload 経路では Play シーンへの遷移後にここで曲メタデータが確定する。
         // 曲情報なしで送った Presence を実際の譜面情報で置き換える。

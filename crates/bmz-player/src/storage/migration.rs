@@ -14,8 +14,48 @@ pub fn migrate_library_db(path: &Path) -> Result<()> {
     let mut conn = Connection::open(path)?;
     configure_connection(&conn)?;
     run_migrations(&mut conn, LIBRARY_MIGRATIONS)?;
-    super::course_db::repair_course_entry_chart_links(&conn)?;
     backfill_unknown_chart_document_flags(&mut conn)
+}
+
+const COURSE_LINK_REPAIR_TASK: &str = "course-link-repair-v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CourseLinkRepairRun {
+    pub already_completed: bool,
+    pub scanned_entries: usize,
+    pub repaired_entries: usize,
+}
+
+/// 0.3.0以前のstaleなcourse linkを一度だけ修復する。
+/// 通常起動のcritical pathへ入れず、最初の描画後のworkerから呼ぶ。
+pub fn repair_course_entry_chart_links_once(path: &Path) -> Result<CourseLinkRepairRun> {
+    let mut conn = Connection::open(path)?;
+    configure_connection(&conn)?;
+    run_migrations(&mut conn, LIBRARY_MIGRATIONS)?;
+    let already_completed = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_maintenance WHERE task = ?1)",
+        [COURSE_LINK_REPAIR_TASK],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if already_completed {
+        return Ok(CourseLinkRepairRun {
+            already_completed: true,
+            scanned_entries: 0,
+            repaired_entries: 0,
+        });
+    }
+
+    let stats = super::course_db::repair_course_entry_chart_links_with_stats(&conn)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO library_maintenance (task, completed_at)
+         VALUES (?1, CAST(strftime('%s', 'now') AS INTEGER))",
+        [COURSE_LINK_REPAIR_TASK],
+    )?;
+    Ok(CourseLinkRepairRun {
+        already_completed: false,
+        scanned_entries: stats.scanned_entries,
+        repaired_entries: stats.repaired_entries,
+    })
 }
 
 fn backfill_unknown_chart_document_flags(conn: &mut Connection) -> Result<()> {
@@ -146,6 +186,7 @@ pub use score::SCORE_MIGRATIONS;
 #[cfg(test)]
 mod tests {
     use rusqlite::params;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
 
@@ -155,7 +196,7 @@ mod tests {
         run_migrations(&mut conn, LIBRARY_MIGRATIONS).unwrap();
 
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
 
         let mut stmt = conn.prepare("PRAGMA table_info(charts)").unwrap();
         let columns = stmt
@@ -190,6 +231,37 @@ mod tests {
         assert!(analysis_columns.iter().any(|column| column == "short_term_lufs"));
         assert!(analysis_columns.iter().any(|column| column == "sample_peak"));
         assert!(!analysis_columns.iter().any(|column| column == "normalization_gain"));
+    }
+
+    #[test]
+    fn course_link_repair_maintenance_runs_only_once() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir()
+            .join(format!("bmz-course-link-repair-{}-{unique}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("library.db");
+
+        migrate_library_db(&path).unwrap();
+        let first = repair_course_entry_chart_links_once(&path).unwrap();
+        assert_eq!(
+            first,
+            CourseLinkRepairRun {
+                already_completed: false,
+                scanned_entries: 0,
+                repaired_entries: 0,
+            }
+        );
+        let second = repair_course_entry_chart_links_once(&path).unwrap();
+        assert_eq!(
+            second,
+            CourseLinkRepairRun {
+                already_completed: true,
+                scanned_entries: 0,
+                repaired_entries: 0,
+            }
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -388,7 +460,7 @@ mod tests {
             conn.query_row("SELECT headers_json FROM charts", [], |row| row.get(0)).unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(headers_json, "{}");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
     }
 
     #[test]
@@ -455,7 +527,7 @@ mod tests {
             .unwrap();
         let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         assert_eq!(chart_ids, vec![Some(10), Some(20), None, Some(99)]);
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
     }
 
     #[test]

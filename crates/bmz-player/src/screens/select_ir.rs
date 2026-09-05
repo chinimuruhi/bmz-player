@@ -71,6 +71,7 @@ pub struct SelectRivalFetchTarget {
     pub rival_id: String,
     pub display_name: String,
     pub body: String,
+    pub rule_mode: RuleMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -79,6 +80,7 @@ struct SelectRivalFetchKey {
     base_url: String,
     rival_id: String,
     body: String,
+    rule_mode: RuleMode,
 }
 
 impl From<&SelectRivalFetchTarget> for SelectRivalFetchKey {
@@ -88,6 +90,7 @@ impl From<&SelectRivalFetchTarget> for SelectRivalFetchKey {
             base_url: target.base_url.clone(),
             rival_id: target.rival_id.clone(),
             body: target.body.clone(),
+            rule_mode: target.rule_mode,
         }
     }
 }
@@ -95,7 +98,12 @@ impl From<&SelectRivalFetchTarget> for SelectRivalFetchKey {
 impl SelectRivalFetchTarget {
     pub fn from_profile(profile: &ProfileConfig) -> Option<Self> {
         let provider = crate::ir::provider_key::primary_provider_config(&profile.ir)?;
-        if !crate::ir::rian_ir::is_rian_ir_provider(&provider.provider) {
+        if !crate::ir::rian_ir::is_rian_ir_config(provider)
+            && !crate::ir::bms_ir::is_bms_ir_config(provider)
+        {
+            return None;
+        }
+        if crate::ir::bms_ir::is_bms_ir_config(provider) && profile.play.rule_mode == RuleMode::Dx {
             return None;
         }
         let provider_key = crate::ir::provider_key::configured_provider_key(provider)?.to_string();
@@ -115,6 +123,7 @@ impl SelectRivalFetchTarget {
             rival_id: rival.ir_user_id.clone(),
             display_name: rival.display_name.clone(),
             body: crate::ir::rian_ir::body_for_rule_mode(profile.play.rule_mode).to_string(),
+            rule_mode: profile.play.rule_mode,
         })
     }
 }
@@ -345,6 +354,7 @@ mod tests {
             rival_id: rival_id.to_string(),
             display_name: format!("Rival {rival_id}"),
             body: body.to_string(),
+            rule_mode: RuleMode::Beatoraja,
         }
     }
 
@@ -513,7 +523,12 @@ mod tests {
             ))
             .unwrap();
 
-        select_ir.update_course(&ir_config(true), "course-context", Some(target.clone()));
+        select_ir.update_course(
+            &ir_config(true),
+            &missing_profile_root("course-ranking"),
+            "course-context",
+            Some(target.clone()),
+        );
         let snapshot = select_ir.course_snapshot_for(&ir_config(true), Some(&target));
 
         assert_eq!(snapshot.state, SkinIrState::Loaded);

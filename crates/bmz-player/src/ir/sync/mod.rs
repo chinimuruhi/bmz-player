@@ -207,11 +207,37 @@ mod tests {
 
     #[test]
     fn score_submission_requests_the_default_ranking_limit() {
-        let options = default_score_submit_options();
+        let options = score_submit_options(true);
 
         assert_eq!(options.ranking_scopes, vec![IrRankingScope::Global]);
         assert_eq!(options.ranking_limit, crate::ir::types::default_ranking_limit());
         assert_eq!(options.ranking_limit, 100);
+    }
+
+    #[test]
+    fn submit_only_score_submission_does_not_request_ranking() {
+        let options = score_submit_options(false);
+
+        assert!(options.ranking_scopes.is_empty());
+        assert_eq!(options.ranking_limit, crate::ir::types::default_ranking_limit());
+    }
+
+    #[test]
+    fn score_submission_requests_ranking_only_from_configured_primary() {
+        let mut primary = IrProviderConfig::bms_ir();
+        primary.provider_key = crate::ir::bms_ir::BMS_IR_PROVIDER.to_string();
+        primary.enabled = true;
+        let mut submit_only = IrProviderConfig::rian_ir();
+        submit_only.provider_key = crate::ir::rian_ir::RIAN_IR_PROVIDER.to_string();
+        submit_only.enabled = true;
+        let config = IrConfig {
+            primary_provider: crate::ir::bms_ir::BMS_IR_PROVIDER.to_string(),
+            providers: vec![primary, submit_only],
+            ..IrConfig::default()
+        };
+
+        assert!(score_submission_includes_ranking(&config, crate::ir::bms_ir::BMS_IR_PROVIDER));
+        assert!(!score_submission_includes_ranking(&config, crate::ir::rian_ir::RIAN_IR_PROVIDER));
     }
 
     #[test]
@@ -221,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn queued_local_backfill_is_blocked_only_for_rian_ir() {
+    fn queued_local_backfill_is_blocked_for_submit_only_legacy_providers() {
         let payload: IrScoreSubmission = serde_json::from_value(serde_json::json!({
             "client": { "name": "BMZ", "version": "test", "platform": "test" },
             "chart": {
@@ -270,11 +296,36 @@ mod tests {
         }))
         .unwrap();
         let rian = IrProviderConfig::rian_ir();
+        let bms_ir = IrProviderConfig::bms_ir();
         let bmz = IrProviderConfig::bmz_ir();
 
         let error = ensure_score_payload_allowed(&rian, &payload).unwrap_err();
         assert_eq!(error.to_string(), "rianIR local score backfill is disabled");
+        let error = ensure_score_payload_allowed(&bms_ir, &payload).unwrap_err();
+        assert_eq!(error.to_string(), "BMS-IR local score backfill is disabled");
         assert!(ensure_score_payload_allowed(&bmz, &payload).is_ok());
+    }
+
+    #[test]
+    fn bms_ir_score_completion_never_enqueues_replay_upload() {
+        let job = IrScoreJobRecord {
+            id: 7,
+            provider: crate::ir::bms_ir::BMS_IR_PROVIDER.to_string(),
+            account_id: "123".to_string(),
+            kind: IrJobKind::Score,
+            local_score_id: 42,
+            chart_sha256: [1; 32],
+            ln_policy: LnScorePolicy::AutoLn,
+            payload_json: "not parsed for submit-only provider".to_string(),
+            status: "sending".to_string(),
+            attempt_count: 0,
+            next_attempt_at: 0,
+            last_error: String::new(),
+            created_at: 100,
+            updated_at: 100,
+        };
+
+        assert!(replay_job_for_score(&job, "remote-score", 123).unwrap().is_none());
     }
 
     #[test]

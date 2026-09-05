@@ -77,7 +77,26 @@ impl SkinPathContext {
 
     /// Deterministic sandbox package path. No host Lua paths or native module
     /// paths are inherited by the VM.
+    ///
+    /// Normal app loads expose the same logical shape as beatoraja's runtime
+    /// loader (`?.lua;skin/<entry-directory>/?.lua`). Some established skins
+    /// inspect that string to recover their installed package or extension
+    /// directory. Physical paths are still resolved and sandboxed by this
+    /// context rather than by Lua itself.
+    ///
+    /// Low-level callers that only provide the entry directory as their safety
+    /// root have no portable `skin/...` alias to expose, so retain the absolute
+    /// entry-local templates for those callers.
     pub fn initial_package_path(&self) -> String {
+        if let Some(relative) = self.library_roots.iter().find_map(|root| {
+            self.entry_dir
+                .strip_prefix(root)
+                .ok()
+                .filter(|relative| !relative.as_os_str().is_empty())
+        }) {
+            let relative = relative.to_string_lossy().replace('\\', "/");
+            return format!("?.lua;skin/{relative}/?.lua");
+        }
         let entry = self.entry_dir.to_string_lossy().replace('\\', "/");
         format!("{entry}/?.lua;{entry}/?/init.lua")
     }
@@ -236,18 +255,21 @@ impl SkinPathContext {
         Ok(values)
     }
 
-    /// Resolves a saved file choice either as its own path or relative to the
-    /// directory containing the pattern's wildcard.
+    /// Resolves a saved file choice either relative to the directory containing
+    /// the pattern's wildcard or as its own explicit path.
     pub fn resolve_selected_for_pattern(&self, pattern: &str, selected: &str) -> Option<PathBuf> {
-        if let Ok(path) = self.resolve_path(selected) {
-            return Some(path);
-        }
         let pattern = strip_beatoraja_asset_filter(pattern).replace('\\', "/");
-        let star = pattern.find('*')?;
-        let prefix = &pattern[..star];
-        let slash = prefix.rfind('/').map(|index| index + 1).unwrap_or(0);
-        let directory = &prefix[..slash];
-        self.resolve_path(&format!("{directory}{}", selected.replace('\\', "/"))).ok()
+        let selected = selected.replace('\\', "/");
+        let selected_is_basename = !selected.contains('/') && !Path::new(&selected).is_absolute();
+        if selected_is_basename && let Some(star) = pattern.find('*') {
+            let prefix = &pattern[..star];
+            let slash = prefix.rfind('/').map(|index| index + 1).unwrap_or(0);
+            let directory = &prefix[..slash];
+            if let Ok(path) = self.resolve_path(&format!("{directory}{selected}")) {
+                return Some(path);
+            }
+        }
+        self.resolve_path(&selected).ok()
     }
 
     fn resolve_existing(&self, requested: &str, kind: ExistingKind) -> Result<PathBuf> {

@@ -62,12 +62,12 @@ impl RianIrClient {
         payload: &IrScoreSubmission,
         player_id: &str,
         api_token: &str,
+        include_ranking: bool,
     ) -> Result<RianSubmitOutcome> {
         ensure_score_payload_supported(payload)?;
         let request = score_request(payload, player_id, api_token)?;
         let redacted_request_json = redacted_request_json(&request)?;
-        let mut url = self.endpoint("score/score.php")?;
-        url.query_pairs_mut().append_pair("include", "ranking");
+        let url = self.score_submit_url(include_ranking)?;
         let response = self
             .http
             .post(url)
@@ -78,7 +78,7 @@ impl RianIrClient {
         let response_value: Value = decode_response(response, "rianIR score submission").await?;
         ensure_success_status(&response_value, "rianIR score submission")?;
         let decoded: RianScoreSubmitResponse = serde_json::from_value(response_value)
-            .context("rianIR score submission returned an invalid ranking response")?;
+            .context("rianIR score submission returned an invalid response")?;
         let mut rankings = BTreeMap::new();
         if let Some(ranking) = decoded.ranking {
             if ranking.succeeded {
@@ -263,6 +263,14 @@ impl RianIrClient {
 
     fn endpoint(&self, relative: &str) -> Result<Url> {
         self.base_url.join(relative).context("failed to build rianIR endpoint URL")
+    }
+
+    pub(super) fn score_submit_url(&self, include_ranking: bool) -> Result<Url> {
+        let mut url = self.endpoint("score/score.php")?;
+        if include_ranking {
+            url.query_pairs_mut().append_pair("include", "ranking");
+        }
+        Ok(url)
     }
 }
 

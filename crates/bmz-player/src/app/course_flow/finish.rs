@@ -424,7 +424,7 @@ impl WinitApp {
             self.result.result_key5_held = false;
             self.result.result_key7_held = false;
             self.result.result_scene_started_at = Instant::now();
-            self.ensure_result_skin_ready(ResultSkinSlot::Course);
+            self.ensure_result_skin_ready_for_entry(ResultSkinSlot::Course);
         }
         let clear_type = self
             .result

@@ -42,6 +42,7 @@
 
 - skin 互換性と診断機能を拡張しました。
   - Lua skin の未推論 callback を永続 VM で実行する fallback と、対応済み function も実行時評価する `--lua-skin-runtime compat` を追加しました。Lua の `print` はスキンパス付きでデバッグログへ記録します。
+  - 過去の beatoraja と同じ論理 `package.path`、4 / 8 / 12 枚構成のグルーヴゲージ、Decide の STAGEFILE、Play の PMchara 基本描画に対応しました。filepath の同名候補が別ディレクトリにある場合も、定義したワイルドカード位置から選択します。
   - 初回プレイ、rule mode、LN policy、変換前・実効 key mode、譜面モディファイア、session mode、ランク境界・差分、autoplay、IR 前回順位などを Select / Decide / Play / Result skin へ公開しました。
   - modified LR2 の FAST / SLOW ref、LR2 の乗算判定 overlay、WMII の次ランク表示に対応しました。
   - PeacefulPlay 1.2.0 のキーロガーについて、CHATTERING ALERT、1秒周期のNPS、押下単位の判定集計を元スキンの規則へ合わせました。

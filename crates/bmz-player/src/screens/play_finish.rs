@@ -214,7 +214,7 @@ impl FinishSessionSnapshot {
             chart,
             skin_attempt: bmz_render::snapshot::SkinAttemptState {
                 source_key_mode: Some(source_key_mode),
-                effective_key_mode: Some(session.chart.metadata.key_mode),
+                effective_key_mode: Some(session.primary_key_mode),
                 seven_to_six: applied_arrange.seven_to_six(),
                 seven_to_nine_pattern: if applied_arrange.key_mode_conversion
                     == KeyModeConversionConfig::SevenToNine
@@ -402,6 +402,7 @@ fn finish_session_snapshot_result(
                     arrange_seed,
                     arrange_seed_2p: applied_arrange.seed_2p,
                     bms_random_choices: applied_arrange.bms_random_choices.clone(),
+                    bms_switch_choices: applied_arrange.bms_switch_choices.clone(),
                     seed_scheme: if applied_arrange.legacy_seed {
                         crate::storage::replay::SEED_SCHEME_LEGACY_SHARED_V3.to_string()
                     } else {
@@ -470,6 +471,7 @@ fn finish_session_snapshot_result(
                 score_key,
                 applied_arrange,
                 source_ln_profile,
+                finish_mode,
                 chart_length_ms,
                 play_duration_ms,
                 summary: &mut summary,
@@ -525,6 +527,7 @@ struct EnqueueIrJobsRequest<'a> {
     score_key: ScoreKey,
     applied_arrange: &'a AppliedArrange,
     source_ln_profile: ChartLnProfile,
+    finish_mode: FinishResultMode,
     chart_length_ms: Option<u64>,
     play_duration_ms: Option<u64>,
     summary: &'a mut ResultSummary,
@@ -544,6 +547,7 @@ fn enqueue_ir_jobs(
         score_key,
         applied_arrange,
         source_ln_profile,
+        finish_mode,
         chart_length_ms,
         play_duration_ms,
         summary,
@@ -562,6 +566,15 @@ fn enqueue_ir_jobs(
                     || crate::ir::rian_ir::score_submission_supported(
                         score_key.ln_policy,
                         applied_arrange.double_option,
+                    ))
+                && (!crate::ir::bms_ir::is_bms_ir_config(provider)
+                    || crate::ir::bms_ir::score_submission_supported(
+                        snapshot.rule_mode,
+                        snapshot.chart.metadata.source_format,
+                        source_ln_profile,
+                        score_key.ln_policy,
+                        applied_arrange.double_option,
+                        finish_mode == FinishResultMode::CourseStage,
                     ))
         })
         .collect();
@@ -596,6 +609,7 @@ fn enqueue_ir_jobs(
                 crate::storage::replay::SEED_SCHEME_BEATORAJA_24BIT_V1.to_string()
             },
             bms_random_choices: applied_arrange.bms_random_choices.clone(),
+            bms_switch_choices: applied_arrange.bms_switch_choices.clone(),
             rule_mode: snapshot.rule_mode.as_str().to_string(),
             // 保存時に serialize 済みバイト列から計算した hash。プレイ終了
             // 直後のフレームでリプレイファイルを読み直さない。

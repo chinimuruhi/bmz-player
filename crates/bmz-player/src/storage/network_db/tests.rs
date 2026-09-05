@@ -54,6 +54,52 @@ fn rival_score_cache_replaces_one_rival_snapshot() {
 }
 
 #[test]
+fn rival_score_cache_keeps_scores_and_etag_when_snapshot_commit_fails() {
+    let mut db = open_network_db();
+    let original = IrRivalScoreRecord {
+        chart_sha256: [7; 32],
+        ln_mode: 1,
+        ex_score: 1234,
+        clear_type: 5,
+        max_combo: 500,
+        min_bp: 12,
+        play_option: 0,
+        arrange_1p: "normal".to_string(),
+        arrange_2p: "normal".to_string(),
+        double_option: "off".to_string(),
+        play_seed: None,
+    };
+    db.replace_rival_scores(
+        "bms-ir",
+        "42",
+        "beatoraja",
+        std::slice::from_ref(&original),
+        "old-etag",
+        10,
+    )
+    .unwrap();
+
+    let duplicate = IrRivalScoreRecord { chart_sha256: [9; 32], ..original.clone() };
+    assert!(
+        db.replace_rival_scores(
+            "bms-ir",
+            "42",
+            "beatoraja",
+            &[duplicate.clone(), duplicate],
+            "new-etag",
+            20,
+        )
+        .is_err()
+    );
+
+    assert_eq!(db.rival_scores("bms-ir", "42", "beatoraja").unwrap(), vec![original]);
+    assert_eq!(
+        db.rival_score_cache_state("bms-ir", "42", "beatoraja").unwrap(),
+        IrRivalScoreCacheState { etag: "old-etag".to_string(), fetched_at: 10 }
+    );
+}
+
+#[test]
 fn ir_score_jobs_round_trip_and_dedupe_by_provider_account_kind_score() {
     let mut db = open_network_db();
     let job = NewIrScoreJob {

@@ -7,6 +7,45 @@ pub(super) struct ExecutedLuaSkin {
     pub(super) runtime_callbacks: Vec<LuaRuntimeCallbackSpec>,
 }
 
+const LUA_PRACTICE_OPTION_ID: i32 = 1080;
+const LUA_PRACTICE_STATE_FIELD: &str = "isPractice";
+
+/// Synchronizes scene-stable beatoraja state with boolean fields exported by
+/// loaded Lua modules before their callbacks are compiled or registered.
+///
+/// Some skins keep Practice state in a shared module table instead of reading
+/// `main_state.option(1080)` in every draw callback.  BMZ exposes its own Lua
+/// API during load, so compatibility branches may intentionally leave that
+/// module field untouched.  Updating an existing boolean field keeps the
+/// convention usable without depending on a skin name, object ID, or inferred
+/// predicate shape.  Missing/non-boolean fields are never created or replaced.
+fn apply_lua_scene_boolean_state(
+    lua: &Lua,
+    runtime_state: &LuaLoadRuntimeState,
+    dependencies: Option<&Arc<Mutex<SkinLoadDependencies>>>,
+) -> Result<()> {
+    let Some(practice) = runtime_state.option_values.get(&LUA_PRACTICE_OPTION_ID).copied() else {
+        return Ok(());
+    };
+    let package: Table = lua.globals().get("package")?;
+    let loaded: Table = package.get("loaded")?;
+    let mut applied = false;
+    for entry in loaded.pairs::<Value, Value>() {
+        let (_, value) = entry?;
+        let Value::Table(module) = value else {
+            continue;
+        };
+        if matches!(module.raw_get::<Value>(LUA_PRACTICE_STATE_FIELD)?, Value::Boolean(_)) {
+            module.raw_set(LUA_PRACTICE_STATE_FIELD, practice)?;
+            applied = true;
+        }
+    }
+    if applied {
+        record_load_dependency_option(dependencies, LUA_PRACTICE_OPTION_ID, practice);
+    }
+    Ok(())
+}
+
 pub(super) fn execute_lua_skin(
     path_context: &SkinPathContext,
     options: &BTreeMap<String, String>,
@@ -95,6 +134,7 @@ pub(super) fn execute_lua_skin(
         .set_name(input.to_string_lossy().as_ref())
         .eval::<Value>()
         .with_context(|| format!("failed to execute lua skin: {}", input.display()))?;
+    apply_lua_scene_boolean_state(&lua, &resolved_runtime_state, Some(&dependencies))?;
     let scene_audio_actions = {
         let mut probe =
             main_state_probe.lock().map_err(|_| anyhow!("main_state probe lock poisoned"))?;
@@ -323,6 +363,7 @@ pub(super) fn build_lua_skin_runtime(request: LuaSkinRuntimeRequest<'_>) -> Resu
         .set_name(input.to_string_lossy().as_ref())
         .eval::<Value>()
         .with_context(|| format!("failed to execute runtime Lua skin: {}", input.display()))?;
+    apply_lua_scene_boolean_state(&lua, runtime_state, None)?;
 
     let mut callbacks = Vec::with_capacity(runtime_callbacks.len());
     for (callback_id, spec) in runtime_callbacks.iter().enumerate() {

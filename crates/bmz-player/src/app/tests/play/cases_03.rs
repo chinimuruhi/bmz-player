@@ -3,8 +3,9 @@ use super::*;
 #[test]
 fn floating_hispeed_recalculation_uses_hsfix_base_before_chart_start() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.target_green_number = 300;
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut chart = app_test_chart();
     chart.metadata.initial_bpm = 120.0;
     chart.timing_events.push(bmz_chart::model::TimingEvent {
@@ -34,6 +35,7 @@ fn floating_hispeed_recalculation_preserves_sub_one_hsfix_base() {
     profile.lane.target_green_number = 999;
     profile.lane.sudden = 950;
     profile.lane.hispeed_auto_adjust = false;
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut chart = app_test_chart();
     chart.metadata.initial_bpm = 189.0;
     chart.timing_events.push(bmz_chart::model::TimingEvent {
@@ -60,9 +62,10 @@ fn floating_hispeed_recalculation_preserves_sub_one_hsfix_base() {
 #[test]
 fn floating_hispeed_recalculation_uses_current_bpm_after_chart_start() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.hispeed_auto_adjust = true;
     profile.lane.target_green_number = 300;
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut chart = app_test_chart();
     chart.metadata.initial_bpm = 120.0;
     chart.timing_events.push(bmz_chart::model::TimingEvent {
@@ -81,7 +84,7 @@ fn floating_hispeed_recalculation_uses_current_bpm_after_chart_start() {
     );
     session.audio_clock = bmz_audio::clock::AudioClock::with_position(48_000, 0, 0, frame, true);
 
-    apply_lane_cover_step_to_session(&mut session, -0.25, false);
+    apply_lane_cover_step_to_session(&mut session, &mut PlayLaneTarget::Lift, -0.25, false);
 
     assert_eq!(session.hsfix_base_bpm, 240.0);
     assert!((session.hispeed - 3.0).abs() < 0.000_1, "hispeed={}", session.hispeed);
@@ -90,9 +93,10 @@ fn floating_hispeed_recalculation_uses_current_bpm_after_chart_start() {
 #[test]
 fn lane_cover_change_uses_hsfix_base_when_hispeed_auto_adjust_is_off() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.hispeed_auto_adjust = false;
     profile.lane.target_green_number = 300;
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut chart = app_test_chart();
     chart.metadata.initial_bpm = 120.0;
     chart.timing_events.push(bmz_chart::model::TimingEvent {
@@ -111,7 +115,7 @@ fn lane_cover_change_uses_hsfix_base_when_hispeed_auto_adjust_is_off() {
     );
     session.audio_clock = bmz_audio::clock::AudioClock::with_position(48_000, 0, 0, frame, true);
 
-    apply_lane_cover_step_to_session(&mut session, -0.25, false);
+    apply_lane_cover_step_to_session(&mut session, &mut PlayLaneTarget::Lift, -0.25, false);
 
     assert!(!session.hispeed_auto_adjust);
     assert!((session.hispeed - 1.5).abs() < 0.000_1, "hispeed={}", session.hispeed);
@@ -130,7 +134,15 @@ fn egui_lane_profile_cover_change_keeps_runtime_nhs_hispeed() {
     );
     session.hispeed = 3.5;
 
-    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false, false,));
+    assert!(apply_profile_lane_settings_to_session(
+        &mut session,
+        &before,
+        profile.play.lane_effect,
+        &edited,
+        profile.play.lane_effect,
+        false,
+        false,
+    ));
     assert!((session.hispeed - 3.5).abs() < f32::EPSILON);
     assert!((session.lane_cover - 0.25).abs() < f32::EPSILON);
 }
@@ -141,7 +153,7 @@ fn egui_lane_profile_changes_do_not_modify_no_speed_session() {
     let before = profile.lane.clone();
     let mut edited = profile.lane.clone();
     edited.hispeed = 4.0;
-    edited.hispeed_mode = HispeedModeConfig::Floating;
+    edited.floating_policy = FloatingPolicyConfig::Locked;
     edited.sudden = 250;
     edited.lift = 100;
     let mut session = crate::screens::play_session::build_game_session(
@@ -153,9 +165,17 @@ fn egui_lane_profile_changes_do_not_modify_no_speed_session() {
         },
     );
 
-    assert!(!apply_profile_lane_settings_to_session(&mut session, &before, &edited, true, false,));
+    assert!(!apply_profile_lane_settings_to_session(
+        &mut session,
+        &before,
+        profile.play.lane_effect,
+        &edited,
+        profile.play.lane_effect,
+        true,
+        false,
+    ));
     assert_eq!(session.hispeed, 1.0);
-    assert_eq!(session.hispeed_mode, HispeedMode::Normal);
+    assert_eq!(session.hispeed_mode, HispeedMode::Classic);
     assert_eq!(session.lane_cover, 0.0);
     assert_eq!(session.lift, 0.0);
 }
@@ -175,14 +195,22 @@ fn egui_lane_profile_cannot_enable_constant_during_practice() {
         },
     );
 
-    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false, true,));
+    assert!(apply_profile_lane_settings_to_session(
+        &mut session,
+        &before,
+        profile.play.lane_effect,
+        &edited,
+        profile.play.lane_effect,
+        false,
+        true,
+    ));
     assert!(!session.constant_enabled);
 }
 
 #[test]
 fn egui_lane_profile_target_change_recalculates_fhs_hispeed() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     let before = profile.lane.clone();
     let mut edited = profile.lane.clone();
     edited.target_green_number = 320;
@@ -195,7 +223,15 @@ fn egui_lane_profile_target_change_recalculates_fhs_hispeed() {
         },
     );
 
-    assert!(apply_profile_lane_settings_to_session(&mut session, &before, &edited, false, false,));
+    assert!(apply_profile_lane_settings_to_session(
+        &mut session,
+        &before,
+        profile.play.lane_effect,
+        &edited,
+        profile.play.lane_effect,
+        false,
+        false,
+    ));
     assert_eq!(session.hispeed_mode, HispeedMode::Floating);
     assert_eq!(session.target_green_number, 320);
     assert!((session.hispeed - 3.75).abs() < 0.000_1, "hispeed={}", session.hispeed);
@@ -244,7 +280,8 @@ fn lane_cover_step_accelerates_on_key_repeat() {
 
 #[test]
 fn lane_cover_step_clamps_sudden_and_lift_to_combined_range() {
-    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut session = crate::screens::play_session::build_game_session(
         std::sync::Arc::new(app_test_chart()),
         &profile,
@@ -254,14 +291,212 @@ fn lane_cover_step_clamps_sudden_and_lift_to_combined_range() {
     session.lift = 0.2;
     session.lane_cover = 0.79;
     session.lane_cover_visible = true;
-    assert!(apply_lane_cover_step_to_session(&mut session, -0.02, false));
+    let mut lane_target = PlayLaneTarget::Lift;
+    assert!(apply_lane_cover_step_to_session(&mut session, &mut lane_target, -0.02, false,));
     assert!((session.lane_cover - 0.8).abs() < 0.000_01);
 
     session.lane_cover = 0.3;
     session.lift = 0.69;
     session.lane_cover_visible = false;
-    assert!(apply_lane_cover_step_to_session(&mut session, 0.02, false));
+    assert!(apply_lane_cover_step_to_session(&mut session, &mut lane_target, 0.02, false,));
     assert!((session.lift - 0.7).abs() < 0.000_01);
+}
+
+#[test]
+fn disabled_covers_use_zero_cover_as_auto_adjust_trigger() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Off;
+    profile.lane.lift_enabled = false;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
+    profile.lane.hispeed_auto_adjust = true;
+    profile.lane.target_green_number = 300;
+    profile.lane.sudden = 250;
+    profile.lane.lift = 200;
+    profile.lane.hidden = 300;
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(app_test_chart()),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions {
+            hs_fix: HsFixOption::StartBpm,
+            ..Default::default()
+        },
+    );
+    let mut lane_target = PlayLaneTarget::Lift;
+    session.hispeed = 1.0;
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::LaneCoverDelta(0.1),
+        false,
+        0.5,
+    ));
+    assert!(!toggle_lane_cover_visibility(&mut session, false));
+    assert!((session.hispeed - 4.0).abs() < 0.000_1, "hispeed={}", session.hispeed);
+    assert!((session.lane_cover - 0.25).abs() < f32::EPSILON);
+    assert_eq!(session.lift, 0.0);
+    assert_eq!(session.hidden_cover, 0.0);
+    assert!(!session.lane_cover_visible);
+}
+
+#[test]
+fn disabled_cover_trigger_recalculates_with_current_bpm() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Off;
+    profile.lane.lift_enabled = false;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
+    profile.lane.hispeed_auto_adjust = true;
+    profile.lane.target_green_number = 300;
+    profile.lane.sudden = 250;
+    let mut chart = app_test_chart();
+    chart.metadata.initial_bpm = 120.0;
+    chart.timing_events.push(bmz_chart::model::TimingEvent {
+        tick: bmz_core::time::ChartTick(48),
+        time: TimeUs(1_000_000),
+        kind: bmz_chart::model::TimingEventKind::BpmChange { bpm: 240.0 },
+    });
+    let frame = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(48_000));
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(chart),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions {
+            hs_fix: HsFixOption::MaxBpm,
+            ..Default::default()
+        },
+    );
+    session.audio_clock = bmz_audio::clock::AudioClock::with_position(48_000, 0, 0, frame, true);
+    session.hispeed = 1.0;
+    let mut lane_target = PlayLaneTarget::Lift;
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::LaneCoverDelta(LANE_COVER_STEP),
+        false,
+        0.5,
+    ));
+
+    assert!((session.hispeed - 2.0).abs() < 0.000_1, "hispeed={}", session.hispeed);
+    assert!((session.lane_cover - 0.25).abs() < f32::EPSILON);
+}
+
+#[test]
+fn disabled_covers_without_auto_adjust_change_hispeed_directly() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Off;
+    profile.lane.lift_enabled = false;
+    profile.lane.hispeed_auto_adjust = false;
+    profile.lane.sudden = 250;
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(app_test_chart()),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions::default(),
+    );
+    let mut lane_target = PlayLaneTarget::Lift;
+    session.hispeed = 2.0;
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::LaneCoverDelta(LANE_COVER_STEP),
+        false,
+        0.25,
+    ));
+    assert_eq!(session.hispeed, 2.25);
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::AnalogLaneCoverDelta(3.0 * LANE_COVER_STEP),
+        false,
+        0.25,
+    ));
+    assert!((session.hispeed - 2.28).abs() < 0.000_1, "hispeed={}", session.hispeed);
+    assert!((session.lane_cover - 0.25).abs() < f32::EPSILON);
+}
+
+#[test]
+fn lift_and_hidden_share_lane_actions_with_an_explicit_target() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Hidden;
+    profile.lane.lift_enabled = true;
+    profile.lane.lift = 200;
+    profile.lane.hidden = 300;
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(app_test_chart()),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions::default(),
+    );
+    let mut lane_target = PlayLaneTarget::Lift;
+
+    assert!(apply_lane_cover_step_to_session(&mut session, &mut lane_target, 0.1, false,));
+    assert!((session.lift - 0.3).abs() < f32::EPSILON);
+    assert!((session.hidden_cover - 0.3).abs() < f32::EPSILON);
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::ToggleHispeedMode,
+        false,
+        0.25,
+    ));
+    assert_eq!(lane_target, PlayLaneTarget::Hidden);
+    assert_eq!(session.hispeed_mode, HispeedMode::Classic);
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::LaneCoverDelta(0.1),
+        false,
+        0.25,
+    ));
+    assert!((session.hidden_cover - 0.4).abs() < f32::EPSILON);
+
+    assert!(apply_play_lane_action_to_session(
+        &mut session,
+        &mut lane_target,
+        PlayLaneAction::AnalogLaneCoverDelta(-0.1),
+        false,
+        0.25,
+    ));
+    assert!((session.hidden_cover - 0.3).abs() < f32::EPSILON);
+}
+
+#[test]
+fn egui_cover_enable_changes_apply_to_the_active_session() {
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Off;
+    profile.lane.hidden = 400;
+    let before = profile.lane.clone();
+    let mut session = crate::screens::play_session::build_game_session(
+        std::sync::Arc::new(app_test_chart()),
+        &profile,
+        crate::screens::play_session::PlaySessionOptions::default(),
+    );
+
+    assert!(apply_profile_lane_settings_to_session(
+        &mut session,
+        &before,
+        LaneEffectConfig::Off,
+        &profile.lane,
+        LaneEffectConfig::Hidden,
+        false,
+        false,
+    ));
+    assert!(session.hidden_enabled);
+    assert!((session.hidden_cover - 0.4).abs() < f32::EPSILON);
+
+    assert!(apply_profile_lane_settings_to_session(
+        &mut session,
+        &profile.lane,
+        LaneEffectConfig::Hidden,
+        &profile.lane,
+        LaneEffectConfig::Off,
+        false,
+        false,
+    ));
+    assert!(!session.hidden_enabled);
+    assert_eq!(session.hidden_cover, 0.0);
 }
 
 #[test]
@@ -289,7 +524,8 @@ fn play_start_double_press_expires_outside_window() {
 
 #[test]
 fn toggle_lane_cover_visibility_flips_sudden_display() {
-    let profile = ProfileConfig::new_default("default", "Default", 1);
+    let mut profile = ProfileConfig::new_default("default", "Default", 1);
+    profile.play.lane_effect = LaneEffectConfig::Sudden;
     let mut session = crate::screens::play_session::build_game_session(
         std::sync::Arc::new(app_test_chart()),
         &profile,
@@ -329,21 +565,29 @@ fn active_lane_state_rejects_all_no_speed_controls() {
         crate::screens::play_session::PlaySessionOptions::default(),
     );
 
+    let mut lane_target = PlayLaneTarget::Lift;
     for action in [
         PlayLaneAction::ToggleHispeedMode,
         PlayLaneAction::Hispeed(HispeedChange::Up),
         PlayLaneAction::LaneCoverDelta(-LANE_COVER_STEP),
+        PlayLaneAction::AnalogLaneCoverDelta(-LANE_COVER_STEP),
         PlayLaneAction::GreenNumberDelta(1),
         PlayLaneAction::ToggleLaneCoverVisibility,
     ] {
-        assert!(!apply_play_lane_action_to_session(&mut session, action, true, 0.25));
+        assert!(!apply_play_lane_action_to_session(
+            &mut session,
+            &mut lane_target,
+            action,
+            true,
+            0.25,
+        ));
     }
-    assert_eq!(session.hispeed_mode, HispeedMode::Normal);
+    assert_eq!(session.hispeed_mode, HispeedMode::Classic);
     assert_eq!(session.target_green_number, 300);
     assert_eq!(session.hispeed, 2.0);
     assert_eq!(session.lane_cover, 0.0);
     assert_eq!(session.lift, 0.0);
-    assert!(session.lane_cover_visible);
+    assert!(!session.lane_cover_visible);
 }
 
 #[test]
@@ -351,7 +595,14 @@ fn no_speed_lane_state_is_not_selected_for_profile_save() {
     let lane_state = ActiveLaneState {
         lane_cover: 0.0,
         lift: 0.0,
+        hidden_cover: 0.0,
+        sudden_enabled: true,
+        lift_enabled: true,
+        hidden_enabled: false,
         hispeed_mode: HispeedMode::Normal,
+        base_hispeed_mode: HispeedMode::Classic,
+        floating_policy: FloatingPolicy::Toggle,
+        normal_hispeed_level: 18,
         target_green_number: 300,
     };
 
@@ -364,7 +615,7 @@ fn no_speed_lane_state_is_not_selected_for_profile_save() {
 #[test]
 fn floating_hispeed_change_keeps_target_green_during_play() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.target_green_number = 300;
     let mut session = crate::screens::play_session::build_game_session(
         std::sync::Arc::new(app_test_chart()),
@@ -385,7 +636,7 @@ fn floating_hispeed_change_keeps_target_green_during_play() {
 #[test]
 fn e1_hispeed_change_keeps_target_green_during_play() {
     let mut profile = ProfileConfig::new_default("default", "Default", 1);
-    profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+    profile.lane.floating_policy = FloatingPolicyConfig::Locked;
     profile.lane.target_green_number = 300;
     let mut session = crate::screens::play_session::build_game_session(
         std::sync::Arc::new(app_test_chart()),

@@ -103,6 +103,12 @@ impl WinitApp {
                             self.boot.profile_config.play.ln_mode_policy,
                             self.select.double_option,
                         ))
+                    && (!crate::ir::bms_ir::is_bms_ir_config(provider)
+                        || matches!(
+                            rule_mode,
+                            bmz_gameplay::rule::RuleMode::Beatoraja
+                                | bmz_gameplay::rule::RuleMode::Lr2Oraja
+                        ))
             })
             .cloned()
             .collect();

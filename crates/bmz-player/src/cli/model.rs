@@ -1,4 +1,12 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedCommand {
+    pub command: Command,
+    /// `active_profile`を書き換えない、CLI呼び出し全体のprofile上書き。
+    pub profile_id: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Run(AppOptions),
     Table(TableCommand),
@@ -16,7 +24,8 @@ pub enum ReplayCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrCommand {
-    /// `ir login --id X [--password Y] [--base-url URL] [--provider NAME]`
+    /// `ir login --id X [--password Y] [--base-url URL] [--provider NAME]`.
+    /// For BMS-IR, `--id` is the numeric player ID and `--password` is the game token.
     Login { email: String, password: Option<String>, base_url: Option<String>, provider: String },
     /// `ir logout [--provider NAME]`
     Logout { provider: String },

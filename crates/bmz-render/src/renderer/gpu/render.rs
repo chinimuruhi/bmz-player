@@ -81,7 +81,7 @@ impl WgpuRenderer {
             wgpu::CurrentSurfaceTexture::Success(output)
             | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
-                self.configure_surface();
+                self.configure_surface()?;
                 timings.surface_us = surface_start.elapsed().as_micros();
                 timings.submit_us = submit_start.elapsed().as_micros();
                 timings.draw_us = draw_start.elapsed().as_micros();

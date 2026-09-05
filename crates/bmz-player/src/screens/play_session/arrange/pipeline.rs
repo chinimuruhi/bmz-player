@@ -20,6 +20,7 @@ pub(super) fn normal_applied_arrange(
         s_random_scheme_2p: None,
         h_random_threshold_ms: None,
         bms_random_choices: Vec::new(),
+        bms_switch_choices: Vec::new(),
         pattern: None,
         key_mode_conversion: KeyModeConversionConfig::Off,
         seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -66,6 +67,7 @@ pub(super) fn apply_arrange_internal(
             s_random_scheme_2p: None,
             h_random_threshold_ms,
             bms_random_choices: Vec::new(),
+            bms_switch_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
             key_mode_conversion: KeyModeConversionConfig::Off,
             seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -90,6 +92,7 @@ pub(super) fn apply_arrange_internal(
                 s_random_scheme_2p: None,
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
+                bms_switch_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -111,6 +114,7 @@ pub(super) fn apply_arrange_internal(
                 s_random_scheme_2p: None,
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
+                bms_switch_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -132,6 +136,7 @@ pub(super) fn apply_arrange_internal(
                 s_random_scheme_2p: None,
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
+                bms_switch_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -153,6 +158,7 @@ pub(super) fn apply_arrange_internal(
                 s_random_scheme_2p: None,
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
+                bms_switch_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -174,6 +180,7 @@ pub(super) fn apply_arrange_internal(
                 s_random_scheme_2p: None,
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
+                bms_switch_choices: Vec::new(),
                 pattern: Some(perm.iter().map(|&i| i as u8).collect()),
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -205,6 +212,7 @@ pub(super) fn apply_arrange_internal(
                 s_random_scheme_2p: None,
                 h_random_threshold_ms,
                 bms_random_choices: Vec::new(),
+                bms_switch_choices: Vec::new(),
                 pattern: None,
                 key_mode_conversion: KeyModeConversionConfig::Off,
                 seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -272,6 +280,7 @@ pub fn apply_arrange_pair(
             s_random_scheme_2p: Some(used_s_random_scheme_2p),
             h_random_threshold_ms,
             bms_random_choices: Vec::new(),
+            bms_switch_choices: Vec::new(),
             pattern: Some(perm.to_vec()),
             key_mode_conversion: KeyModeConversionConfig::Off,
             seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -319,6 +328,7 @@ pub fn apply_arrange_pair(
         s_random_scheme_2p: Some(used_s_random_scheme_2p),
         h_random_threshold_ms,
         bms_random_choices: Vec::new(),
+        bms_switch_choices: Vec::new(),
         pattern: has_perm.then(|| combined_perm.iter().map(|&i| i as u8).collect()),
         key_mode_conversion: KeyModeConversionConfig::Off,
         seven_to_nine_pattern: SevenToNinePattern::default(),
@@ -496,7 +506,9 @@ pub(super) fn apply_battle_opponent_chart(chart: &mut PlayableChart, opponent: &
         cloned.end_note_id = end_note_id;
         chart.long_notes.push(cloned);
     }
-    chart.total_notes = chart.total_notes.saturating_add(opponent.total_notes);
+    // Opponent notes are display-only. Keep the semantic TOTAL NOTES owned by
+    // the primary chart so preload/skin/result paths cannot observe a doubled
+    // value from the 14-lane presentation container.
     chart.metadata.key_mode = next_mode;
 }
 

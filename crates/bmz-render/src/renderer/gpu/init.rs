@@ -16,6 +16,11 @@ impl WgpuRenderer {
         let candidates = fallback_wgpu_backends(backend);
         let mut last_error = None;
         for candidate in candidates {
+            tracing::info!(
+                requested_backend = ?backend,
+                candidate_backend = ?candidate,
+                "initializing renderer backend candidate"
+            );
             match Self::new(
                 window.clone(),
                 size,
@@ -68,6 +73,16 @@ impl WgpuRenderer {
             compatible_surface: Some(&surface),
         }))
         .context("no compatible GPU adapter found")?;
+        let adapter_info = adapter.get_info();
+        tracing::info!(
+            candidate_backend = ?backend,
+            adapter_name = %adapter_info.name,
+            adapter_backend = ?adapter_info.backend,
+            adapter_device_type = ?adapter_info.device_type,
+            driver = %adapter_info.driver,
+            driver_info = %adapter_info.driver_info,
+            "selected renderer adapter for backend candidate"
+        );
         // beatoraja スキンには 8192px を超える縦長/横長 PNG (背景アニメシート等) が
         // 含まれることがある。Apple Silicon / モダンGPU 環境では 16384px までは許容
         // されるので、アダプタが報告する上限まで広げて取得する。
@@ -100,14 +115,19 @@ impl WgpuRenderer {
             frame_latency_mode,
             &capabilities.present_modes,
         );
-        surface.configure(&device, &config);
+        configure_surface_checked(&surface, &device, &config, &adapter_info)
+            .context("initial surface configuration failed")?;
         tracing::info!(
             requested = ?present_mode,
             effective = ?config.present_mode,
             available = ?capabilities.present_modes,
-            maximum_frame_latency = config.desired_maximum_frame_latency,
-            backend = ?backend,
-            "configured renderer present mode"
+            desired_maximum_frame_latency = config.desired_maximum_frame_latency,
+            candidate_backend = ?backend,
+            surface_width = config.width,
+            surface_height = config.height,
+            surface_format = ?config.format,
+            alpha_mode = ?config.alpha_mode,
+            "configured initial renderer surface"
         );
         let rect_pipeline = create_rect_pipeline(&device, config.format);
         let image_bind_group_layout = create_image_bind_group_layout(&device);
@@ -156,6 +176,7 @@ impl WgpuRenderer {
         Ok(Self {
             device,
             queue,
+            adapter_info,
             config,
             present_modes: capabilities.present_modes,
             rect_pipeline,

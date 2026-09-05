@@ -534,7 +534,7 @@ fn bss_reverse_press_suppression_expires_after_thirty_milliseconds() {
 
         assert!(reverse_outcome.consumed_input);
         assert_eq!(reverse_outcome.events.is_empty(), suppressed);
-        assert_eq!(engine.judged_notes.get(&NoteId(3)).is_none(), suppressed);
+        assert_eq!(!engine.judged_notes.contains_key(&NoteId(3)), suppressed);
     }
 }
 

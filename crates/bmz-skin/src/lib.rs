@@ -10,8 +10,10 @@ use serde_json::Value as JsonValue;
 mod lr2;
 mod lua;
 mod path_context;
+mod pm_chara;
 
 pub use path_context::SkinPathContext;
+pub use pm_chara::{LoadedPmChara, load_pm_chara};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkinKind {

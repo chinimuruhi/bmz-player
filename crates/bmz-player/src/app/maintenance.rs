@@ -57,7 +57,9 @@ impl WinitApp {
         self.poll_pending_update_check();
         self.poll_pending_update_download();
         self.poll_pending_rival_sync();
+        self.poll_pending_course_link_repair();
 
+        self.start_startup_course_link_repair_after_first_frame();
         self.start_startup_table_fetch_after_first_frame();
         self.start_startup_rival_sync_after_first_frame();
         self.start_queued_table_fetch_if_idle();

@@ -15,6 +15,43 @@ fn lua_runtime_offsets_keep_names_distinct_and_runtime_ids_last_wins() {
 }
 
 #[test]
+fn play_skin_signature_changes_for_each_preload_generation() {
+    let options = BTreeMap::new();
+    let files = BTreeMap::new();
+    let runtime_state = bmz_skin::LuaLoadRuntimeState::default();
+    let first = play_skin_signature(
+        KeyMode::K7,
+        SessionMode::Normal,
+        "play.luaskin",
+        &options,
+        &files,
+        &runtime_state,
+        10,
+    );
+    let same_entry = play_skin_signature(
+        KeyMode::K7,
+        SessionMode::Normal,
+        "play.luaskin",
+        &options,
+        &files,
+        &runtime_state,
+        10,
+    );
+    let next_entry = play_skin_signature(
+        KeyMode::K7,
+        SessionMode::Normal,
+        "play.luaskin",
+        &options,
+        &files,
+        &runtime_state,
+        11,
+    );
+
+    assert_eq!(first, same_entry);
+    assert_ne!(first, next_entry);
+}
+
+#[test]
 fn skin_video_play_level_number_extracts_digits_without_allocating_label_shapes() {
     assert_eq!(skin_video_play_level_number("12"), 12);
     assert_eq!(skin_video_play_level_number("LV 10+"), 10);
@@ -105,6 +142,58 @@ fn skin_catalog_scan_ignores_lua_parts_files() {
     assert!(is_skin_candidate_file(Path::new("data/skins/ECFN/play/play7-1p.json")));
     assert!(is_skin_candidate_file(Path::new("data/skins/WMII_FHD/play/FHDPLAY_AC.lr2skin")));
     assert!(!is_skin_candidate_file(Path::new("data/skins/ECFN/play/play_parts.lua")));
+}
+
+#[test]
+fn skin_catalog_rejects_json_without_explicit_skin_type() {
+    let root = std::env::temp_dir().join(format!(
+        "bmz-player-skin-catalog-json-{}",
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let player_data = root.join("songs.json");
+    std::fs::write(&player_data, r#"{"20260829":{"songs":[]}}"#).unwrap();
+    let valid_skin = root.join("result.json");
+    std::fs::write(&valid_skin, r#"{"type":7,"name":"Result"}"#).unwrap();
+    let included_skin = root.join("included-result.json");
+    let included_document = root.join("result-main.json");
+    std::fs::write(&included_skin, r#"{"include":"result-main.json"}"#).unwrap();
+    std::fs::write(&included_document, r#"{"type":7.0,"name":"Included Result"}"#).unwrap();
+    let untyped_include = root.join("untyped-include.json");
+    let untyped_document = root.join("untyped-main.json");
+    std::fs::write(&untyped_include, r#"{"include":"untyped-main.json"}"#).unwrap();
+    std::fs::write(&untyped_document, r#"{"name":"Not a skin"}"#).unwrap();
+
+    assert!(load_skin_candidate(&root, &player_data, SkinCandidateOrigin::User).is_none());
+    let (skin_type, candidate) =
+        load_skin_candidate(&root, &valid_skin, SkinCandidateOrigin::User).unwrap();
+    assert_eq!(skin_type, 7);
+    assert_eq!(candidate.name, "Result");
+    let (skin_type, candidate) =
+        load_skin_candidate(&root, &included_skin, SkinCandidateOrigin::User).unwrap();
+    assert_eq!(skin_type, 7);
+    assert_eq!(candidate.name, "Included Result");
+    assert!(load_skin_candidate(&root, &untyped_include, SkinCandidateOrigin::User).is_none());
+}
+
+#[test]
+fn skin_catalog_loads_litone11_result_headers_when_available() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let skin_root = repo_root.join("data/skins");
+    let result_root = skin_root.join("LITONE11/Result");
+    let cases = [("result.luaskin", 7), ("course.luaskin", 15)];
+
+    for (file_name, expected_type) in cases {
+        let path = result_root.join(file_name);
+        if !path.is_file() {
+            continue;
+        }
+        let (skin_type, candidate) =
+            load_skin_candidate(&skin_root, &path, SkinCandidateOrigin::Bundled)
+                .unwrap_or_else(|| panic!("load LITONE11 catalog candidate: {}", path.display()));
+        assert_eq!(skin_type, expected_type, "{}", path.display());
+        assert!(candidate.name.contains("LITONE11"), "candidate name: {}", candidate.name);
+    }
 }
 
 #[test]

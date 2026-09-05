@@ -141,19 +141,43 @@ pub(in crate::app) fn play_control_hold_state_from_pressed_inputs(
 
 pub(in crate::app) fn autoplay_replay_playback_rate_from_pressed_inputs(
     pressed_inputs: &HashSet<(DeviceId, PhysicalControl)>,
+    play_input: Option<&PlayOptionInput>,
 ) -> u16 {
     const SPEED_KEYS: [(&str, u16); 4] = [("1", 25), ("2", 50), ("3", 200), ("4", 300)];
     SPEED_KEYS
         .into_iter()
         .find_map(|(control, rate)| {
-            pressed_inputs
-                .contains(&(
-                    W_KEYBOARD_DEVICE_ID,
-                    PhysicalControl::KeyboardKey(control.to_string()),
-                ))
-                .then_some(rate)
+            let control = PhysicalControl::KeyboardKey(control.to_string());
+            (pressed_inputs.contains(&(W_KEYBOARD_DEVICE_ID, control.clone()))
+                && !play_input.is_some_and(|input| play_input_claims_control(input, &control)))
+            .then_some(rate)
         })
         .unwrap_or(100)
+}
+
+fn play_input_claims_control(input: &PlayOptionInput, control: &PhysicalControl) -> bool {
+    input.resolves_lane(W_KEYBOARD_DEVICE_ID, control)
+        || [
+            InputActionConfig::E1,
+            InputActionConfig::E2,
+            InputActionConfig::E3,
+            InputActionConfig::E4,
+        ]
+        .into_iter()
+        .any(|action| input.is_action(W_KEYBOARD_DEVICE_ID, control, action))
+}
+
+pub(in crate::app) fn is_unassigned_autoplay_replay_playback_rate_key(
+    physical_key: PhysicalKey,
+    play_input: Option<&PlayOptionInput>,
+) -> bool {
+    if !is_autoplay_replay_playback_rate_key(physical_key) {
+        return false;
+    }
+    let Some(control) = physical_key_name(physical_key).map(PhysicalControl::KeyboardKey) else {
+        return false;
+    };
+    !play_input.is_some_and(|input| play_input_claims_control(input, &control))
 }
 
 pub(in crate::app) fn is_autoplay_replay_playback_rate_key(physical_key: PhysicalKey) -> bool {
@@ -188,6 +212,10 @@ pub(in crate::app) fn play_exit_should_leave_practice(
     practice_phase: Option<PracticePhase>,
 ) -> bool {
     practice_phase == Some(PracticePhase::Config)
+}
+
+pub(in crate::app) const fn play_exit_chord_pressed(e2_held: bool, e3_held: bool) -> bool {
+    e2_held && e3_held
 }
 
 pub(in crate::app) fn should_begin_play_fadeout_after_final_notes(

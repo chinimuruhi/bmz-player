@@ -6,6 +6,22 @@ use crate::app::play_flow_practice::{
 use crate::app::scene_state::playback_overlay_suffix;
 
 #[test]
+fn viewer_seek_skips_only_the_ready_presentation() {
+    assert!(PlayEntryPresentation::Normal.shows_ready_presentation());
+    assert!(!PlayEntryPresentation::Normal.is_seamless());
+    assert!(!PlayEntryPresentation::ViewerSeek.shows_ready_presentation());
+    assert!(PlayEntryPresentation::ViewerSeek.is_seamless());
+    assert_eq!(
+        play_entry_elapsed_time(PlayEntryPresentation::Normal, TimeUs(5_000_000)),
+        TimeUs(0)
+    );
+    assert_eq!(
+        play_entry_elapsed_time(PlayEntryPresentation::ViewerSeek, TimeUs(5_000_000)),
+        TimeUs(5_000_000)
+    );
+}
+
+#[test]
 fn decide_launch_promotes_only_staged_practice_config() {
     assert!(DecideLaunch::Play.into_practice_session().is_none());
 
@@ -272,7 +288,14 @@ fn apply_lane_state_preserves_lift_amount_while_lift_is_disabled() {
         Some(ActiveLaneState {
             lane_cover: 0.3,
             lift: 0.0,
+            hidden_cover: 0.0,
+            sudden_enabled: true,
+            lift_enabled: false,
+            hidden_enabled: false,
             hispeed_mode: HispeedMode::Normal,
+            base_hispeed_mode: HispeedMode::Normal,
+            floating_policy: FloatingPolicy::Toggle,
+            normal_hispeed_level: 18,
             target_green_number: 300,
         }),
     );

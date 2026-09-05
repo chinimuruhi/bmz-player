@@ -88,6 +88,8 @@ pub struct SkinDocument {
     pub gauges: Vec<SkinGaugeDef>,
     #[serde(default)]
     pub judge: Vec<SkinJudgeDef>,
+    #[serde(default)]
+    pub pmchara: Vec<SkinPmCharaDef>,
     pub bga: Option<SkinBgaDef>,
     /// beatoraja play skin の Practice 設定表示領域。
     ///
@@ -433,6 +435,11 @@ pub struct SkinTextDef {
     pub wrapping: bool,
     #[serde(default)]
     pub overflow: i32,
+    /// BMZ extension: controls how `overflow = 1` shrinks text.
+    /// 0 (default) preserves height and shrinks only width like beatoraja;
+    /// 1 shrinks both axes uniformly like legacy BMZ rendering.
+    #[serde(default, rename = "shrinkMode")]
+    pub shrink_mode: i32,
     #[serde(default, rename = "outlineColor")]
     pub outline_color: String,
     #[serde(default, rename = "outlineWidth")]
@@ -496,7 +503,7 @@ pub struct SkinSliderDef {
     pub slider_type: i32,
     #[serde(default = "default_true")]
     pub changeable: bool,
-    #[serde(default, rename = "isRefNum")]
+    #[serde(default, rename = "isRefNum", deserialize_with = "deserialize_skin_bool")]
     pub is_ref_num: bool,
     #[serde(default)]
     pub min: i32,

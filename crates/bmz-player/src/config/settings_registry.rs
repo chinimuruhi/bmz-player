@@ -6,11 +6,11 @@ use super::profile_config::{
     AssistLongNoteMode, AssistMineMode, AssistOptionConfig, AssistScrollMode, BgaExpandConfig,
     BgaModeConfig, BottomShiftableGaugeConfig, DifficultyTableLevelDisplay, DoubleOptionConfig,
     FastSlowDisplayScope, GaugeAutoShiftConfig, GaugeTypeConfig, HISPEED_STEP_MAX,
-    HISPEED_STEP_MIN, HispeedDirectionConfig, HispeedModeConfig, HsFixConfig, JudgeAlgorithmConfig,
-    KeyModeConversionConfig, LaneConfig, LaneEffectConfig, ProfileConfig, RELEASE_BOUNCE_MS_MAX,
-    RandomOptionConfig, ReplaySlotRule, SelectInputModeConfig, SevenToNinePattern,
-    SevenToNineRuleMode, SevenToNineType, TargetOptionConfig, default_hispeed_step_fhs,
-    default_hispeed_step_nhs, normalize_hispeed_step,
+    HISPEED_STEP_MIN, HispeedConfigPreset, HispeedDirectionConfig, HsFixConfig,
+    JudgeAlgorithmConfig, KeyModeConversionConfig, LaneConfig, ProfileConfig,
+    RELEASE_BOUNCE_MS_MAX, RandomOptionConfig, ReplaySlotRule, SelectInputModeConfig,
+    SevenToNinePattern, SevenToNineRuleMode, SevenToNineType, TargetOptionConfig,
+    default_classic_hispeed_step, normalize_hispeed_step,
 };
 use bmz_core::lane::KeyMode;
 use bmz_gameplay::rule::RuleMode;
@@ -46,7 +46,6 @@ pub enum SettingsEntryId {
     DoubleOption,
     HsFix,
     Target,
-    LaneEffect,
     Assist,
     BgaMode,
     BgaExpand,
@@ -77,16 +76,20 @@ pub enum SettingsEntryId {
     AssistScratchGoodRate,
     AssistLongNoteMarginRate,
     MisslayerDurationMs,
+    NoteRetention,
     ShowLnTailCap,
     GuideSe,
     Hispeed,
     HispeedMode,
-    HispeedStepNhs,
-    HispeedStepFhs,
+    NormalHispeedLevel,
+    ClassicHispeedStep,
+    FloatingHispeedStep,
+    SuddenEnabled,
     Sudden,
     LiftEnabled,
     Lift,
     HispeedAutoAdjust,
+    HiddenEnabled,
     Hidden,
     TargetGreenNumber,
     NoteDisplayDurationMs,
@@ -163,13 +166,13 @@ impl SettingsEntryId {
         Self::DoubleOption,
         Self::HsFix,
         Self::Target,
-        Self::LaneEffect,
         Self::BgaMode,
         Self::BgaExpand,
         Self::SessionMode,
         Self::KeyModeConversion,
         Self::MisslayerDurationMs,
         Self::PlayExitHoldMs,
+        Self::NoteRetention,
         Self::ShowLnTailCap,
         Self::GuideSe,
     ];
@@ -207,20 +210,35 @@ impl SettingsEntryId {
     ];
 
     pub const DISPLAY_ENTRIES: &'static [Self] = &[
-        Self::Hispeed,
         Self::HispeedMode,
-        Self::HispeedStepNhs,
-        Self::HispeedStepFhs,
+        Self::NormalHispeedLevel,
+        Self::Hispeed,
+        Self::ClassicHispeedStep,
+        Self::FloatingHispeedStep,
+        Self::TargetGreenNumber,
+        Self::NoteDisplayDurationMs,
+        Self::HispeedAutoAdjust,
+        Self::SuddenEnabled,
         Self::Sudden,
         Self::LiftEnabled,
         Self::Lift,
-        Self::HispeedAutoAdjust,
+        Self::HiddenEnabled,
         Self::Hidden,
-        Self::TargetGreenNumber,
-        Self::NoteDisplayDurationMs,
         Self::Constant,
         Self::ConstantFadeMs,
     ];
+
+    pub const fn visible_for_hispeed_config(self, preset: HispeedConfigPreset) -> bool {
+        match self {
+            Self::NormalHispeedLevel => preset.supports_normal(),
+            Self::Hispeed | Self::ClassicHispeedStep => preset.supports_classic(),
+            Self::FloatingHispeedStep
+            | Self::TargetGreenNumber
+            | Self::NoteDisplayDurationMs
+            | Self::HispeedAutoAdjust => preset.supports_floating(),
+            _ => true,
+        }
+    }
 
     pub const INPUT_ENTRIES: &'static [Self] = &[
         Self::SelectInputMode,
@@ -275,6 +293,7 @@ impl SettingsEntryId {
             || Self::ASSIST_ENTRIES.contains(&self)
             || Self::ASSIST_NOTE_ENTRIES.contains(&self)
             || Self::ASSIST_JUDGE_ENTRIES.contains(&self)
+            || matches!(self, Self::SuddenEnabled | Self::HiddenEnabled)
     }
 
     pub fn label(self) -> &'static str {
@@ -303,7 +322,6 @@ impl SettingsEntryId {
             Self::DoubleOption => "DP OPTION",
             Self::HsFix => "HS-FIX",
             Self::Target => "TARGET",
-            Self::LaneEffect => "LANE FX",
             Self::Assist => "ASSIST",
             Self::BgaMode => "BGA",
             Self::BgaExpand => "BGA FIT",
@@ -334,16 +352,20 @@ impl SettingsEntryId {
             Self::AssistScratchGoodRate => "SCRATCH GOOD",
             Self::AssistLongNoteMarginRate => "LN MARGIN",
             Self::MisslayerDurationMs => "MISSLAYER",
+            Self::NoteRetention => "NOTE RETENTION",
             Self::ShowLnTailCap => "LN TAIL CAP",
             Self::GuideSe => "GUIDE SE",
-            Self::Hispeed => "HISPEED",
-            Self::HispeedMode => "HS MODE",
-            Self::HispeedStepNhs => "HS STEP NHS",
-            Self::HispeedStepFhs => "HS STEP FHS",
+            Self::Hispeed => "CLASSIC HS",
+            Self::HispeedMode => "HS CONFIG",
+            Self::NormalHispeedLevel => "NORMAL HS",
+            Self::ClassicHispeedStep => "CLASSIC HS STEP",
+            Self::FloatingHispeedStep => "FLOATING HS STEP",
+            Self::SuddenEnabled => "SUDDEN+ ENABLED",
             Self::Sudden => "SUDDEN+",
             Self::LiftEnabled => "LIFT ENABLED",
             Self::Lift => "LIFT",
             Self::HispeedAutoAdjust => "HS AUTO ADJUST",
+            Self::HiddenEnabled => "HIDDEN+ ENABLED",
             Self::Hidden => "HIDDEN",
             Self::TargetGreenNumber => "GREEN NO.",
             Self::NoteDisplayDurationMs => "DURATION",
@@ -417,7 +439,6 @@ impl SettingsEntryId {
             Self::DoubleOption => "settings-entry-description-double-option",
             Self::HsFix => "settings-entry-description-hs-fix",
             Self::Target => "settings-entry-description-target",
-            Self::LaneEffect => "settings-entry-description-lane-effect",
             Self::Assist => "settings-entry-description-assist",
             Self::BgaMode => "settings-entry-description-bga-mode",
             Self::BgaExpand => "settings-entry-description-bga-expand",
@@ -450,16 +471,20 @@ impl SettingsEntryId {
                 "settings-entry-description-assist-long-note-margin-rate"
             }
             Self::MisslayerDurationMs => "settings-entry-description-misslayer-duration",
+            Self::NoteRetention => "settings-entry-description-note-retention",
             Self::ShowLnTailCap => "settings-entry-description-show-ln-tail-cap",
             Self::GuideSe => "settings-entry-description-guide-se",
             Self::Hispeed => "settings-entry-description-hispeed",
             Self::HispeedMode => "settings-entry-description-hispeed-mode",
-            Self::HispeedStepNhs => "settings-entry-description-hispeed-step-nhs",
-            Self::HispeedStepFhs => "settings-entry-description-hispeed-step-fhs",
+            Self::NormalHispeedLevel => "settings-entry-description-normal-hispeed-level",
+            Self::ClassicHispeedStep => "settings-entry-description-classic-hispeed-step",
+            Self::FloatingHispeedStep => "settings-entry-description-floating-hispeed-step",
+            Self::SuddenEnabled => "settings-entry-description-sudden-enabled",
             Self::Sudden => "settings-entry-description-sudden",
             Self::LiftEnabled => "settings-entry-description-lift-enabled",
             Self::Lift => "settings-entry-description-lift",
             Self::HispeedAutoAdjust => "settings-entry-description-hispeed-auto-adjust",
+            Self::HiddenEnabled => "settings-entry-description-hidden-enabled",
             Self::Hidden => "settings-entry-description-hidden",
             Self::TargetGreenNumber => "settings-entry-description-target-green-number",
             Self::NoteDisplayDurationMs => "settings-entry-description-note-display-duration",
@@ -523,7 +548,7 @@ use support::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::profile_config::ProfileConfig;
+    use crate::config::profile_config::{FloatingPolicyConfig, LaneEffectConfig, ProfileConfig};
 
     #[test]
     fn adjust_volume_clamps_to_range() {
@@ -578,26 +603,26 @@ mod tests {
     }
 
     #[test]
-    fn adjust_hispeed_uses_mode_specific_steps() {
+    fn adjust_classic_hispeed_uses_classic_step() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::Hispeed, 1));
         assert!((profile.lane.hispeed - 2.25).abs() < f32::EPSILON);
 
-        profile.lane.hispeed_mode = HispeedModeConfig::Floating;
+        profile.lane.floating_policy = FloatingPolicyConfig::Locked;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::Hispeed, 1));
-        assert!((profile.lane.hispeed - 2.75).abs() < f32::EPSILON);
+        assert!((profile.lane.hispeed - 2.50).abs() < f32::EPSILON);
     }
 
     #[test]
     fn adjust_hispeed_step_settings_increments_by_five_hundredths() {
         let mut profile = ProfileConfig::new_default("default", "Default", 0);
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::HispeedStepNhs), "0.25");
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::HispeedStepFhs), "0.50");
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::ClassicHispeedStep), "0.25");
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::FloatingHispeedStep), "0.50");
 
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedStepNhs, 1));
-        assert!((profile.lane.hispeed_step_nhs - 0.30).abs() < f32::EPSILON);
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedStepFhs, -1));
-        assert!((profile.lane.hispeed_step_fhs - 0.45).abs() < f32::EPSILON);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::ClassicHispeedStep, 1));
+        assert!((profile.lane.classic_hispeed_step - 0.30).abs() < f32::EPSILON);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::FloatingHispeedStep, -1));
+        assert!((profile.lane.floating_hispeed_step - 0.45).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -613,6 +638,21 @@ mod tests {
         profile.lane.lift = 700;
         assert!(!adjust_settings_value(&mut profile, SettingsEntryId::Lift, 1));
         assert_eq!(profile.lane.lift, 700);
+    }
+
+    #[test]
+    fn independent_cover_enable_entries_preserve_the_other_flag() {
+        let mut profile = ProfileConfig::new_default("default", "Default", 0);
+
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::SuddenEnabled), "OFF");
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::HiddenEnabled), "OFF");
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SuddenEnabled, 1));
+        assert_eq!(profile.play.lane_effect, LaneEffectConfig::Sudden);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HiddenEnabled, 1));
+        assert_eq!(profile.play.lane_effect, LaneEffectConfig::HiddenSudden);
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::SuddenEnabled, -1));
+        assert_eq!(profile.play.lane_effect, LaneEffectConfig::Hidden);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::HiddenEnabled), "ON");
     }
 
     #[test]
@@ -744,12 +784,12 @@ mod tests {
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::LnModePolicy, 1));
         assert_eq!(profile.play.ln_mode_policy, crate::ln_policy::LnPolicySetting::AutoCn);
 
-        assert_eq!(format_settings_value(&profile, SettingsEntryId::HispeedMode), "NORMAL");
-        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedMode, 1));
         assert_eq!(
-            profile.lane.hispeed_mode,
-            crate::config::profile_config::HispeedModeConfig::Floating
+            format_settings_value(&profile, SettingsEntryId::HispeedMode),
+            "CLASSIC+FLOATING"
         );
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::HispeedMode, 1));
+        assert_eq!(profile.lane.hispeed_config(), HispeedConfigPreset::Normal);
     }
 
     #[test]
@@ -773,6 +813,10 @@ mod tests {
         assert!(profile.lane.constant_enabled);
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::GuideSe, 1));
         assert!(profile.play.guide_se);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::NoteRetention), "OFF");
+        assert!(adjust_settings_value(&mut profile, SettingsEntryId::NoteRetention, 1));
+        assert!(profile.play.note_retention);
+        assert_eq!(format_settings_value(&profile, SettingsEntryId::NoteRetention), "ON");
 
         profile.play.misslayer_duration_ms = 4_980;
         assert!(adjust_settings_value(&mut profile, SettingsEntryId::MisslayerDurationMs, 50));

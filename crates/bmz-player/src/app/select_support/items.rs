@@ -74,6 +74,7 @@ pub(in crate::app) fn build_select_items_for_stack(
                 path,
                 boot.profile_config.ui.locale(),
                 &boot.app_config,
+                &boot.profile_config,
             )
         }
         Some(path) if path == COURSE_ROOT_PATH => {

@@ -113,6 +113,11 @@ impl WinitApp {
         self.clear_result_ir_scroll_input();
     }
 
+    pub(super) fn ensure_result_skin_ready_for_entry(&mut self, slot: ResultSkinSlot) {
+        self.skin.last_result_skin_signature = None;
+        self.ensure_result_skin_ready(slot);
+    }
+
     pub(super) fn refresh_result_favorite_chart(&mut self) {
         let Some(sha256) =
             self.result.finished_play.as_ref().map(|finished| finished.result.chart_sha256)

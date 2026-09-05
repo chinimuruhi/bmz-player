@@ -1,3 +1,5 @@
+use super::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayState {
     Ready,
@@ -9,7 +11,15 @@ pub enum PlayState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HispeedMode {
     Normal,
+    Classic,
     Floating,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FloatingPolicy {
+    Disabled,
+    Toggle,
+    Locked,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -235,10 +245,15 @@ pub struct GameSession {
     pub audio_mix: PlayAudioMix,
     pub hispeed: f32,
     pub hispeed_mode: HispeedMode,
+    pub base_hispeed_mode: HispeedMode,
+    pub floating_policy: FloatingPolicy,
+    pub normal_hispeed_level: u8,
     pub target_green_number: u32,
     pub constant_enabled: bool,
     pub constant_fade_ms: i32,
     pub guide_se_enabled: bool,
+    /// 未処理の通常ノートを判定ラインへ滞留させる表示設定。
+    pub note_retention: bool,
     /// Floating hispeed の曲開始前基準 BPM。曲開始後は現在 BPM で再計算する。
     pub hsfix_base_bpm: f64,
     pub lift: f32,
@@ -297,6 +312,20 @@ pub struct BattleOpponentSession {
     pub score: ScoreState,
     pub gauge: GaugeState,
     pub replay_player: Option<ReplayPlayer>,
+    /// Full autoplay fallback used when the provider has no input replay.
+    pub autoplay: Option<AutoplayController>,
+    /// G-BATTLE presents the opponent on the primary player's final lane
+    /// arrangement even when replay judgement uses the rival's arrangement.
+    pub display_uses_primary_arrangement: bool,
+    /// Publish opponent judgements to the battle skin's 2P judgement region.
+    /// Normal mode still advances the opponent score for comparison, but its
+    /// single-player judgement/combo presentation must remain primary-only.
+    pub publish_display_judgements: bool,
+    /// Skin timer 43/45/49 state owned by the independent opponent rather than
+    /// the legacy display-only 2P path on `GameSession`.
+    pub gauge_increase_started_at: Option<TimeUs>,
+    pub gauge_max_started_at: Option<TimeUs>,
+    pub full_combo_started_at: Option<TimeUs>,
     pub lane_keyon_started_at: [Option<TimeUs>; LANE_COUNT],
 }
 
@@ -358,6 +387,70 @@ pub enum SkinRuntimeEventKind {
 }
 
 impl BgmScheduler {
+    /// Starts scheduling at `start_time` without recreating BGM events that
+    /// have already passed. Events exactly on the boundary remain playable.
+    pub fn starting_at(chart: &PlayableChart, start_time: TimeUs) -> Self {
+        Self { next_index: chart.bgm_events.partition_point(|event| event.time < start_time) }
+    }
+
+    /// Starts scheduling at `start_time` and recreates only BGM voices that
+    /// began earlier but whose decoded sample still spans the seek position.
+    ///
+    /// BGM events use `StopSameSound`, so only the latest past event for each
+    /// sound ID can still be active. A later short event therefore prevents an
+    /// older long event with the same ID from being resurrected.
+    pub fn starting_at_with_carryover(
+        chart: &PlayableChart,
+        start_time: TimeUs,
+        clock: &AudioClock,
+        volume: f32,
+        mut sample_duration_us: impl FnMut(SoundId) -> Option<i64>,
+    ) -> (Self, Vec<ScheduledSound>) {
+        let scheduler = Self::starting_at(chart, start_time);
+        // A boundary event restarts the same sound at the requested position,
+        // so its pre-seek voice must not be heard even for the first callback.
+        let mut seen_sounds = chart.bgm_events[scheduler.next_index..]
+            .iter()
+            .take_while(|event| event.time == start_time)
+            .map(|event| event.sound)
+            .collect::<std::collections::HashSet<_>>();
+        let mut carryover = chart.bgm_events[..scheduler.next_index]
+            .iter()
+            .rev()
+            .filter(|event| seen_sounds.insert(event.sound))
+            .filter_map(|event| {
+                let duration_us = sample_duration_us(event.sound)?.max(0);
+                let elapsed_us = start_time.0.saturating_sub(event.time.0);
+                if duration_us <= elapsed_us {
+                    return None;
+                }
+                let sample_offset_frames = (u128::try_from(elapsed_us).unwrap_or(0)
+                    * u128::from(clock.sample_rate)
+                    / 1_000_000)
+                    .min(u128::from(u64::MAX)) as u64;
+                let chart_volume = bmz_chart::volume::chart_channel_volume_factor(
+                    bmz_chart::volume::chart_volume_at_time(&chart.bgm_volume_events, event.time),
+                );
+                Some((
+                    event.time,
+                    ScheduledSound {
+                        start_frame: clock.start_output_frame,
+                        sample_offset_frames,
+                        sound_id: event.sound,
+                        volume: (volume * chart_volume).clamp(0.0, 1.0),
+                        pan: 0.0,
+                        loop_playback: false,
+                        fade_in_frames: 0,
+                        catch_up: true,
+                        restart_policy: RestartPolicy::StopSameSound,
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
+        carryover.sort_by_key(|(time, _)| *time);
+        (scheduler, carryover.into_iter().map(|(_, sound)| sound).collect())
+    }
+
     pub fn schedule_until(
         &mut self,
         chart: &PlayableChart,
@@ -376,6 +469,7 @@ impl BgmScheduler {
             );
             audio.schedule(ScheduledSound {
                 start_frame: clock.time_to_output_frame(event.time),
+                sample_offset_frames: 0,
                 sound_id: event.sound,
                 volume: (volume * chart_volume).clamp(0.0, 1.0),
                 pan: 0.0,
@@ -463,4 +557,3 @@ mod frame_time_tests {
         assert_eq!(audio_schedule_ahead_us(300), 300_000);
     }
 }
-use super::*;

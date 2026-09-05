@@ -46,6 +46,9 @@ pub struct IrClientInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IrChartPayload {
+    /// Original chart file syntax. Empty only on queue jobs created before this field existed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_format: String,
     pub sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub md5: Option<String>,

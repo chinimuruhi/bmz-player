@@ -107,13 +107,39 @@ fn exclusive_video_mode_keeps_configured_resolution_before_refresh_rate() {
 }
 
 #[test]
-fn non_macos_exclusive_video_mode_preserves_largest_resolution_policy() {
+fn linux_legacy_exclusive_video_mode_preserves_largest_resolution_policy() {
     let modes = [video_mode(3840, 2160, 160), video_mode(1920, 1080, 240)];
-    let selected =
-        select_platform_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240, false)
-            .unwrap();
+    let selected = select_platform_exclusive_video_mode(
+        &modes,
+        PhysicalSize::new(1920, 1080),
+        240,
+        ExclusiveVideoModePolicy::LegacyLargestResolution,
+    )
+    .unwrap();
     assert_eq!(selected.index, 0);
     assert_eq!(selected.resolution_reason, VideoModeResolutionReason::LegacyLargest);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::LegacyHighestAtLargestResolution);
+}
+
+#[test]
+fn windows_policy_selects_configured_resolution_and_target_refresh_rate() {
+    let modes = [
+        video_mode(1920, 1080, 144),
+        video_mode(1920, 1080, 120),
+        video_mode(1280, 720, 144),
+        video_mode(1280, 720, 120),
+        video_mode(1280, 720, 60),
+    ];
+    let selected = select_platform_exclusive_video_mode(
+        &modes,
+        PhysicalSize::new(1280, 720),
+        120,
+        ExclusiveVideoModePolicy::ConfiguredResolution,
+    )
+    .unwrap();
+    assert_eq!(selected.index, 3);
+    assert_eq!(selected.resolution_reason, VideoModeResolutionReason::Configured);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::ClosestAtOrAbove);
 }
 
 #[test]
@@ -138,10 +164,19 @@ fn exclusive_video_mode_selects_refresh_rate_for_target() {
 
 #[test]
 fn exclusive_video_mode_prefers_rate_at_or_above_target() {
-    let modes = [video_mode(1920, 1080, 144), video_mode(1920, 1080, 240)];
-    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 160).unwrap();
+    let modes = [video_mode(1920, 1080, 144), video_mode(1920, 1080, 120)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 100).unwrap();
     assert_eq!(selected.index, 1);
     assert_eq!(selected.refresh_reason, VideoModeRefreshReason::ClosestAtOrAbove);
+}
+
+#[test]
+fn exclusive_video_mode_uses_highest_rate_when_all_candidates_are_below_target() {
+    let modes =
+        [video_mode(1920, 1080, 60), video_mode(1920, 1080, 120), video_mode(1920, 1080, 144)];
+    let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 165).unwrap();
+    assert_eq!(selected.index, 2);
+    assert_eq!(selected.refresh_reason, VideoModeRefreshReason::HighestBelow);
 }
 
 #[test]
@@ -158,6 +193,50 @@ fn exclusive_video_mode_uses_explicit_closest_resolution_fallback() {
     let selected = select_exclusive_video_mode(&modes, PhysicalSize::new(1920, 1080), 240).unwrap();
     assert_eq!(selected.index, 0);
     assert_eq!(selected.resolution_reason, VideoModeResolutionReason::ClosestSupported);
+}
+
+#[test]
+fn surface_attach_fallback_retries_only_first_exclusive_failure_on_windows() {
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::ExclusiveFullscreen,
+            &WindowMode::ExclusiveFullscreen,
+            false,
+            true,
+        ),
+        Some(WindowMode::BorderlessFullscreen)
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(&WindowMode::Windowed, &WindowMode::Windowed, false, true,),
+        None
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::BorderlessFullscreen,
+            &WindowMode::BorderlessFullscreen,
+            false,
+            true,
+        ),
+        None
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::ExclusiveFullscreen,
+            &WindowMode::BorderlessFullscreen,
+            true,
+            true,
+        ),
+        None
+    );
+    assert_eq!(
+        surface_attach_fallback_mode(
+            &WindowMode::ExclusiveFullscreen,
+            &WindowMode::ExclusiveFullscreen,
+            false,
+            false,
+        ),
+        None
+    );
 }
 
 #[test]
@@ -455,6 +534,41 @@ fn window_title_uses_scene_name() {
 }
 
 #[test]
+fn viewer_wait_and_shutdown_keep_the_last_play_snapshot_as_the_active_scene() {
+    use crate::app::scene_state::viewer_uses_play_scene;
+
+    assert!(viewer_uses_play_scene(true, true, false, true));
+    assert!(viewer_uses_play_scene(true, false, true, true));
+    assert!(!viewer_uses_play_scene(true, true, false, false));
+    assert!(!viewer_uses_play_scene(true, false, false, true));
+    assert!(!viewer_uses_play_scene(false, true, true, true));
+}
+
+#[test]
+fn viewer_shutdown_completes_and_retains_the_faded_play_snapshot() {
+    use crate::app::viewer::complete_viewer_exit_fade;
+
+    let mut snapshot = Some(RenderSnapshot::default());
+    complete_viewer_exit_fade(&mut snapshot, 300);
+
+    assert_eq!(
+        snapshot.and_then(|snapshot| snapshot.fadeout_elapsed_ms),
+        Some(bmz_render::snapshot::DEFAULT_PLAY_FADEOUT_DURATION_MS)
+    );
+}
+
+#[test]
+fn cli_mode_flags_resolve_without_using_the_profile_default() {
+    use crate::app::constructor::initial_session_mode;
+
+    assert_eq!(initial_session_mode(true, true, false), SessionMode::AutoplayBattle);
+    assert_eq!(initial_session_mode(true, false, false), SessionMode::GBattle);
+    assert_eq!(initial_session_mode(false, true, false), SessionMode::Autoplay);
+    assert_eq!(initial_session_mode(false, false, true), SessionMode::Practice);
+    assert_eq!(initial_session_mode(false, false, false), SessionMode::Normal);
+}
+
+#[test]
 fn deferred_boot_action_keeps_practice_boot_after_window_init() {
     let mut options = AppOptions {
         boot_practice: true,
@@ -475,7 +589,30 @@ fn deferred_boot_action_keeps_practice_boot_after_window_init() {
     options.boot_practice = false;
     assert_eq!(
         deferred_boot_action(Some(42), &options),
-        Some(DeferredBoot::Chart { chart_id: 42, replay_slot: None })
+        Some(DeferredBoot::Chart {
+            chart_id: 42,
+            replay_slot: None,
+            skip_decide: false,
+            score_save_disabled: false,
+            start_time_us: None,
+            bms_random_seed: None,
+        })
+    );
+
+    options.viewer_play = true;
+    options.skip_decide = true;
+    options.boot_start_time_us = Some(2_500_000);
+    options.boot_bms_random_seed = Some(99);
+    assert_eq!(
+        deferred_boot_action(Some(42), &options),
+        Some(DeferredBoot::Chart {
+            chart_id: 42,
+            replay_slot: None,
+            skip_decide: true,
+            score_save_disabled: true,
+            start_time_us: Some(2_500_000),
+            bms_random_seed: Some(99),
+        })
     );
 }
 
