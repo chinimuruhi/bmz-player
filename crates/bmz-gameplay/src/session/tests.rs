@@ -215,6 +215,8 @@ fn session_with_autoplay(chart: PlayableChart) -> GameSession {
             key_volume: 1.0,
             bgm_volume: 1.0,
             auto_keysound: false,
+            auto_keysound_fallback: false,
+            auto_keysound_mine: true,
         },
         hispeed: 2.0,
         hispeed_mode: HispeedMode::Normal,

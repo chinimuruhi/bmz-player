@@ -529,6 +529,8 @@ impl ProfileConfig {
                 master_volume: 50,
                 key_volume: 50,
                 auto_keysound: false,
+                auto_keysound_fallback: false,
+                auto_keysound_mine: true,
                 bgm_volume: 50,
                 preview_volume: 50,
                 system_bgm_volume: default_system_bgm_volume(),

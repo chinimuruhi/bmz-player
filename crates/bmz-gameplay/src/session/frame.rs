@@ -63,6 +63,7 @@ pub fn advance_session_frame(
         if session.audio_mix.auto_keysound {
             session.auto_keysound_scheduler.schedule_until(
                 &session.chart,
+                &session.display_only_lane_mask,
                 &session.audio_clock,
                 times.audio_schedule_until,
                 session.audio_mix.master_volume

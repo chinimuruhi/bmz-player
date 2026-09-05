@@ -1,10 +1,14 @@
 pub fn schedule_keysounds(session: &mut GameSession, audio: &mut dyn AudioScheduler) {
-    let pending = std::mem::take(&mut session.pending_keysounds);
+    let mut pending = std::mem::take(&mut session.pending_keysounds);
     if session.audio_mix.auto_keysound {
-        // キー音自動再生モード中は押鍵音を鳴らさない。HCN 早離しのキー音
-        // ミュート/復帰も、自動再生ボイスに効かせず入力非依存を保つため捨てる。
         session.pending_keysound_volumes.clear();
-        return;
+        let allow_fallback = session.audio_mix.auto_keysound_fallback;
+        let allow_mine = session.audio_mix.auto_keysound_mine;
+        pending.retain(|event| match event.trigger {
+            KeySoundTrigger::NoteJudged => false,
+            KeySoundTrigger::Fallback => allow_fallback,
+            KeySoundTrigger::Mine => allow_mine,
+        });
     }
     for event in pending {
         let note_id = event.note_id;
